@@ -435,7 +435,6 @@ for n in range(nt):
     progress += 1
     est.tick()
     end()
-    # print(f'Process {my_rank}, timestep done: t = {t:0.6g}: max(u) = {np.array(u_.vector()).max():0.6g}')
 
     # # Plot p and the components of u
     # if n % 50 == 0 or n == nt - 1:
