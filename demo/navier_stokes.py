@@ -391,7 +391,7 @@ for n in range(nt):
     maxu_global = mpi_comm.allgather(maxu_local)
     maxu_str = ", ".join(f"{maxu:0.6g}" for maxu in maxu_global)
 
-    msg = f"Timestep {n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}, max(u) = {maxu_str} (wall time {est.formatted_eta})"
+    msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; max(u) = {maxu_str}; wall time {est.formatted_eta}"
     begin(msg)
 
     # Update current time
