@@ -16,7 +16,7 @@ Usage examples can be found in the [`demo/`](demo/) subfolder. We currently have
  - **Mesh generation**
    - `import_gmsh` imports a [Gmsh](https://gmsh.info/) mesh into FEniCS using [`meshio`](https://github.com/nschloe/meshio).
      - This is a fire-and-forget convenience function for the common use case, to cover the gap created by the deprecation of the old `dolfin-convert`. `meshio` is likely a better solution, but needs a simple interface for common simple tasks.
-     - The output is a single HDF5 file with three groups: `/mesh`, `/domain_parts` (physical cells), and `/boundary_parts` (physical facets). See the demos for how to read it in.
+     - The output is a single HDF5 file with three groups: `/mesh`, `/domain_parts` (physical cells), and `/boundary_parts` (physical facets). The function `read_hdf5_mesh` reads it back in.
    - `find_subdomain_boundaries` automatically tags facets on internal boundaries between two subdomains. It should work for both 2D and 3D meshes.
      - Here *subdomain* means a `dolfin.SubMesh` generated using the FEniCS internal `mshr` mesh generation utility. See the demos for an example.
      - This makes it easier to respect [DRY](https://en.wikipedia.org/wiki/Don't_repeat_yourself) when setting up a small problem for testing, as the internal boundaries only need to be defined in one place (in the actual geometry).
