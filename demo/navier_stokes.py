@@ -31,7 +31,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     dot, inner, sym,
                     nabla_grad, div, dx, ds,
                     Identity,
-                    DOLFIN_EPS,
+                    near,
                     lhs, rhs, assemble, solve, interpolate,
                     HDF5File, XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -172,9 +172,7 @@ if mpi_comm.size == 1:
 
     # `autoboundary` calls the callback for each facet on the external boundary
     # (i.e. the facet is on a boundary, and no neighboring subdomain exists).
-    def near(x1: float, x2: float, tol: float = DOLFIN_EPS) -> bool:
-        return abs(x1 - x2) <= tol
-
+    #
     # For a box domain we could do this, too:
     # xmin, ymin, zmin = domain.first_corner().array()
     # xmax, ymax, zmax = domain.second_corne().array()  # "corne" as of FEniCS 2019.
