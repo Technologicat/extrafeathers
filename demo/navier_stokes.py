@@ -53,7 +53,7 @@ from extrafeathers import plotutil
 # So we'll use this custom pause function hack, courtesy of StackOverflow user @ImportanceOfBeingErnest:
 #   https://stackoverflow.com/a/45734500
 # Note we have to show() once before using mypause().
-def mypause(interval):
+def mypause(interval: float) -> None:
     """Redraw the current figure without stealing focus."""
     backend = plt.rcParams['backend']
     if backend in matplotlib.rcsetup.interactive_bk:
