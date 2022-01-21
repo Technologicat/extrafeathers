@@ -51,7 +51,7 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
     `src`: The `.msh` file to import.
     `dst`: The `.h5` file to write.
 
-    The output is a single HDF5 file with three groups:
+    The output is a single HDF5 file with three datasets:
       - "/mesh" contains the mesh itself
       - "/domain_parts" contains the physical cells
         (i.e. surfaces in 2D, volumes in 3D), if the
@@ -196,10 +196,11 @@ def read_hdf5_mesh(filename: str) -> typing.Tuple[dolfin.Mesh, dolfin.MeshFuncti
 
     The return value is `(mesh, domain_parts, boundary_parts)`.
 
-    Raises `ValueError` if the file does not have a "/mesh" group.
+    Raises `ValueError` if the file does not have a "/mesh" dataset.
 
-    If the file does not have a "/domain_parts" or "/boundary_parts" group,
-    that component of the return value will be `None`.
+    The "/domain_parts" and "/boundary_parts" datasets are optional.
+    If the file does not have them, the corresponding component of
+    the return value will be `None`.
     """
     with dolfin.HDF5File(dolfin.MPI.comm_world, filename, "r") as hdf:
         if not hdf.has_dataset(mesh_dataset):
