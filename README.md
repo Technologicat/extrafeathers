@@ -90,6 +90,13 @@ pip uninstall extrafeathers
 but first, make sure you're not in a folder that has an `extrafeathers` subfolder - `pip` will think it got a folder name instead of a package name, and become confused.
 
 
+## License
+
+Any original code in this repository is licensed under [The Unlicense](LICENSE.md). Do whatever you want!
+
+Any code fragments from forums are licensed by their respective authors under the terms the particular forum places on code contributions. In the case of StackOverflow, this means the fragments are used under the CC-BY-SA license. Attribution is given by providing the forum post URL and username in the source code comments.
+
+
 ## Thanks
 
 Everyone who has posted solutions on the [old FEniCS Q&A forum](https://fenicsproject.org/qa/) (now archived) and the [discourse group](https://fenicsproject.discourse.group/); especially @Dokken.
