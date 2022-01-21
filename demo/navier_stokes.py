@@ -418,22 +418,16 @@ for n in range(nt):
     end()
 
     begin("Saving")
-    # Save solution to file (XDMF/HDF5)
     xdmffile_u.write(u_, t)
     xdmffile_p.write(p_, t)
-
-    # Save nodal values to file
     timeseries_u.store(u_.vector(), t)
     timeseries_p.store(p_.vector(), t)
+    end()
 
     # Update previous solution
     u_n.assign(u_)
     p_n.assign(p_)
-    end()
 
-    # Update progress bar
-    progress += 1
-    est.tick()
     end()
 
     # # Plot p and the components of u
@@ -488,6 +482,13 @@ for n in range(nt):
             plt.draw()
             # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
             plt.pause(0.5)
+
+    # Update progress bar
+    progress += 1
+
+    # Do the ETA update as the very last thing at each timestep to include also
+    # the plotting time in the ETA calculation.
+    est.tick()
 
 # Hold plot
 if my_rank == 0:
