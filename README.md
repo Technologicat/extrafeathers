@@ -16,10 +16,14 @@ Usage examples can be found in the [`demo/`](demo/) subfolder. We currently have
  - **Mesh generation**
    - `import_gmsh` imports a [Gmsh](https://gmsh.info/) mesh into FEniCS using [`meshio`](https://github.com/nschloe/meshio).
      - This is a fire-and-forget convenience function for the common use case, to cover the gap created by the deprecation of the old `dolfin-convert`. `meshio` is likely a better solution, but needs a simple interface for common simple tasks.
-     - The output is a single HDF5 file with three datasets: `/mesh`, `/domain_parts` (physical cells), and `/boundary_parts` (physical facets). The function `read_hdf5_mesh` reads it back in.
+     - The output is a single HDF5 file with three datasets: `/mesh`, `/domain_parts` (physical cells), and `/boundary_parts` (physical facets). See `read_hdf5_mesh` below.
    - `find_subdomain_boundaries` automatically tags facets on internal boundaries between two subdomains. It should work for both 2D and 3D meshes.
-     - Here *subdomain* means a `dolfin.SubMesh` generated using the FEniCS internal `mshr` mesh generation utility. See the demos for an example.
+     - If you provide a callback function, it can also tag facets belonging to an outer boundary of the domain. This allows easily producing one `dolfin.MeshFunction` that has tags for all boundaries.
+     - Here *subdomain* means a `dolfin.SubMesh` generated using the FEniCS internal `mshr` mesh generation utility. See the `navier_stokes` demo for an example.
      - This makes it easier to respect [DRY](https://en.wikipedia.org/wiki/Don't_repeat_yourself) when setting up a small problem for testing, as the internal boundaries only need to be defined in one place (in the actual geometry).
+   - The function `read_hdf5_mesh` reads in an imported mesh; for symmetry, we provide also `write_hdf5_mesh`.
+   - `specialize_meshfunction` converts a `dolfin.MeshFunction` on cells or facets of a full mesh into the corresponding `dolfin.MeshFunction` on a `dolfin.SubMesh` of that mesh.
+     - Useful e.g. for a mesh with subdomains for fluid and structure parts, to extract them and then save in separate HDF5 mesh files. See the `import_gmsh` demo.
 
 
 ## Running the demos
