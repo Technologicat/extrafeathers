@@ -4,17 +4,74 @@
 Loosely based on the following, and then improved:
     https://fenicsproject.org/qa/13344/boundary-conditions-on-subdomain/
     https://fenicsproject.org/qa/397/how-define-dirichlet-boundary-conditions-with-meshfunction/
+
+We also provide a function to convert a `MeshFunction` on a full mesh to the corresponding
+`MeshFunction` on a `SubMesh` extracted from that mesh.
 """
 
-__all__ = ["find_subdomain_boundaries"]
+__all__ = ["find_subdomain_boundaries", "specialize_meshfunction"]
 
 import typing
 
 import dolfin
 
 
-def find_subdomain_boundaries(submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh],
-                              fullmesh: dolfin.Mesh,
+def _make_find_fullmesh_cell(fullmesh: dolfin.Mesh,
+                             submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh]) -> typing.Callable:
+    """Make a function that maps a cell of `submesh` to the corresponding cell of `fullmesh`."""
+    if fullmesh is submesh:
+        def find_fullmesh_cell(submesh_cell: dolfin.Cell) -> dolfin.Cell:
+            return submesh_cell
+    else:
+        _bbt = fullmesh.bounding_box_tree()
+        def find_fullmesh_cell(submesh_cell: dolfin.Cell) -> dolfin.Cell:
+            fullmesh_cell_index = _bbt.compute_first_entity_collision(submesh_cell.midpoint())
+            fullmesh_cell = dolfin.Cell(fullmesh, fullmesh_cell_index)
+            return fullmesh_cell
+    find_fullmesh_cell.__doc__ = """Given a submesh cell, return the corresponding fullmesh cell."""
+    return find_fullmesh_cell
+
+def _make_find_fullmesh_facet(fullmesh: dolfin.Mesh,
+                              submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh],
+                              find_fullmesh_cell: typing.Optional[typing.Callable]) -> typing.Callable:
+    """Make a function that maps a facet of `submesh` to the corresponding facet of `fullmesh`.
+
+    If you have already created a cell mapper using `_make_find_fullmesh_cell` (for the same
+    combination of `fullmesh` and `submesh`), you can pass that as the optional callable to
+    avoid unnecessarily creating another one.
+    """
+    if fullmesh is submesh:
+        def find_fullmesh_facet(submesh_facet: dolfin.Facet) -> dolfin.Facet:
+            return submesh_facet
+    else:
+        # A facet has zero area measure, so to be geometrically robust, we match a cell.
+        find_fullmesh_cell = find_fullmesh_cell or _make_find_fullmesh_cell(fullmesh, submesh)
+        def find_fullmesh_facet(submesh_facet: dolfin.Facet) -> dolfin.Facet:
+            # Get a submesh cell this facet belongs to - if multiple, any one of them is fine.
+            submesh_cells_for_facet = list(dolfin.cells(submesh_facet))
+            assert submesh_cells_for_facet  # there should always be at least one
+            submesh_cell = submesh_cells_for_facet[0]
+
+            # Find the corresponding fullmesh cell.
+            #
+            # This fullmesh cell always belongs to submesh, but other fullmesh
+            # cells connected to the facet might not.
+            fullmesh_cell = find_fullmesh_cell(submesh_cell)
+
+            # Find the corresponding fullmesh facet in the data for the fullmesh cell.
+            # We pick the fullmesh facet whose midpoint has minimal (actually zero)
+            # distance to the midpoint of submesh_facet.
+            fullmesh_facets = [(fullmesh_facet, fullmesh_facet.midpoint().distance(submesh_facet.midpoint()))
+                               for fullmesh_facet in dolfin.facets(fullmesh_cell)]
+            fullmesh_facets = list(sorted(fullmesh_facets, key=lambda item: item[1]))  # sort by distance, ascending
+            fullmesh_facet, ignored_distance = fullmesh_facets[0]
+            return fullmesh_facet
+    find_fullmesh_facet.__doc__ = """Given a submesh facet, return the corresponding fullmesh facet."""
+    return find_fullmesh_facet
+
+
+def find_subdomain_boundaries(fullmesh: dolfin.Mesh,
+                              submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh],
                               subdomains: typing.Optional[dolfin.MeshFunction],
                               boundary_spec: typing.Dict[typing.FrozenSet[int], int],
                               callback: typing.Optional[typing.Callable] = None) -> dolfin.MeshFunction:
@@ -68,14 +125,7 @@ def find_subdomain_boundaries(submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh]
     boundary_parts = dolfin.MeshFunction('size_t', submesh, facet_dim)  # value_type, mesh, dimension, [default_value]
     boundary_parts.set_all(0)
 
-    if fullmesh is not submesh:
-        _bbt = fullmesh.bounding_box_tree()
-    def find_fullmesh_cell(submesh_cell: dolfin.Cell) -> dolfin.Cell:
-        if fullmesh is submesh:
-            return submesh_cell
-        fullmesh_cell_index = _bbt.compute_first_entity_collision(submesh_cell.midpoint())
-        fullmesh_cell = dolfin.Cell(fullmesh, fullmesh_cell_index)
-        return fullmesh_cell
+    find_fullmesh_facet = _make_find_fullmesh_facet(fullmesh, submesh)
 
     # The mesh function for the boundary parts is defined over the submesh only,
     # so it must be indexed with the submesh facet. The easiest way to get the
@@ -90,9 +140,6 @@ def find_subdomain_boundaries(submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh]
     # mesh, this results in exactly one or two subdomains. If there are two, then
     # the facet is on a boundary between subdomains.
     #
-    # But a facet has zero area measure, so it is geometrically more robust to
-    # match a cell.
-    #
     # These considerations lead to the following algorithm:
     for submesh_facet in dolfin.facets(submesh):
         # We only need to consider boundary facets. A facet on the boundary
@@ -101,45 +148,36 @@ def find_subdomain_boundaries(submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh]
         if len(submesh_cells_for_facet) != 1:
             continue
 
-        assert len(submesh_cells_for_facet) == 1
-        submesh_cell = submesh_cells_for_facet[0]
-        fullmesh_cell = find_fullmesh_cell(submesh_cell)
-
-        # This fullmesh cell always belongs to the given submesh, but
-        # other fullmesh cells connected to the same fullmesh facet might not.
+        # Find how many subdomains are connected to this facet.
         #
-        # Next we must find the corresponding fullmesh facet in the data for
-        # the fullmesh cell. We pick the facet whose midpoint has minimal
-        # (actually zero) distance to the midpoint of our submesh facet.
-        #
-        # We must check the fullmesh cells connected to just this one facet, to behave
-        # correctly also when three or more subdomains meet at a vertex (and our facet
-        # happens to have one of its endpoints at that vertex). Consider the vertical
-        # facet in:
-        #
-        #    S1 | S2
-        #    -------
-        #      S3
-        #
-        # In the full mesh, our facet is part of the subdomain boundary between
-        # S1/S2, but not part of the subdomain boundaries between S1/S3 or S2/S3.
-        # However, the fullmesh cell in S1, touching the vertex, has another facet
-        # (in the diagram, a horizontal one) that is part of the boundary S1/S3.
-        # Similarly, the fullmesh cell touching the vertex in S2 has another facet
-        # that is part of the boundary S2/S3.
-        #
-        fullmesh_facets = [(fullmesh_facet, fullmesh_facet.midpoint().distance(submesh_facet.midpoint()))
-                           for fullmesh_facet in dolfin.facets(fullmesh_cell)]
-        fullmesh_facets = list(sorted(fullmesh_facets, key=lambda item: item[1]))  # sort by distance, ascending
-        fullmesh_facet, ignored_distance = fullmesh_facets[0]
-
+        # For this we need the fullmesh facet, because the submesh represents one subdomain.
+        fullmesh_facet = find_fullmesh_facet(submesh_facet)
         if subdomains is not None:
+            # We must check the fullmesh cells connected to just this one facet, to behave
+            # correctly also when three or more subdomains meet at a vertex (and our facet
+            # happens to have one of its endpoints at that vertex). Consider the vertical
+            # facet in:
+            #
+            #    S1 | S2
+            #    -------
+            #      S3
+            #
+            # In the full mesh, submesh_facet is part of the subdomain boundary between
+            # S1/S2, but not part of the subdomain boundaries between S1/S3 or S2/S3.
+            # However, the fullmesh cell in S1, touching the vertex, has another facet
+            # (in the diagram, a horizontal one) that is part of the boundary S1/S3.
+            # Similarly, the fullmesh cell touching the vertex in S2 has another facet
+            # that is part of the boundary S2/S3.
+            #
             subdomains_for_facet = frozenset({subdomains[cell] for cell in dolfin.cells(fullmesh_facet)})
         else:
-            subdomains_for_facet = {1}  # the value doesn't matter, as long as there is exactly one item.
+            # No subdomains. The value doesn't matter, as long as there is exactly one item;
+            # then the boundary gets treated as an external boundary.
+            subdomains_for_facet = {1}
         assert len(subdomains_for_facet) in {1, 2}
 
-        if len(subdomains_for_facet) == 2:
+        # Perform the tagging.
+        if len(subdomains_for_facet) == 2:  # Subdomain boundary.
             assert subdomains is not None
             # If the facet is on a boundary between subdomains, and a boundary tag
             # has been specified for this particular subdomain pair, tag the facet
@@ -147,11 +185,53 @@ def find_subdomain_boundaries(submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh]
             if subdomains_for_facet in boundary_spec:
                 boundary_parts[submesh_facet] = boundary_spec[subdomains_for_facet]
         else:  # len(subdomains_for_facet) == 1
-            # If the facet is on an external boundary, ask the callback what to do
-            # if the caller gave us one.
+            # External boundary. Delegate to the optional callback.
             if callback:
                 tag = callback(submesh_facet, fullmesh_facet)
                 if tag is not None:
                     boundary_parts[submesh_facet] = tag
 
     return boundary_parts
+
+
+def specialize_meshfunction(f: dolfin.MeshFunction,
+                            submesh: dolfin.SubMesh) -> dolfin.MeshFunction:
+    """Convert `MeshFunction` `f` on a full mesh to a corresponding `MeshFunction` on `submesh`.
+
+    `submesh` must be a `SubMesh` of `f.mesh()`.
+
+    Supports cell and facet meshfunctions.
+    """
+    fullmesh = f.mesh()
+    dim = fullmesh.topology().dim()
+    if f.dim() not in (dim, dim - 1):  # cell and facet functions accepted
+        raise NotImplementedError(f"Only cell and facet meshfunctions currently supported; got function of dimension {f.dim()} on mesh of topological dimension {dim}.")
+
+    # TODO: verify that `submesh` is a `SubMesh` of `fullmesh`
+
+    # HACK: map meshfunction classes to the names used by the constructor
+    mf_objtype_to_name = {type: name for name, type in dolfin.mesh.meshfunction._meshfunction_types.items()}
+    if type(f) not in mf_objtype_to_name:
+        # see dolfin/mesh/meshfunction.py
+        raise KeyError("MeshFunction type not recognised")
+
+    # Create a new MeshFunction, of the same dimension and type, but on `submesh`.
+    g = dolfin.MeshFunction(mf_objtype_to_name[type(f)], submesh, f.dim())  # value_type, mesh, dimension, [default_value]
+    g.set_all(0)
+
+    find_fullmesh_cell = _make_find_fullmesh_cell(fullmesh, submesh)
+    find_fullmesh_facet = _make_find_fullmesh_facet(fullmesh, submesh, find_fullmesh_cell)
+
+    if f.dim() == dim:  # MeshFunction on cells
+        entities = dolfin.cells(submesh)
+        find_on_fullmesh = find_fullmesh_cell
+    else:  # MeshFunction on facets
+        entities = dolfin.facets(submesh)
+        find_on_fullmesh = find_fullmesh_facet
+
+    # Copy data from `f`, re-indexing it onto the corresponding submesh entities.
+    for submesh_entity in entities:
+        fullmesh_entity = find_on_fullmesh(submesh_entity)
+        g[submesh_entity] = f[fullmesh_entity]
+
+    return g
