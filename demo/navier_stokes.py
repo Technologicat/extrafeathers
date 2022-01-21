@@ -382,6 +382,10 @@ A3 = assemble(a3)
 
 # Create XDMF files (for visualization in ParaView)
 #
+# As the `h5ls` tool will tell you, these files contain a mesh, and values of the
+# function on each that mesh. Vector quantities (such as `u`) are represented in
+# cartesian component form.
+#
 # Setting the "flush_output" flag makes the file viewable even when the simulation is
 # still running, terminated early (Ctrl+C), or crashed (no convergence).
 #
@@ -403,6 +407,9 @@ xdmffile_p.parameters["flush_output"] = True
 xdmffile_p.parameters["rewrite_function_mesh"] = False
 
 # Create time series (for use in other FEniCS solvers)
+#
+# These files contain the raw DOF data.
+#
 timeseries_u = TimeSeries(sol_u_filename)
 timeseries_p = TimeSeries(sol_p_filename)
 
