@@ -80,6 +80,13 @@ nt = 5000
 
 dt = T / nt
 
+# This script expects to be run from the top level of the project as
+#   python -m demo.navier_stokes
+# or
+#   mpirun python -m demo.navier_stokes
+# so the CWD is expected to be the top level, hence the "demo/" at the
+# beginning of each path.
+
 mesh_filename = "demo/navier_stokes/flow_over_cylinder.h5"  # both input and output
 
 # For visualization in ParaView

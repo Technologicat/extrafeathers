@@ -67,6 +67,13 @@ begin(f"max(u) = {np.array(u.vector()).max():0.6g}")  # just for MPI-enabled pri
 end()
 end()
 
+# This script expects to be run from the top level of the project as
+#   python -m demo.poisson
+# or
+#   mpirun python -m demo.poisson
+# so the CWD is expected to be the top level, hence the "demo/" at the
+# beginning of the path.
+
 # vtkfile = File("demo/poisson/solution.pvd")
 # vtkfile << u
 # Create XDMF file for visualization output
