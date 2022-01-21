@@ -15,29 +15,32 @@ import matplotlib.pyplot as plt
 
 import dolfin
 
+from extrafeathers import autoboundary
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
 print(pathlib.Path.cwd())
 
-# --------------------------------------------------------------------------------
-# Perform conversion
+# Import the mesh (full domain, containing both fluid and structure)
 meshutil.import_gmsh(src="demo/flow_over_cylinder.msh",
-                     dst="demo/navier_stokes/flow_over_cylinder.h5")
+                     dst="demo/navier_stokes/flow_over_cylinder_full.h5")
 
-# --------------------------------------------------------------------------------
 # Read the result back in
-with dolfin.HDF5File(dolfin.MPI.comm_world, "demo/navier_stokes/flow_over_cylinder.h5", "r") as hdf:
-    # Meshes can be read back like this:
-    mesh = dolfin.Mesh()
-    hdf.read(mesh, "/mesh", False)  # target_object, data_path_in_hdf, use_existing_partitioning_if_any
+mesh, domain_parts, boundary_parts = meshutil.read_hdf5_mesh("demo/navier_stokes/flow_over_cylinder_full.h5")
 
-    # For the tags, we must specify which mesh the MeshFunction belongs to, and the function's cell dimension.
-    domain_parts = dolfin.MeshFunction('size_t', mesh, mesh.topology().dim(), 0)
-    hdf.read(domain_parts, "/domain_parts")
+# Separate the fluid and structure meshes (in the `navier_stokes` demo, we only need the fluid mesh)
+# The tag numbers must match those that were used in the input .msh file (see the .geo file it is generated from).
+fluid_mesh = dolfin.SubMesh(mesh, domain_parts, 5)
+fluid_domain_parts = autoboundary.specialize_meshfunction(domain_parts, fluid_mesh)
+fluid_boundary_parts = autoboundary.specialize_meshfunction(boundary_parts, fluid_mesh)
+meshutil.write_hdf5_mesh("demo/navier_stokes/flow_over_cylinder_fluid.h5",
+                         fluid_mesh, fluid_domain_parts, fluid_boundary_parts)
 
-    boundary_parts = dolfin.MeshFunction('size_t', mesh, mesh.topology().dim() - 1, 0)
-    hdf.read(boundary_parts, "/boundary_parts")
+structure_mesh = dolfin.SubMesh(mesh, domain_parts, 6)
+structure_domain_parts = autoboundary.specialize_meshfunction(domain_parts, structure_mesh)
+structure_boundary_parts = autoboundary.specialize_meshfunction(boundary_parts, structure_mesh)
+meshutil.write_hdf5_mesh("demo/navier_stokes/flow_over_cylinder_structure.h5",
+                         structure_mesh, structure_domain_parts, structure_boundary_parts)
 
 # --------------------------------------------------------------------------------
 # Visualize
@@ -45,22 +48,35 @@ with dolfin.HDF5File(dolfin.MPI.comm_world, "demo/navier_stokes/flow_over_cylind
 # Any facet not belonging to boundary_parts is tagged with a large number:
 # size_t(-1) = 2**64 - 1 = 18446744073709551615
 # https://fenicsproject.discourse.group/t/transitioning-from-mesh-xml-to-mesh-xdmf-from-dolfin-convert-to-meshio/412/35
-plt.figure(1)
-plt.clf()
 
-plt.subplot(3, 1, 1)
-dolfin.plot(mesh)
-plt.ylabel("Mesh")
+for figno, (title, msh, dparts, bparts) in enumerate((("All", mesh,
+                                                       domain_parts, boundary_parts),
+                                                      ("Fluid", fluid_mesh,
+                                                       fluid_domain_parts, fluid_boundary_parts),
+                                                      ("Structure", structure_mesh,
+                                                       structure_domain_parts, structure_boundary_parts)),
+                                                     start=1):
+    plt.figure(figno)
+    plt.clf()
 
-plt.subplot(3, 1, 2)
-theplot = dolfin.plot(domain_parts)
-plt.colorbar(theplot)
-plt.ylabel("Phys. surfaces")
+    # mesh itself
+    plt.subplot(3, 1, 1)
+    dolfin.plot(msh)
+    plt.ylabel("Mesh")
 
-plt.subplot(3, 1, 3)
-plotutil.plot_facet_meshfunction(boundary_parts, invalid_values=[2**64 - 1])
-plt.axis("scaled")
-plt.legend(loc="best")
-plt.ylabel("Phys. boundaries")
+    # domain parts (subdomains)
+    plt.subplot(3, 1, 2)
+    theplot = dolfin.plot(dparts)
+    plt.colorbar(theplot)
+    plt.ylabel("Phys. surfaces")
+
+    # boundary parts
+    plt.subplot(3, 1, 3)
+    plotutil.plot_facet_meshfunction(bparts, invalid_values=[2**64 - 1])
+    plt.axis("scaled")
+    plt.legend(loc="best")
+    plt.ylabel("Phys. boundaries")
+
+    plt.suptitle(title)
 
 plt.show()
