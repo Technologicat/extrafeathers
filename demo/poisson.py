@@ -40,7 +40,7 @@ class Boundaries(IntEnum):
 # The callback is called for each facet on the outer boundary.
 def autoboundary_callback(submesh_facet: Facet, fullmesh_facet: Facet) -> typing.Optional[int]:
     return Boundaries.OUTER.value
-boundary_parts: MeshFunction = autoboundary.find_subdomain_boundaries(submesh=mesh, fullmesh=mesh,
+boundary_parts: MeshFunction = autoboundary.find_subdomain_boundaries(fullmesh=mesh, submesh=mesh,
                                                                       subdomains=None,
                                                                       boundary_spec={},
                                                                       callback=autoboundary_callback)
