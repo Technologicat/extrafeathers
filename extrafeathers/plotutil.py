@@ -202,7 +202,7 @@ colors = [item["color"] for item in mpl.rcParams["axes.prop_cycle"]]
 def plot_facet_meshfunction(f: dolfin.MeshFunction,
                             names: typing.Optional[IntEnum] = None,
                             invalid_values: typing.Optional[typing.List[int]] = None) -> None:
-    """Plot a `size_t` meshfunction defined on facets.
+    """Plot a `size_t` meshfunction defined on facets of a 2D mesh.
 
     Useful for checking whether boundaries have been tagged as expected.
 
