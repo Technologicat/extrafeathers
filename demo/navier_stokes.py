@@ -19,6 +19,7 @@ from enum import IntEnum
 import typing
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 
 from unpythonic import ETAEstimator
@@ -42,6 +43,26 @@ from mshr import Rectangle, Circle, generate_mesh
 # custom utilities for FEniCS
 from extrafeathers import autoboundary
 from extrafeathers import plotutil
+
+# Matplotlib (3.3.3) has a habit of popping the figure window to top when it is updated using show() or pause(),
+# which effectively prevents using the machine for anything else while a simulation is in progress.
+#
+# To fix this, the suggestion to use the Qt5Agg backend here:
+#   https://stackoverflow.com/questions/61397176/how-to-keep-matplotlib-from-stealing-focus
+# didn't help on my system (Linux Mint 20.1). And it is somewhat nontrivial to use a `FuncAnimation` here.
+# So we'll use this custom pause function hack, courtesy of StackOverflow user @ImportanceOfBeingErnest:
+#   https://stackoverflow.com/a/45734500
+# Note we have to show() once before using mypause().
+def mypause(interval):
+    """Redraw the current figure without stealing focus."""
+    backend = plt.rcParams['backend']
+    if backend in matplotlib.rcsetup.interactive_bk:
+        figManager = matplotlib._pylab_helpers.Gcf.get_active()
+        if figManager is not None:
+            canvas = figManager.canvas
+            if canvas.figure.stale:
+                canvas.draw_idle()
+            canvas.start_event_loop(interval)
 
 mpi_comm = MPI.comm_world
 my_rank = MPI.rank(mpi_comm)
@@ -456,8 +477,10 @@ for n in range(nt):
     #         plt.ylabel(r"$u_y$")
     #     if my_rank == 0:
     #         plt.draw()
+    #         if n == 0:
+    #             plt.show()
     #         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-    #         plt.pause(0.5)
+    #         mypause(0.5)
 
     # Plot p and the magnitude of u
     if n % 50 == 0 or n == nt - 1:
@@ -480,8 +503,10 @@ for n in range(nt):
             plt.ylabel(r"$|u|$")
         if my_rank == 0:
             plt.draw()
+            if n == 0:
+                plt.show()
             # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-            plt.pause(0.5)
+            mypause(0.5)
 
     # Update progress bar
     progress += 1
