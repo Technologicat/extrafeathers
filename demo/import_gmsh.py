@@ -15,15 +15,15 @@ import matplotlib.pyplot as plt
 
 import dolfin
 
-from extrafeathers import meshconvert
+from extrafeathers import meshutil
 from extrafeathers import plotutil
 
 print(pathlib.Path.cwd())
 
 # --------------------------------------------------------------------------------
 # Perform conversion
-meshconvert.import_gmsh(src="demo/flow_over_cylinder.msh",
-                        dst="demo/navier_stokes/flow_over_cylinder.h5")
+meshutil.import_gmsh(src="demo/flow_over_cylinder.msh",
+                     dst="demo/navier_stokes/flow_over_cylinder.h5")
 
 # --------------------------------------------------------------------------------
 # Read the result back in

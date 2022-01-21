@@ -8,5 +8,5 @@ __version__ = "0.1.0"
 
 # export the public API
 from .autoboundary import *  # noqa: F401, F403
-from .meshconvert import *  # noqa: F401, F403
+from .meshutil import *  # noqa: F401, F403
 from .plotutil import *  # noqa: F401, F403
