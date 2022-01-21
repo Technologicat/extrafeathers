@@ -48,12 +48,16 @@ Physical Line("cylinder") = {8, 5, 6, 7};
 Line Loop(9) = {2, 3, 4, 1};   // outer boundary: clockwise to have normal pointing out of the flow domain
 Line Loop(10) = {7, 8, 5, 6};  // hole boundary:  counterclockwise to have normal pointing out of the flow domain
 Plane Surface(11) = {9, 10};
-// Because there are four physical boundaries defined above,
-// the ID of the surface will be 5.
+// Because there are four physical boundaries defined above, the ID of the physical surface will be 5.
 Physical Surface("fluid") = {11};
 
+// Let's mesh the obstacle part, too. This gives us a mesh with two subdomains,
+// and matching elements on the boundary.
+Plane Surface(12) = {-10};  // clockwise to have normal pointing out of the solid domain
+Physical Surface("structure") = {12};  // The ID of this physical surface will be 6.
+
 // set local mesh size
-// Characteristic Length is renamed to MeshSize in Gmsh 4.x
+// Characteristic Length is renamed to MeshSize in Gmsh 4.x.
 // https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
 Characteristic Length {6, 7, 8, 9} = 0.01;  // obstacle (cylinder) surface
 Characteristic Length {2, 1} = 0.02;        // inflow corners
