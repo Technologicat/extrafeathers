@@ -6,7 +6,7 @@ Based on many posts in these discussion threads:
   https://fenicsproject.discourse.group/t/transitioning-from-mesh-xml-to-mesh-xdmf-from-dolfin-convert-to-meshio/412/9
 """
 
-__all__ = ["import_gmsh"]
+__all__ = ["import_gmsh", "read_hdf5_mesh"]
 
 import pathlib
 import tempfile
@@ -18,10 +18,10 @@ import meshio
 
 import dolfin
 
-# names for the dataset keys in the output files
-mesh_key = "mesh"
-cell_key = "domain_parts"
-boundary_key = "boundary_parts"
+# names for the datasets in the output files
+mesh_dataset = "mesh"
+cell_dataset = "domain_parts"
+boundary_dataset = "boundary_parts"
 
 def _absolute_path(filename_or_path: typing.Union[pathlib.Path, str]) -> pathlib.Path:
     return pathlib.Path(filename_or_path).expanduser().resolve()
@@ -38,6 +38,7 @@ def _stack_cells(msh: meshio.Mesh, type: str):
     cells = np.vstack(np.array([block.data for block in msh.cells
                                 if block.type == type]))
     return cells
+
 
 def import_gmsh(src: typing.Union[pathlib.Path, str],
                 dst: typing.Union[pathlib.Path, str]) -> None:
@@ -60,6 +61,8 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
         input file specifies any.
 
     If the same cell or facet has multiple tags, the latest one wins.
+
+    The resulting HDF5 file can be read back in using `read_hdf5_mesh`.
     """
     if dolfin.MPI.comm_world.size > 1:
         raise NotImplementedError("`import_gmsh` does not support running in parallel. Perform the mesh file conversion serially, then run your solver in parallel.")
@@ -109,7 +112,7 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
         meshio.write(boundary_parts_out.name,
                      meshio.Mesh(points=msh.points,
                                  cells={facet_kind: msh.cells_dict[facet_kind]},
-                                 cell_data={boundary_key: [msh.cell_data_dict["gmsh:physical"][facet_kind]]}),
+                                 cell_data={boundary_dataset: [msh.cell_data_dict["gmsh:physical"][facet_kind]]}),
                      file_format="xdmf")
 
         # MeshValueCollection represents imported data, which can be
@@ -121,7 +124,7 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
         # https://fenicsproject.discourse.group/t/transitioning-from-mesh-xml-to-mesh-xdmf-from-dolfin-convert-to-meshio/412/35
         mvc = dolfin.MeshValueCollection("size_t", mesh, mesh.topology().dim() - 1)
         with dolfin.XDMFFile(boundary_parts_out.name) as boundary_parts_in:
-            boundary_parts_in.read(mvc, boundary_key)
+            boundary_parts_in.read(mvc, boundary_dataset)
         mf = dolfin.MeshFunction("size_t", mesh, mvc)
 
     # Convert Gmsh physical cells (surfaces in 2D, volumes in 3D) to XDMF
@@ -129,19 +132,19 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
         meshio.write(domain_parts_out.name,
                      meshio.Mesh(points=msh.points,
                                  cells={cell_kind: msh.cells_dict[cell_kind]},
-                                 cell_data={cell_key: [msh.cell_data_dict["gmsh:physical"][cell_kind]]}),
+                                 cell_data={cell_dataset: [msh.cell_data_dict["gmsh:physical"][cell_kind]]}),
                      file_format="xdmf")
 
         mvc = dolfin.MeshValueCollection("size_t", mesh, mesh.topology().dim())
         with dolfin.XDMFFile(domain_parts_out.name) as domain_parts_in:
-            domain_parts_in.read(mvc, cell_key)
+            domain_parts_in.read(mvc, cell_dataset)
         cf = dolfin.MeshFunction("size_t", mesh, mvc)
 
     # Write the final HDF5 file
     with dolfin.HDF5File(mesh.mpi_comm(), str(dst), "w") as hdf:
-        hdf.write(mesh, f"/{mesh_key}")  # the mesh itself
-        hdf.write(cf, f"/{cell_key}")  # MeshFunction on cells of `mesh`
-        hdf.write(mf, f"/{boundary_key}")  # MeshFunction on facets of `fluid_mesh`
+        hdf.write(mesh, f"/{mesh_dataset}")  # the mesh itself
+        hdf.write(cf, f"/{cell_dataset}")  # MeshFunction on cells of `mesh`
+        hdf.write(mf, f"/{boundary_dataset}")  # MeshFunction on facets of `fluid_mesh`
 
 
 # # Some assumptions in this function, which is otherwise very nice, seem to be a little different from ours.
@@ -186,3 +189,37 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
 #     if prune_z:
 #         out_mesh.prune_z_0()
 #     return out_mesh
+
+
+def read_hdf5_mesh(filename: str) -> typing.Tuple[dolfin.Mesh, dolfin.MeshFunction, dolfin.MeshFunction]:
+    """Read an HDF5 mesh file created using `import_gmsh`.
+
+    The return value is `(mesh, domain_parts, boundary_parts)`.
+
+    Raises `ValueError` if the file does not have a "/mesh" group.
+
+    If the file does not have a "/domain_parts" or "/boundary_parts" group,
+    that component of the return value will be `None`.
+    """
+    with dolfin.HDF5File(dolfin.MPI.comm_world, filename, "r") as hdf:
+        if not hdf.has_dataset(mesh_dataset):
+            raise ValueError(f"{mesh_dataset} dataset not found in mesh file {filename}")
+
+        mesh = dolfin.Mesh()
+        hdf.read(mesh, mesh_dataset, False)  # target_object, data_path_in_hdf, use_existing_partitioning_if_any
+
+        if hdf.has_dataset(cell_dataset):
+            # For the tags, we must specify which mesh the MeshFunction belongs to,
+            # and the function's cell dimension.
+            domain_parts = dolfin.MeshFunction('size_t', mesh, mesh.topology().dim(), 0)  # type, mesh, dim, [default_value]
+            hdf.read(domain_parts, cell_dataset)
+        else:
+            domain_parts = None
+
+        if hdf.has_dataset(boundary_dataset):
+            boundary_parts = dolfin.MeshFunction('size_t', mesh, mesh.topology().dim() - 1, 0)
+            hdf.read(boundary_parts, boundary_dataset)
+        else:
+            boundary_parts = None
+
+    return mesh, domain_parts, boundary_parts
