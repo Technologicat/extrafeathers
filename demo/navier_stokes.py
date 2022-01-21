@@ -50,12 +50,16 @@ from extrafeathers import plotutil
 #
 # To fix this, the suggestion to use the Qt5Agg backend here:
 #   https://stackoverflow.com/questions/61397176/how-to-keep-matplotlib-from-stealing-focus
+#
 # didn't help on my system (Linux Mint 20.1). And it is somewhat nontrivial to use a `FuncAnimation` here.
-# So we'll use this custom pause function hack, courtesy of StackOverflow user @ImportanceOfBeingErnest:
+# So we'll use this custom pause function hack instead, courtesy of StackOverflow user @ImportanceOfBeingErnest:
 #   https://stackoverflow.com/a/45734500
-# Note we have to show() once before using mypause().
+#
 def mypause(interval: float) -> None:
-    """Redraw the current figure without stealing focus."""
+    """Redraw the current figure without stealing focus.
+
+    Works after `plt.show()` has been called at least once.
+    """
     backend = plt.rcParams['backend']
     if backend in matplotlib.rcsetup.interactive_bk:
         figManager = matplotlib._pylab_helpers.Gcf.get_active()
