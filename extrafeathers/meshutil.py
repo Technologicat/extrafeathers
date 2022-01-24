@@ -1,7 +1,7 @@
 # -*- coding: utf-8; -*-
-"""Gmsh import for FEniCS, built on top of meshio.
+"""Gmsh import for FEniCS (with subdomain and boundary data), built on top of meshio.
 
-We also provide convenient functions to read/write a mesh with subdomain and boundary data.
+Stores the result as a single HDF5 file.
 
 Based on many posts in these discussion threads:
   https://fenicsproject.discourse.group/t/converting-simple-2d-mesh-from-gmsh-to-dolfin/583/4
