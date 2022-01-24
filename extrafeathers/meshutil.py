@@ -100,7 +100,7 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
     Physical cells (volumes in 3D, surfaces in 2D) and facets (surfaces in 3D, lines in 2D)
     are also imported.
 
-    Simplicial meshes (triangles/tetrahedrons) only.
+    Simplicial meshes (triangles/tetrahedrons) in 2D or 3D only.
 
     `src`: The `.msh` file to import.
     `dst`: The `.h5` file to write.
