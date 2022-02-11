@@ -164,9 +164,9 @@ class LaminarFlow:
         #
         # **Convective term**
         #
-        # In the discretization, the convection velocity field and the quantity
-        # it operates on (though a velocity) are allowed to be different, so let us call the
-        # convection velocity `a`.
+        # In the discretization, the convection velocity field and the velocity field the
+        # convection operator is applied to are allowed to be different, so let us call the
+        # convection velocity field `a`.
         #
         # The straightforward weak form is
         #   a · ∇u · v dx
@@ -174,19 +174,17 @@ class LaminarFlow:
         # Using the old value for both a and u, i.e.  a = u = u_n,  gives us an explicit scheme
         # for the convection.
         #
-        # A semi-implicit scheme for convection is obtained when  a = u_n, and `u` is our `u`
-        # i.e. the end-of-timestep value of the step 1 velocity (sometimes called the intermediate
-        # velocity, because `u` is not the final velocity until steps 2 and 3 have been performed).
+        # A semi-implicit scheme for convection is obtained when  a = u_n, and u is the unknown,
+        # end-of-timestep value of the step 1 velocity (sometimes called the intermediate velocity).
         #
         # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has become standard to
-        # instead use this skew-symmetric weak form:
+        # use this skew-symmetric weak form:
         #   (1/2) a · [∇u · v - ∇v · u] dx
         # which in the strong form is equivalent with replacing the convective term
         #   (a·∇) u
         # by the modified term
         #   (a·∇) u  +  (1/2) (∇·a) u
-        # This is consistent for an incompressible flow, and allows unconditional time stability
-        # for those semi-implicit schemes that are able to provide it.
+        # This is consistent for an incompressible flow, and necessary for unconditional time stability.
         #
         # To see this equivalence, consider the conversion of the modified term into weak form:
         #    (a·∇) u · v dx  +  (1/2) (∇·a) u · v dx
@@ -207,7 +205,7 @@ class LaminarFlow:
         # Finally, cleaning up, we obtain
         #    (1/2) a · [∇u · v - ∇v · u] dx  +  (1/2) n · a (u · v) ds
         # as claimed. Keep in mind the extra boundary term, which contributes on boundaries
-        # through which there is flow (inlets and outlets).
+        # through which there is flow (i.e. inlets and outlets).
         #
         U = 0.5 * (u_n + u)
         # # Original convective term
