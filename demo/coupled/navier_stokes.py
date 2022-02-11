@@ -158,6 +158,15 @@ class LaminarFlow:
         # (∂i uk) nk  (which comes from the transposed part of the symm∇). This produces the term
         # -μ [[∇U] · n] · v ds.
         #
+        # Convective term. We use the straightforward original form:
+        #   (u_n · ∇u_n) · v dx
+        # In the 2000s, it has become standard (see Donea & Huerta, 2003, sec. 6.7.1)
+        # to instead use the skew-symmetric form:
+        #   (u_n · ∇u_n) · v dx + ((∇u_n) · u_n) · v dx
+        # which in the strong form is equivalent with replacing
+        #   (u·∇) u  →  (u·∇)u + (1/2) (∇·u) u
+        # which is consistent for an incompressible flow.
+        #
         U = 0.5 * (u_n + u)
         F1 = (ρ * dot((u - u_n) / k, v) * dx +
               ρ * dot(dot(u_n, nabla_grad(u_n)), v) * dx +
