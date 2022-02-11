@@ -286,8 +286,9 @@ plt.ion()
 solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 
 # Body force (gravity)
-f: Function = interpolate(Constant((0, -10.0)), V)
-solver.f.assign(f)
+# TODO: vertical gravity requires modification of outlet BCs, because it physically changes the outflow profile.
+# f: Function = interpolate(Constant((0, -10.0)), V)
+# solver.f.assign(f)
 
 # Time-stepping
 t = 0
