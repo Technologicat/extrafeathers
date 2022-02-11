@@ -39,7 +39,9 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
     exactly what it says on the tin.
     """
     if V.mesh().topology().dim() != 2 or V.ufl_element().degree() > 1 or str(V.ufl_element().cell()) != "triangle":
-        raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 triangle elements, got a mesh of dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
+        raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 triangle elements, got a mesh of topological dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
+    if V.mesh().geometric_dimension() != 2:
+        raise NotImplementedError(f"This function only supports meshes of geomertric dimension 2, got a mesh of geometric dimension {V.mesh().geometric_dimension()}.")
 
     # "my" = local to this MPI process
     all_my_global_indices = []
@@ -49,9 +51,6 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
     dofmap = V.dofmap()
     for cell in dolfin.cells(V.mesh()):
         local_dof_indices = dofmap.cell_dofs(cell.index())  # local to this MPI process
-
-        # TODO: Are there cases we should watch out for? For example, is it possible for
-        # TODO: `V.mesh().geometric_dimension()` to differ from `V.mesh().topology().dim()`?
         vertices = element.tabulate_dof_coordinates(cell)  # [[x1, y1], [x2, y2], [x3, y3]]
 
         # Matplotlib wants anticlockwise ordering when building a Triangulation
@@ -76,6 +75,8 @@ def all_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Li
     """
     if V.mesh().topology().dim() != 2 or V.ufl_element().degree() > 1 or str(V.ufl_element().cell()) != "triangle":
         raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 triangle elements, got a mesh of dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
+    if V.mesh().geometric_dimension() != 2:
+        raise NotImplementedError(f"This function only supports meshes of geomertric dimension 2, got a mesh of geometric dimension {V.mesh().geometric_dimension()}.")
 
     ixs, vtxs = my_triangles(V)
     ixs = dolfin.MPI.comm_world.allgather(ixs)
@@ -246,6 +247,11 @@ def plot_facet_meshfunction(f: dolfin.MeshFunction,
     mesh = f.mesh()
     if mesh.topology().dim() != 2:
         raise NotImplementedError(f"This function only supports meshes of topological dimension 2, got {mesh.topology().dim()}")
+
+    # Simplifying assumption: in geometric dimension 2, we can just discard the third coordinate of the vertices.
+    if mesh.geometric_dimension() != 2:
+        raise NotImplementedError(f"This function only supports meshes of geometric dimension 2, got {mesh.geometric_dimension()}")
+
     if f.dim() != 1:
         raise NotImplementedError(f"This function only supports mesh functions on facets (dimension 1); got a function of dimension {f.dim()}")
     if dolfin.MPI.comm_world.size > 1:
