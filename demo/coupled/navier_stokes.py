@@ -219,7 +219,7 @@ class LaminarFlow:
         ustar = U  # quantity the convection operator applies to
         F1 = (ρ * dot((u - u_n) / k, v) * dx +
               ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) - dot(dot(a, nabla_grad(v)), ustar)) * dx +
-              (1 / 2) * dot(n, a) * dot(ustar, v) * ds +
+              ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds +
               inner(σ(U, p_n), ε(v)) * dx +
               dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
               dot(f, v) * dx)
