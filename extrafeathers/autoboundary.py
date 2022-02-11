@@ -33,7 +33,7 @@ def _make_find_fullmesh_cell(fullmesh: dolfin.Mesh,
 
 def _make_find_fullmesh_facet(fullmesh: dolfin.Mesh,
                               submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh],
-                              find_fullmesh_cell: typing.Optional[typing.Callable]) -> typing.Callable:
+                              find_fullmesh_cell: typing.Optional[typing.Callable] = None) -> typing.Callable:
     """Make a function that maps a facet of `submesh` to the corresponding facet of `fullmesh`.
 
     If you have already created a cell mapper using `_make_find_fullmesh_cell` (for the same
