@@ -60,18 +60,24 @@ for figno, (title, msh, dparts, bparts) in enumerate((("All", mesh,
     plt.clf()
 
     # mesh itself
-    plt.subplot(3, 1, 1)
+    plt.subplot(2, 2, 1)
     dolfin.plot(msh)
     plt.ylabel("Mesh")
 
+    # local mesh size
+    plt.subplot(2, 2, 2)
+    theplot = dolfin.plot(autoboundary.meshsize(msh))
+    plt.colorbar(theplot)
+    plt.ylabel("Local mesh size")
+
     # domain parts (subdomains)
-    plt.subplot(3, 1, 2)
+    plt.subplot(2, 2, 3)
     theplot = dolfin.plot(dparts)
     plt.colorbar(theplot)
     plt.ylabel("Phys. surfaces")
 
     # boundary parts
-    plt.subplot(3, 1, 3)
+    plt.subplot(2, 2, 4)
     plotutil.plot_facet_meshfunction(bparts, invalid_values=[2**64 - 1])
     plt.axis("scaled")
     plt.legend(loc="best")

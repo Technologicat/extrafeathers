@@ -27,6 +27,10 @@ We also demonstrate how to [import a Gmsh mesh](demo/import_gmsh.py) with subdom
      - Convert a `MeshFunction` on cells or facets of a full mesh into the corresponding `MeshFunction` on its `SubMesh`.
      - Both 2D and 3D. Cell and facet meshfunctions supported.
      - Useful e.g. when splitting a mesh with subdomains. This function allows converting the `domain_parts` and `boundary_parts` from the full mesh onto each submesh. This allows saving the submeshes, along with their subdomain and boundary tags, as individual standalone meshes in separate HDF5 mesh files. See the `import_gmsh` demo. This in turn is useful, because (as of FEniCS 2019) `SubMesh` is not supported when running in parallel.
+   - `meshsize`
+     - Compute the local mesh size (commonly denoted `h`), defined as the minimum edge length of each mesh entity. The result is returned as a `MeshFunction`.
+     - Both 2D and 3D. Can compute both cell and facet meshfunctions.
+     - Useful for stabilization methods in CFD, where `h` typically appears in the stabilization term.
  - **Plotting**
    - `mpiplot`
      - Plot the *whole* solution in the root process while running in parallel. As of v0.1.0, scalar field on a 2D triangle mesh only.

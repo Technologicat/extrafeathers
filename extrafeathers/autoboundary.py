@@ -5,13 +5,18 @@ Loosely based on the following, and then improved:
     https://fenicsproject.org/qa/13344/boundary-conditions-on-subdomain/
     https://fenicsproject.org/qa/397/how-define-dirichlet-boundary-conditions-with-meshfunction/
 
-We also provide a function to convert a `MeshFunction` on a full mesh to the corresponding
-`MeshFunction` on a `SubMesh` extracted from that mesh.
+We also provide some utility functions on meshes:
+
+ - Convert a `MeshFunction` on a full mesh to the corresponding
+   `MeshFunction` on a `SubMesh` extracted from that mesh.
+ - Compute the local mesh size `h` and return it as a `MeshFunction`.
 """
 
-__all__ = ["find_subdomain_boundaries", "specialize_meshfunction"]
+__all__ = ["find_subdomain_boundaries", "specialize_meshfunction", "meshsize"]
 
 import typing
+
+import numpy as np
 
 import dolfin
 
@@ -235,3 +240,39 @@ def specialize_meshfunction(f: dolfin.MeshFunction,
         g[submesh_entity] = f[fullmesh_entity]
 
     return g
+
+
+def meshsize(mesh: dolfin.Mesh,
+             kind: str = "cell") -> dolfin.MeshFunction:
+    """Return a `MeshFunction` that gives the local meshsize `h` on each cell or facet of `mesh`.
+
+    kind: "cell" or "facet"
+    """
+    if kind not in ("cell", "facet"):
+        raise ValueError(f"`kind` must be 'cell' or 'facet', got {type(kind)} with value {kind}")
+
+    dim = mesh.topology().dim()
+    if kind == "cell":
+        entities = dolfin.cells(mesh)
+        fdim = dim
+    else:  # kind == "facet":
+        entities = dolfin.facets(mesh)
+        fdim = dim - 1
+
+    f = dolfin.MeshFunction("double", mesh, fdim)
+    f.set_all(0.0)
+
+    def vertices_as_array(entity):
+        return [vtx.point().array() for vtx in dolfin.vertices(entity)]
+    def euclidean_distance(vtxpair):
+        assert len(vtxpair) == 2
+        dx = vtxpair[0] - vtxpair[1]
+        return np.sqrt(np.sum(dx**2))
+
+    for entity in entities:
+        edges = dolfin.edges(entity)
+        vtxpairs = [vertices_as_array(edge) for edge in edges]
+        edge_lengths = [euclidean_distance(vtxpair) for vtxpair in vtxpairs]
+        f[entity] = min(edge_lengths)
+
+    return f
