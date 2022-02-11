@@ -68,7 +68,7 @@ T = 5.0            # final time
 
 # mesh_resolution is only used for internal mesh generation
 mesh_resolution = 128
-nt = 10000
+nt = 2500
 
 dt = T / nt
 
