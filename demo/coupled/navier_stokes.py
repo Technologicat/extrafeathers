@@ -163,11 +163,13 @@ class LaminarFlow:
         # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has
         # become standard to instead use the skew-symmetric form:
         #   (1/2) u · [∇u · v - ∇v · u] dx
-        # which in the strong form is equivalent with replacing
-        #   (u·∇) u  →  (u·∇) u  +  (1/2) (∇·u) u
+        # which in the strong form is equivalent with replacing the convective term
+        #   (u·∇) u
+        # by the modified term
+        #   (u·∇) u  +  (1/2) (∇·u) u
         # which is consistent for an incompressible flow.
         #
-        # To see this equivalence, consider the weak form
+        # To see this equivalence, consider the conversion of the modified term into weak form:
         #    (u·∇) u · v dx  +  (1/2) (∇·u) u · v dx
         # Observing that
         #    ∂i (ui uk vk) = (∂i ui) uk vk + ui ∂i (uk vk)
@@ -183,7 +185,7 @@ class LaminarFlow:
         #    (u·∇)u · v = ((ui ∂i) uk) vk = ui (∂i uk) vk = u · ∇u · v
         # we have
         #    u · ∇u · v dx  -  (1/2) u · [∇u · v + ∇v · u] dx  +  (1/2) n · u (u · v) ds
-        # Finally, cleaning up,
+        # Finally, cleaning up, we obtain
         #    (1/2) u · [∇u · v - ∇v · u] dx  +  (1/2) n · u (u · v) ds
         # as claimed. Keep in mind the extra boundary term, which contributes on boundaries
         # through which there is flow (inlets and outlets).
