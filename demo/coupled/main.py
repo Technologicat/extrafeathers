@@ -227,7 +227,21 @@ V = VectorFunctionSpace(mesh, 'P', 2)
 Q = FunctionSpace(mesh, 'P', 1)
 
 # Define boundary conditions
-inflow_profile = ('4.0*1.5*x[1]*(0.41 - x[1]) / pow(0.41, 2)', '0')  # parabolic, 1.5 at the middle
+#
+# We want a parabolic inflow profile, with a given maximum value at the middle.
+# As SymPy can tell us, the parabola that interpolates from 0 to 1 and back to 0
+# in the interval `(a, b)` is the following `f`:
+#
+# import sympy as sy
+# x, a, b = sy.symbols("x, a, b")
+# f = 4 * (x - a) * (b - x) / (b - a)**2
+# assert sy.simplify(f.subs({x: a})) == 0
+# assert sy.simplify(f.subs({x: b})) == 0
+# assert sy.simplify(f.subs({x: a + (b - a) / 2})) == 1
+#
+# Thus, the C++ code for the inflow profile Expression is:
+inflow_max = 1.5
+inflow_profile = (f'{inflow_max} * 4.0 * (x[1] - {ymin}) * ({ymax} - x[1]) / pow({ymax} - {ymin}, 2)', '0')
 
 # # using the implicit CompiledSubdomain, as in FEniCS tutorial:
 # bcu_inflow = DirichletBC(V, Expression(inflow_profile, degree=2), inflow)
