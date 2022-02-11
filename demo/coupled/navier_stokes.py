@@ -158,14 +158,32 @@ class LaminarFlow:
         # (∂i uk) nk  (which comes from the transposed part of the symm∇). This produces the term
         # -μ [[∇U] · n] · v ds.
         #
-        # Convective term. We use the straightforward original form:
-        #   (u_n · ∇u_n) · v dx
-        # In the 2000s, it has become standard (see Donea & Huerta, 2003, sec. 6.7.1)
-        # to instead use the skew-symmetric form:
-        #   (u_n · ∇u_n) · v dx + ((∇u_n) · u_n) · v dx
+        # Convective term. We use the straightforward original form, with the old value  u = u_n:
+        #   (u·∇u) · v dx
+        # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has
+        # become standard to instead use the skew-symmetric form:
+        #   (1/2) u · [∇u · v - ∇v · u] dx
         # which in the strong form is equivalent with replacing
         #   (u·∇) u  →  (u·∇)u + (1/2) (∇·u) u
         # which is consistent for an incompressible flow.
+        #
+        # To see this equivalence, consider the weak forms,
+        #    (u·∇) u · v dx  →  (u·∇)u · v dx  +  (1/2) (∇·u) u · v dx
+        # Observing that
+        #    ∂i (ui uk vk) = (∂i ui) uk vk + ui ∂i (uk vk)
+        #    ∇·(u (u·v)) = (∇·u) u · v  +  u · ∇(u · v)
+        # we use the divergence theorem in the last term,
+        #    (u·∇) u · v dx  →  (u·∇)u · v dx  -  (1/2) u · ∇(u · v) dx  +  (1/2) u (u · v) ds
+        # Furthermore, noting that
+        #    u · ∇(u · v) = ui ∂i (uk vk)
+        #                  = ui (∂i uk) vk + ui uk (∂i vk)
+        #                  = u · ∇u · v  +  u · ∇v · u
+        #                  = u · [∇u · v + ∇v · u]
+        # we have
+        #    (u·∇) u · v dx  →  (u·∇)u · v dx  -  (1/2) u · [∇u · v + ∇v · u] dx  +  (1/2) u (u · v) ds
+        # Finally, cleaning up,
+        #    (u·∇) u · v dx  →  (1/2) u · [∇u · v - ∇v · u] dx  +  (1/2) u (u · v) ds
+        # as claimed (but keep in mind the extra boundary term).
         #
         U = 0.5 * (u_n + u)
         F1 = (ρ * dot((u - u_n) / k, v) * dx +
