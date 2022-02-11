@@ -138,6 +138,9 @@ class LaminarFlow:
         #
         # This is just the variational form of the momentum equation.
         #
+        #
+        # **Stress term**
+        #
         # The boundary terms must match the implementation of the σ term. Note we use the
         # old pressure p_n and the midpoint value of velocity U.
         #
@@ -158,41 +161,67 @@ class LaminarFlow:
         # (∂i uk) nk  (which comes from the transposed part of the symm∇). This produces the term
         # -μ [[∇U] · n] · v ds.
         #
-        # Convective term. We use the straightforward original form, with the old value  u = u_n:
-        #   u · ∇u · v dx
-        # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has
-        # become standard to instead use the skew-symmetric form:
-        #   (1/2) u · [∇u · v - ∇v · u] dx
+        #
+        # **Convective term**
+        #
+        # In the discretization, the convection velocity field and the quantity
+        # it operates on (though a velocity) are allowed to be different, so let us call the
+        # convection velocity `a`.
+        #
+        # The straightforward weak form is
+        #   a · ∇u · v dx
+        #
+        # Using the old value for both a and u, i.e.  a = u = u_n,  gives us an explicit scheme
+        # for the convection.
+        #
+        # A semi-implicit scheme for convection is obtained when  a = u_n, and `u` is our `u`
+        # i.e. the end-of-timestep value of the step 1 velocity (sometimes called the intermediate
+        # velocity, because `u` is not the final velocity until steps 2 and 3 have been performed).
+        #
+        # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has become standard to
+        # instead use this skew-symmetric weak form:
+        #   (1/2) a · [∇u · v - ∇v · u] dx
         # which in the strong form is equivalent with replacing the convective term
-        #   (u·∇) u
+        #   (a·∇) u
         # by the modified term
-        #   (u·∇) u  +  (1/2) (∇·u) u
-        # which is consistent for an incompressible flow.
+        #   (a·∇) u  +  (1/2) (∇·a) u
+        # This is consistent for an incompressible flow, and allows unconditional time stability
+        # for those semi-implicit schemes that are able to provide it.
         #
         # To see this equivalence, consider the conversion of the modified term into weak form:
-        #    (u·∇) u · v dx  +  (1/2) (∇·u) u · v dx
+        #    (a·∇) u · v dx  +  (1/2) (∇·a) u · v dx
         # Observing that
-        #    ∂i (ui uk vk) = (∂i ui) uk vk + ui ∂i (uk vk)
-        #    ∇·(u (u · v)) = (∇·u) u · v  +  u · ∇(u · v)
+        #    ∂i (ai uk vk) = (∂i ai) uk vk + ai ∂i (uk vk)
+        #    ∇·(a (u · v)) = (∇·a) u · v  +  a · ∇(u · v)
         # we use the divergence theorem in the last term,
-        #    (u·∇) u · v dx  -  (1/2) u · ∇(u · v) dx  +  (1/2) n · u (u · v) ds
+        #    (a·∇) u · v dx  -  (1/2) a · ∇(u · v) dx  +  (1/2) n · a (u · v) ds
         # Furthermore, noting that
-        #    u · ∇(u · v) = ui ∂i (uk vk)
-        #                  = ui (∂i uk) vk + ui uk (∂i vk)
-        #                  = u · ∇u · v  +  u · ∇v · u
-        #                  = u · [∇u · v + ∇v · u]
+        #    a · ∇(u · v) = ai ∂i (uk vk)
+        #                  = ai (∂i uk) vk + ai uk (∂i vk)
+        #                  = a · ∇u · v  +  a · ∇v · u
+        #                  = a · [∇u · v + ∇v · u]
         # and
-        #    (u·∇)u · v = ((ui ∂i) uk) vk = ui (∂i uk) vk = u · ∇u · v
+        #    (a·∇) u · v = ((ai ∂i) uk) vk = ai (∂i uk) vk = a · ∇u · v
         # we have
-        #    u · ∇u · v dx  -  (1/2) u · [∇u · v + ∇v · u] dx  +  (1/2) n · u (u · v) ds
+        #    a · ∇u · v dx  -  (1/2) a · [∇u · v + ∇v · u] dx  +  (1/2) n · a (u · v) ds
         # Finally, cleaning up, we obtain
-        #    (1/2) u · [∇u · v - ∇v · u] dx  +  (1/2) n · u (u · v) ds
+        #    (1/2) a · [∇u · v - ∇v · u] dx  +  (1/2) n · a (u · v) ds
         # as claimed. Keep in mind the extra boundary term, which contributes on boundaries
         # through which there is flow (inlets and outlets).
         #
         U = 0.5 * (u_n + u)
+        # # Original convective term
+        # F1 = (ρ * dot((u - u_n) / k, v) * dx +
+        #       ρ * dot(dot(u_n, nabla_grad(u_n)), v) * dx +
+        #       inner(σ(U, p_n), ε(v)) * dx +
+        #       dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
+        #       dot(f, v) * dx)
+        # Skew-symmetric convective term
+        a = u_n  # convection velocity
+        ustar = U  # quantity the convection operator applies to
         F1 = (ρ * dot((u - u_n) / k, v) * dx +
-              ρ * dot(dot(u_n, nabla_grad(u_n)), v) * dx +
+              ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) - dot(dot(a, nabla_grad(v)), ustar)) * dx +
+              (1 / 2) * dot(n, a) * dot(ustar, v) * ds +
               inner(σ(U, p_n), ε(v)) * dx +
               dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
               dot(f, v) * dx)
