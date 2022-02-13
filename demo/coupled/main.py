@@ -115,7 +115,7 @@ xmin, xmax = 0.0, 2.2
 half_height = 0.2
 xcyl, ycyl, rcyl = 0.2, 0.2, 0.05
 ymin = ycyl - half_height
-ymax = ycyl + half_height + 0.05  # asymmetry to excite von Karman vortex street
+ymax = ycyl + half_height + 0.01  # asymmetry to excite von Karman vortex street
 
 # Define boundaries (implicit CompiledSubdomain when fed to DirichletBC)
 # inflow = f'near(x[0], {xmin})'
