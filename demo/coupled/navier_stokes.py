@@ -83,19 +83,19 @@ class LaminarFlow:
         self.p_n = Function(Q)
         self.p_ = Function(Q)
 
-        # body force field
+        # Specific body force
         self.f = Function(V)
         self.f.vector()[:] = 0.0  # placeholder value
 
-        # initialize the underlying variables for properties
-        self._dt = 1.0
-        self._ρ = 1.0
-        self._μ = 1.0
-
-        # Parameters
-        self.ρ = ρ
-        self.μ = μ
-        self.dt = dt
+        # Parameters.
+        #
+        # We must initialize the underlying variables for properties directly
+        # to avoid triggering the compile before all necessary parameters are
+        # initialized.
+        self._ρ = ρ
+        self._μ = μ
+        self._dt = dt
+        self.compile_forms()
 
     def _set_ρ(self, ρ: float) -> None:
         self._ρ = ρ
@@ -121,25 +121,25 @@ class LaminarFlow:
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
 
-        # velocity
+        # Velocity
         u = self.u  # new (unknown)
         v = self.v  # test
         u_ = self.u_  # latest available approximation
         u_n = self.u_n  # old (end of previous timestep)
 
-        # pressure
+        # Pressure
         p = self.p
         q = self.q  # test
         p_ = self.p_
         p_n = self.p_n
 
-        # body force
+        # Specific body force
         f = self.f
 
-        # wrap constant parameters in a Constant to allow changing the value without triggering a recompile
-        k = Constant(self.dt)
-        μ = Constant(self.μ)
+        # Wrap constant parameters in a Constant to allow changing the value without triggering a recompile
         ρ = Constant(self.ρ)
+        μ = Constant(self.μ)
+        dt = Constant(self.dt)
 
         def ε(u):  # Symmetric gradient
             return sym(nabla_grad(u))
@@ -204,7 +204,7 @@ class LaminarFlow:
         # Observing that
         #    ∂i (ai uk vk) = (∂i ai) uk vk + ai ∂i (uk vk)
         #    ∇·(a (u · v)) = (∇·a) u · v  +  a · ∇(u · v)
-        # we use the divergence theorem in the last term,
+        # we use the divergence theorem in the last term of the weak form, obtaining
         #    (a·∇) u · v dx  -  (1/2) a · ∇(u · v) dx  +  (1/2) n · a (u · v) ds
         # Furthermore, noting that
         #    a · ∇(u · v) = ai ∂i (uk vk)
@@ -222,15 +222,16 @@ class LaminarFlow:
         #
         U = 0.5 * (u_n + u)
         # # Original convective term
-        # F1 = (ρ * dot((u - u_n) / k, v) * dx +
+        # F1 = (ρ * dot((u - u_n) / dt, v) * dx +
         #       ρ * dot(dot(u_n, nabla_grad(u_n)), v) * dx +
         #       inner(σ(U, p_n), ε(v)) * dx +
         #       dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
         #       dot(f, v) * dx)
+        #
         # Skew-symmetric convective term
         a = u_n  # convection velocity
         ustar = U  # quantity the convection operator applies to
-        F1 = (ρ * dot((u - u_n) / k, v) * dx +
+        F1 = (ρ * dot((u - u_n) / dt, v) * dx +
               ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) - dot(dot(a, nabla_grad(v)), ustar)) * dx +
               ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds +
               inner(σ(U, p_n), ε(v)) * dx +
@@ -255,27 +256,27 @@ class LaminarFlow:
         #
         # Discretizing the time derivative,
         #
-        #   ρ ( (u - u_n)/k - (u_ - u_n)/k + (u - u_)·∇(u - u_) ) = ∇·(μ symm∇(u - u_)) - ∇(p - p_n)
+        #   ρ ( (u - u_n)/dt - (u_ - u_n)/dt + (u - u_)·∇(u - u_) ) = ∇·(μ symm∇(u - u_)) - ∇(p - p_n)
         #
         # Canceling the u_n,
         #
-        #   ρ ( (u - u_)/k + (u - u_)·∇(u - u_) ) = ∇·(μ symm∇(u - u_)) - ∇(p - p_n)
+        #   ρ ( (u - u_)/dt + (u - u_)·∇(u - u_) ) = ∇·(μ symm∇(u - u_)) - ∇(p - p_n)
         #
         # Rearranging,
-        #   ρ (u - u_)/k + ∇(p - p_n) = ∇·(μ symm∇(u - u_)) - ρ (u - u_)·∇(u - u_)
+        #   ρ (u - u_)/dt + ∇(p - p_n) = ∇·(μ symm∇(u - u_)) - ρ (u - u_)·∇(u - u_)
         #
         # Now, if u_ is "close enough" to u, we may take the RHS to be zero (Goda, 1979;
         # see also e.g. Landet and Mortensen, 2019, section 3).
         #
         # The result is the velocity correction equation, which we will use in step 3 below:
         #
-        #   ρ (u - u_) / k + ∇p - ∇p_n = 0
+        #   ρ (u - u_) / dt + ∇p - ∇p_n = 0
         #
         # For step 2, take the divergence of the velocity correction equation, and use the continuity
         # equation to eliminate div(u) (it must be zero for the new unknown velocity); obtain a Poisson
         # problem for the new pressure p, in terms of the old pressure p_n and the tentative velocity u_:
         #
-        #   -ρ ∇·u_ / k + ∇²p - ∇²p_n = 0
+        #   -ρ ∇·u_ / dt + ∇²p - ∇²p_n = 0
         #
         # See also Langtangen and Logg (2016, section 3.4).
         #
@@ -297,20 +298,21 @@ class LaminarFlow:
         # https://fenicsproject.org/olddocs/dolfin/latest/python/demos/neumann-poisson/demo_neumann-poisson.py.html
         # https://fenicsproject.org/qa/2406/solve-poisson-problem-with-neumann-bc/
         #
+        # Here the LHS coefficients are constant in time.
         self.a2 = dot(nabla_grad(p), nabla_grad(q)) * dx
-        self.L2 = dot(nabla_grad(p_n), nabla_grad(q)) * dx - (ρ / k) * div(u_) * q * dx
+        self.L2 = dot(nabla_grad(p_n), nabla_grad(q)) * dx - (ρ / dt) * div(u_) * q * dx
 
         # Define variational problem for step 3 (velocity correction)
+        # Here the LHS coefficients are constant in time.
         self.a3 = ρ * dot(u, v) * dx
-        self.L3 = ρ * dot(u_, v) * dx - k * dot(nabla_grad(p_ - p_n), v) * dx
+        self.L3 = ρ * dot(u_, v) * dx - dt * dot(nabla_grad(p_ - p_n), v) * dx
 
         # Assemble matrices (constant in time; do this once at the start)
-        self.A1 = assemble(self.a1)
+        self.A1_constant = assemble(self.a1_constant)
         self.A2 = assemble(self.a2)
         self.A3 = assemble(self.a3)
 
         # Apply Dirichlet boundary conditions to matrices
-        [bc.apply(self.A1) for bc in self.bcu]
         [bc.apply(self.A2) for bc in self.bcp]
 
     def step(self) -> None:
@@ -320,9 +322,11 @@ class LaminarFlow:
         """
         # Step 1: Tentative velocity step
         begin("Tentative velocity")
+        A1 = assemble(self.a1)
         b1 = assemble(self.L1)
+        [bc.apply(A1) for bc in self.bcu]
         [bc.apply(b1) for bc in self.bcu]
-        solve(self.A1, self.u_.vector(), b1, 'bicgstab', 'hypre_amg')
+        solve(A1, self.u_.vector(), b1, 'bicgstab', 'hypre_amg')
         end()
 
         # Step 2: Pressure correction step
