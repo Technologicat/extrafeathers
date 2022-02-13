@@ -231,14 +231,29 @@ class LaminarFlow:
         # Skew-symmetric convective term
         a = u_n  # convection velocity
         ustar = U  # quantity the convection operator applies to
-        F1 = (ρ * dot((u - u_n) / dt, v) * dx +
-              ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) - dot(dot(a, nabla_grad(v)), ustar)) * dx +
-              ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds +
-              inner(σ(U, p_n), ε(v)) * dx +
-              dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
-              dot(f, v) * dx)
-        self.a1 = lhs(F1)
-        self.L1 = rhs(F1)
+        # F1 = (ρ * dot((u - u_n) / dt, v) * dx +
+        #       ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) - dot(dot(a, nabla_grad(v)), ustar)) * dx +
+        #       ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds +
+        #       inner(σ(U, p_n), ε(v)) * dx +
+        #       dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
+        #       dot(f, v) * dx)
+        #
+        # Split, so we can re-assemble only the part that changes at each timestep.
+        # Keep in mind:
+        #  - IMR:  U = (1/2) (u + u_n).  Anything times `u` goes to LHS, while the rest goes to RHS.
+        #  - In the convection term, we have the product of `u_n` and `u`. This is an LHS term that
+        #    depends on time-varying data.
+        #  - In the stress term, `u` and `p_n` appear in different terms of the sum.
+        F1_varying = (ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) -
+                                     dot(dot(a, nabla_grad(v)), ustar)) * dx +
+                      ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds)
+        F1_constant = (ρ * dot((u - u_n) / dt, v) * dx +
+                       inner(σ(U, p_n), ε(v)) * dx +
+                       dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
+                       dot(f, v) * dx)
+        self.a1_varying = lhs(F1_varying)
+        self.a1_constant = lhs(F1_constant)
+        self.L1 = rhs(F1_varying + F1_constant)  # RHS is reassembled at every timestep anyway
 
         # Define variational problem for step 2 (pressure correction)
         #
@@ -322,7 +337,7 @@ class LaminarFlow:
         """
         # Step 1: Tentative velocity step
         begin("Tentative velocity")
-        A1 = assemble(self.a1)
+        A1 = self.A1_constant + assemble(self.a1_varying)
         b1 = assemble(self.L1)
         [bc.apply(A1) for bc in self.bcu]
         [bc.apply(b1) for bc in self.bcu]
