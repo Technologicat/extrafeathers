@@ -50,6 +50,12 @@ class LaminarFlow:
     `dt`: timestep [s]
 
     As the mesh, we use `V.mesh()`; both `V` and `Q` must be defined on the same mesh.
+
+    The specific body force `self.f` [N / kg] is an assignable FEM function. For example,
+    to set a constant body force everywhere::
+
+        f: Function = interpolate(Constant((0, -10.0)), V)
+        solver.f.assign(f)
     """
     def __init__(self, V: VectorFunctionSpace, Q: FunctionSpace,
                  ρ: float, μ: float,
