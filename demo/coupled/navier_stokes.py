@@ -4,8 +4,15 @@ Originally based on the FEniCS tutorial demo program:
 Incompressible Navier-Stokes equations for flow around a cylinder
 using the Incremental Pressure Correction Scheme (IPCS).
 
-  u' + u·∇u - ∇·σ(u, p) = f
-                     ∇·u = 0
+  ∂u/∂t + u·∇u - ∇·σ(u, p) = f
+                        ∇·u = 0
+
+where
+
+  σ = 2 μ ε(u) - p I
+  ε = symm ∇u
+
+and I is the rank-2 identity tensor.
 
 Based on the customized version in `extrafeathers`,
 packaged into a class so that we can easily use this
