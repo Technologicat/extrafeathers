@@ -164,7 +164,8 @@ for n in range(nt):
     # a `VectorFunctionSpace` on this mesh. Extract the local DOFs (in the MPI sense).
     begin("Loading velocity")
     timeseries_velocity.retrieve(velocity_alldofs, t)
-    solver.a.vector()[:] = velocity_alldofs[solver.a.function_space().dofmap().dofs()]
+    advection_velocity = solver.a
+    advection_velocity.vector()[:] = velocity_alldofs[advection_velocity.function_space().dofmap().dofs()]
     end()
 
     # Solve one timestep
