@@ -118,10 +118,13 @@ Q = FunctionSpace(mesh, 'P', 1)
 xmax = 0.5  # end of inlet, x direction; must not be longer than the part in mesh
 umax = 1.0
 inflow_profile_r = f"max(0.0, {umax} * 4.0 * x[0] * ({xmax} - x[0]) / pow({xmax}, 2))"
-bcu_inflow_r = DirichletBC(V, Expression((f'{inflow_profile_r}', f'{inflow_profile_r}'), degree=2), boundary_parts, Boundaries.INFLOW_R.value)
+bcu_inflow_r = DirichletBC(V, Expression((f'{inflow_profile_r}', f'{inflow_profile_r}'), degree=2),
+                           boundary_parts, Boundaries.INFLOW_R.value)
 inflow_profile_l = f"max(0.0, {umax} * 4.0 * -x[0] * ({xmax} + x[0]) / pow({xmax}, 2))"
-bcu_inflow_l = DirichletBC(V, Expression((f'-{inflow_profile_l}', f'{inflow_profile_l}'), degree=2), boundary_parts, Boundaries.INFLOW_L.value)
-bcu_walls = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.WALLS.value)
+bcu_inflow_l = DirichletBC(V, Expression((f'-{inflow_profile_l}', f'{inflow_profile_l}'), degree=2),
+                           boundary_parts, Boundaries.INFLOW_L.value)
+bcu_walls = DirichletBC(V, Constant((0, 0)),
+                        boundary_parts, Boundaries.WALLS.value)
 bcu = [bcu_inflow_r, bcu_inflow_l, bcu_walls]
 bcp = []  # no Dirichlet BCs on pressure; Krylov solvers can handle singular systems just fine.
 
