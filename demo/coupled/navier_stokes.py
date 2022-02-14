@@ -38,6 +38,67 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
 # TODO: Initialize u_ and p_ from a potential-flow approximation to have a physically reasonable initial state.
 # TODO: We need to implement a potential-flow solver to be able to do that. It's just a Poisson equation,
 # TODO: but the scalings must match this solver, and we need to produce a pressure field, too.
+
+def ε(u):
+    """Symmetric gradient of the velocity field `u`.
+
+    Despite the name, this is the *strain rate*  dε/dt,
+    where `d/dt` denotes the *material derivative*.
+
+    This method returns the whole symmetric gradient. If you want to plot,
+    you'll have to extract and interpolate what you need.
+
+    For example, to plot ε11::
+
+        from fenics import interpolate, plot
+
+        # scalar function space
+        W = V.sub(0).collapse()
+        # W = FunctionSpace(mesh, 'P', 2)  # can do this, too
+
+        ε = ε(solver.u_)
+        ε11 = ε.sub(0)
+        plot(interpolate(ε11, W))
+
+    Note in FEniCS the tensor components are indexed linearly,
+    storage is by row. E.g. in 2D::
+
+        ε11 = ε.sub(0)
+        ε12 = ε.sub(1)
+        ε21 = ε.sub(2)
+        ε22 = ε.sub(3)
+
+    See:
+        https://fenicsproject.org/qa/4458/how-can-i-get-two-components-of-a-tensorfunction/
+    """
+    return sym(nabla_grad(u))
+
+def σ(u, p, μ):
+    """Stress tensor of isotropic Newtonian fluid.
+
+    This method returns the whole stress tensor. If you want to plot,
+    you'll have to extract and interpolate what you need.
+
+    For example, to plot the von Mises stress::
+
+        from dolfin import tr, Identity, sqrt, inner
+        from fenics import interpolate, plot
+
+        # scalar function space
+        W = V.sub(0).collapse()
+        # W = FunctionSpace(mesh, 'P', 2)  # can do this, too
+
+        def dev(T):
+            '''Deviatoric part of rank-2 tensor `T`.'''
+            return T - (1 / 3) * tr(T) * Identity(T.geometric_dimension())
+        σ = σ(solver.u, solver.p, solver.μ)
+        s = dev(σ)
+        vonMises = sqrt(3 / 2 * inner(s, s))
+        plot(interpolate(vonMises, W))
+    """
+    return 2 * μ * ε(u) - p * Identity(p.geometric_dimension())
+
+
 class LaminarFlow:
     """Laminar flow (incompressible Navier-Stokes) solver based on the FEniCS tutorial example.
 
@@ -118,67 +179,6 @@ class LaminarFlow:
         return self._dt
     dt = property(fget=_get_dt, fset=_set_dt, doc="Timestep [s]")
 
-    def ε(self):
-        """Symmetric gradient of the current velocity field `u_`.
-
-        Despite the name, this is the *strain rate*  dε/dt,
-        where `d/dt` denotes the *material derivative*.
-
-        This method returns the whole symmetric gradient. If you want to plot,
-        you'll have to extract and interpolate what you need.
-
-        For example, to plot ε11::
-
-            from fenics import interpolate, plot
-
-            # scalar function space
-            W = V.sub(0).collapse()
-            # W = FunctionSpace(mesh, 'P', 2)  # can do this, too
-
-            ε = solver.ε()
-            ε11 = ε.sub(0)
-            plot(interpolate(ε11, W))
-
-        Note in FEniCS the tensor components are indexed linearly,
-        storage is by row. E.g. in 2D::
-
-            ε11 = ε.sub(0)
-            ε12 = ε.sub(1)
-            ε21 = ε.sub(2)
-            ε22 = ε.sub(3)
-
-        See:
-            https://fenicsproject.org/qa/4458/how-can-i-get-two-components-of-a-tensorfunction/
-        """
-        # The private methods are initialized in `compile_forms`.
-        return self._ε(self.u_)
-
-    def σ(self):
-        """Stress field based on the current solution `(u_, p_)`.
-
-        This method returns the whole stress tensor. If you want to plot,
-        you'll have to extract and interpolate what you need.
-
-        For example, to plot the von Mises stress::
-
-            from dolfin import tr, Identity, sqrt, inner
-            from fenics import interpolate, plot
-
-            # scalar function space
-            W = V.sub(0).collapse()
-            # W = FunctionSpace(mesh, 'P', 2)  # can do this, too
-
-            def dev(T):
-                '''Deviatoric part of rank-2 tensor `T`.'''
-                # Note `solver.u`, not `u_`; we need the space dimension.
-                return T - (1 / 3) * tr(T) * Identity(len(solver.u))
-            σ = solver.σ()
-            s = dev(σ)
-            vonMises = sqrt(3 / 2 * inner(s, s))
-            plot(interpolate(vonMises, W))
-        """
-        return self._σ(self.u_, self.p_)
-
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
 
@@ -201,14 +201,6 @@ class LaminarFlow:
         ρ = Constant(self.ρ)
         μ = Constant(self.μ)
         dt = Constant(self.dt)
-
-        def ε(u):  # Symmetric gradient
-            return sym(nabla_grad(u))
-        self._ε = ε
-
-        def σ(u, p):  # Stress tensor (isotropic Newtonian fluid)
-            return 2 * μ * ε(u) - p * Identity(len(u))
-        self._σ = σ
 
         # Define variational problem for step 1 (tentative velocity)
         #
@@ -321,7 +313,7 @@ class LaminarFlow:
                                      dot(dot(a, nabla_grad(v)), ustar)) * dx +
                       ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds)
         F1_constant = (ρ * dot(dudt, v) * dx +
-                       inner(σ(U, p_n), ε(v)) * dx +
+                       inner(σ(U, p_n, μ), ε(v)) * dx +
                        dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
                        dot(f, v) * dx)
         self.a1_varying = lhs(F1_varying)
