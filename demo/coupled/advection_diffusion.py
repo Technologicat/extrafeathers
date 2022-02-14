@@ -56,6 +56,11 @@ class AdvectionDiffusion:
 
         h: Function = interpolate(Constant(1.0), V)
         solver.h.assign(h)
+
+    Anything compatible with a `Function` can be assigned, including FEM fields produced
+    by another solver or loaded from a file (that was produced by a solver on the same mesh!).
+    Technically, `h` lives on a `FunctionSpace`, `a` on a `VectorFunctionSpace`, and `σ` on
+    a `TensorFunctionSpace` compatible with `V`.
     """
     def __init__(self, V: FunctionSpace,
                  ρ: float, c: float, k: ScalarOrTensor,
