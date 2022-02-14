@@ -2,8 +2,6 @@
 """Main program for the coupled problem demo.
 
 Compute the temperature in a separate pass.
-
-TODO: currently only works in serial mode due to MPI partitioning issues.
 """
 
 from enum import IntEnum
@@ -19,7 +17,7 @@ from fenics import (FunctionSpace, DirichletBC,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
-                    MPI,
+                    MPI, Vector,
                     begin, end)
 
 # custom utilities for FEniCS
@@ -122,7 +120,11 @@ xdmffile_T.parameters["rewrite_function_mesh"] = False
 # Create time series (for use in other FEniCS solvers)
 timeseries_T = TimeSeries(sol_T_filename)
 
-timeseries_u = TimeSeries(sol_u_filename)
+# MPI partitioning may be different in the saved timeseries, so all processes
+# must read all of each snapshot, and then re-extract the relevant DOFs.
+# Thus we make this `TimeSeries` local (`MPI.comm_self`).
+timeseries_velocity = TimeSeries(MPI.comm_self, sol_u_filename)
+velocity_alldofs = Vector(MPI.comm_self)
 
 # Create progress bar
 progress = Progress('Time-stepping', nt)
@@ -154,8 +156,12 @@ for n in range(nt):
     t += dt
 
     # TODO: fix the one-step offset; right now we don't have an initial velocity field saved.
+    # We assume the same mesh and same global DOF numbering as in the saved data.
+    # The data came from a `VectorFunctionSpace` on this mesh, and `solver.a` is also
+    # a `VectorFunctionSpace` on this mesh. Extract the local DOFs (in the MPI sense).
     begin("Loading velocity")
-    timeseries_u.retrieve(solver.a.vector(), t)
+    timeseries_velocity.retrieve(velocity_alldofs, t)
+    solver.a.vector()[:] = velocity_alldofs[solver.a.function_space().dofmap().dofs()]
     end()
 
     # Solve one timestep
