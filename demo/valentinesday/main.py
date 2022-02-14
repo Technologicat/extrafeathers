@@ -96,6 +96,7 @@ class Domains(IntEnum):
 if mpi_comm.size == 1:
     print("Running in serial mode. Importing mesh...")
     meshutil.import_gmsh(gmsh_mesh_filename, h5_mesh_filename)
+    print("Please restart in parallel to solve the problem (mpirun ...)")
     from sys import exit
     exit(0)
 
