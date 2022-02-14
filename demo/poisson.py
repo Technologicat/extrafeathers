@@ -77,7 +77,7 @@ end()
 # vtkfile = File("demo/poisson/solution.pvd")
 # vtkfile << u
 # Create XDMF file for visualization output
-xdmffile_u = XDMFFile(MPI.comm_world, 'demo/poisson/u.xdmf')
+xdmffile_u = XDMFFile(MPI.comm_world, 'demo/output/poisson/u.xdmf')
 xdmffile_u.parameters["flush_output"] = True
 xdmffile_u.write(u, 0)  # (field, time)
 

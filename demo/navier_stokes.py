@@ -95,12 +95,12 @@ dt = T / nt
 mesh_filename = "demo/meshes/flow_over_cylinder_fluid.h5"  # both input and output
 
 # For visualization in ParaView
-vis_u_filename = "demo/navier_stokes/velocity.xdmf"
-vis_p_filename = "demo/navier_stokes/pressure.xdmf"
+vis_u_filename = "demo/output/navier_stokes/velocity.xdmf"
+vis_p_filename = "demo/output/navier_stokes/pressure.xdmf"
 
 # For loading into other solvers written using FEniCS. The file extension `.h5` is added automatically.
-sol_u_filename = "demo/navier_stokes/velocity_series"
-sol_p_filename = "demo/navier_stokes/pressure_series"
+sol_u_filename = "demo/output/navier_stokes/velocity_series"
+sol_p_filename = "demo/output/navier_stokes/pressure_series"
 
 # --------------------------------------------------------------------------------
 # Mesh generation

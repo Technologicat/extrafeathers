@@ -75,9 +75,9 @@ dt = T / nt
 
 mesh_filename = "demo/meshes/flow_over_cylinder_fluid.h5"  # for input only
 
-vis_T_filename = "demo/navier_stokes/temperature.xdmf"
-sol_T_filename = "demo/navier_stokes/temperature_series"
-sol_u_filename = "demo/navier_stokes/velocity_series"
+vis_T_filename = "demo/output/coupled/temperature.xdmf"
+sol_T_filename = "demo/output/coupled/temperature_series"
+sol_u_filename = "demo/output/coupled/velocity_series"
 
 # --------------------------------------------------------------------------------
 # Solver
