@@ -4,7 +4,6 @@
 from enum import IntEnum
 
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 
 from unpythonic import ETAEstimator
@@ -23,33 +22,9 @@ from extrafeathers import meshutil
 from extrafeathers import plotutil
 
 from demo.coupled.navier_stokes import LaminarFlow
+from demo.coupled.util import mypause
 
-# Matplotlib (3.3.3) has a habit of popping the figure window to top when it is updated using show() or pause(),
-# which effectively prevents using the machine for anything else while a simulation is in progress.
-#
-# To fix this, the suggestion to use the Qt5Agg backend here:
-#   https://stackoverflow.com/questions/61397176/how-to-keep-matplotlib-from-stealing-focus
-#
-# didn't help on my system (Linux Mint 20.1). And it is somewhat nontrivial to use a `FuncAnimation` here.
-# So we'll use this custom pause function hack instead, courtesy of StackOverflow user @ImportanceOfBeingErnest:
-#   https://stackoverflow.com/a/45734500
-#
-def mypause(interval: float) -> None:
-    """Redraw the current figure without stealing focus.
-
-    Works after `plt.show()` has been called at least once.
-    """
-    backend = plt.rcParams['backend']
-    if backend in matplotlib.rcsetup.interactive_bk:
-        figManager = matplotlib._pylab_helpers.Gcf.get_active()
-        if figManager is not None:
-            canvas = figManager.canvas
-            if canvas.figure.stale:
-                canvas.draw_idle()
-            canvas.start_event_loop(interval)
-
-mpi_comm = MPI.comm_world
-my_rank = MPI.rank(mpi_comm)
+my_rank = MPI.rank(MPI.comm_world)
 
 # --------------------------------------------------------------------------------
 # Settings
@@ -72,18 +47,12 @@ dt = T / nt
 gmsh_mesh_filename = "demo/meshes/heart.msh"  # input
 h5_mesh_filename = "demo/meshes/heart.h5"  # output
 
-# For visualization in ParaView
 vis_u_filename = "demo/output/valentinesday/velocity.xdmf"
 vis_p_filename = "demo/output/valentinesday/pressure.xdmf"
-
-# For loading into other solvers written using FEniCS. The file extension `.h5` is added automatically.
 sol_u_filename = "demo/output/valentinesday/velocity_series"
 sol_p_filename = "demo/output/valentinesday/pressure_series"
 
-class Boundaries(IntEnum):  # For Gmsh-imported mesh, these must match the numbering in the .msh file.
-    # Autoboundary always tags internal facets with the value 0.
-    # Leave it out from the definitions to make the boundary plotter ignore any facet tagged with that value.
-    # NOT_ON_BOUNDARY = 0
+class Boundaries(IntEnum):  # These must match the numbering in the .msh file.
     INFLOW_R = 1
     INFLOW_L = 2
     WALLS = 3
@@ -93,7 +62,7 @@ class Domains(IntEnum):
 # --------------------------------------------------------------------------------
 # Import the mesh
 
-if mpi_comm.size == 1:
+if MPI.comm_world.size == 1:
     print("Running in serial mode. Importing mesh...")
     meshutil.import_gmsh(gmsh_mesh_filename, h5_mesh_filename)
     print("Please restart in parallel to solve the problem (mpirun ...)")
@@ -103,7 +72,7 @@ if mpi_comm.size == 1:
 # --------------------------------------------------------------------------------
 # Solver
 
-assert mpi_comm.size > 1, "This solver should be run in parallel (mpirun ...)"
+assert MPI.comm_world.size > 1, "This solver should be run in parallel (mpirun ...)"
 
 if my_rank == 0:
     print("Running in parallel mode. Solving...")
@@ -130,11 +99,11 @@ bcu = [bcu_inflow_r, bcu_inflow_l, bcu_walls]
 bcp = []  # no Dirichlet BCs on pressure; Krylov solvers can handle singular systems just fine.
 
 # Create XDMF files (for visualization in ParaView)
-xdmffile_u = XDMFFile(mpi_comm, vis_u_filename)
+xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)
 xdmffile_u.parameters["flush_output"] = True
 xdmffile_u.parameters["rewrite_function_mesh"] = False
 
-xdmffile_p = XDMFFile(mpi_comm, vis_p_filename)
+xdmffile_p = XDMFFile(MPI.comm_world, vis_p_filename)
 xdmffile_p.parameters["flush_output"] = True
 xdmffile_p.parameters["rewrite_function_mesh"] = False
 
@@ -157,7 +126,7 @@ t = 0
 est = ETAEstimator(nt)
 for n in range(nt):
     maxu_local = np.array(solver.u_.vector()).max()
-    maxu_global = mpi_comm.allgather(maxu_local)
+    maxu_global = MPI.comm_world.allgather(maxu_local)
     maxu_str = ", ".join(f"{maxu:0.6g}" for maxu in maxu_global)
 
     msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; max(u) = {maxu_str}; wall time {est.formatted_eta}"
