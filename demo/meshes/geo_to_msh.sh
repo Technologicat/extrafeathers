@@ -1,2 +1,5 @@
 #!/bin/bash
-gmsh -2 flow_over_cylinder.geo
+for FILE in *.geo
+do
+    gmsh -2 "$FILE"
+done
