@@ -14,6 +14,7 @@ from unpythonic import ETAEstimator
 
 from fenics import (FunctionSpace, DirichletBC,
                     Expression,
+                    interpolate,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -107,10 +108,12 @@ ymax = ycyl + half_height + 0.01  # asymmetry to excite von Karman vortex street
 V = FunctionSpace(mesh, 'P', 2)
 
 # Define boundary conditions
-inflow_max = 1.0
-inflow_profile = f'{inflow_max} * 4.0 * (x[1] - {ymin}) * ({ymax} - x[1]) / pow({ymax} - {ymin}, 2)'
-bc_inflow = DirichletBC(V, Expression(inflow_profile, degree=2), boundary_parts, Boundaries.INFLOW.value)
-bc = [bc_inflow]
+# inflow_max = 1.0
+# inflow_profile = f'{inflow_max} * 4.0 * (x[1] - {ymin}) * ({ymax} - x[1]) / pow({ymax} - {ymin}, 2)'
+# bc_inflow = DirichletBC(V, Expression(inflow_profile, degree=2), boundary_parts, Boundaries.INFLOW.value)
+bc_inflow = DirichletBC(V, Expression('0', degree=2), boundary_parts, Boundaries.INFLOW.value)
+bc_cylinder = DirichletBC(V, Expression('1', degree=2), boundary_parts, Boundaries.OBSTACLE.value)
+bc = [bc_inflow, bc_cylinder]
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_T = XDMFFile(mpi_comm, vis_T_filename)
