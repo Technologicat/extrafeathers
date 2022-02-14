@@ -82,14 +82,8 @@ class AdvectionDiffusion:
         self.h = Function(V)
         self.h.vector()[:] = 0.0  # placeholder value
 
-        # Convection velocity
-        #
-        # We have this as a general FEM function so that we can feed it with a solution
-        # of another subproblem (e.g. the velocity field from the Navier-Stokes solver).
         # TODO: can we create this in Einstein notation? See `ufl.Index`, `ufl.indices`,
         # and https://fenics.readthedocs.io/projects/ufl/en/latest/manual/form_language.html
-        self.advection = advection
-
         # dim = self.mesh.topology().dim()
         # self.a = as_vector([Function(V) for j in range(dim)])
         # for aj in self.a:
@@ -100,6 +94,11 @@ class AdvectionDiffusion:
         # for σjk in self.σ:
         #     σjk.vector()[:] = 0.0
 
+        # Convection velocity
+        #
+        # We have this as a general FEM function so that we can feed it with a solution
+        # of another subproblem (e.g. the velocity field from the Navier-Stokes solver).
+        self.advection = advection
         V_vec = VectorFunctionSpace(self.mesh, V.ufl_element().family(), V.ufl_element().degree())
         self.a = Function(V_vec)
         self.a.vector()[:] = 0.0
