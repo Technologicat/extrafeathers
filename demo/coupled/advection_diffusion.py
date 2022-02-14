@@ -187,13 +187,15 @@ class AdvectionDiffusion:
              ρ * dot(h, v) * dx)
 
         if istensor(self._k):
-            # TODO: add support for nonzero Neumann BCs
             F += dot(dot(k, nabla_grad(U)), nabla_grad(v)) * dx
+            # TODO: add support for nonzero Neumann BCs
+            # The full weak form of -∇·(k·∇u) is:
             # F += (dot(dot(k, nabla_grad(U)), nabla_grad(v)) * dx -
             #       dot(n, dot(k, nabla_grad(U))) * v * ds)
         else:
-            # TODO: add support for nonzero Neumann BCs
             F += k * dot(nabla_grad(U), nabla_grad(v)) * dx
+            # TODO: add support for nonzero Neumann BCs
+            # The full weak form of -∇·(k·∇u) is:
             # F += (k * dot(nabla_grad(U), nabla_grad(v)) * dx -
             #       k * dot(n, nabla_grad(U)) * v * ds)
 
