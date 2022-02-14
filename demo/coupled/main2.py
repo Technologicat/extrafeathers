@@ -59,7 +59,7 @@ my_rank = MPI.rank(mpi_comm)
 
 rho = 1            # density
 c = 1              # specific heat capacity
-k = 1              # heat conductivity
+k = 1e-3           # heat conductivity
 T = 5.0            # final time
 
 nt = 2500
