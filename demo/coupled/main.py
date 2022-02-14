@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
-                    Function, Expression, Constant, Point,
+                    Expression, Constant, Point,
                     MeshFunction, SubMesh, Facet,
                     near,
                     interpolate,
