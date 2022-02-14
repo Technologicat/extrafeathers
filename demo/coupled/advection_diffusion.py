@@ -209,7 +209,8 @@ class AdvectionDiffusion:
                   ρ * c * (1 / 2) * dot(n, a) * U * v * ds)
             F += -inner(σ, nabla_grad(a)) * v * dx  # stress
         elif self.advection == "general":
-            # Skew-symmetric, but subtract the contribution from the extra term  (∇·a) u.
+            # Skew-symmetric advection, as above; but subtract the contribution from the extra term
+            # (∇·a) u, thus producing an extra symmetric term that accounts for the divergence of `a`.
             F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v - dot(a, nabla_grad(v)) * U) * dx +
                   ρ * c * (1 / 2) * dot(n, a) * U * v * ds -
                   ρ * c * (1 / 2) * div(a) * U * v * dx)
