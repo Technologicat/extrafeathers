@@ -18,7 +18,7 @@ k = 1e-3           # heat conductivity [W/(m K)]
 # Numerical
 
 T = 5.0            # final time [s]
-nt = 2500          # number of timesteps
+nt = 1500          # number of timesteps
 dt = T / nt        # timestep size [s]
 
 # --------------------------------------------------------------------------------
