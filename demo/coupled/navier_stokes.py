@@ -220,6 +220,15 @@ class LaminarFlow:
         # as claimed. Keep in mind the extra boundary term, which contributes on boundaries
         # through which there is flow (i.e. inlets and outlets).
         #
+        # Another way to view the role of the extra term in the skew-symmetric form is to
+        # consider the Helmholtz decomposition of the convection velocity `a`:
+        #   a = ∇φ + ∇×A
+        # where φ is a scalar potential (for the irrotational part) and A is a vector potential
+        # (for the divergence-free part). We have
+        #   (∇·a) = ∇·∇φ + ∇·∇×A = ∇²φ + 0
+        # so the extra term is proportional to the laplacian of the scalar potential:
+        #   (∇·a) u = (∇²φ) u
+        #
         U = 0.5 * (u_n + u)
         # # Original convective term
         # F1 = (ρ * dot((u - u_n) / dt, v) * dx +
