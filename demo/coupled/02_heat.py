@@ -1,7 +1,8 @@
 # -*- coding: utf-8; -*-
 """Main program for the coupled problem demo.
 
-Compute the temperature in a separate pass.
+Second pass main program: compute the temperature, using the flow field
+from the first pass for advection.
 """
 
 from enum import IntEnum

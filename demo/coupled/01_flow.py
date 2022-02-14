@@ -1,8 +1,8 @@
 # -*- coding: utf-8; -*-
 """Main program for the coupled problem demo.
 
-Compute an incompressible flow over a cylinder, for use as a convection velocity
-for the temperature field.
+First pass main program: compute an incompressible flow over a cylinder,
+for use as a convection velocity for the temperature field.
 """
 
 from enum import IntEnum
