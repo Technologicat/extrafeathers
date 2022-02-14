@@ -13,6 +13,9 @@ Customized version:
   - Marked submeshes for automatic obstacle boundary extraction.
   - Parallel computation using MPI.
   - Visualization for ongoing simulation also in MPI mode.
+
+There's a more advanced version (with better modularization and
+factoring of the code) in `demo.coupled`.
 """
 
 from enum import IntEnum
