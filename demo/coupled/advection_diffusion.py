@@ -51,8 +51,21 @@ class AdvectionDiffusion:
 
         "general":         Arbitrary advection velocity.
 
-    The specific heat source `self.h` [W / kg] and the advection velocity `self.a` [m / s]
-    are assignable FEM functions. For example, to set a constant heat source everywhere::
+    `use_stress`: whether to include the stress term  σ : ∇a,  which represents the
+                  contribution of stress to internal energy.
+
+                  Due to the factor ∇a, `use_stress` can only be enabled when
+                  `advection` is also enabled (i.e. something other than "off").
+
+                  Setting `use_stress=True` is only useful if you intend to send in
+                  a stress tensor (possibly at each timestep).
+
+                  When `use_stress=False`, the stress term is discarded; runs faster.
+
+    The specific heat source `self.h` [W / kg], the advection velocity `self.a` [m / s],
+    and the stress tensor `self.σ` [Pa] are assignable FEM functions.
+
+    For example, to set a constant heat source everywhere::
 
         h: Function = interpolate(Constant(1.0), V)
         solver.h.assign(h)
@@ -66,7 +79,8 @@ class AdvectionDiffusion:
                  ρ: float, c: float, k: ScalarOrTensor,
                  bc: typing.List[DirichletBC],
                  dt: float,
-                 advection: str = "divergence-free"):
+                 advection: str = "divergence-free",
+                 use_stress: bool = False):
         if advection not in ("off", "divergence-free", "general"):
             raise ValueError(f"`advection` must be one of 'off', 'divergence-free', 'general'; got {type(advection)} with value {advection}")
 
@@ -109,6 +123,7 @@ class AdvectionDiffusion:
         self.a.vector()[:] = 0.0
 
         # Stress
+        self.use_stress = use_stress and self.advection != "off"
         V_ten = TensorFunctionSpace(self.mesh, V.ufl_element().family(), V.ufl_element().degree())
         self.σ = Function(V_ten)
         self.σ.vector()[:] = 0.0
@@ -207,7 +222,6 @@ class AdvectionDiffusion:
             # Skew-symmetric form for divergence-free advection velocity (see navier_stokes.py).
             F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v - dot(a, nabla_grad(v)) * U) * dx +
                   ρ * c * (1 / 2) * dot(n, a) * U * v * ds)
-            F += -inner(σ, nabla_grad(a)) * v * dx  # stress
         elif self.advection == "general":
             # Skew-symmetric advection, as above; but subtract the contribution from the extra term
             # (∇·a) u, thus producing an extra symmetric term that accounts for the divergence of `a`.
@@ -217,7 +231,9 @@ class AdvectionDiffusion:
             # # Just use the asymmetric advection term as-is.
             # # TODO: which form is better? This has fewer operations, but which gives better stability?
             # F += dot(a, nabla_grad(U)) * v * dx
-            F += -inner(σ, nabla_grad(a)) * v * dx  # stress
+
+        if self.use_stress and self.advection != "off":
+            F += -inner(σ, nabla_grad(a)) * v * dx
 
         self.aform = lhs(F)
         self.Lform = rhs(F)
