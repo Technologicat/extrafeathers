@@ -180,17 +180,26 @@ for n in range(nt):
 
     end()
 
-    # Plot T
+    # Plot T (solved) and the magnitude of u (loaded from file)
     if n % 50 == 0 or n == nt - 1:
         if my_rank == 0:
             plt.figure(1)
             plt.clf()
+            plt.subplot(2, 1, 1)
         theplot = plotutil.mpiplot(solver.u_)
         if my_rank == 0:
             plt.axis("equal")
             plt.colorbar(theplot)
-            plt.ylabel(r"$T$")
+            plt.ylabel(r"$T$ (solved)")
             plt.title(msg)
+            plt.subplot(2, 1, 2)
+        magu = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
+                          u0=solver.a.sub(0), u1=solver.a.sub(1))
+        theplot = plotutil.mpiplot(interpolate(magu, V))
+        if my_rank == 0:
+            plt.axis("equal")
+            plt.colorbar(theplot)
+            plt.ylabel(r"$|u|$ (from file)")
         if my_rank == 0:
             plt.draw()
             if n == 0:
