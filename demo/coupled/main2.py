@@ -150,7 +150,7 @@ est = ETAEstimator(nt)
 for n in range(nt):
     maxT_local = np.array(solver.u_.vector()).max()
     maxT_global = mpi_comm.allgather(maxT_local)
-    maxT_str = ", ".join(f"{maxu:0.6g}" for maxu in maxT_global)
+    maxT_str = ", ".join(f"{maxT:0.6g}" for maxT in maxT_global)
 
     msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; max(T) = {maxT_str}; wall time {est.formatted_eta}"
     begin(msg)
