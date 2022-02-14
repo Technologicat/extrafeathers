@@ -67,9 +67,9 @@ nt = 2500
 dt = T / nt
 
 # This script expects to be run from the top level of the project as
-#   python -m demo.navier_stokes
+#   python -m demo.coupled.main2
 # or
-#   mpirun python -m demo.navier_stokes
+#   mpirun python -m demo.coupled.main2
 # so the CWD is expected to be the top level, hence the "demo/" at the
 # beginning of each path.
 
