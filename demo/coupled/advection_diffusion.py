@@ -174,7 +174,7 @@ class AdvectionDiffusion:
         # Internal energy balance for a moving material, assuming no phase changes.
         # The unknown `u` is the temperature:
         #
-        #   ρ c [∂u/∂t + (a·∇)u] - ∇·(k ∇u) = σ : ∇a + ρ h
+        #   ρ c [∂u/∂t + (a·∇)u] - ∇·(k·∇u) = σ : ∇a + ρ h
         #
         # Derived from the general internal energy balance equation, see Allen et al. (1988).
         #
