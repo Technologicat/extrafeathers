@@ -1,8 +1,7 @@
 # -*- coding: utf-8; -*-
-"""Main program for the coupled problem demo.
+"""Second pass main program for the coupled problem demo.
 
-Second pass main program: compute the temperature, using the flow field
-from the first pass for advection.
+Compute the temperature, using the flow field from the first pass for advection.
 """
 
 import numpy as np
@@ -23,9 +22,12 @@ from fenics import (FunctionSpace, DirichletBC,
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
-from .main00_mesh import mesh_filename, Boundaries
 from .advection_diffusion import AdvectionDiffusion
-from .config import rho, c, k, dt, nt, vis_T_filename, sol_T_filename, sol_u_filename
+from .config import (rho, c, k, dt, nt,
+                     Boundaries,
+                     mesh_filename,
+                     vis_T_filename, sol_T_filename,
+                     sol_u_filename)
 from .util import mypause
 
 my_rank = MPI.rank(MPI.comm_world)

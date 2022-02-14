@@ -1,8 +1,7 @@
 # -*- coding: utf-8; -*-
-"""Main program for the coupled problem demo.
+"""Zeroth pass main program for the coupled problem demo.
 
-Zeroth pass main program: generate a mesh, with uniform cell size,
-using FEniCS's Mshr API.
+Generate a mesh, with uniform cell size, using FEniCS's Mshr API.
 
 Running `python -m demo.import_gmsh` is an alternative to this;
 it will import a pre-prepared graded mesh created with Gmsh.
@@ -13,7 +12,6 @@ especially, the boundary tag IDs, and ymin/ymax for setting up the inflow
 velocity profile.
 """
 
-from enum import IntEnum
 import typing
 
 import matplotlib.pyplot as plt
@@ -25,33 +23,9 @@ from extrafeathers import autoboundary
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
-
-mesh_filename = "demo/meshes/flow_over_cylinder_fluid.h5"  # for input and output
-
-mesh_resolution = 128  # only used during mesh generation
-
-# These numbers must match the numbering in the .msh file (see the .geo file)
-# so that the Gmsh-imported mesh works as expected, too.
-class Boundaries(IntEnum):
-    # Autoboundary always tags internal facets with the value 0.
-    # Leave it out from the definitions to make the boundary plotter ignore any facet tagged with that value.
-    # NOT_ON_BOUNDARY = 0
-    INFLOW = 1
-    WALLS = 2
-    OUTFLOW = 3
-    OBSTACLE = 4
-class Domains(IntEnum):
-    FLUID = 5
-    STRUCTURE = 6
-
-# Geometry parameters
-# These must also match the .msh file, because the ymin/ymax values are used for setting up
-# the inflow profile in the boundary conditions.
-xmin, xmax = 0.0, 2.2
-half_height = 0.2
-xcyl, ycyl, rcyl = 0.2, 0.2, 0.05
-ymin = ycyl - half_height
-ymax = ycyl + half_height + 0.01  # asymmetry to excite von Karman vortex street
+from .config import (mesh_filename, mesh_resolution,
+                     Boundaries, Domains,
+                     xmin, xmax, ymin, ymax, xcyl, ycyl, rcyl)
 
 # # The original single-file example used to define boundaries like this
 # # (implicit CompiledSubdomain when fed to DirichletBC):

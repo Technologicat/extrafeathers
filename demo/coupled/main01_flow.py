@@ -1,8 +1,8 @@
 # -*- coding: utf-8; -*-
-"""Main program for the coupled problem demo.
+"""First pass main program for the coupled problem demo.
 
-First pass main program: compute an incompressible flow over a cylinder,
-for use as a convection velocity for the temperature field.
+Compute an incompressible flow over a cylinder, for use
+as a convection velocity for the temperature field.
 """
 
 import numpy as np
@@ -23,9 +23,12 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
-from .main00_mesh import mesh_filename, ymin, ymax, Boundaries
 from .navier_stokes import LaminarFlow
-from .config import rho, mu, dt, nt, vis_u_filename, vis_p_filename, sol_u_filename, sol_p_filename
+from .config import (rho, mu, dt, nt,
+                     ymin, ymax, Boundaries,
+                     mesh_filename,
+                     vis_u_filename, sol_u_filename,
+                     vis_p_filename, sol_p_filename)
 from .util import mypause
 
 my_rank = MPI.rank(MPI.comm_world)
