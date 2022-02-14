@@ -19,7 +19,6 @@ from enum import IntEnum
 import typing
 
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 
 from unpythonic import ETAEstimator
@@ -45,32 +44,9 @@ from extrafeathers import autoboundary
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
-# Matplotlib (3.3.3) has a habit of popping the figure window to top when it is updated using show() or pause(),
-# which effectively prevents using the machine for anything else while a simulation is in progress.
-#
-# To fix this, the suggestion to use the Qt5Agg backend here:
-#   https://stackoverflow.com/questions/61397176/how-to-keep-matplotlib-from-stealing-focus
-#
-# didn't help on my system (Linux Mint 20.1). And it is somewhat nontrivial to use a `FuncAnimation` here.
-# So we'll use this custom pause function hack instead, courtesy of StackOverflow user @ImportanceOfBeingErnest:
-#   https://stackoverflow.com/a/45734500
-#
-def mypause(interval: float) -> None:
-    """Redraw the current figure without stealing focus.
+from demo.coupled.util import mypause
 
-    Works after `plt.show()` has been called at least once.
-    """
-    backend = plt.rcParams['backend']
-    if backend in matplotlib.rcsetup.interactive_bk:
-        figManager = matplotlib._pylab_helpers.Gcf.get_active()
-        if figManager is not None:
-            canvas = figManager.canvas
-            if canvas.figure.stale:
-                canvas.draw_idle()
-            canvas.start_event_loop(interval)
-
-mpi_comm = MPI.comm_world
-my_rank = MPI.rank(mpi_comm)
+my_rank = MPI.rank(MPI.comm_world)
 
 # --------------------------------------------------------------------------------
 # Settings
@@ -147,7 +123,7 @@ ymax = ycyl + half_height + 0.01  # asymmetry to excite von Karman vortex street
 # so any mesh generation using them must be done in serial mode.
 # https://fenicsproject.discourse.group/t/mpi-and-subdomains/339/2
 #
-if mpi_comm.size == 1:
+if MPI.comm_world.size == 1:
     print("Running in serial mode. Generating mesh from hardcoded geometry definition...")
 
     # Create geometry
@@ -223,7 +199,7 @@ if mpi_comm.size == 1:
 # Solver
 
 # TODO: add command-line argument (using `argparse`) for mesh-generation/solving mode instead of abusing MPI group size
-assert mpi_comm.size > 1, "This solver should be run in parallel (mpirun ...)"
+assert MPI.comm_world.size > 1, "This solver should be run in parallel (mpirun ...)"
 
 if my_rank == 0:
     print("Running in parallel mode. Solving...")
@@ -398,11 +374,11 @@ A3 = assemble(a3)
 # https://fenicsproject.discourse.group/t/how-to-enable-compression-of-the-hdf5-file-associated-with-xdmffile/793
 # https://fenicsproject.org/qa/6068/enabling-hdf5-compression/
 
-xdmffile_u = XDMFFile(mpi_comm, vis_u_filename)
+xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)
 xdmffile_u.parameters["flush_output"] = True
 xdmffile_u.parameters["rewrite_function_mesh"] = False
 
-xdmffile_p = XDMFFile(mpi_comm, vis_p_filename)
+xdmffile_p = XDMFFile(MPI.comm_world, vis_p_filename)
 xdmffile_p.parameters["flush_output"] = True
 xdmffile_p.parameters["rewrite_function_mesh"] = False
 
@@ -425,7 +401,7 @@ t = 0
 est = ETAEstimator(nt)
 for n in range(nt):
     maxu_local = np.array(u_.vector()).max()
-    maxu_global = mpi_comm.allgather(maxu_local)
+    maxu_global = MPI.comm_world.allgather(maxu_local)
     maxu_str = ", ".join(f"{maxu:0.6g}" for maxu in maxu_global)
 
     msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; max(u) = {maxu_str}; wall time {est.formatted_eta}"
