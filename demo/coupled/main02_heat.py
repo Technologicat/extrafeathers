@@ -5,10 +5,7 @@ Second pass main program: compute the temperature, using the flow field
 from the first pass for advection.
 """
 
-from enum import IntEnum
-
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 
 from unpythonic import ETAEstimator
@@ -26,98 +23,26 @@ from fenics import (FunctionSpace, DirichletBC,
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
+from .main00_mesh import mesh_filename, Boundaries
 from .advection_diffusion import AdvectionDiffusion
+from .config import rho, c, k, dt, nt, vis_T_filename, sol_T_filename, sol_u_filename
+from .util import mypause
 
-# Matplotlib (3.3.3) has a habit of popping the figure window to top when it is updated using show() or pause(),
-# which effectively prevents using the machine for anything else while a simulation is in progress.
-#
-# To fix this, the suggestion to use the Qt5Agg backend here:
-#   https://stackoverflow.com/questions/61397176/how-to-keep-matplotlib-from-stealing-focus
-#
-# didn't help on my system (Linux Mint 20.1). And it is somewhat nontrivial to use a `FuncAnimation` here.
-# So we'll use this custom pause function hack instead, courtesy of StackOverflow user @ImportanceOfBeingErnest:
-#   https://stackoverflow.com/a/45734500
-#
-def mypause(interval: float) -> None:
-    """Redraw the current figure without stealing focus.
-
-    Works after `plt.show()` has been called at least once.
-    """
-    backend = plt.rcParams['backend']
-    if backend in matplotlib.rcsetup.interactive_bk:
-        figManager = matplotlib._pylab_helpers.Gcf.get_active()
-        if figManager is not None:
-            canvas = figManager.canvas
-            if canvas.figure.stale:
-                canvas.draw_idle()
-            canvas.start_event_loop(interval)
-
-mpi_comm = MPI.comm_world
-my_rank = MPI.rank(mpi_comm)
-
-# --------------------------------------------------------------------------------
-# Settings
-
-rho = 1            # density
-c = 1              # specific heat capacity
-k = 1e-3           # heat conductivity
-T = 5.0            # final time
-
-nt = 2500
-
-dt = T / nt
-
-# This script expects to be run from the top level of the project as
-#   python -m demo.coupled.main2
-# or
-#   mpirun python -m demo.coupled.main2
-# so the CWD is expected to be the top level, hence the "demo/" at the
-# beginning of each path.
-
-mesh_filename = "demo/meshes/flow_over_cylinder_fluid.h5"  # for input only
-
-vis_T_filename = "demo/output/coupled/temperature.xdmf"
-sol_T_filename = "demo/output/coupled/temperature_series"
-sol_u_filename = "demo/output/coupled/velocity_series"
-
-# --------------------------------------------------------------------------------
-# Solver
+my_rank = MPI.rank(MPI.comm_world)
 
 # Read mesh and boundary data from file
 mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filename)
-
-class Boundaries(IntEnum):  # For Gmsh-imported mesh, these must match the numbering in the .msh file.
-    # Autoboundary always tags internal facets with the value 0.
-    # Leave it out from the definitions to make the boundary plotter ignore any facet tagged with that value.
-    # NOT_ON_BOUNDARY = 0
-    INFLOW = 1
-    WALLS = 2
-    OUTFLOW = 3
-    OBSTACLE = 4
-class Domains(IntEnum):
-    FLUID = 5
-    STRUCTURE = 6
-
-# Geometry parameters
-xmin, xmax = 0.0, 2.2
-half_height = 0.2
-xcyl, ycyl, rcyl = 0.2, 0.2, 0.05
-ymin = ycyl - half_height
-ymax = ycyl + half_height + 0.01  # asymmetry to excite von Karman vortex street
 
 # Define function space
 V = FunctionSpace(mesh, 'P', 2)
 
 # Define boundary conditions
-# inflow_max = 1.0
-# inflow_profile = f'{inflow_max} * 4.0 * (x[1] - {ymin}) * ({ymax} - x[1]) / pow({ymax} - {ymin}, 2)'
-# bc_inflow = DirichletBC(V, Expression(inflow_profile, degree=2), boundary_parts, Boundaries.INFLOW.value)
 bc_inflow = DirichletBC(V, Expression('0', degree=2), boundary_parts, Boundaries.INFLOW.value)
 bc_cylinder = DirichletBC(V, Expression('1', degree=2), boundary_parts, Boundaries.OBSTACLE.value)
 bc = [bc_inflow, bc_cylinder]
 
-# Create XDMF files (for visualization in ParaView)
-xdmffile_T = XDMFFile(mpi_comm, vis_T_filename)
+# Create XDMF file (for visualization in ParaView)
+xdmffile_T = XDMFFile(MPI.comm_world, vis_T_filename)
 xdmffile_T.parameters["flush_output"] = True
 xdmffile_T.parameters["rewrite_function_mesh"] = False
 
@@ -125,7 +50,7 @@ xdmffile_T.parameters["rewrite_function_mesh"] = False
 timeseries_T = TimeSeries(sol_T_filename)
 
 # MPI partitioning may be different in the saved timeseries, so all processes
-# must read all of each snapshot, and then re-extract the relevant DOFs.
+# must read the complete DOF vector (at given `t`), and then extract the relevant DOFs.
 # Thus we make this `TimeSeries` local (`MPI.comm_self`).
 timeseries_velocity = TimeSeries(MPI.comm_self, sol_u_filename)
 velocity_alldofs = Vector(MPI.comm_self)
@@ -150,7 +75,7 @@ t = 0
 est = ETAEstimator(nt)
 for n in range(nt):
     maxT_local = np.array(solver.u_.vector()).max()
-    maxT_global = mpi_comm.allgather(maxT_local)
+    maxT_global = MPI.comm_world.allgather(maxT_local)
     maxT_str = ", ".join(f"{maxT:0.6g}" for maxT in maxT_global)
 
     msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; max(T) = {maxT_str}; wall time {est.formatted_eta}"
@@ -162,9 +87,11 @@ for n in range(nt):
     # Use the velocity field provided by the flow solver.
     #
     # TODO: fix the one-step offset; right now we don't have an initial velocity field saved.
+    #
     # We assume the same mesh and same global DOF numbering as in the saved data.
     # The data came from a `VectorFunctionSpace` on this mesh, and `solver.a` is also
-    # a `VectorFunctionSpace` on this mesh. Extract the local DOFs (in the MPI sense).
+    # a `VectorFunctionSpace` on this mesh. Extract the local DOFs (in the MPI sense)
+    # from the complete saved DOF vector.
     begin("Loading velocity")
     timeseries_velocity.retrieve(velocity_alldofs, t)
     advection_velocity = solver.a
