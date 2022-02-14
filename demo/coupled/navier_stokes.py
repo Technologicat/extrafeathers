@@ -230,8 +230,9 @@ class LaminarFlow:
         #   (∇·a) u = (∇²φ) u
         #
         U = 0.5 * (u_n + u)
+        dudt = (u - u_n) / dt
         # # Original convective term
-        # F1 = (ρ * dot((u - u_n) / dt, v) * dx +
+        # F1 = (ρ * dot(dudt, v) * dx +
         #       ρ * dot(dot(u_n, nabla_grad(u_n)), v) * dx +
         #       inner(σ(U, p_n), ε(v)) * dx +
         #       dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
@@ -240,7 +241,7 @@ class LaminarFlow:
         # Skew-symmetric convective term
         a = u_n  # convection velocity
         ustar = U  # quantity the convection operator applies to
-        # F1 = (ρ * dot((u - u_n) / dt, v) * dx +
+        # F1 = (ρ * dot(dudt, v) * dx +
         #       ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) - dot(dot(a, nabla_grad(v)), ustar)) * dx +
         #       ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds +
         #       inner(σ(U, p_n), ε(v)) * dx +
@@ -256,7 +257,7 @@ class LaminarFlow:
         F1_varying = (ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) -
                                      dot(dot(a, nabla_grad(v)), ustar)) * dx +
                       ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds)
-        F1_constant = (ρ * dot((u - u_n) / dt, v) * dx +
+        F1_constant = (ρ * dot(dudt, v) * dx +
                        inner(σ(U, p_n), ε(v)) * dx +
                        dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
                        dot(f, v) * dx)
