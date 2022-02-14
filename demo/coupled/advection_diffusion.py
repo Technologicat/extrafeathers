@@ -215,6 +215,7 @@ class AdvectionDiffusion:
                   ρ * c * (1 / 2) * dot(n, a) * U * v * ds -
                   ρ * c * (1 / 2) * div(a) * U * v * dx)
             # # Just use the asymmetric advection term as-is.
+            # # TODO: which form is better? This has fewer operations, but which gives better stability?
             # F += dot(a, nabla_grad(U)) * v * dx
             F += -inner(σ, nabla_grad(a)) * v * dx  # stress
 
