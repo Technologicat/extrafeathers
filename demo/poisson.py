@@ -74,7 +74,7 @@ end()
 # so the CWD is expected to be the top level, hence the "demo/" at the
 # beginning of the path.
 
-# vtkfile = File("demo/poisson/solution.pvd")
+# vtkfile = File("demo/output/poisson/solution.pvd")
 # vtkfile << u
 # Create XDMF file for visualization output
 xdmffile_u = XDMFFile(MPI.comm_world, 'demo/output/poisson/u.xdmf')
