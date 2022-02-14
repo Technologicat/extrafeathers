@@ -73,7 +73,7 @@ dt = T / nt
 # so the CWD is expected to be the top level, hence the "demo/" at the
 # beginning of each path.
 
-mesh_filename = "demo/navier_stokes/flow_over_cylinder_fluid.h5"  # both input and output
+mesh_filename = "demo/meshes/flow_over_cylinder_fluid.h5"  # for input only
 
 vis_T_filename = "demo/navier_stokes/temperature.xdmf"
 sol_T_filename = "demo/navier_stokes/temperature_series"
