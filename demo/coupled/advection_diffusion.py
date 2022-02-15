@@ -101,22 +101,10 @@ class AdvectionDiffusion:
         self.h = Function(V)
         self.h.vector()[:] = 0.0  # placeholder value
 
-        # TODO: can we create this in Einstein notation? See `ufl.Index`, `ufl.indices`,
-        # and https://fenics.readthedocs.io/projects/ufl/en/latest/manual/form_language.html
-        # dim = self.mesh.topology().dim()
-        # self.a = as_vector([Function(V) for j in range(dim)])
-        # for aj in self.a:
-        #     aj.vector()[:] = 0.0
-        # self.σ = as_tensor([[Function(V) for j in range(dim)] for k in range(dim)])
-        # print(self.σ)
-        # TODO: how to initialize a tensor to zero? How to iterate a tensor over all its components?
-        # for σjk in self.σ:
-        #     σjk.vector()[:] = 0.0
+        # We have the convection velocity and stress as general FEM functions
+        # so that we can feed them with a solution of another subproblem.
 
         # Convection velocity
-        #
-        # We have this as a general FEM function so that we can feed it with a solution
-        # of another subproblem (e.g. the velocity field from the Navier-Stokes solver).
         self.advection = advection
         V_vec = VectorFunctionSpace(self.mesh, V.ufl_element().family(), V.ufl_element().degree())
         self.a = Function(V_vec)
