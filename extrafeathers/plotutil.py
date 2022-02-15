@@ -53,6 +53,11 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
         local_dof_indices = dofmap.cell_dofs(cell.index())  # local to this MPI process
         vertices = element.tabulate_dof_coordinates(cell)  # [[x1, y1], [x2, y2], [x3, y3]]
 
+        # TODO: support P2 triangles.
+        # The cell and edge midpoints tell us which DOFs are on the edge or in the middle;
+        # any remaining ones are at the vertices of the triangle. We can then convert each
+        # P2 element into a patch of linear triangles for visualization.
+
         # Matplotlib wants anticlockwise ordering when building a Triangulation
         if not is_anticlockwise(vertices):
             local_dof_indices = local_dof_indices[::-1]
