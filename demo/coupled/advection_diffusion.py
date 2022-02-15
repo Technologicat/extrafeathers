@@ -1,7 +1,34 @@
 # -*- coding: utf-8; -*-
 """Advection-diffusion equation: heat transport in a moving material.
 
-ρ c [∂u/∂t + (a·∇)u] - ∇·(k ∇u) = σ : ∇a + ρ h
+This is based on the internal energy (enthalpy) balance of a continuum:
+
+  ρ c [∂u/∂t + (a·∇)u] - ∇·(k ∇u) = σ : ∇a + ρ h
+
+where
+
+  - `u` is the absolute temperature [K],
+  - `a` is the advection velocity [m / s], and
+  - `σ` is the stress tensor [Pa].
+
+This form of the equation is based on Fourier's law, and the modeling
+assumption that the specific internal energy `e` [J / kg] behaves as
+
+  e = c T
+
+i.e. there are no phase changes.
+
+Strictly, we also assume that `c` is a constant independent of the
+temperature `u`. If  c = c(u),  we must add the term
+
+  ρ ∂c/∂u u [∂u/∂t + (a·∇)u]
+
+to the LHS, and the equation becomes nonlinear; this is currently
+not supported by this solver.
+
+See:
+    Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
+    Numerical Modeling in Science and Engineering. Wiley Interscience.
 """
 
 __all__ = ["AdvectionDiffusion"]
