@@ -38,6 +38,9 @@ mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filena
 # Define function space
 V = FunctionSpace(mesh, 'P', 2)
 
+if my_rank == 0:
+    print(f"Number of DOFs: temperature {V.dim()}")
+
 # Define boundary conditions
 bc_inflow = DirichletBC(V, Expression('0', degree=2), boundary_parts, Boundaries.INFLOW.value)
 bc_cylinder = DirichletBC(V, Expression('1', degree=2), boundary_parts, Boundaries.OBSTACLE.value)

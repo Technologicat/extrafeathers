@@ -44,6 +44,9 @@ mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filena
 V = VectorFunctionSpace(mesh, 'P', 2)
 Q = FunctionSpace(mesh, 'P', 1)
 
+if my_rank == 0:
+    print(f"Number of DOFs: velocity {V.dim()}, pressure {Q.dim()}, total {V.dim() + Q.dim()}")
+
 # Define boundary conditions
 #
 # We want a parabolic inflow profile, with a given maximum value at the middle.
