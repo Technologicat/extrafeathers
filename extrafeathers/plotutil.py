@@ -59,7 +59,7 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
             vertices = vertices[::-1]
         assert is_anticlockwise(vertices)
 
-        global_dof_indices = l2g[local_dof_indices]
+        global_dof_indices = l2g[local_dof_indices]  # [i1, i2, i3] in global numbering
         global_dof_to_vertex = {ix: vtx for ix, vtx in zip(global_dof_indices, vertices)}
 
         all_my_global_indices.append(global_dof_indices)
