@@ -4,8 +4,8 @@ Originally based on the FEniCS tutorial demo program:
 Incompressible Navier-Stokes equations for flow around a cylinder
 using the Incremental Pressure Correction Scheme (IPCS).
 
-  ∂u/∂t + u·∇u - ∇·σ(u, p) = f
-                        ∇·u = 0
+  ρ (∂u/∂t + u·∇u) - ∇·σ(u, p) = ρ f
+                            ∇·u = 0
 
 where
 
@@ -115,11 +115,14 @@ class LaminarFlow:
 
     As the mesh, we use `V.mesh()`; both `V` and `Q` must be defined on the same mesh.
 
-    The specific body force `self.f` [N / kg] is an assignable FEM function. For example,
-    to set a constant body force everywhere::
+    The specific body force `self.f` [N / kg] = [m / s²] is an assignable FEM function.
+    For example, to set a constant body force everywhere::
 
-        f: Function = interpolate(Constant((0, -10.0)), V)
+        f: Function = interpolate(Constant((0, -9.81)), V)
         solver.f.assign(f)
+
+    (Note that if you do simulate gravity, you may need to change some of your boundary
+    conditions to accommodate.)
     """
     def __init__(self, V: VectorFunctionSpace, Q: FunctionSpace,
                  ρ: float, μ: float,
@@ -332,7 +335,7 @@ class LaminarFlow:
         F1_constant = (ρ * dot(dudt, v) * dx +
                        inner(σ(U, p_n, μ), ε(v)) * dx +
                        dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
-                       dot(f, v) * dx)
+                       ρ * dot(f, v) * dx)
         self.a1_varying = lhs(F1_varying)
         self.a1_constant = lhs(F1_constant)
         self.L1 = rhs(F1_varying + F1_constant)  # RHS is reassembled at every timestep anyway
@@ -344,9 +347,9 @@ class LaminarFlow:
         #
         # The momentum equation is
         #
-        #   ρ ( ∂u/∂t + u·∇u ) = ∇·σ + f
-        #                       = ∇·(μ symm∇u - p I) + f
-        #                       = ∇·(μ symm∇u) - ∇p + f
+        #   ρ ( ∂u/∂t + u·∇u ) = ∇·σ + ρ f
+        #                       = ∇·(μ symm∇u - p I) + ρ f
+        #                       = ∇·(μ symm∇u) - ∇p + ρ f
         # so we have
         #
         #   ρ ( ∂(u - u_)/∂t + (u - u_)·∇(u - u_) ) = ∇·(μ symm∇(u - u_)) - ∇(p - p_n)
