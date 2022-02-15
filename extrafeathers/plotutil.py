@@ -30,46 +30,75 @@ import dolfin
 
 def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.List[int]],
                                                           typing.Dict[int, typing.List[float]]]:
-    """P1 FunctionSpace -> triangle connectivity [[i1, i2, i3], ...], vertices {0: [x1, y1], ...}
+    """P1 or P2 FunctionSpace -> triangle connectivity [[i1, i2, i3], ...], coordinates {0: [x1, y1], ...}
 
     Only sees the triangles assigned to the current MPI process; but FEniCS partitions the cells
     without overlaps, so the complete mesh is the union of these triangle sets from all processes.
 
     See `all_triangles`, which combines the data from different MPI processes so you get
     exactly what it says on the tin.
+
+    P2 triangles are internally split into four P1 triangles; one touching each vertex,
+    and one in the middle, consisting of the edge midpoints.
     """
-    if V.mesh().topology().dim() != 2 or V.ufl_element().degree() > 1 or str(V.ufl_element().cell()) != "triangle":
-        raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 triangle elements, got a mesh of topological dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
+    if V.mesh().topology().dim() != 2 or V.ufl_element().degree() not in (1, 2) or str(V.ufl_element().cell()) != "triangle":
+        raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 or 2 triangle elements, got a mesh of topological dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
     if V.mesh().geometric_dimension() != 2:
         raise NotImplementedError(f"This function only supports meshes of geomertric dimension 2, got a mesh of geometric dimension {V.mesh().geometric_dimension()}.")
 
     # "my" = local to this MPI process
     all_my_global_indices = []
-    all_my_vertices = {}  # dict to auto-eliminate duplicates (same global DOF)
+    all_my_coordinates = {}  # dict to auto-eliminate duplicates (same global DOF)
     l2g = V.dofmap().tabulate_local_to_global_dofs()
     element = V.element()  # TODO: what if P1 VectorFunctionSpace? (for now, scalars only)
     dofmap = V.dofmap()
     for cell in dolfin.cells(V.mesh()):
+        # Split the element into constituent triangles on which we can linearly interpolate for visualization
         local_dof_indices = dofmap.cell_dofs(cell.index())  # local to this MPI process
-        vertices = element.tabulate_dof_coordinates(cell)  # [[x1, y1], [x2, y2], [x3, y3]]
+        dof_coordinates = element.tabulate_dof_coordinates(cell)  # [[x1, y1], [x2, y2], [x3, y3]]
+        if V.ufl_element().degree() == 1:  # P1
+            # Just one triangle - the element itself.
+            local_dof_indicess = [local_dof_indices]
+            dof_coordinatess = [dof_coordinates]
+        else:  # V.ufl_element().degree() == 2:  # P2
+            # Split into four P1 triangles.
+            # https://fenicsproject.discourse.group/t/how-to-get-global-to-local-edge-dof-mapping-for-triangular-p2-elements/5197
+            #
+            # - DOFs 0, 1, 2 are at the vertices
+            # - DOF 3 is on the side opposite to 0
+            # - DOF 4 is on the side opposite to 1
+            # - DOF 5 is on the side opposite to 2
+            #
+            # ASCII diagram (local numbering, on the reference element):
+            #
+            # 2
+            # |\
+            # 4 3
+            # |  \
+            # 0-5-1
+            local_dof_indicess = []
+            dof_coordinatess = []
+            for i, j, k in ((0, 5, 4),
+                            (5, 3, 4),
+                            (5, 1, 3),
+                            (4, 3, 2)):
+                local_dof_indicess.append([local_dof_indices[i], local_dof_indices[j], local_dof_indices[k]])
+                dof_coordinatess.append([dof_coordinates[i], dof_coordinates[j], dof_coordinates[k]])
 
-        # TODO: support P2 triangles.
-        # The cell and edge midpoints tell us which DOFs are on the edge or in the middle;
-        # any remaining ones are at the vertices of the triangle. We can then convert each
-        # P2 element into a patch of linear triangles for visualization.
+        # Convert the constituent triangles to global DOF numbering
+        for local_dof_indices, dof_coordinates in zip(local_dof_indicess, dof_coordinatess):
+            # Matplotlib wants anticlockwise ordering when building a Triangulation
+            if not is_anticlockwise(dof_coordinates):
+                local_dof_indices = local_dof_indices[::-1]
+                dof_coordinates = dof_coordinates[::-1]
+            assert is_anticlockwise(dof_coordinates)
 
-        # Matplotlib wants anticlockwise ordering when building a Triangulation
-        if not is_anticlockwise(vertices):
-            local_dof_indices = local_dof_indices[::-1]
-            vertices = vertices[::-1]
-        assert is_anticlockwise(vertices)
+            global_dof_indices = l2g[local_dof_indices]  # [i1, i2, i3] in global numbering
+            global_dof_to_coordinates = {ix: vtx for ix, vtx in zip(global_dof_indices, dof_coordinates)}
 
-        global_dof_indices = l2g[local_dof_indices]  # [i1, i2, i3] in global numbering
-        global_dof_to_vertex = {ix: vtx for ix, vtx in zip(global_dof_indices, vertices)}
-
-        all_my_global_indices.append(global_dof_indices)
-        all_my_vertices.update(global_dof_to_vertex)
-    return all_my_global_indices, all_my_vertices
+            all_my_global_indices.append(global_dof_indices)
+            all_my_coordinates.update(global_dof_to_coordinates)
+    return all_my_global_indices, all_my_coordinates
 
 
 def all_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.List[int]],
@@ -78,8 +107,8 @@ def all_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Li
 
     Combines data from all MPI processes. Each process gets a copy of the complete triangulation.
     """
-    if V.mesh().topology().dim() != 2 or V.ufl_element().degree() > 1 or str(V.ufl_element().cell()) != "triangle":
-        raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 triangle elements, got a mesh of dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
+    if V.mesh().topology().dim() != 2 or V.ufl_element().degree() not in (1, 2) or str(V.ufl_element().cell()) != "triangle":
+        raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 or 2 triangle elements, got a mesh of dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
     if V.mesh().geometric_dimension() != 2:
         raise NotImplementedError(f"This function only supports meshes of geomertric dimension 2, got a mesh of geometric dimension {V.mesh().geometric_dimension()}.")
 
@@ -129,9 +158,10 @@ def is_anticlockwise(ps: typing.List[typing.List[float]]) -> typing.Optional[boo
 def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optional[typing.Any]:
     """Like `dolfin.plot`, but plots the whole field in the root process (MPI rank 0).
 
-    When running serially, delegates to `dolfin.plot`.
-
     u: `dolfin.Function`; a 2D scalar FEM field
+
+    If `u` lives on P2 elements, each element will be internally split into
+    four P1 triangles for visualization.
 
     In the root process (MPI rank 0), returns the plot object.
     See the return value of `matplotlib.pyplot.tricontourf`.
@@ -144,8 +174,9 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
 
     if mesh.topology().dim() != 2:
         raise NotImplementedError(f"mpiplot currently only supports meshes of topological dimension 2, got {mesh.topology().dim()}")
-    if dolfin.MPI.comm_world.size == 1:  # running serially
-        return dolfin.plot(u)
+
+    # if dolfin.MPI.comm_world.size == 1:  # running serially
+    #     return dolfin.plot(u)
 
     # https://fenicsproject.discourse.group/t/gather-function-in-parallel-error/1114
 
@@ -154,7 +185,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
     # print(my_rank, min(d), max(d))
 
     # Project to P1 elements for easy reconstruction for visualization.
-    if V.ufl_element().degree() > 1 or str(V.ufl_element().cell()) != "triangle":
+    if V.ufl_element().degree() not in (1, 2) or str(V.ufl_element().cell()) != "triangle":
         # if my_rank == 0:
         #     print(f"Interpolating solution from {str(V.ufl_element())} to P1 triangles for MPI-enabled visualization.")
         V_vis = dolfin.FunctionSpace(mesh, "P", 1)
@@ -191,6 +222,15 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
         # Plot the solution on the mesh. The triangulation has been constructed
         # following the FEniCS global DOF numbering, so the data is just v_vec as-is.
         theplot = plt.tricontourf(tri, v_vec, levels=32)
+
+        # # DEBUG
+        # plt.triplot(tri, color="#404040")  # all edges
+        # if V_vis.ufl_element().degree() == 2:
+        #     # Original element edges for P2 element; these are the edges of the corresponding P1 triangulation.
+        #     V_lin = dolfin.FunctionSpace(mesh, "P", 1)
+        #     ixs2, vtxs2 = all_triangles(V_lin)
+        #     tri2 = mtri.Triangulation(vtxs2[:, 0], vtxs2[:, 1], triangles=ixs2)
+        #     plt.triplot(tri2, color="k")
 
         # Alternative visualization.
         # # https://matplotlib.org/stable/gallery/mplot3d/trisurf3d.html
