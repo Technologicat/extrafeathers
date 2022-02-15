@@ -109,6 +109,9 @@ class LaminarFlow:
     `ρ`: density [kg / m³]
     `μ`: dynamic viscosity [Pa s]
     `dt`: timestep [s]
+    `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
+         Default 0.5 gives the implicit midpoint rule; 0 is forward Euler,
+         and 1 is backward Euler.
 
     As the mesh, we use `V.mesh()`; both `V` and `Q` must be defined on the same mesh.
 
@@ -122,7 +125,7 @@ class LaminarFlow:
                  ρ: float, μ: float,
                  bcu: typing.List[DirichletBC],
                  bcp: typing.List[DirichletBC],
-                 dt: float):
+                 dt: float, θ: float = 0.5):
         self.mesh = V.mesh()
         if Q.mesh() is not V.mesh():
             raise ValueError("V and Q must be defined on the same mesh.")
@@ -156,6 +159,7 @@ class LaminarFlow:
         self._ρ = ρ
         self._μ = μ
         self._dt = dt
+        self._θ = θ
         self.compile_forms()
 
     def _set_ρ(self, ρ: float) -> None:
@@ -179,6 +183,13 @@ class LaminarFlow:
         return self._dt
     dt = property(fget=_get_dt, fset=_set_dt, doc="Timestep [s]")
 
+    def _set_θ(self, θ: float) -> None:
+        self._θ = θ
+        self.compile_forms()
+    def _get_θ(self) -> float:
+        return self._θ
+    θ = property(fget=_get_θ, fset=_set_θ, doc="Theta-parameter for time integrator")
+
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
 
@@ -201,6 +212,7 @@ class LaminarFlow:
         ρ = Constant(self.ρ)
         μ = Constant(self.μ)
         dt = Constant(self.dt)
+        θ = Constant(self.θ)
 
         # Define variational problem for step 1 (tentative velocity)
         #
@@ -284,7 +296,7 @@ class LaminarFlow:
         # so the extra term is proportional to the laplacian of the scalar potential:
         #   (∇·a) u = (∇²φ) u
         #
-        U = 0.5 * (u_n + u)
+        U = (1 - θ) * u_n + θ * u
         dudt = (u - u_n) / dt
         # # Original convective term
         # F1 = (ρ * dot(dudt, v) * dx +

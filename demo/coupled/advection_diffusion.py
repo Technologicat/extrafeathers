@@ -37,6 +37,9 @@ class AdvectionDiffusion:
     `k`: heat conductivity [W / (m K)]
          Scalar `k` for thermally isotropic material; rank-2 tensor for anisotropic.
     `dt`: timestep [s]
+    `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
+         Default 0.5 gives the implicit midpoint rule; 0 is forward Euler,
+         and 1 is backward Euler.
 
     `advection`: one of "off", "divergence-free", "general"
         "off":             Zero advection velocity. Standard heat equation.
@@ -78,7 +81,7 @@ class AdvectionDiffusion:
     def __init__(self, V: FunctionSpace,
                  ρ: float, c: float, k: ScalarOrTensor,
                  bc: typing.List[DirichletBC],
-                 dt: float,
+                 dt: float, θ: float = 0.5,
                  advection: str = "divergence-free",
                  use_stress: bool = False):
         if advection not in ("off", "divergence-free", "general"):
@@ -125,6 +128,7 @@ class AdvectionDiffusion:
         self._c = c
         self._k = k
         self._dt = dt
+        self._θ = θ
         self.compile_forms()
 
     def _set_ρ(self, ρ: float) -> None:
@@ -155,6 +159,13 @@ class AdvectionDiffusion:
         return self._dt
     dt = property(fget=_get_dt, fset=_set_dt, doc="Timestep [s]")
 
+    def _set_θ(self, θ: float) -> None:
+        self._θ = θ
+        self.compile_forms()
+    def _get_θ(self) -> float:
+        return self._θ
+    θ = property(fget=_get_θ, fset=_set_θ, doc="Theta-parameter for time integrator")
+
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
 
@@ -177,6 +188,7 @@ class AdvectionDiffusion:
         c = Constant(self.c)
         k = Constant(self.k)
         dt = Constant(self.dt)
+        θ = Constant(self.θ)
 
         # Internal energy balance for a moving material, assuming no phase changes.
         # The unknown `u` is the temperature:
@@ -188,8 +200,9 @@ class AdvectionDiffusion:
         # References:
         #     Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
         #     Numerical Modeling in Science and Engineering. Wiley Interscience.
-        U = 0.5 * (u_n + u)  # IMR
+        U = (1 - θ) * u_n + θ * u
         dudt = (u - u_n) / dt
+
         F = (ρ * c * dudt * v * dx -
              ρ * dot(h, v) * dx)
 
