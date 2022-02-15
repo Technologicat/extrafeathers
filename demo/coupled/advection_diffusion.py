@@ -14,7 +14,7 @@ where
 This form of the equation is based on Fourier's law, and the modeling
 assumption that the specific internal energy `e` [J / kg] behaves as
 
-  e = c T
+  e = c u
 
 i.e. there are no phase changes.
 
