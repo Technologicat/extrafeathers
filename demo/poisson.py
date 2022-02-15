@@ -19,7 +19,7 @@ from extrafeathers import plotutil
 my_rank = MPI.comm_world.rank
 
 # Create mesh and define function space
-N = 128
+N = 16
 parameters["ghost_mode"] = "shared_vertex"  # for MPI mode
 
 # Create mesh (L-shaped domain)
