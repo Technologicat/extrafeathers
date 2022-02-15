@@ -225,9 +225,9 @@ class LaminarFlow:
         # old pressure p_n and the midpoint value of velocity U.
         #
         # Defining
-        #   U = (1/2) [u_n + u]
+        #   U = (1 - θ) u_n + θ u
         # we have
-        #   σ(U, p_n) = 2 μ * ε(U) - p_n * I = 2 μ * ε(u_n + u) - p_n * I
+        #   σ(U, p_n) = 2 μ * ε(U) - p_n * I = 2 μ * ε( (1 - θ) u_n + θ u ) - p_n * I
         # where I is the rank-2 identity tensor.
         #
         # Integrating -(∇·σ(U))·v dx by parts, we get σ(U) : ∇v dx = σ(U) : symm∇(v) dx = σ(U) : ε(v)
@@ -284,8 +284,9 @@ class LaminarFlow:
         #    a · ∇u · v dx  -  (1/2) a · [∇u · v + ∇v · u] dx  +  (1/2) n · a (u · v) ds
         # Finally, cleaning up, we obtain
         #    (1/2) a · [∇u · v - ∇v · u] dx  +  (1/2) n · a (u · v) ds
-        # as claimed. Keep in mind the extra boundary term, which contributes on boundaries
-        # through which there is flow (i.e. inlets and outlets).
+        # as claimed. Keep in mind the boundary term, which contributes on boundaries
+        # through which there is flow (i.e. inlets and outlets) - we do not want to
+        # introduce an extra boundary condition.
         #
         # Another way to view the role of the extra term in the skew-symmetric form is to
         # consider the Helmholtz decomposition of the convection velocity `a`:
@@ -295,6 +296,10 @@ class LaminarFlow:
         #   (∇·a) = ∇·∇φ + ∇·∇×A = ∇²φ + 0
         # so the extra term is proportional to the laplacian of the scalar potential:
         #   (∇·a) u = (∇²φ) u
+        #
+        # References:
+        #     Jean Donea and Antonio Huerta. 2003. Finite Element Methods for Flow Problems.
+        #     Wiley. ISBN 0-471-49666-9.
         #
         U = (1 - θ) * u_n + θ * u
         dudt = (u - u_n) / dt
@@ -317,7 +322,7 @@ class LaminarFlow:
         #
         # Split, so we can re-assemble only the part that changes at each timestep.
         # Keep in mind:
-        #  - IMR:  U = (1/2) (u + u_n).  Anything times `u` goes to LHS, while the rest goes to RHS.
+        #  - U = (1 - θ) u_n +  θ u.  Anything times `u` goes to LHS, while the rest goes to RHS.
         #  - In the convection term, we have the product of `u_n` and `u`. This is an LHS term that
         #    depends on time-varying data.
         #  - In the stress term, `u` and `p_n` appear in different terms of the sum.
