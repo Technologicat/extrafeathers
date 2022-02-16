@@ -98,7 +98,7 @@ The Navier-Stokes demo supports solving only in parallel, because even a simple 
 
 To run the **coupled problem** demo:
 
-This demo uses the same HDF5 mesh file as the Navier-Stokes demo. Use one of:
+This demo uses the same HDF5 mesh file as the Navier-Stokes demo. Create it with one of:
 
 ```bash
 python -m demo.import_gmsh
