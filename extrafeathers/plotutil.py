@@ -14,7 +14,8 @@ for some common plotting tasks in 2D solvers:
   it allows to check whether the boundaries have been tagged as expected.
 """
 
-__all__ = ["my_triangles", "all_triangles", "sort_vtxs", "P2_to_refined_P1",
+__all__ = ["my_triangles", "all_triangles", "sort_vtxs",
+           "midpoint_refine", "P2_to_refined_P1",
            "mpiplot", "plot_facet_meshfunction"]
 
 from collections import defaultdict
@@ -176,6 +177,48 @@ def sort_vtxs(vtxs: typing.Dict[int, typing.List[float]]) -> typing.Tuple[np.arr
     return dofs, vtxs
 
 
+def midpoint_refine(mesh):
+    """Given a 2D triangle mesh `mesh`, return a new mesh that has additional nodes at edge midpoints.
+
+    Like `dolfin.refine(mesh)` without further options; but we guarantee that one of the
+    four subtriangles spans the edge midpoints of the original triangle.
+
+    This subtriangle arrangement looks best for visualizing P2 data, when pretending that
+    the data is P1 on the refined mesh.
+    """
+    V = dolfin.FunctionSpace(mesh, 'P', 2)
+    triangles, vtxs = all_triangles(V)  # auto-convert P2 to P1
+    dofs, vtxs = sort_vtxs(vtxs)
+
+    # dolfin.MeshEditor is the right tool for the job.
+    #     https://fenicsproject.org/qa/12253/integration-on-predefined-grid/
+    #
+    # Using it in MPI mode needs some care. Build the mesh on the root process,
+    # then MPI-partition it using `dolfin.MeshPartitioning`.
+    #     https://bitbucket.org/fenics-project/dolfin/issues/403/mesheditor-and-meshinit-not-initializing
+    #
+    refined_mesh = dolfin.Mesh()
+    if dolfin.MPI.rank(dolfin.MPI.comm_world) == 0:
+        editor = dolfin.MeshEditor()
+        editor.open(refined_mesh, "triangle", mesh.topology().dim(), mesh.geometric_dimension())
+        # Probably, one of the args is the MPI-local count and the other is the global count,
+        # but this is not documented, and there is no implementation on the Python level;
+        # need to look at the C++ sources of FEniCS to be sure.
+        editor.init_vertices_global(len(vtxs), len(vtxs))
+        editor.init_cells_global(len(triangles), len(triangles))
+        for dof, vtx in zip(dofs, vtxs):
+            editor.add_vertex_global(dof, dof, vtx)  # local_index, global_index, coordinates
+        for cell_index, triangle in enumerate(triangles):
+            editor.add_cell(cell_index, triangle)  # curiously, there is no add_cell_global.
+        editor.close()
+        refined_mesh.init()
+        refined_mesh.order()
+        # dolfin.info(refined_mesh)  # DEBUG: should have all mesh data on root process at this point
+    dolfin.MeshPartitioning.build_distributed_mesh(refined_mesh)
+    # dolfin.info(refined_mesh)  # DEBUG: should have been distributed to all processes now
+    return refined_mesh
+
+
 def P2_to_refined_P1(V, W):
     """Map global DOFs for exporting P2 data at full nodal resolution, as once-refined P1 data.
 
@@ -200,7 +243,7 @@ def P2_to_refined_P1(V, W):
 
         import numpy as np
         import dolfin
-        from extrafeathers.plotutil import P2_to_refined_P1
+        from extrafeathers.plotutil import midpoint_refine, P2_to_refined_P1
 
         mesh = ...
 
@@ -211,8 +254,8 @@ def P2_to_refined_P1(V, W):
         V = dolfin.FunctionSpace(mesh, 'P', 2)
         u = dolfin.Function(V)
 
-        mesh_refined = dolfin.refine(mesh)
-        W = dolfin.FunctionSpace(mesh_refined, 'P', 1)
+        export_mesh = midpoint_refine(mesh)
+        W = dolfin.FunctionSpace(export_mesh, 'P', 1)
         w = dolfin.Function(W)
 
         VtoW, WtoV = P2_to_refined_P1(V, W)
@@ -266,7 +309,8 @@ def P2_to_refined_P1(V, W):
     seenV = set()
     seenW = set()
 
-    # Handle vector/tensor function spaces, too.
+    # Handle vector/tensor function spaces, too. Every geometric node (global
+    # DOF coordinates) has an independent instance for each vector component.
     if V.num_sub_spaces() > 1:
         spaces = [(V.sub(j), W.sub(j)) for j in range(V.num_sub_spaces())]
     else:
@@ -280,6 +324,8 @@ def P2_to_refined_P1(V, W):
         dofsV, vtxsV = sort_vtxs(vtxsV)
         trianglesW_ignored, vtxsW = all_triangles(subW)
         dofsW, vtxsW = sort_vtxs(vtxsW)
+        assert len(dofsW) == len(dofsV)  # should have the same number of global DOFs on both meshes
+        assert len(vtxsW) == len(vtxsV)  # should have the same number of global DOF coordinates on both meshes
         for dofV, vtxV in zip(dofsV, vtxsV):
             # find matching node
             distances = np.sum((vtxsW - vtxV)**2, axis=1)
