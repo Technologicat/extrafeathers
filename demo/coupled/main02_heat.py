@@ -7,7 +7,7 @@ Compute the temperature, using the flow field from the first pass for advection.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from unpythonic import ETAEstimator
+from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, DirichletBC,
                     Expression, Function,
@@ -44,16 +44,17 @@ if my_rank == 0:
 # HACK: Arrange things to allow visualizing the temperature field at full nodal resolution.
 if my_rank == 0:
     print("Preparing export of P2 data as refined P1...")
-export_mesh = plotutil.midpoint_refine(mesh)
-W = FunctionSpace(export_mesh, 'P', 1)
-w = Function(W)
-VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
-all_V_dofs = np.array(range(V.dim()), "intc")
-u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-my_W_dofs = W.dofmap().dofs()  # MPI-local
-my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+with timer() as tim:
+    export_mesh = plotutil.midpoint_refine(mesh)
+    W = FunctionSpace(export_mesh, 'P', 1)
+    w = Function(W)
+    VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
+    all_V_dofs = np.array(range(V.dim()), "intc")
+    u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+    my_W_dofs = W.dofmap().dofs()  # MPI-local
+    my_V_dofs = WtoV[my_W_dofs]  # MPI-local
 if my_rank == 0:
-    print("Preparation complete.")
+    print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 # Define boundary conditions
 bc_inflow = DirichletBC(V, Expression('0', degree=2), boundary_parts, Boundaries.INFLOW.value)

@@ -187,16 +187,17 @@ solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 #
 if my_rank == 0:
     print("Preparing export of P2 data as refined P1...")
-export_mesh = plotutil.midpoint_refine(mesh)
-W = VectorFunctionSpace(export_mesh, 'P', 1)
-w = Function(W)
-VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
-all_V_dofs = np.array(range(V.dim()), "intc")
-u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-my_W_dofs = W.dofmap().dofs()  # MPI-local
-my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+with timer() as tim:
+    export_mesh = plotutil.midpoint_refine(mesh)
+    W = VectorFunctionSpace(export_mesh, 'P', 1)
+    w = Function(W)
+    VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
+    all_V_dofs = np.array(range(V.dim()), "intc")
+    u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+    my_W_dofs = W.dofmap().dofs()  # MPI-local
+    my_V_dofs = WtoV[my_W_dofs]  # MPI-local
 if my_rank == 0:
-    print("Preparation complete.")
+    print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 # Time-stepping
 t = 0
