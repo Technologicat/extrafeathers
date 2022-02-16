@@ -10,12 +10,12 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator
 
 from fenics import (FunctionSpace, DirichletBC,
-                    Expression,
-                    interpolate,
+                    Expression, Function,
+                    interpolate, refine, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
-                    MPI, Vector,
+                    MPI,
                     begin, end)
 
 # custom utilities for FEniCS
@@ -40,6 +40,20 @@ V = FunctionSpace(mesh, 'P', 2)
 
 if my_rank == 0:
     print(f"Number of DOFs: temperature {V.dim()}")
+
+# HACK: Arrange things to allow visualizing the temperature field at full nodal resolution.
+mesh_P1_export = refine(mesh)
+W = FunctionSpace(mesh_P1_export, 'P', 1)
+w = Function(W)
+if my_rank == 0:
+    print("Constructing DOF mapping for exporting P2 data as refined P1...")
+VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
+all_V_dofs = np.array(range(V.dim()), "intc")
+u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+my_W_dofs = W.dofmap().dofs()  # MPI-local
+my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+if my_rank == 0:
+    print("DOF mapping constructed.")
 
 # Define boundary conditions
 bc_inflow = DirichletBC(V, Expression('0', degree=2), boundary_parts, Boundaries.INFLOW.value)
@@ -107,8 +121,15 @@ for n in range(nt):
     solver.step()
 
     begin("Saving temperature")
-    xdmffile_T.write(solver.u_, t)
-    timeseries_T.store(solver.u_.vector(), t)
+
+    # HACK: What we want to do:
+    #   w.assign(interpolate(solver.u_, W))
+    # How we do it in MPI mode (see main01_flow.py for full explanation):
+    solver.u_.vector().gather(u_copy, all_V_dofs)
+    w.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+
+    xdmffile_T.write(w, t)
+    timeseries_T.store(solver.u_.vector(), t)  # the timeseries saves the original P2 data
     end()
 
     # Accept the timestep, updating the "old" solution
