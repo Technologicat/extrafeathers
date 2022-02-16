@@ -12,7 +12,7 @@ from unpythonic import ETAEstimator
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     Expression, Constant, Function,
-                    interpolate, refine, Vector,
+                    interpolate, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -126,59 +126,67 @@ solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 # solver.f.assign(f)
 
 # HACK: Arrange things to allow visualizing the velocity field at full nodal resolution.
+# TODO: is it possible to export curved (quadratic isoparametric) FEM data to ParaView?
 #
 # For `u`, we use the P2 element, which does not export at full quality into
-# vertex-based formats, because the edge midpoint nodes are (obviously) not at
-# the vertices of the mesh.
+# vertex-based formats. The edge midpoint nodes are (obviously) not at the
+# vertices of the mesh, so the exporter simply ignores those DOFs.
 #
 # Thus, if we save the P2 data for visualization directly, the solution will
 # appear to have a much lower resolution than it actually does. This is
-# especially noticeable at parts of the mesh where the local element size is
-# large.
+# especially noticeable at parts of the mesh where the local element size
+# is large. This is unfortunate, as halving the element size in 2D requires
+# (roughly) 4× more computation time.
 #
-# Therefore, for export purposes, we observe that refining the mesh once gives us
-# a new mesh that *does* have additional nodes at the original edge midpoints.
-# We can then set up a P1 function space on this refined mesh.
+# So, given that the P2 space already gives us additional DOF data, can we
+# improve the export quality at a given element size?
 #
-# Even then, the values (as well as the geometry for isoparametric elements)
-# will be correct only at the nodes, but it's still a marked improvement
-# over exporting just the values at the vertices of the original mesh.
+# By refining the mesh once, we can obtain a new mesh that *does* have
+# additional vertices at the midpoints of the edges of the original mesh.
+# We can then set up a P1 function space on this refined mesh. Pretending that
+# the data is P1, we can just map the DOF data onto the new mesh (i.e. essentially
+# `dolfin.interpolate` it onto the P1 space), export that as P1, and it'll work
+# in any vertex-based format.
 #
-# TODO: is it possible to export curved (quadratic isoparametric) FEM data to ParaView?
+# Obviously, the exported field does not match the computed one exactly (except
+# at the nodes), because it has not been assembled from the P2 Galerkin series,
+# but instead the coefficients have been recycled as-is for use in a somewhat
+# related P1 Galerkin series.
 #
-mesh_P1_export = refine(mesh)
-W = VectorFunctionSpace(mesh_P1_export, 'P', 1)
-
-# We'll need a P1 FEM function to host the visualization data for saving.
+# An L2 projection onto the P1 space would be better, but it is costly, and
+# importantly, tricky to do in parallel when the meshes have different MPI
+# partitioning.
 #
-# It is important to re-use the same `Function` object instance at each
-# timestep, because by default constructing a `Function` creates a new name.
-# (ParaView needs the name to stay the same over the whole simulation to
-# recognize it as the same field. FEniCS's default is "f_xxx" for a running
-# number xxx, incremented each time a `Function` is created.)
-w = Function(W)
-
-# Now, our plan is to interpolate the solution onto the refined P1 space, and export the P1 data.
+# Even the simple interpolation approach gives a marked improvement on the
+# visual quality of the exported data, at a small fraction of the cost,
+# so that's what we use.
 #
-# Because we are dealing with P2 and P1 Lagrange elements, we can interpolate by simply copying
-# the data at the matching nodes. The spaces have been chosen such that matching nodes exist for
-# each DOF.
+# We'll need a P1 FEM function on the refined mesh to host the visualization
+# DOFs for saving. It is important to re-use the same `Function` object
+# instance when saving each timestep, because by default constructing a
+# `Function` gives the field a new name (unless you pass in `name=...`).
+# ParaView, on the other hand, needs the name to stay the same over the whole
+# simulation to recognize it as the same field. (FEniCS's default is "f_xxx"
+# for a running number xxx, incremented each time a `Function` is created.)
 #
-# But the spaces V and W partition differently in MPI, and their DOF numberings are different,
-# so we need to construct a DOF mapping between the global dofs of V and W.
+# Because the original mesh has P2 Lagrange elements, and the refined mesh
+# has P1 Lagrange elements, we can interpolate by simply copying the DOF values
+# at the coincident nodes. So we just need a mapping for the global DOF vector
+# that takes the data from the P2 function space DOFs to the corresponding P1
+# function space DOFs.
 #
-# And there is one additional complication: since V and W are `VectorFunctionSpace`s, we must handle
-# each vector component separately. Every geometric node (global DOF coordinates) has an independent
-# instance for each vector component.
 if my_rank == 0:
-    print("Constructing DOF mapping for exporting P2 data as refined P1...")
+    print("Preparing export of P2 data as refined P1...")
+export_mesh = plotutil.midpoint_refine(mesh)
+W = VectorFunctionSpace(export_mesh, 'P', 1)
+w = Function(W)
 VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
 all_V_dofs = np.array(range(V.dim()), "intc")
 u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
 my_W_dofs = W.dofmap().dofs()  # MPI-local
 my_V_dofs = WtoV[my_W_dofs]  # MPI-local
 if my_rank == 0:
-    print("DOF mapping constructed.")
+    print("Preparation complete.")
 
 # Time-stepping
 t = 0

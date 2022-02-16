@@ -11,7 +11,7 @@ from unpythonic import ETAEstimator
 
 from fenics import (FunctionSpace, DirichletBC,
                     Expression, Function,
-                    interpolate, refine, Vector,
+                    interpolate, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -42,18 +42,18 @@ if my_rank == 0:
     print(f"Number of DOFs: temperature {V.dim()}")
 
 # HACK: Arrange things to allow visualizing the temperature field at full nodal resolution.
-mesh_P1_export = refine(mesh)
-W = FunctionSpace(mesh_P1_export, 'P', 1)
-w = Function(W)
 if my_rank == 0:
-    print("Constructing DOF mapping for exporting P2 data as refined P1...")
+    print("Preparing export of P2 data as refined P1...")
+export_mesh = plotutil.midpoint_refine(mesh)
+W = FunctionSpace(export_mesh, 'P', 1)
+w = Function(W)
 VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
 all_V_dofs = np.array(range(V.dim()), "intc")
 u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
 my_W_dofs = W.dofmap().dofs()  # MPI-local
 my_V_dofs = WtoV[my_W_dofs]  # MPI-local
 if my_rank == 0:
-    print("DOF mapping constructed.")
+    print("Preparation complete.")
 
 # Define boundary conditions
 bc_inflow = DirichletBC(V, Expression('0', degree=2), boundary_parts, Boundaries.INFLOW.value)
