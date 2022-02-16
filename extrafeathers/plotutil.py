@@ -14,7 +14,8 @@ for some common plotting tasks in 2D solvers:
   it allows to check whether the boundaries have been tagged as expected.
 """
 
-__all__ = ["my_triangles", "all_triangles", "mpiplot", "plot_facet_meshfunction"]
+__all__ = ["my_triangles", "all_triangles", "sort_vtxs",
+           "mpiplot", "plot_facet_meshfunction"]
 
 from collections import defaultdict
 from enum import IntEnum
@@ -40,15 +41,20 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
 
     P2 triangles are internally split into four P1 triangles; one touching each vertex,
     and one in the middle, consisting of the edge midpoints.
+
+    If the data comes from `.sub(j)` of a `VectorFunctionSpace`, the keys of the `dict` use the
+    *global* DOF numbering, with each vector component mapping to a different set of DOF numbers.
     """
     if V.mesh().topology().dim() != 2 or V.ufl_element().degree() not in (1, 2) or str(V.ufl_element().cell()) != "triangle":
         raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 or 2 triangle elements, got a mesh of topological dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
     if V.mesh().geometric_dimension() != 2:
         raise NotImplementedError(f"This function only supports meshes of geomertric dimension 2, got a mesh of geometric dimension {V.mesh().geometric_dimension()}.")
+    if V.ufl_element().num_sub_elements() > 1:
+        raise ValueError(f"Expected a scalar `FunctionSpace`, got a function space on {V.ufl_element()}")
 
     # "my" = local to this MPI process
-    all_my_global_indices = []
-    all_my_coordinates = {}  # dict to auto-eliminate duplicates (same global DOF)
+    all_my_triangles = []  # [[i1, i2, i3], ...] in global DOF numbering
+    all_my_dof_coordinates = {}  # dict to auto-eliminate duplicates (same global DOF)
     l2g = V.dofmap().tabulate_local_to_global_dofs()
     element = V.element()  # TODO: what if P1 VectorFunctionSpace? (for now, scalars only)
     dofmap = V.dofmap()
@@ -57,10 +63,14 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
         local_dof_indices = dofmap.cell_dofs(cell.index())  # local to this MPI process
         dof_coordinates = element.tabulate_dof_coordinates(cell)  # [[x1, y1], [x2, y2], [x3, y3]]
         if V.ufl_element().degree() == 1:  # P1
+            if len(local_dof_indices) != 3:
+                raise ValueError(f"Expected a scalar `FunctionSpace`, but this P1 triangle has {len(local_dof_indices)} local DOFs. If it is a `VectorFunctionSpace`, consider taking its `.sub(j)`.")
             # Just one triangle - the element itself.
             local_dof_indicess = [local_dof_indices]
             dof_coordinatess = [dof_coordinates]
         else:  # V.ufl_element().degree() == 2:  # P2
+            if len(local_dof_indices) != 6:
+                raise ValueError(f"Expected a scalar `FunctionSpace`, but this P2 triangle has {len(local_dof_indices)} local DOFs. If it is a `VectorFunctionSpace`, consider taking its `.sub(j)`.")
             # Split into four P1 triangles.
             # https://fenicsproject.discourse.group/t/how-to-get-global-to-local-edge-dof-mapping-for-triangular-p2-elements/5197
             #
@@ -69,7 +79,7 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
             # - DOF 4 is on the side opposite to 1
             # - DOF 5 is on the side opposite to 2
             #
-            # ASCII diagram (local numbering, on the reference element):
+            # ASCII diagram (numbering on the reference element):
             #
             # 2
             # |\
@@ -96,43 +106,70 @@ def my_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.Lis
             global_dof_indices = l2g[local_dof_indices]  # [i1, i2, i3] in global numbering
             global_dof_to_coordinates = {ix: vtx for ix, vtx in zip(global_dof_indices, dof_coordinates)}
 
-            all_my_global_indices.append(global_dof_indices)
-            all_my_coordinates.update(global_dof_to_coordinates)
-    return all_my_global_indices, all_my_coordinates
+            all_my_triangles.append(global_dof_indices)
+            all_my_dof_coordinates.update(global_dof_to_coordinates)
+    return all_my_triangles, all_my_dof_coordinates
 
 
-def all_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[typing.List[typing.List[int]],
+def all_triangles(V: dolfin.FunctionSpace) -> typing.Tuple[np.array,
                                                            typing.Dict[int, typing.List[float]]]:
-    """P1 FunctionSpace -> triangle connectivity [[i1, i2, i3], ...], vertices {0: [x1, y1], ...}
+    """P1 or P2 FunctionSpace -> triangle connectivity [[i1, i2, i3], ...], coordinates {0: [x1, y1], ...}
 
     Combines data from all MPI processes. Each process gets a copy of the complete triangulation.
+
+    P2 triangles are internally split into four P1 triangles; one touching each vertex,
+    and one in the middle, consisting of the edge midpoints.
+
+    If the data comes from `.sub(j)` of a `VectorFunctionSpace`, the keys of the `dict` use the
+    *global* DOF numbering, with each vector component mapping to a different set of DOF numbers.
     """
     if V.mesh().topology().dim() != 2 or V.ufl_element().degree() not in (1, 2) or str(V.ufl_element().cell()) != "triangle":
         raise NotImplementedError(f"This function only supports meshes of topological dimension 2, with degree 1 or 2 triangle elements, got a mesh of dimension {V.mesh().topology().dim()} with degree {V.ufl_element().degree()} {V.ufl_element().cell()} elements.")
     if V.mesh().geometric_dimension() != 2:
         raise NotImplementedError(f"This function only supports meshes of geomertric dimension 2, got a mesh of geometric dimension {V.mesh().geometric_dimension()}.")
+    if V.ufl_element().num_sub_elements() > 1:
+        raise ValueError(f"Expected a scalar `FunctionSpace`, got a function space on {V.ufl_element()}")
 
-    ixs, vtxs = my_triangles(V)
-    ixs = dolfin.MPI.comm_world.allgather(ixs)
+    triangles, vtxs = my_triangles(V)
+    triangles = dolfin.MPI.comm_world.allgather(triangles)
     vtxs = dolfin.MPI.comm_world.allgather(vtxs)
 
     # Combine the triangle connectivity lists from all MPI processes.
-    ixs = np.concatenate(ixs)  # [[i1, i2, i3], ...], [[j1, j2, j3], ...], ... -> [[i1, i2, i3], ...]
+    # The result is a single rank-2 array, with each row the global DOF numbers for a triangle:
+    # [[i1, i2, i3], ...], [[j1, j2, j3], ...], ... -> [[i1, i2, i3], ..., [j1, j2, j3], ...]
+    triangles = np.concatenate(triangles)
 
-    # Combine the global DOF index to vertex coordinates mappings from all MPI processes.
+    # Combine the global DOF index to DOF coordinates mappings from all MPI processes.
     # After this step, each global DOF should have a corresponding vertex.
     merged = vtxs.pop()
     for vtx in vtxs:
         merged.update(vtx)
     vtxs = merged
 
-    # List the vertices in global DOF numbering order.
-    # When plotting, this allows us to use the DOF vector for the field data as-is.
-    vtx_sorted_by_global_dof = sorted(vtxs.items(), key=lambda item: item[0])  # key = global DOF number
+    return triangles, vtxs
+
+
+def sort_vtxs(vtxs: typing.Dict[int, typing.List[float]]) -> typing.Tuple[np.array, np.array]:
+    """List the global DOF coordinates in ascending order of global DOF number.
+
+    `vtxs`: as returned by `my_triangles` or `all_triangles`
+
+    Returns `(dofs, vtxs)`, where:
+        - `dofs` is a rank-1 `np.array` with global DOF numbers, sorted in ascending order.
+
+          On a scalar function space, this is essentially just `np.arange(V.dim())`, but
+          if the data comes from `.sub(j)` of a `VectorFunctionSpace`, this is the *global*
+          DOF numbering, with each vector component mapping to a different set of DOF numbers.
+
+        - `vtxs` is a rank-2 `np.array` with row `j` the coordinates for global DOF `dofs[j]`
+
+    When plotting, this allows using the DOF vector for scalar field data as-is.
+    """
+    vtx_sorted_by_global_dof = list(sorted(vtxs.items(), key=lambda item: item[0]))  # key = global DOF number
+    dofs = [ix for ix, ignored_vtx in vtx_sorted_by_global_dof]
     vtxs = [vtx for ignored_ix, vtx in vtx_sorted_by_global_dof]
     vtxs = np.stack(vtxs)  # list of len-2 arrays [x1, y1], [x2, y2], ... -> array [[x1, y1], [x2, y2], ...]
-
-    return ixs, vtxs
+    return dofs, vtxs
 
 
 def is_anticlockwise(ps: typing.List[typing.List[float]]) -> typing.Optional[bool]:
@@ -175,6 +212,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
     if mesh.topology().dim() != 2:
         raise NotImplementedError(f"mpiplot currently only supports meshes of topological dimension 2, got {mesh.topology().dim()}")
 
+    # # We do the hifi P2->P1 mapping, so let's not delegate even in serial mode.
     # if dolfin.MPI.comm_world.size == 1:  # running serially
     #     return dolfin.plot(u)
 
@@ -196,14 +234,14 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
 
     # make a complete copy of the DOF vector onto the root process
     v_vec = u_vis.vector().gather_on_zero()
-    n_global_dofs = len(v_vec)
+    n_global_dofs = V.dim()
 
     # # make a complete copy of the DOF vector u_vec to all MPI processes
     # u_vec = u.vector()
     # v_vec = dolfin.Vector(dolfin.MPI.comm_self)  # local vector (local to each MPI process)
     # u_vec.gather(v_vec, np.array(range(V.dim()), "intc"))  # in_vec.gather(out_vec, indices); really "allgather"
     # dm = np.array(V.dofmap().dofs())
-    # print(f"Process {my_rank}: local #DOFs {len(u_vec)} (min {min(dm)}, max {max(dm)}) out of global {len(v_vec)}")
+    # print(f"Process {my_rank}: local #DOFs {len(dm)} (min {min(dm)}, max {max(dm)}) out of global {V.dim()}")
 
     # # make a copy of the local part (in each MPI process) of u_vec only
     # u_vec = u.vector()
@@ -212,12 +250,18 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
 
     # Assemble the complete mesh from the partitioned pieces. This treats arbitrary domain shapes correctly.
     # We get the list of triangles from each MPI process and then combine the lists in the root process.
-    ixs, vtxs = all_triangles(V_vis)
+    triangles, vtxs = all_triangles(V_vis)
     if my_rank == 0:
-        assert len(vtxs) == n_global_dofs
+        assert len(vtxs) == n_global_dofs  # each global DOF has coordinates
+        assert len(v_vec) == n_global_dofs  # we have a data value at each DOF
+        dofs, vtxs = sort_vtxs(vtxs)
+        assert len(dofs) == n_global_dofs  # each global DOF was mapped
 
         # Reassemble the mesh in Matplotlib.
-        tri = mtri.Triangulation(vtxs[:, 0], vtxs[:, 1], triangles=ixs)
+        # TODO: map `triangles`; it has global DOF numbers `dofs[k]`, whereas we need just `k`
+        # TODO: so that the numbering corresponds to the rows of `vtxs`.
+        # TODO: Ignoring the mapping works as long as the data comes from a scalar `FunctionSpace`.
+        tri = mtri.Triangulation(vtxs[:, 0], vtxs[:, 1], triangles=triangles)
 
         # Plot the solution on the mesh. The triangulation has been constructed
         # following the FEniCS global DOF numbering, so the data is just v_vec as-is.
@@ -228,8 +272,10 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
         # if V_vis.ufl_element().degree() == 2:
         #     # Original element edges for P2 element; these are the edges of the corresponding P1 triangulation.
         #     V_lin = dolfin.FunctionSpace(mesh, "P", 1)
-        #     ixs2, vtxs2 = all_triangles(V_lin)
-        #     tri2 = mtri.Triangulation(vtxs2[:, 0], vtxs2[:, 1], triangles=ixs2)
+        #     triangles2, vtxs2 = all_triangles(V_lin)
+        #     dofs2, vtxs2 = sort_vtxs(vtxs2)
+        #     # TODO: map `triangles2`
+        #     tri2 = mtri.Triangulation(vtxs2[:, 0], vtxs2[:, 1], triangles=triangles2)
         #     plt.triplot(tri2, color="k")
 
         # Alternative visualization.
