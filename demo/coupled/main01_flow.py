@@ -201,7 +201,7 @@ for n in range(nt):
 
     # Save the velocity visualization at full nodal resolution (we have a P2 space!).
     #
-    # HACK: When running serially, we could just:
+    # HACK: What we want to do:
     #
     #   w.assign(interpolate(solver.u_, W))
     #
