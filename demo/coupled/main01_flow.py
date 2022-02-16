@@ -167,54 +167,18 @@ w = Function(W)
 # But the spaces V and W partition differently in MPI, and their DOF numberings are different,
 # so we need to construct a DOF mapping between the global dofs of V and W.
 #
-# TODO: There must be a better way to construct the DOF mapping than this woeful O(n²) geometry-based search.
-# contract: preconditions
-assert W.num_sub_spaces() == V.num_sub_spaces()  # as many vector components in each space
-assert W.dim() == V.dim()  # as many global DOFs in each space (refined P1 vs. original P2)
-VtoW = np.zeros(V.dim(), dtype=int) - 1
-WtoV = np.zeros(W.dim(), dtype=int) - 1
-seenV = set()
-seenW = set()
-
-# There is one additional complication: since V and W are `VectorFunctionSpace`s, we must handle
+# And there is one additional complication: since V and W are `VectorFunctionSpace`s, we must handle
 # each vector component separately. Every geometric node (global DOF coordinates) has an independent
 # instance for each vector component.
 if my_rank == 0:
     print("Constructing DOF mapping for exporting P2 data as refined P1...")
-for j in range(V.num_sub_spaces()):
-    # The `extrafeathers` plot utilities provide the full geometry data globally across MPI processses.
-    # We need the global DOF coordinates and their global DOF numbers; we can ignore the triangle connectivity.
-    trianglesV_ignored, vtxsV = plotutil.all_triangles(V.sub(j))
-    dofsV, vtxsV = plotutil.sort_vtxs(vtxsV)
-    trianglesW_ignored, vtxsW = plotutil.all_triangles(W.sub(j))
-    dofsW, vtxsW = plotutil.sort_vtxs(vtxsW)
-    for dofV, vtxV in zip(dofsV, vtxsV):
-        # find matching node
-        distances = np.sum((vtxsW - vtxV)**2, axis=1)
-        k = np.argmin(distances)
-
-        # postcondition: exact geometric match due to how the spaces were chosen
-        assert distances[k] == 0.0  # node dofsW[k] of W corresponds to node dofV of V
-
-        dofW, vtxW = dofsW[k], vtxsW[k]  # don't need vtxW; just for documentation
-        VtoW[dofV] = dofW
-        WtoV[dofW] = dofV
-
-        seenV.add(dofV)
-        seenW.add(dofW)
-# contract: postconditions
-assert len(set(range(V.dim())) - seenV) == 0  # all dofs of V were seen
-assert len(set(range(W.dim())) - seenW) == 0  # all dofs of W were seen
-assert all(dofW != -1 for dofW in VtoW)  # each dof of V was mapped to some dof of W
-assert all(dofV != -1 for dofV in WtoV)  # each dof of W was mapped to some dof of V
-if my_rank == 0:
-    print("DOF mapping constructed.")
-
-# Create these outside the loop.
+VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
 all_V_dofs = np.array(range(V.dim()), "intc")
 u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
 my_W_dofs = W.dofmap().dofs()  # MPI-local
 my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+if my_rank == 0:
+    print("DOF mapping constructed.")
 
 # Time-stepping
 t = 0
