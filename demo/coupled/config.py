@@ -38,17 +38,17 @@ class Domains(IntEnum):
     FLUID = 5
     STRUCTURE = 6
 
-# Geometry parameters
+# Mesh generation
 #
-# These must also match the .msh file, because the ymin/ymax values are used for setting up
-# the inflow profile in the boundary conditions.
+# These parameters are only used when generating a uniform mesh using main00_mesh.py.
+#
 xmin, xmax = 0.0, 2.2
 half_height = 0.2
 xcyl, ycyl, rcyl = 0.2, 0.2, 0.05
 ymin = ycyl - half_height
 ymax = ycyl + half_height + 0.01  # asymmetry to excite von Karman vortex street
 
-mesh_resolution = 128  # only used when generating a uniform mesh using main00_mesh.py
+mesh_resolution = 128
 
 # --------------------------------------------------------------------------------
 # File paths

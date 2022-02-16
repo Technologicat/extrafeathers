@@ -8,7 +8,7 @@ as a convection velocity for the temperature field.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from unpythonic import ETAEstimator
+from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     Expression, Constant, Function,
@@ -25,7 +25,7 @@ from extrafeathers import plotutil
 
 from .navier_stokes import LaminarFlow
 from .config import (rho, mu, dt, nt,
-                     ymin, ymax, Boundaries,
+                     Boundaries,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
                      vis_p_filename, sol_p_filename)
@@ -44,7 +44,17 @@ mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filena
 V = VectorFunctionSpace(mesh, 'P', 2)
 Q = FunctionSpace(mesh, 'P', 1)
 
+# Detect ymin/ymax for configuring inflow profile.
+# We detect from `Q` because it's P1 (no P2 to P1 conversion, fewer DOFs to look at; faster).
+with timer() as tim:
+    ignored_triangles, vtxs = plotutil.all_triangles(Q)
+    ignored_dofs, vtxs = plotutil.sort_vtxs(vtxs)
+    ymin = np.min(vtxs[:, 1])
+    ymax = np.max(vtxs[:, 1])
+
 if my_rank == 0:
+    print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
+    print(f"y ∈ [{ymin}, {ymax}].")
     print(f"Number of DOFs: velocity {V.dim()}, pressure {Q.dim()}, total {V.dim() + Q.dim()}")
 
 # Define boundary conditions
