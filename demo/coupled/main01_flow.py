@@ -138,7 +138,14 @@ solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 #
 # Therefore, for export purposes, we observe that refining the mesh once gives us
 # a new mesh that *does* have additional nodes at the original edge midpoints.
-# We can then set up a P1 function space on this refined mesh:
+# We can then set up a P1 function space on this refined mesh.
+#
+# Even then, the values (as well as the geometry for isoparametric elements)
+# will be correct only at the nodes, but it's still a marked improvement
+# over exporting just the values at the vertices of the original mesh.
+#
+# TODO: is it possible to export curved (quadratic isoparametric) FEM data to ParaView?
+#
 mesh_u_vis = refine(mesh)
 W = VectorFunctionSpace(mesh_u_vis, 'P', 1)
 
