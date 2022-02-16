@@ -146,8 +146,8 @@ solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 #
 # TODO: is it possible to export curved (quadratic isoparametric) FEM data to ParaView?
 #
-mesh_u_vis = refine(mesh)
-W = VectorFunctionSpace(mesh_u_vis, 'P', 1)
+mesh_P1_export = refine(mesh)
+W = VectorFunctionSpace(mesh_P1_export, 'P', 1)
 
 # We'll need a P1 FEM function to host the visualization data for saving.
 #
