@@ -9,6 +9,16 @@ from enum import IntEnum
 # --------------------------------------------------------------------------------
 # Physical
 
+# Reynolds number?
+#
+#   Re = ρ u L / μ
+#
+# Typically for this test, u ≈ 2 m/s,  and taking L = 2 r = 2 * 0.05 m = 0.1 m,
+# where r is the radius of the cylinder that acts as an obstacle to the flow,
+# we have
+#
+#   Re = 1 * 2 * 0.1 / 0.001 = 200
+
 rho = 1            # density [kg/m³]
 mu = 0.001         # dynamic viscosity [Pa s]
 c = 1              # specific heat capacity [J/(kg K)]
