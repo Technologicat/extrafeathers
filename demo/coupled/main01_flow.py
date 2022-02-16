@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
-                    Expression, Constant,
-                    interpolate,
+                    Expression, Constant, Function,
+                    interpolate, refine, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -125,6 +125,90 @@ solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 # f: Function = interpolate(Constant((0, -10.0)), V)
 # solver.f.assign(f)
 
+# HACK: Arrange things to allow visualizing the velocity field at full nodal resolution.
+#
+# For `u`, we use the P2 element, which does not export at full quality into
+# vertex-based formats, because the edge midpoint nodes are (obviously) not at
+# the vertices of the mesh.
+#
+# Thus, if we save the P2 data for visualization directly, the solution will
+# appear to have a much lower resolution than it actually does. This is
+# especially noticeable at parts of the mesh where the local element size is
+# large.
+#
+# Therefore, for export purposes, we observe that refining the mesh once gives us
+# a new mesh that *does* have additional nodes at the original edge midpoints.
+# We can then set up a P1 function space on this refined mesh:
+mesh_u_vis = refine(mesh)
+W = VectorFunctionSpace(mesh_u_vis, 'P', 1)
+
+# We'll need a P1 FEM function to host the visualization data for saving.
+#
+# It is important to re-use the same `Function` object instance at each
+# timestep, because by default constructing a `Function` creates a new name.
+# (ParaView needs the name to stay the same over the whole simulation to
+# recognize it as the same field. FEniCS's default is "f_xxx" for a running
+# number xxx, incremented each time a `Function` is created.)
+w = Function(W)
+
+# Now, our plan is to interpolate the solution onto the refined P1 space, and export the P1 data.
+#
+# Because we are dealing with P2 and P1 Lagrange elements, we can interpolate by simply copying
+# the data at the matching nodes. The spaces have been chosen such that matching nodes exist for
+# each DOF.
+#
+# But the spaces V and W partition differently in MPI, and their DOF numberings are different,
+# so we need to construct a DOF mapping between the global dofs of V and W.
+#
+# TODO: There must be a better way to construct the DOF mapping than this woeful O(n²) geometry-based search.
+# contract: preconditions
+assert W.num_sub_spaces() == V.num_sub_spaces()  # as many vector components in each space
+assert W.dim() == V.dim()  # as many global DOFs in each space (refined P1 vs. original P2)
+VtoW = np.zeros(V.dim(), dtype=int) - 1
+WtoV = np.zeros(W.dim(), dtype=int) - 1
+seenV = set()
+seenW = set()
+
+# There is one additional complication: since V and W are `VectorFunctionSpace`s, we must handle
+# each vector component separately. Every geometric node (global DOF coordinates) has an independent
+# instance for each vector component.
+if my_rank == 0:
+    print("Constructing DOF mapping for exporting P2 data as refined P1...")
+for j in range(V.num_sub_spaces()):
+    # The `extrafeathers` plot utilities provide the full geometry data globally across MPI processses.
+    # We need the global DOF coordinates and their global DOF numbers; we can ignore the triangle connectivity.
+    trianglesV_ignored, vtxsV = plotutil.all_triangles(V.sub(j))
+    dofsV, vtxsV = plotutil.sort_vtxs(vtxsV)
+    trianglesW_ignored, vtxsW = plotutil.all_triangles(W.sub(j))
+    dofsW, vtxsW = plotutil.sort_vtxs(vtxsW)
+    for dofV, vtxV in zip(dofsV, vtxsV):
+        # find matching node
+        distances = np.sum((vtxsW - vtxV)**2, axis=1)
+        k = np.argmin(distances)
+
+        # postcondition: exact geometric match due to how the spaces were chosen
+        assert distances[k] == 0.0  # node dofsW[k] of W corresponds to node dofV of V
+
+        dofW, vtxW = dofsW[k], vtxsW[k]  # don't need vtxW; just for documentation
+        VtoW[dofV] = dofW
+        WtoV[dofW] = dofV
+
+        seenV.add(dofV)
+        seenW.add(dofW)
+# contract: postconditions
+assert len(set(range(V.dim())) - seenV) == 0  # all dofs of V were seen
+assert len(set(range(W.dim())) - seenW) == 0  # all dofs of W were seen
+assert all(dofW != -1 for dofW in VtoW)  # each dof of V was mapped to some dof of W
+assert all(dofV != -1 for dofV in WtoV)  # each dof of W was mapped to some dof of V
+if my_rank == 0:
+    print("DOF mapping constructed.")
+
+# Create these outside the loop.
+all_V_dofs = np.array(range(V.dim()), "intc")
+u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+my_W_dofs = W.dofmap().dofs()  # MPI-local
+my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
@@ -143,10 +227,33 @@ for n in range(nt):
     solver.step()
 
     begin("Saving")
+
+    # Save the velocity visualization at full nodal resolution (we have a P2 space!).
+    #
+    # HACK: When running serially, we could just:
+    #
+    #   w.assign(interpolate(solver.u_, W))
+    #
+    # In MPI mode, the problem is that the DOFs of V and W partition differently,
+    # so each MPI process has no access to some of the `solver.u_` data it needs
+    # to construct its part of `w`.
+    #
+    # One option would be to make a separate serial postprocess script
+    # that loads `u_` from the timeseries file (on the original P2 space;
+    # now not partitioned because serial mode), performs this interpolation,
+    # and generates the visualization file.
+    #
+    # But using the DOF mappings defined above, we can generate the visualization
+    # right now, in MPI mode. We allgather the DOFs of the solution on V, and then
+    # remap them onto the corresponding DOFS on W:
+    solver.u_.vector().gather(u_copy, all_V_dofs)
+    w.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+    # Now `w` is a refined P1 representation of the velocity field.
+
     # TODO: refactor access to u_, p_?
-    xdmffile_u.write(solver.u_, t)
+    xdmffile_u.write(w, t)
     xdmffile_p.write(solver.p_, t)
-    timeseries_u.store(solver.u_.vector(), t)
+    timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original P2 data
     timeseries_p.store(solver.p_.vector(), t)
     end()
 
