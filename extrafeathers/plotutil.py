@@ -31,7 +31,9 @@ import matplotlib.pyplot as plt
 import dolfin
 
 
-# TODO: split these general mesh / function space utilities into `meshmagic` or some such new module.
+# TODO: Split general mesh / function space utilities into `meshmagic` or some such new module.
+
+# TODO: Does the refine belong here, or in `midpoint_refine` itself?
 def my_cells(V: dolfin.FunctionSpace, *,
              matplotlibize: bool = False,
              refine_p2: bool = False) -> typing.Tuple[np.array,
