@@ -12,7 +12,8 @@ We also provide some utility functions on meshes:
  - Compute the local mesh size `h` and return it as a `MeshFunction`.
 """
 
-__all__ = ["find_subdomain_boundaries", "specialize_meshfunction", "meshsize"]
+__all__ = ["find_subdomain_boundaries", "specialize_meshfunction",
+           "meshsize", "meshfunction_to_expression"]
 
 import typing
 
@@ -280,3 +281,51 @@ def meshsize(mesh: dolfin.Mesh,
         f[entity] = max(edge_lengths)
 
     return f
+
+
+def meshfunction_to_expression(f: dolfin.MeshFunction):
+    """Convert a scalar double `MeshFunction` to a `CompiledExpression` for use in UFL forms.
+
+    This convenience function mainly exists to document how it's done in FEniCS 2019.
+
+    Based on the tensor-weighted Poisson example:
+         https://bitbucket.org/fenics-project/dolfin/src/master/python/demo/documented/tensor-weighted-poisson/demo_tensor-weighted-poisson.py
+    """
+    # See also:
+    #   https://fenicsproject.discourse.group/t/compiledsubdomain-using-c-class/918
+    #   https://fenicsproject.org/olddocs/dolfin/latest/cpp/classes.html
+    #   https://fenicsproject.org/olddocs/dolfin/latest/cpp/d1/d2e/classdolfin_1_1Expression.html
+    cpp_code = """
+    #include <pybind11/pybind11.h>
+    #include <pybind11/eigen.h>
+    #include <math.h>
+    namespace py = pybind11;
+
+    #include <dolfin/function/Expression.h>
+    #include <dolfin/mesh/MeshFunction.h>
+
+    class CellScalarMeshFunctionExpression : public dolfin::Expression
+    {
+    public:
+
+      virtual void eval(Eigen::Ref<Eigen::VectorXd> values,
+                        Eigen::Ref<const Eigen::VectorXd> x,
+                        const ufc::cell& cell) const override
+      {
+        values[0] = (*meshfunction)[cell.index];
+      }
+
+      std::shared_ptr<dolfin::MeshFunction<double>> meshfunction;
+    };
+
+    PYBIND11_MODULE(SIGNATURE, m)
+    {
+      py::class_<CellScalarMeshFunctionExpression, std::shared_ptr<CellScalarMeshFunctionExpression>, dolfin::Expression>
+        (m, "CellScalarMeshFunctionExpression")
+        .def(py::init<>())
+        .def_readwrite("meshfunction", &CellScalarMeshFunctionExpression::meshfunction);
+    }
+    """
+    return dolfin.CompiledExpression(dolfin.compile_cpp_code(cpp_code).CellScalarMeshFunctionExpression(),
+                                     meshfunction=f,
+                                     degree=0)
