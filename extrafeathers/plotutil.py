@@ -207,7 +207,7 @@ def make_mesh(cells: typing.List[typing.List[int]],
 
     `cells`:       Cell connectivity data as rank-2 `np.array`, one cell per row.
                    (This is the format returned by `all_cells`.)
-    `vertex_ids`:  Vertex numbers used by the `cells` array to refer to the vertices.
+    `dofs`:        Vertex numbers used by the `cells` array to refer to the vertices.
     `vertices`:    Vertex coordinates as rank-2 `np.array`, one vertex per row.
                    `vertices[k]` corresponds to `vertex_ids[k]`.
 
