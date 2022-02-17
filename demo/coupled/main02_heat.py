@@ -106,7 +106,7 @@ for n in range(nt):
 
     # Use the velocity field provided by the flow solver.
     #
-    # TODO: fix the one-step offset; right now we don't have an initial velocity field saved.
+    # Note this is the end-of-timestep velocity; right now we don't have an initial velocity field saved.
     #
     # We assume the same mesh and same global DOF numbering as in the saved data.
     # The data came from a `VectorFunctionSpace` on this mesh, and `solver.a` is also
