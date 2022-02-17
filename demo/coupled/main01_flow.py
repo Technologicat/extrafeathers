@@ -45,12 +45,11 @@ V = VectorFunctionSpace(mesh, 'P', 2)
 Q = FunctionSpace(mesh, 'P', 1)
 
 # Detect ymin/ymax for configuring inflow profile.
-# We detect from `Q` because it's P1 (no P2 to P1 conversion, fewer DOFs to look at; faster).
 with timer() as tim:
-    ignored_triangles, vtxs = plotutil.all_triangles(Q)
-    ignored_dofs, vtxs = plotutil.sort_vtxs(vtxs)
-    ymin = np.min(vtxs[:, 1])
-    ymax = np.max(vtxs[:, 1])
+    ignored_cells, nodes_dict = plotutil.all_cells(Q)
+    ignored_dofs, nodes_array = plotutil.nodes_to_array(nodes_dict)
+    ymin = np.min(nodes_array[:, 1])
+    ymax = np.max(nodes_array[:, 1])
 
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
