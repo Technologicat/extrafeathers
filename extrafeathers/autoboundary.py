@@ -87,6 +87,8 @@ def find_subdomain_boundaries(fullmesh: dolfin.Mesh,
     problems, but applicable to just CFD (computational fluid dynamics), too (by just discarding
     the mesh for the solid subdomain).
 
+    Serial mode only. (As of FEniCS 2019, `SubMesh` is not available in MPI mode anyway.)
+
     `submesh`: The submesh of `fullmesh` for which to produce the boundary-identifying `MeshFunction`.
 
     `fullmesh`: The full mesh that `submesh` is part of.
