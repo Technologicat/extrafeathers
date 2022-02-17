@@ -40,16 +40,20 @@ def my_cells(V: dolfin.FunctionSpace, *,
                                                       typing.Dict[int, typing.List[float]]]:
     """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {0: [x1, y1], ...}
 
-    Nodal (Lagrange) elements only. Note this returns all nodes, not just the mesh vertices;
-    so e.g. for P2 triangles, you'll get also the nodes at the midpoints of the edges.
+    Nodal (Lagrange) elements only. Note this returns all nodes, not just the mesh vertices.
+    For example, for P2 triangles, you'll get also the nodes at the midpoints of the edges.
 
-    This only sees the cells assigned to the current MPI process; the complete mesh is
-    the union of these cell sets from all processes. See `all_cells`, which automatically
+    This only sees the cells assigned to the current MPI process; the complete function space
+    is the union of these cell sets from all processes. See `all_cells`, which automatically
     combines the data from all MPI processes.
 
     `V`:             Scalar function space.
                        - 2D and 3D ok.
                        - `.sub(j)` of a vector/tensor function space ok.
+
+                     Note that if `V` uses degree 1 Lagrange elements, then the output `nodes`
+                     will be the vertices of the mesh. This can be useful for extracting
+                     mesh data for e.g. `matplotlib`.
 
     `matplotlibize`: If `True`, and `V` is a 2D triangulation, ensure that the cells in the
                      output list their vertices in an anticlockwise order, as required when
