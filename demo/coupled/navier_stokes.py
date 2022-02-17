@@ -32,6 +32,8 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     lhs, rhs, assemble, solve,
                     begin, end)
 
+from extrafeathers import autoboundary
+
 
 # TODO: Add support for resuming (use TimeSeries to store u_ and p_?)
 
@@ -150,6 +152,9 @@ class LaminarFlow:
         self.p_n = Function(Q)
         self.p_ = Function(Q)
 
+        # Local mesh size (for stabilization terms)
+        self.h = autoboundary.meshfunction_to_expression(autoboundary.meshsize(self.mesh))
+
         # Specific body force
         self.f = Function(V)
         self.f.vector()[:] = 0.0  # placeholder value
@@ -210,6 +215,9 @@ class LaminarFlow:
 
         # Specific body force
         f = self.f
+
+        # Local mesh size (for stabilization terms)
+        h = self.h
 
         # Wrap constant parameters in a Constant to allow changing the value without triggering a recompile
         ρ = Constant(self.ρ)
@@ -336,6 +344,12 @@ class LaminarFlow:
                        inner(σ(U, p_n, μ), ε(v)) * dx +
                        dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
                        ρ * dot(f, v) * dx)
+
+        # LSIC: Artificial diffusion for least-squares stabilization on the incompressibility constraint.
+        # Helps at high Reynolds numbers. See Donea & Huerta (2003, sec. 6.7.2).
+        τ_LSIC = (dot(u_n, u_n))**(1 / 2) * h / 2  # [m² / s], like a kinematic viscosity
+        F1_varying += τ_LSIC * div(U) * div(v) * dx
+
         self.a1_varying = lhs(F1_varying)
         self.a1_constant = lhs(F1_constant)
         self.L1 = rhs(F1_varying + F1_constant)  # RHS is reassembled at every timestep anyway
