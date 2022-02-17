@@ -271,6 +271,8 @@ def meshsize(mesh: dolfin.Mesh,
         dx = vtxpair[0] - vtxpair[1]
         return np.sqrt(np.sum(dx**2))
 
+    # TODO: dolfin::Cell.h() in the C++ API? Is that available in Python?
+    # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d2/d12/classdolfin_1_1Cell.html
     for entity in entities:
         edges = dolfin.edges(entity)
         vtxpairs = [vertices_as_array(edge) for edge in edges]
