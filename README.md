@@ -41,7 +41,7 @@ We demonstrate how to [import a Gmsh mesh](demo/import_gmsh.py) with subdomains 
      - Useful e.g. when splitting a mesh with subdomains. This function allows converting the `domain_parts` and `boundary_parts` from the full mesh onto each submesh. This allows saving the submeshes, along with their subdomain and boundary tags, as individual standalone meshes in separate HDF5 mesh files. See the `import_gmsh` demo. This is useful, because (as of FEniCS 2019) `SubMesh` is not supported when running in parallel.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
    - `meshsize` [**2D**, **3D**]
-     - Compute the local mesh size (the `h` in finite element literature), defined as the minimum edge length of each mesh entity. The result is returned as a `MeshFunction`.
+     - Compute the local mesh size (the `h` in finite element literature), defined as the maximum edge length of each mesh entity. The result is returned as a `MeshFunction`.
      - Can compute both cell and facet meshfunctions.
      - Useful for stabilization methods in CFD, where `h` typically appears in the stabilization term.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.

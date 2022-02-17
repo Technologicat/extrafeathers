@@ -275,6 +275,6 @@ def meshsize(mesh: dolfin.Mesh,
         edges = dolfin.edges(entity)
         vtxpairs = [vertices_as_array(edge) for edge in edges]
         edge_lengths = [euclidean_distance(vtxpair) for vtxpair in vtxpairs]
-        f[entity] = min(edge_lengths)
+        f[entity] = max(edge_lengths)
 
     return f
