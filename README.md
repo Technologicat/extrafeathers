@@ -31,7 +31,7 @@ We demonstrate how to [import a Gmsh mesh](demo/import_gmsh.py) with subdomains 
    - `write_hdf5_mesh` [**2D**, **3D**]
      - Write a mesh, and optionally its physical cell and facet data, in the same format as the output of `import_gmsh`.
  - **Mesh utilities**
-   - `find_subdomain_boundaries` [**2D**, **3D**]
+   - `find_subdomain_boundaries` [**2D**, **3D**] [**serial only**]
      - Automatically tag facets on internal boundaries between two subdomains. This makes it easier to respect [DRY](https://en.wikipedia.org/wiki/Don't_repeat_yourself) when setting up a small problem for testing, as the internal boundaries only need to be defined in one place (in the actual geometry).
      - Tag also facets belonging to an outer boundary of the domain, via a callback function (that you provide) that gives the tag number for a given facet. This allows easily producing one `MeshFunction` with tags for all boundaries.
      - Here *subdomain* means a `SubMesh`. These may result either from internal mesh generation via the `mshr` component of FEniCS, or from imported meshes. See the [`navier_stokes`](demo/navier_stokes.py) and [`import_gmsh`](demo/import_gmsh.py) demos for examples of both.
