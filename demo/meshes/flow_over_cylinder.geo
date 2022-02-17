@@ -61,7 +61,7 @@ Physical Surface("structure") = {12};  // The ID of this physical surface will b
 // https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
 Characteristic Length {6, 7, 8, 9} = 0.01;  // obstacle (cylinder) surface
 Characteristic Length {2, 1} = 0.02;        // inflow corners
-Characteristic Length {3, 4} = 0.1;         // outflow corners
+Characteristic Length {3, 4} = 0.08;         // outflow corners
 
 // Mesh.MeshSizeFromPoints = 0;
 // Mesh.MeshSizeFromCurvature = 0;
