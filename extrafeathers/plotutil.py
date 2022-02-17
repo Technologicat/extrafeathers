@@ -209,7 +209,7 @@ def make_mesh(cells: typing.List[typing.List[int]],
                    (This is the format returned by `all_cells`.)
     `dofs`:        Vertex numbers used by the `cells` array to refer to the vertices.
     `vertices`:    Vertex coordinates as rank-2 `np.array`, one vertex per row.
-                   `vertices[k]` corresponds to `vertex_ids[k]`.
+                   `vertices[k]` corresponds to vertex number `dofs[k]`.
 
     `distributed`:  Used when running in MPI mode:
 
