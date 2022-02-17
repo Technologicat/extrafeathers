@@ -53,7 +53,7 @@ with timer() as tim:
 
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
-    print(f"y ∈ [{ymin}, {ymax}].")
+    print(f"y ∈ [{ymin:0.6g}, {ymax:0.6g}].")
     print(f"Number of DOFs: velocity {V.dim()}, pressure {Q.dim()}, total {V.dim() + Q.dim()}")
 
 # Define boundary conditions
