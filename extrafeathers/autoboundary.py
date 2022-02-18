@@ -287,49 +287,50 @@ def meshsize(mesh: dolfin.Mesh,
     return f
 
 
+# Based on the tensor-weighted Poisson example. The API has changed once or twice; see the latest:
+#    https://bitbucket.org/fenics-project/dolfin/src/master/python/demo/documented/tensor-weighted-poisson/
+# See also:
+#   https://fenicsproject.org/olddocs/dolfin/latest/cpp/d1/d2e/classdolfin_1_1Expression.html
+#   https://fenicsproject.discourse.group/t/compiledsubdomain-using-c-class/918
+#   https://fenicsproject.org/olddocs/dolfin/latest/cpp/classes.html
+cpp_code = """
+#include <pybind11/pybind11.h>
+#include <pybind11/eigen.h>
+#include <math.h>
+namespace py = pybind11;
+
+#include <dolfin/function/Expression.h>
+#include <dolfin/mesh/MeshFunction.h>
+
+class CellMeshFunctionExpression : public dolfin::Expression
+{
+public:
+
+  virtual void eval(Eigen::Ref<Eigen::VectorXd> values,
+                    Eigen::Ref<const Eigen::VectorXd> x,
+                    const ufc::cell& cell) const override
+  {
+    values[0] = (*meshfunction)[cell.index];
+  }
+
+  std::shared_ptr<dolfin::MeshFunction<double>> meshfunction;
+};
+
+PYBIND11_MODULE(SIGNATURE, m)
+{
+  py::class_<CellMeshFunctionExpression, std::shared_ptr<CellMeshFunctionExpression>, dolfin::Expression>
+    (m, "CellMeshFunctionExpression")
+    .def(py::init<>())
+    .def_readwrite("meshfunction", &CellMeshFunctionExpression::meshfunction);
+}
+"""
+_compiled_cpp_code = dolfin.compile_cpp_code(cpp_code)
+
 def cell_meshfunction_to_expression(f: dolfin.MeshFunction):
     """Convert a scalar double `MeshFunction` on cells to a `CompiledExpression` for use in UFL forms.
 
     This convenience function mainly exists to document how it's done in FEniCS 2019.
-
-    Based on the tensor-weighted Poisson example:
-         https://bitbucket.org/fenics-project/dolfin/src/master/python/demo/documented/tensor-weighted-poisson/demo_tensor-weighted-poisson.py
     """
-    # See also:
-    #   https://fenicsproject.discourse.group/t/compiledsubdomain-using-c-class/918
-    #   https://fenicsproject.org/olddocs/dolfin/latest/cpp/classes.html
-    #   https://fenicsproject.org/olddocs/dolfin/latest/cpp/d1/d2e/classdolfin_1_1Expression.html
-    cpp_code = """
-    #include <pybind11/pybind11.h>
-    #include <pybind11/eigen.h>
-    #include <math.h>
-    namespace py = pybind11;
-
-    #include <dolfin/function/Expression.h>
-    #include <dolfin/mesh/MeshFunction.h>
-
-    class CellMeshFunctionExpression : public dolfin::Expression
-    {
-    public:
-
-      virtual void eval(Eigen::Ref<Eigen::VectorXd> values,
-                        Eigen::Ref<const Eigen::VectorXd> x,
-                        const ufc::cell& cell) const override
-      {
-        values[0] = (*meshfunction)[cell.index];
-      }
-
-      std::shared_ptr<dolfin::MeshFunction<double>> meshfunction;
-    };
-
-    PYBIND11_MODULE(SIGNATURE, m)
-    {
-      py::class_<CellMeshFunctionExpression, std::shared_ptr<CellMeshFunctionExpression>, dolfin::Expression>
-        (m, "CellMeshFunctionExpression")
-        .def(py::init<>())
-        .def_readwrite("meshfunction", &CellMeshFunctionExpression::meshfunction);
-    }
-    """
-    return dolfin.CompiledExpression(dolfin.compile_cpp_code(cpp_code).CellMeshFunctionExpression(),
+    return dolfin.CompiledExpression(_compiled_cpp_code.CellMeshFunctionExpression(),
                                      meshfunction=f,
                                      degree=0)
