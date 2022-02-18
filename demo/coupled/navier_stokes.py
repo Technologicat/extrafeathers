@@ -375,6 +375,9 @@ class LaminarFlow:
             return ρ * (dudt + adv(U_)) - div(σ(U_, p_n, μ)) - ρ * f
         # Adapted from Donea & Huerta, sec. 5.4.6.4.
         #   - Relative scalings of the `v` and `adv(v)` terms are important.
+        #   - Computing the residual at the final (unknown) value of `u` seems to stabilize better
+        #     than being consistent and computing it at the midpoint of the timestep, despite the
+        #     θ time discretization.
         F1_SUPG = enable_SUPG * τ_SUPG * dot(v + dt * adv(v), R(u)) * dx
         F1_varying += F1_SUPG
 
