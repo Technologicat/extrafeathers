@@ -13,7 +13,7 @@ We also provide some utility functions on meshes:
 """
 
 __all__ = ["find_subdomain_boundaries", "specialize_meshfunction",
-           "meshsize", "meshfunction_to_expression"]
+           "meshsize", "cell_meshfunction_to_expression"]
 
 import typing
 
@@ -306,7 +306,7 @@ def cell_meshfunction_to_expression(f: dolfin.MeshFunction):
     #include <dolfin/function/Expression.h>
     #include <dolfin/mesh/MeshFunction.h>
 
-    class CellScalarMeshFunctionExpression : public dolfin::Expression
+    class CellMeshFunctionExpression : public dolfin::Expression
     {
     public:
 
@@ -322,12 +322,12 @@ def cell_meshfunction_to_expression(f: dolfin.MeshFunction):
 
     PYBIND11_MODULE(SIGNATURE, m)
     {
-      py::class_<CellScalarMeshFunctionExpression, std::shared_ptr<CellScalarMeshFunctionExpression>, dolfin::Expression>
-        (m, "CellScalarMeshFunctionExpression")
+      py::class_<CellMeshFunctionExpression, std::shared_ptr<CellMeshFunctionExpression>, dolfin::Expression>
+        (m, "CellMeshFunctionExpression")
         .def(py::init<>())
-        .def_readwrite("meshfunction", &CellScalarMeshFunctionExpression::meshfunction);
+        .def_readwrite("meshfunction", &CellMeshFunctionExpression::meshfunction);
     }
     """
-    return dolfin.CompiledExpression(dolfin.compile_cpp_code(cpp_code).CellScalarMeshFunctionExpression(),
+    return dolfin.CompiledExpression(dolfin.compile_cpp_code(cpp_code).CellMeshFunctionExpression(),
                                      meshfunction=f,
                                      degree=0)

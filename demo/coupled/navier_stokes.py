@@ -153,7 +153,7 @@ class LaminarFlow:
         self.p_ = Function(Q)
 
         # Local mesh size (for stabilization terms)
-        self.h = autoboundary.meshfunction_to_expression(autoboundary.meshsize(self.mesh))
+        self.h = autoboundary.cell_meshfunction_to_expression(autoboundary.meshsize(self.mesh))
 
         # Specific body force
         self.f = Function(V)
