@@ -276,7 +276,9 @@ class LaminarFlow:
         #   (a·∇) u
         # by the modified term
         #   (a·∇) u  +  (1/2) (∇·a) u
-        # This is consistent for an incompressible flow, and necessary for unconditional time stability.
+        # This is consistent for an incompressible flow, and necessary for unconditional time stability
+        # for schemes that are able to provide it. (Implicit midpoint rule doesn't, but the skew-symmetric
+        # form still helps with stability at moderate Reynolds numbers, in the low hundreds.)
         #
         # To see this equivalence, consider the conversion of the modified term into weak form:
         #    (a·∇) u · v dx  +  (1/2) (∇·a) u · v dx
@@ -338,6 +340,14 @@ class LaminarFlow:
         #  - In the convection term, we have the product of `u_n` and `u`. This is an LHS term that
         #    depends on time-varying data.
         #  - In the stress term, `u` and `p_n` appear in different terms of the sum.
+        #
+        # Units of the weak form?
+        #   [ρ ∂u/∂t v dx] = (kg / m³) * ((m / s) / s) * (m / s) * m³
+        #                  = (kg m / s²) m / s
+        #                  = N m / s
+        #                  = J / s
+        #                  = W
+        # so each term in the weak form momentum equation (in 3D) represents a virtual power.
         F1_varying = (ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) -
                                      dot(dot(a, nabla_grad(v)), ustar)) * dx +
                       ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds)
@@ -347,37 +357,60 @@ class LaminarFlow:
                        ρ * dot(f, v) * dx)
 
         # LSIC: Artificial diffusion for least-squares stabilization on the incompressibility constraint.
-        # Helps at high Reynolds numbers. See Donea & Huerta (2003, sec. 6.7.2).
+        #
+        # Consistent. Helps stability at moderate to high Reynolds numbers.
+        #
+        # See Donea & Huerta (2003, sec. 6.7.2).
         τ_LSIC = (dot(u_n, u_n))**(1 / 2) * h / 2  # [τ_LSIC] = (m / s) * m = m² / s,  like a kinematic viscosity
+        # Units? Doesn't seem to make sense:
+        #   [div(U) div(v) dx] = (1 / s) (1 / s) m³ = (m / s)² m = (N / kg) m²
+        # Interpretation?
+        #   ∂k ((∂i ui) vk) = (∂i ui) (∂k vk) + (∂k ∂i ui) vk
+        # which is to say
+        #   ∇·((∇·u) v) = (∇·u) (∇·v) + v · (∇ (∇·u))
+        # so integrating by parts (divergence theorem)
+        #   ∫ (∇·u) (∇·v) dΩ = ∫ n·((∇·u) v) dΓ - ∫ v · (∇ (∇·u)) dΩ
+        # so this is in effect penalizing `grad(div(u))` in the direction of `v`.
+        # Note also that  div(u) * div(u) * dx  is the (squared) H(div)-seminorm of `u`,
+        # and we are looking for a divergence-free `u`.
         F1_LSIC = τ_LSIC * div(U) * div(v) * dx
         F1_varying += F1_LSIC
 
         # SUPG: streamline upwinding Petrov-Galerkin.
         #
-        # Residual-based, consistent. Helps in advection-dominated flows, and allows using
-        # LBB-incompatible function spaces for velocity and pressure. See Donea & Huerta (2003, sec. 6.5.8).
+        # Residual-based, consistent. Helps at high Reynolds numbers, and allows using
+        # LBB-incompatible function spaces for velocity and pressure. Note, however,
+        # that to actually use incompatible spaces, the pressure equation needs to be
+        # stabilized, too.
         #
-        # The residual is evaluated elementwise in strong form.
+        # TODO: implement also PSPG: pressure-stabilizing Petrov-Galerkin.
+        #
+        # See Donea & Huerta (2003, sec. 6.5.8).
 
-        # Stabilizer on/off switch;  b: float, use 0.0 or 1.0
-        # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is a `LaminarFlow` instance.
+        # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
+        # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is your `LaminarFlow` instance.
         enable_SUPG = Expression('b', degree=0, b=0.0)
 
         # α0 = Constant(1 / 3)  # Dones & Huerta, p. 288: "α₀ = 1 / 3 appears to be optimal for linear elements"
         α0 = Constant(1)
         τ_SUPG = α0 * h**2 / (4 * (μ / ρ))  # [τ_SUPG] = 1 * m² / (m² / s) = s
         self.enable_SUPG = enable_SUPG
-        def adv(U_):  # strong form of the modified advection operator with skew-symmetric weak form
+        def adv(U_):  # strong form of the modified advection operator that yields the skew-symmetric weak form
             # To be consistent, we use the same advection velocity `a` as the step 1 equation itself.
             return dot(a, nabla_grad(U_)) + (1 / 2) * div(a) * U_
         def R(U_):
+            # The residual is evaluated elementwise in strong form.
             # To be consistent, we use `p_n` just like the step 1 equation itself.
             return ρ * (dudt + adv(U_)) - div(σ(U_, p_n, μ)) - ρ * f
         # Adapted from Donea & Huerta, sec. 5.4.6.4.
-        #   - Relative scalings of the `v` and `adv(v)` terms are important.
-        #   - Computing the residual at the final (unknown) value of `u` seems to stabilize better
-        #     than being consistent and computing it at the midpoint of the timestep, despite the
-        #     θ time discretization.
+        #   - The `v` term (Galerkin penalization of the residual) is important; without it
+        #     (pure classical SUPG), the simulation fails to converge at high Re (thousands).
+        #   - The relative scalings of the `v` and `adv(v)` terms are important.
+        #   - Note both `v` and `dt * adv(v)` have the units of velocity. This makes the
+        #     product with the residual, integrated over Ω, into a virtual power.
+        #   - Computing the residual at the final (unknown) value of `u` seems to make the scheme
+        #     more stable than being consistent and computing it at the midpoint of the timestep,
+        #     despite the θ time integration.
         F1_SUPG = enable_SUPG * τ_SUPG * dot(v + dt * adv(v), R(u)) * dx
         F1_varying += F1_SUPG
 
