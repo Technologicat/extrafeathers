@@ -184,19 +184,20 @@ solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 # that takes the data from the P2 function space DOFs to the corresponding P1
 # function space DOFs.
 #
-if my_rank == 0:
-    print("Preparing export of P2 data as refined P1...")
-with timer() as tim:
-    export_mesh = plotutil.midpoint_refine(mesh)
-    W = VectorFunctionSpace(export_mesh, 'P', 1)
-    w = Function(W)
-    VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
-    all_V_dofs = np.array(range(V.dim()), "intc")
-    u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-    my_W_dofs = W.dofmap().dofs()  # MPI-local
-    my_V_dofs = WtoV[my_W_dofs]  # MPI-local
-if my_rank == 0:
-    print(f"Preparation complete in {tim.dt:0.6g} seconds.")
+if V.ufl_element().degree() == 2:
+    if my_rank == 0:
+        print("Preparing export of P2 data as refined P1...")
+    with timer() as tim:
+        export_mesh = plotutil.midpoint_refine(mesh)
+        W = VectorFunctionSpace(export_mesh, 'P', 1)
+        w = Function(W)
+        VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
+        all_V_dofs = np.array(range(V.dim()), "intc")
+        u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+        my_W_dofs = W.dofmap().dofs()  # MPI-local
+        my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+    if my_rank == 0:
+        print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 # Time-stepping
 t = 0
@@ -220,30 +221,33 @@ for n in range(nt):
 
     begin("Saving")
 
-    # Save the velocity visualization at full nodal resolution (we have a P2 space!).
-    #
-    # HACK: What we want to do:
-    #
-    #   w.assign(interpolate(solver.u_, W))
-    #
-    # In MPI mode, the problem is that the DOFs of V and W partition differently,
-    # so each MPI process has no access to some of the `solver.u_` data it needs
-    # to construct its part of `w`.
-    #
-    # One option would be to make a separate serial postprocess script
-    # that loads `u_` from the timeseries file (on the original P2 space;
-    # now not partitioned because serial mode), performs this interpolation,
-    # and generates the visualization file.
-    #
-    # But using the DOF mappings defined above, we can generate the visualization
-    # right now, in MPI mode. We allgather the DOFs of the solution on V, and then
-    # remap them onto the corresponding DOFS on W:
-    solver.u_.vector().gather(u_copy, all_V_dofs)
-    w.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
-    # Now `w` is a refined P1 representation of the velocity field.
+    if V.ufl_element().degree() == 2:
+        # Save the velocity visualization at full nodal resolution (we have a P2 space!).
+        #
+        # HACK: What we want to do:
+        #
+        #   w.assign(interpolate(solver.u_, W))
+        #
+        # In MPI mode, the problem is that the DOFs of V and W partition differently,
+        # so each MPI process has no access to some of the `solver.u_` data it needs
+        # to construct its part of `w`.
+        #
+        # One option would be to make a separate serial postprocess script
+        # that loads `u_` from the timeseries file (on the original P2 space;
+        # now not partitioned because serial mode), performs this interpolation,
+        # and generates the visualization file.
+        #
+        # But using the DOF mappings defined above, we can generate the visualization
+        # right now, in MPI mode. We allgather the DOFs of the solution on V, and then
+        # remap them onto the corresponding DOFS on W:
+        solver.u_.vector().gather(u_copy, all_V_dofs)
+        w.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        # Now `w` is a refined P1 representation of the velocity field.
 
-    # TODO: refactor access to u_, p_?
-    xdmffile_u.write(w, t)
+        # TODO: refactor access to u_, p_?
+        xdmffile_u.write(w, t)
+    else:  # save at P1 resolution
+        xdmffile_u.write(solver.u_, t)
     xdmffile_p.write(solver.p_, t)
     timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original P2 data
     timeseries_p.store(solver.p_.vector(), t)
