@@ -34,6 +34,10 @@ dt = T / nt        # timestep size [s]
 # --------------------------------------------------------------------------------
 # Mesh
 
+# Characteristic length scale for computing the Reynolds number.
+# For flow over a cylinder, this is the diameter of the cylinder.
+L = 0.1
+
 # These ID numbers must match the numbering in the .msh file (see the .geo file)
 # so that the Gmsh-imported mesh works as expected, too.
 class Boundaries(IntEnum):

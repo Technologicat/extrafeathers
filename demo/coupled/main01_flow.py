@@ -25,7 +25,7 @@ from extrafeathers import plotutil
 
 from .navier_stokes import LaminarFlow
 from .config import (rho, mu, dt, nt,
-                     Boundaries,
+                     Boundaries, L,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
                      vis_p_filename, sol_p_filename)
@@ -207,7 +207,6 @@ for n in range(nt):
     maxu_global = MPI.comm_world.allgather(maxu_local)
     maxu_str = ", ".join(f"{maxu:0.6g}" for maxu in maxu_global)
 
-    L = 0.1  # for flow over cylinder
     Re = solver.ρ * max(maxu_global) * L / solver.μ
     msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; Re = {Re:0.2g}; max(u) = {maxu_str}; wall time {est.formatted_eta}"
     begin(msg)
