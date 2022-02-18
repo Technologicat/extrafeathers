@@ -45,6 +45,9 @@ We demonstrate how to [import a Gmsh mesh](demo/import_gmsh.py) with subdomains 
      - Can compute both cell and facet meshfunctions.
      - Useful for stabilization methods in CFD, where `h` typically appears in the stabilization term.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
+   - `cell_meshfunction_to_expression` [**2D**, **3D**]
+     - Convert a scalar `double` `MeshFunction` into a `CompiledExpression` that can be used in UFL forms.
+     - For example, `h = cell_meshfunction_to_expression(meshsize(mesh))`.
    - `midpoint_refine` [**2D**], `P2_to_refined_P1` [**2D**]
      - Prepare Lagrange P2 (quadratic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization.
        - Essentially, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
