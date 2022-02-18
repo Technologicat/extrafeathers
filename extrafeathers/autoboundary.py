@@ -209,6 +209,8 @@ def specialize_meshfunction(f: dolfin.MeshFunction,
     `submesh` must be a `SubMesh` of `f.mesh()`.
 
     Supports cell and facet meshfunctions.
+
+    Serial mode only.
     """
     fullmesh = f.mesh()
     dim = fullmesh.topology().dim()
