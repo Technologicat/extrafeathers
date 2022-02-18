@@ -348,28 +348,33 @@ class LaminarFlow:
 
         # LSIC: Artificial diffusion for least-squares stabilization on the incompressibility constraint.
         # Helps at high Reynolds numbers. See Donea & Huerta (2003, sec. 6.7.2).
-        τ_LSIC = (dot(u_n, u_n))**(1 / 2) * h / 2  # [m² / s], like a kinematic viscosity
+        τ_LSIC = (dot(u_n, u_n))**(1 / 2) * h / 2  # [τ_LSIC] = (m / s) * m = m² / s,  like a kinematic viscosity
         F1_LSIC = τ_LSIC * div(U) * div(v) * dx
         F1_varying += F1_LSIC
 
-        # SUPG, PSPG: streamline upwinding Petrov-Galerkin, pressure-stabilizing Petrov-Galerkin.
+        # SUPG: streamline upwinding Petrov-Galerkin.
+        #
         # Residual-based, consistent. Helps in advection-dominated flows, and allows using
         # LBB-incompatible function spaces for velocity and pressure. See Donea & Huerta (2003, sec. 6.5.8).
         #
         # The residual is evaluated elementwise in strong form.
 
-        enable_SUPG = Expression('b', degree=0, b=0.0)  # stabilizer on/off switch;  b: float, use 0.0 or 1.0
+        # Stabilizer on/off switch;  b: float, use 0.0 or 1.0
+        # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is a `LaminarFlow` instance.
+        enable_SUPG = Expression('b', degree=0, b=0.0)
 
         # α0 = Constant(1 / 3)  # Dones & Huerta, p. 288: "α₀ = 1 / 3 appears to be optimal for linear elements"
         α0 = Constant(1)
-        τ_SUPG = α0 * h**2 / (4 * (μ / ρ))  # why no `/ dt`?
-        # τ_PSPG = τ_SUPG
+        τ_SUPG = α0 * h**2 / (4 * (μ / ρ))  # [τ_SUPG] = 1 * m² / (m² / s) = s
         self.enable_SUPG = enable_SUPG
-        def adv(U_):
+        def adv(U_):  # strong form of the modified advection operator with skew-symmetric weak form
+            # To be consistent, we use the same advection velocity `a` as the step 1 equation itself.
             return dot(a, nabla_grad(U_)) + (1 / 2) * div(a) * U_
         def R(U_):
+            # To be consistent, we use `p_n` just like the step 1 equation itself.
             return ρ * (dudt + adv(U_)) - div(σ(U_, p_n, μ)) - ρ * f
-        # adapted from Donea & Huerta, sec. 5.4.6.4
+        # Adapted from Donea & Huerta, sec. 5.4.6.4.
+        #   - Relative scalings of the `v` and `adv(v)` terms are important.
         F1_SUPG = enable_SUPG * τ_SUPG * dot(v + dt * adv(v), R(u)) * dx
         F1_varying += F1_SUPG
 
