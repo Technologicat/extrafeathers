@@ -285,8 +285,8 @@ def meshsize(mesh: dolfin.Mesh,
     return f
 
 
-def meshfunction_to_expression(f: dolfin.MeshFunction):
-    """Convert a scalar double `MeshFunction` to a `CompiledExpression` for use in UFL forms.
+def cell_meshfunction_to_expression(f: dolfin.MeshFunction):
+    """Convert a scalar double `MeshFunction` on cells to a `CompiledExpression` for use in UFL forms.
 
     This convenience function mainly exists to document how it's done in FEniCS 2019.
 
