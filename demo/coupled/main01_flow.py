@@ -212,6 +212,9 @@ for n in range(nt):
     # Update current time
     t += dt
 
+    if n == 50:
+        solver.enable_SUPG.b = 1.0
+
     # Solve one timestep
     solver.step()
 
