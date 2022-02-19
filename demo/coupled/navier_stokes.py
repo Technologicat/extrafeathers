@@ -406,6 +406,8 @@ class LaminarFlow:
         #   - The relative scalings of the `v` and `adv(v)` terms are important.
         #   - Note both `v` and `dt * adv(v)` have the units of velocity. This makes the
         #     product with the residual, integrated over Ω, into a virtual power.
+        #   - Another way to view this is that `adv(...)` has the unit 1/s, so `adv(v)`
+        #     must be multiplied by a time to have the same unit as the `v` term.
         #   - Computing the residual at the final (unknown) value of `u` seems to make the scheme
         #     more stable than being consistent and computing it at the midpoint of the timestep,
         #     despite the θ time integration.
