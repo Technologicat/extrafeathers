@@ -48,12 +48,14 @@ Q = FunctionSpace(mesh, 'P', 1)
 with timer() as tim:
     ignored_cells, nodes_dict = plotutil.all_cells(Q)
     ignored_dofs, nodes_array = plotutil.nodes_to_array(nodes_dict)
+    xmin = np.min(nodes_array[:, 0])
+    xmax = np.max(nodes_array[:, 0])
     ymin = np.min(nodes_array[:, 1])
     ymax = np.max(nodes_array[:, 1])
 
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
-    print(f"y ∈ [{ymin:0.6g}, {ymax:0.6g}].")
+    print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}], y ∈ [{ymin:0.6g}, {ymax:0.6g}].")
     print(f"Number of DOFs: velocity {V.dim()}, pressure {Q.dim()}, total {V.dim() + Q.dim()}")
 
 # Define boundary conditions
@@ -199,6 +201,9 @@ if V.ufl_element().degree() == 2:
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
+# Reynolds number
+Re = solver.ρ * inflow_max * L / solver.μ
+
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
@@ -207,7 +212,6 @@ for n in range(nt):
     maxu_global = MPI.comm_world.allgather(maxu_local)
     maxu_str = ", ".join(f"{maxu:0.6g}" for maxu in maxu_global)
 
-    Re = solver.ρ * max(maxu_global) * L / solver.μ
     msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; Re = {Re:0.2g}; max(u) = {maxu_str}; wall time {est.formatted_eta}"
     begin(msg)
 
