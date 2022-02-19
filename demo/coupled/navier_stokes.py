@@ -362,8 +362,6 @@ class LaminarFlow:
         #
         # See Donea & Huerta (2003, sec. 6.7.2).
         τ_LSIC = (dot(u_n, u_n))**(1 / 2) * h / 2  # [τ_LSIC] = (m / s) * m = m² / s,  like a kinematic viscosity
-        # Units? Doesn't seem to make sense:
-        #   [div(U) div(v) dx] = (1 / s) (1 / s) m³ = (m / s)² m = (N / kg) m²
         # Interpretation?
         #   ∂k ((∂i ui) vk) = (∂i ui) (∂k vk) + (∂k ∂i ui) vk
         # which is to say
@@ -371,8 +369,8 @@ class LaminarFlow:
         # so integrating by parts (divergence theorem)
         #   ∫ (∇·u) (∇·v) dΩ = ∫ n·((∇·u) v) dΓ - ∫ v · (∇ (∇·u)) dΩ
         # so this is in effect penalizing `grad(div(u))` in the direction of `v`.
-        # Note also that  div(u) * div(u) * dx  is the (squared) H(div)-seminorm of `u`,
-        # and we are looking for a divergence-free `u`.
+        # Note [grad(div(u))] = (1 / m²) (m / s) = 1 / (m s)
+        # so [τ_LSIC grad(div(u))] = m / s²,  an acceleration; this matches the other terms of the strong form.
         F1_LSIC = τ_LSIC * div(U) * div(v) * dx
         F1_varying += F1_LSIC
 
