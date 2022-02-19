@@ -389,9 +389,14 @@ class LaminarFlow:
         # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is your `LaminarFlow` instance.
         enable_SUPG = Expression('b', degree=0, b=0.0)
 
+        # [μ] / [ρ] = (Pa s) / (kg / m³)
+        #           = (N s / m²) / (kg / m³)
+        #           = (kg m s / (m² s²)) / (kg / m³)
+        #           = (kg / (m s)) * m³ / kg
+        #           = m² / s,  kinematic viscosity
         # α0 = Constant(1 / 3)  # Dones & Huerta, p. 288: "α₀ = 1 / 3 appears to be optimal for linear elements"
         α0 = Constant(1)
-        τ_SUPG = α0 * h**2 / (4 * (μ / ρ))  # [τ_SUPG] = 1 * m² / (m² / s) = s
+        τ_SUPG = α0 * (h**2 / dt) / (4 * (μ / ρ))  # nondimensional
         self.enable_SUPG = enable_SUPG
         def adv(U_):  # strong form of the modified advection operator that yields the skew-symmetric weak form
             # To be consistent, we use the same advection velocity `a` as the step 1 equation itself.
