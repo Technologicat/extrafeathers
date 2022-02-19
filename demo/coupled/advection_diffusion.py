@@ -158,6 +158,7 @@ class AdvectionDiffusion:
         self._θ = θ
         self.compile_forms()
 
+    # TODO: should have the `Constant` instance at this level, to make it settable without recompiling forms.
     def _set_ρ(self, ρ: float) -> None:
         self._ρ = ρ
         self.compile_forms()
