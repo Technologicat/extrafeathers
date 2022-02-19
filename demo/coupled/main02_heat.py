@@ -105,6 +105,9 @@ for n in range(nt):
     # Update current time
     t += dt
 
+    if n == 50:
+        solver.enable_SUPG.b = 1.0
+
     # Use the velocity field provided by the flow solver.
     #
     # Note this is the end-of-timestep velocity; right now we don't have an initial velocity field saved.
