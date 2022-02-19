@@ -36,12 +36,14 @@ __all__ = ["AdvectionDiffusion"]
 import typing
 
 from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
-                    Function, TrialFunction, TestFunction,
+                    Function, TrialFunction, TestFunction, Expression,
                     Constant, FacetNormal,
                     dot, inner, nabla_grad, div, dx, ds,
                     lhs, rhs, assemble, solve,
                     begin, end)
 import ufl
+
+from extrafeathers import autoboundary
 
 
 ScalarOrTensor = typing.Union[float,
@@ -127,6 +129,9 @@ class AdvectionDiffusion:
         self.u_n = Function(V)  # suffix _n: the old value (end of previous timestep)
         self.u_ = Function(V)  # suffix _: the latest computed value
 
+        # Local mesh size (for stabilization terms)
+        self.he = autoboundary.cell_meshfunction_to_expression(autoboundary.meshsize(self.mesh))
+
         # Specific heat source
         self.h = Function(V)
         self.h.vector()[:] = 0.0  # placeholder value
@@ -211,6 +216,9 @@ class AdvectionDiffusion:
         # Stress
         σ = self.σ
 
+        # Local mesh size (for stabilization terms)
+        he = self.he
+
         # Wrap constant parameters in a Constant to allow changing the value without triggering a recompile
         ρ = Constant(self.ρ)
         c = Constant(self.c)
@@ -263,6 +271,46 @@ class AdvectionDiffusion:
 
         if self.use_stress and self.advection != "off":
             F += -inner(σ, nabla_grad(a)) * v * dx
+
+        # SUPG: streamline upwinding Petrov-Galerkin.
+        #
+        # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
+        # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is your `AdvectionDiffusion` instance.
+        enable_SUPG = Expression('b', degree=0, b=0.0)
+
+        # [k] / ([ρ] [c]) = m² / s,  a (thermal) kinematic viscosity
+        α0 = Constant(1)
+        τ_SUPG = α0 * (he**2 / dt) / (4 * (k / (ρ * c)))  # nondimensional
+        self.enable_SUPG = enable_SUPG
+
+        # We need the strong form of the equation to compute the residual
+        if self.advection == "divergence-free":
+            def adv(U_):  # strong form of the modified advection operator that yields the skew-symmetric weak form
+                return dot(a, nabla_grad(U_)) + (1 / 2) * div(a) * U_
+        elif self.advection == "general":
+            def adv(U_):
+                # here the modifications cancel in the strong form
+                return dot(a, nabla_grad(U_))
+        else:  # self.advection == "off":
+            adv = None
+
+        # SUPG only makes sense if advection is enabled
+        if adv:
+            if istensor(self._k):
+                def diffusion(U_):
+                    return div(dot(k, nabla_grad(U_)))
+            else:
+                def diffusion(U_):
+                    return div(k * nabla_grad(U_))
+
+            def R(U_):
+                # The residual is evaluated elementwise in strong form.
+                residual = ρ * c * (dudt + adv(U_)) - diffusion(U_) - ρ * h
+                if self.use_stress:
+                    residual += -inner(σ, nabla_grad(a))
+                return residual
+            F_SUPG = enable_SUPG * τ_SUPG * dot(v + dt * adv(v), R(u)) * dx
+            F += F_SUPG
 
         self.aform = lhs(F)
         self.Lform = rhs(F)
