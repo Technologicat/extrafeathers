@@ -416,6 +416,31 @@ class LaminarFlow:
         #   - Computing the residual at the final (unknown) value of `u` seems to make the scheme
         #     more stable than being consistent and computing it at the midpoint of the timestep,
         #     despite the θ time integration.
+        #
+        # Interpretation? Observe that for vector `a` and scalar `w`,
+        #   ∇·(a w) = ∂i (ai w) = (∂i ai) w + ai ∂i w = (∇·a) w + (a·∇)w
+        #
+        # If `u` and `v` are scalars, and `L` a scalar differential operator
+        # (e.g. in the advection-diffusion equation):
+        #   w := L(u) v
+        #   ∇·(a L(u) v) = (∇·a) (L(u) v) + (a·∇) (L(u) v)
+        #                 = (∇·a) (L(u) v) + ((a·∇) L(u)) v + L(u) (a·∇)v
+        # ⇒
+        #   ∫ L(u) (a·∇)v dΩ = ∫ (n·a) (L(u) v) dΓ - ∫ (∇·a) (L(u) v) dΩ - ∫ ((a·∇) L(u)) v dΩ
+        #   ∫ ((a·∇)v) L(u) dΩ = ∫ (n·a) (L(u) v) dΓ - ∫ (∇·a) (L(u) v) dΩ - ∫ v ((a·∇) L(u)) dΩ
+        #
+        # If `u` and `v` are vectors, and `L` a scalar differential operator
+        # (e.g. in the Navier-Stokes momentum equation):
+        #   w := L(u) · v
+        #   ∇·(a (L(u) · v)) = (∇·a) (L(u)·v) + (a·∇) (L(u)·v)
+        #                    = (∇·a) (L(u)·v) + (ai ∂i) (L(u)k vk)
+        #                    = (∇·a) (L(u)·v) + ai (∂i L(u)k) vk + ai (L(u)k) (∂i vk)
+        #                    = (∇·a) (L(u)·v) + ai (∂i L(u)k) vk + ai (∂i vk) (L(u)k)
+        #                    = (∇·a) (L(u)·v) + a·(∇L(u))·v + (a·∇v)·L(u)
+        # ⇒
+        #   ∫ (a·∇v)·L(u) dΩ = ∫ (n·a) (L(u)·v) dΓ - ∫ (∇·a) (L(u)·v) dΩ - ∫ a·(∇L(u))·v dΩ
+        #   ∫ ((a·∇)v)·L(u) dΩ = ∫ (n·a) (L(u)·v) dΓ - ∫ (∇·a) (L(u)·v) dΩ - ∫ v·((a·∇)L(u)) dΩ
+        #
         F1_SUPG = enable_SUPG * τ_SUPG * dot(v + dt * adv(v), R(u)) * dx
         F1_varying += F1_SUPG
 
