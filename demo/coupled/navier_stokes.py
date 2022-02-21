@@ -288,8 +288,7 @@ class LaminarFlow:
         # by the modified term
         #   (a·∇) u  +  (1/2) (∇·a) u
         # This is consistent for an incompressible flow, and necessary for unconditional time stability
-        # for schemes that are able to provide it. (Implicit midpoint rule doesn't, but the skew-symmetric
-        # form still helps with stability at moderate Reynolds numbers, in the low hundreds.)
+        # for schemes that are able to provide it.
         #
         # To see this equivalence, consider the conversion of the modified term into weak form:
         #    (a·∇) u · v dx  +  (1/2) (∇·a) u · v dx
