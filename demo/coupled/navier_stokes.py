@@ -29,7 +29,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     dot, inner, sym,
                     nabla_grad, div, dx, ds,
                     Identity,
-                    lhs, rhs, assemble, solve,
+                    lhs, rhs, assemble, solve, project,
                     begin, end)
 
 from extrafeathers import autoboundary
@@ -139,6 +139,9 @@ class LaminarFlow:
         self.Q = Q
         self.bcu = bcu
         self.bcp = bcp
+
+        # Function space of reals (single global DOF), for computing the average pressure
+        self.W = FunctionSpace(self.mesh, "R", 0)
 
         # Trial and test functions
         self.u = TrialFunction(V)  # no suffix: the UFL symbol for the unknown quantity
@@ -483,12 +486,10 @@ class LaminarFlow:
         #
         #   Hans Petter Langtangen, Anders Logg (2016). Solving PDEs in Python: The FEniCS Tutorial 1.
         #   Simula Springer Briefs on Computing 3.
-        #
-        # TODO: If there are no Dirichlet BCs on p, we need to do something here to solve the
-        # TODO: Poisson problem with pure-Neumann BCs. One possibility is to use a Lagrange multiplier.
-        #
-        # TODO: Or we could just do nothing and rely on the fact that the Krylov solvers used by FEniCS
-        # TODO: can handle singular systems natively.
+
+        # When there are no Dirichlet BCs on p, we just rely on the fact that the Krylov solvers
+        # used by FEniCS can handle singular systems natively. We will postprocess to zero out
+        # the average pressure (to make the pressure always unique).
         # https://fenicsproject.org/olddocs/dolfin/latest/python/demos/neumann-poisson/demo_neumann-poisson.py.html
         # https://fenicsproject.org/qa/2406/solve-poisson-problem-with-neumann-bc/
         #
@@ -537,6 +538,20 @@ class LaminarFlow:
         [bc.apply(b2) for bc in self.bcp]
         solve(A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
         end()
+
+        # Step 2½: Zero out the average pressure.
+        #
+        # Shifting `p` by a constant does not matter as far as the momentum equation is concerned.
+        # We L2-project `p` onto ℝ, and then subtract the result, hence making the mean zero.
+        #
+        # This makes for a nicer-looking visualization, as well as defines the pressure uniquely
+        # even if we have only Neumann BCs on pressure.
+        #
+        # How to extract the single value of a `Function` on Reals (single global DOF) is not
+        # documented very well. See the source code of `dolfin.Function`, it has a `__float__` method.
+        # The sanity checks indicate it is intended precisely for this.
+        avgp = project(self.p_, self.W)  # L2-project onto reals (i.e. just integrate `p` over Ω)
+        self.p_.vector()[:] -= float(avgp)
 
         # Step 3: Velocity correction step
         begin("Velocity correction")
