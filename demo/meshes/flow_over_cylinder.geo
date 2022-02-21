@@ -1,10 +1,62 @@
 // Gmsh 2.16.0 geometry file
 
+// // For low Reynolds number flows (1e2)
+//
+// // Keep in mind that the problem is highly diffusive; don't make the smallest
+// // element size too small, or be prepared to face the wrath of parabolic partial
+// // differential equations (Δt ∝ h²).
+//
+// xmax = 2.2;
+// elsize_inflow = 0.02;
+// elsize_obstacle = 0.01;
+// elsize_outflow = 0.08;
+
+// For high Reynolds number flows (1e3...2e4)
+//
+// Due to low diffusion, here we can make the mesh much smaller with respect to
+// the timestep; the problem is much closer to hyperbolic than parabolic
+// (although strictly speaking, it remains parabolic as long as the viscosity
+// is nonzero).
+//
+// We'll improve convergence via ghetto resolution at outflow.
+//
+// Long explanation:
+//
+// At high Re, the domain may not be long enough for the disturbance introduced
+// by the obstacle to be sufficiently smoothed out by diffusion so that a
+// "smooth outflow" boundary condition could be meaningfully applied. That is,
+// nontrivial structure remains in the flow when it hits the outflow boundary.
+// This will often trigger a sudden convergence failure midway through a simulation.
+//
+// By using larger elements near the outflow, we force the discretization to
+// smooth out the remaining structure in the flow artificially (in the part
+// where we are least interested in the solution), so that when the fluid
+// parcels hit the outflow boundary, the outflow boundary conditions come as
+// less of an "impedance mismatch" against the computed solution, making it much
+// less likely for spurious numerical oscillations to arise there.
+//
+// Keep in mind that at the end of the channel, the "smooth outflow" boundary
+// conditions cause the dynamic pressure to forcibly decrease to zero over one
+// layer of elements (due to the zero Dirichlet BC on the pressure on the
+// outflow boundary).
+//
+// Therefore, it is useful to make this last layer of elements as thick as
+// reasonable. But to prevent spurious oscillations inside the interesting parts
+// of the domain, we should increase the local element size slowly and smoothly,
+// as advised in the classic book by Gresho & Sani.
+//
+xmax = 4.2;  // takes a long distance for diffusion to occur
+elsize_inflow = 0.02;
+elsize_obstacle = 0.00125;
+elsize_outflow = 0.16;  // even 0.32 is fine here
+
+// --------------------------------------------------------------------------------
+
 // create the bounding box
 Point(1) = {0.0, 0.0,  0, 1.0};  // x, y, z, [mesh element size]
 Point(2) = {0.0, 0.41, 0, 1.0};
-Point(3) = {4.2, 0.41, 0, 1.0};
-Point(4) = {4.2, 0.0,  0, 1.0};
+Point(3) = {xmax, 0.41, 0, 1.0};
+Point(4) = {xmax, 0.0,  0, 1.0};
 Line(1) = {1, 2};
 Line(2) = {2, 3};
 Line(3) = {3, 4};
@@ -60,20 +112,9 @@ Physical Surface("structure") = {12};  // The ID of this physical surface will b
 // Characteristic Length is renamed to MeshSize in Gmsh 4.x.
 // https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
 
-// Low Reynolds
-Characteristic Length {6, 7, 8, 9} = 0.01;  // obstacle (cylinder) surface
-Characteristic Length {2, 1} = 0.02;        // inflow corners
-Characteristic Length {3, 4} = 0.08;         // outflow corners
-
-// // Medium Reynolds
-// Characteristic Length {6, 7, 8, 9} = 0.005;  // obstacle (cylinder) surface
-// Characteristic Length {2, 1} = 0.02;        // inflow corners
-// Characteristic Length {3, 4} = 0.08;         // outflow corners
-
-// // High Reynolds
-// Characteristic Length {6, 7, 8, 9} = 0.00125;  // obstacle (cylinder) surface
-// Characteristic Length {2, 1} = 0.02;        // inflow corners
-// Characteristic Length {3, 4} = 0.08;         // outflow corners
+Characteristic Length {6, 7, 8, 9} = elsize_obstacle;
+Characteristic Length {2, 1} = elsize_inflow;
+Characteristic Length {3, 4} = elsize_outflow;
 
 // Mesh.MeshSizeFromPoints = 0;
 // Mesh.MeshSizeFromCurvature = 0;
