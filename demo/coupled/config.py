@@ -9,14 +9,32 @@ from enum import IntEnum
 # --------------------------------------------------------------------------------
 # Physical
 
-# Reynolds number?
+# Keep in mind the Reynolds number, characterizing the flow:
 #
-#   Re = ρ u L / μ
+#   Re = ρ u L / μ = u L / ν
+#
+# where
+#
+#   ν = μ / ρ
+
+# is the kinematic viscosity, [ν] = m² / s. Similarly, the Péclet number of heat transport is
+#
+#   Pe = u L / α
+#
+# where α is the thermal diffusivity:
+#
+#   α = k / (ρ c)
+#
+# Note [α] = m² / s,  making it in effect a thermal kinematic viscosity.
 #
 # For this test, the free stream is  u ≈ 1.5 m/s,  and taking L = 2 r = 2 * 0.05 m = 0.1 m,
 # where r is the radius of the cylinder that acts as an obstacle to the flow, we have
 #
 #   Re = 1 * 1.5 * 0.1 / 0.001 = 150
+#
+# and for heat transport,
+#
+#   Pe = 1.5 * 0.1 / (1e-3 / (1 * 1)) = 150
 
 rho = 1            # density [kg/m³]
 mu = 0.001         # dynamic viscosity [Pa s]
@@ -54,6 +72,7 @@ class Domains(IntEnum):
 # Mesh generation
 #
 # These parameters are only used when generating a uniform mesh using main00_mesh.py.
+# Only practically useful for simple testing with low Reynolds number flows (Re ~ 150).
 #
 xmin, xmax = 0.0, 2.2
 half_height = 0.2
