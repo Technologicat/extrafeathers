@@ -91,22 +91,20 @@ solver = AdvectionDiffusion(V, rho, c, k, bc, dt,
 # h: Function = interpolate(Constant(1.0), V)
 # solver.f.assign(f)
 
+# Enable stabilizers for the Galerkin formulation
+solver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant problems
+
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
+msg = "Statistics will be available shortly..."
+last_plot_walltime_local = 0
+vis_step_walltime_local = 0
 for n in range(nt):
-    maxT_local = np.array(solver.u_.vector()).max()
-    maxT_global = MPI.comm_world.allgather(maxT_local)
-    maxT_str = ", ".join(f"{maxT:0.6g}" for maxT in maxT_global)
-
-    msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; max(T) = {maxT_str}; wall time {est.formatted_eta}"
     begin(msg)
 
     # Update current time
     t += dt
-
-    if n == 50:
-        solver.enable_SUPG.b = 1.0
 
     # Use the velocity field provided by the flow solver.
     #
@@ -159,9 +157,10 @@ for n in range(nt):
                 plt.ylabel(r"$T$ (solved)")
                 plt.title(msg)
                 plt.subplot(2, 1, 2)
-            magu = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
-                              u0=solver.a.sub(0), u1=solver.a.sub(1))
-            theplot = plotutil.mpiplot(interpolate(magu, V), cmap="viridis")
+            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
+                                   u0=solver.a.sub(0), u1=solver.a.sub(1))
+            magu = interpolate(magu_expr, V)
+            theplot = plotutil.mpiplot(magu, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -173,7 +172,7 @@ for n in range(nt):
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
                 mypause(0.2)
         if my_rank == 0:
-            print(f"Timestep {n + 1} / {nt}, plotting time: {tim.dt:0.6g} seconds")
+            last_plot_walltime_local = tim.dt
 
     # Update progress bar
     progress += 1
@@ -181,6 +180,27 @@ for n in range(nt):
     # Do the ETA update as the very last thing at each timestep to include also
     # the plotting time in the ETA calculation.
     est.tick()
+    # TODO: make dt, dt_avg part of the public interface in `unpythonic`
+    dt_avg = sum(est.que) / len(est.que)
+    vis_step_walltime_local = 50 * dt_avg
+
+    Tvec = np.array(solver.u_.vector())
+
+    minT_local = Tvec.min()
+    minT_global = MPI.comm_world.allgather(minT_local)
+    minT = min(minT_global)
+
+    maxT_local = Tvec.max()
+    maxT_global = MPI.comm_world.allgather(maxT_local)
+    maxT = max(maxT_global)
+
+    last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
+    last_plot_walltime = max(last_plot_walltime_global)
+
+    vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
+    vis_step_walltime = max(vis_step_walltime_global)
+
+    msg = f"t = {t:0.6g}; Δt = {dt:0.6g}; {n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); min(T) = {minT:0.6g}; max(T) = {maxT:0.6g}; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); wall time {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:

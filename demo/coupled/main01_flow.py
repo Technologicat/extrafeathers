@@ -210,12 +210,10 @@ solver.enable_LSIC.b = 1.0  # additional stabilizer for high Re
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
+msg = "Statistics will be available shortly..."
+last_plot_walltime_local = 0
+vis_step_walltime_local = 0
 for n in range(nt):
-    maxu_local = np.array(solver.u_.vector()).max()
-    maxu_global = MPI.comm_world.allgather(maxu_local)
-    maxu_str = ", ".join(f"{maxu:0.6g}" for maxu in maxu_global)
-
-    msg = f"{n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); t = {t:0.6g}, Δt = {dt:0.6g}; Re = {Re:0.2g}; max(u) = {maxu_str}; wall time {est.formatted_eta}"
     begin(msg)
 
     # Update current time
@@ -297,20 +295,34 @@ for n in range(nt):
     # Plot p and the magnitude of u
     if n % 50 == 0 or n == nt - 1:
         with timer() as tim:
+            # Compute dynamic pressure min/max to center color scale on zero.
+            pvec = np.array(solver.p_.vector())
+
+            minp_local = pvec.min()
+            minp_global = MPI.comm_world.allgather(minp_local)
+            minp = min(minp_global)
+
+            maxp_local = pvec.max()
+            maxp_global = MPI.comm_world.allgather(maxp_local)
+            maxp = max(maxp_global)
+
+            absmaxp = max(abs(minp), abs(maxp))
+
             if my_rank == 0:
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotutil.mpiplot(solver.p_, cmap="RdBu_r")
+            theplot = plotutil.mpiplot(solver.p_, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.ylabel(r"$p$")
                 plt.title(msg)
                 plt.subplot(2, 1, 2)
-            magu = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
-                              u0=solver.u_.sub(0), u1=solver.u_.sub(1))
-            theplot = plotutil.mpiplot(interpolate(magu, V.sub(0).collapse()), cmap="viridis")
+            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
+                                   u0=solver.u_.sub(0), u1=solver.u_.sub(1))
+            magu = interpolate(magu_expr, V.sub(0).collapse())
+            theplot = plotutil.mpiplot(magu, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -322,7 +334,7 @@ for n in range(nt):
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
                 mypause(0.2)
         if my_rank == 0:
-            print(f"Timestep {n + 1} / {nt}, plotting time: {tim.dt:0.6g} seconds")
+            last_plot_walltime_local = tim.dt
 
     # Update progress bar
     progress += 1
@@ -330,6 +342,27 @@ for n in range(nt):
     # Do the ETA update as the very last thing at each timestep to include also
     # the plotting time in the ETA calculation.
     est.tick()
+    # TODO: make dt, dt_avg part of the public interface in `unpythonic`
+    dt_avg = sum(est.que) / len(est.que)
+    vis_step_walltime_local = 50 * dt_avg
+
+    uvec = np.array(magu.vector())
+
+    minu_local = uvec.min()
+    minu_global = MPI.comm_world.allgather(minu_local)
+    minu = min(minu_global)
+
+    maxu_local = uvec.max()
+    maxu_global = MPI.comm_world.allgather(maxu_local)
+    maxu = max(maxu_global)
+
+    last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
+    last_plot_walltime = max(last_plot_walltime_global)
+
+    vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
+    vis_step_walltime = max(vis_step_walltime_global)
+
+    msg = f"Re = {Re:0.2g}; t = {t:0.6g}; Δt = {dt:0.6g}; {n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); min(|u|) = {minu:0.6g}; max(|u|) = {maxu:0.6g}; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); wall time {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:
