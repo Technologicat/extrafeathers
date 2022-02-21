@@ -199,6 +199,14 @@ class LaminarFlow:
         return self._θ
     θ = property(fget=_get_θ, fset=_set_θ, doc="Theta-parameter for time integrator")
 
+    def reynolds(self, uinf, L):
+        """Return the Reynolds number of the flow.
+
+        `uinf`: free-stream speed [m / s]
+        `L`: length scale [m]
+        """
+        return self.ρ * uinf * L / self.μ
+
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
 
