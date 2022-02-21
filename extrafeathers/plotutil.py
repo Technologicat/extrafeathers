@@ -517,7 +517,10 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
         #     tri2 = mtri.Triangulation(nodes2[:, 0], nodes2[:, 1], triangles=triangles2)
         #     plt.triplot(tri2, color="k")
 
-        # Alternative visualization.
+        # # Alternative visualization style.
+        # theplot = plt.tripcolor(tri, v_vec, shading="gouraud", **kwargs)
+
+        # # Another alternative visualization style.
         # # https://matplotlib.org/stable/gallery/mplot3d/trisurf3d.html
         # ax = plt.figure().add_subplot(projection="3d")
         # theplot = ax.plot_trisurf(xs, ys, v_vec)
