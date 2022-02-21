@@ -210,7 +210,7 @@ solver.enable_LSIC.b = 1.0  # additional stabilizer for high Re
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
-msg = "Statistics will be available shortly..."
+msg = "Starting. Progress information will be available shortly..."
 last_plot_walltime_local = 0
 vis_step_walltime_local = 0
 for n in range(nt):
@@ -362,7 +362,8 @@ for n in range(nt):
     vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
     vis_step_walltime = max(vis_step_walltime_global)
 
-    msg = f"Re = {Re:0.2g}; t = {t:0.6g}; Δt = {dt:0.6g}; {n + 1} / {nt} ({100 * (n + 1) / nt:0.1f}%); min(|u|) = {minu:0.6g}; max(|u|) = {maxu:0.6g}; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); wall time {est.formatted_eta}"
+    # msg for *next* timestep. Loop-and-a-half situation...
+    msg = f"Re = {Re:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); min(|u|) = {minu:0.6g}; max(|u|) = {maxu:0.6g}; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); wall time {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:
