@@ -498,7 +498,10 @@ class LaminarFlow:
 
         # PSPG: pressure-stabilizing Petrov-Galerkin.
         #
-        # Used together with SUPG, allows the use of LBB-incompatible elements.
+        # Used together with SUPG, allows the use of LBB-incompatible elements for some schemes;
+        # but unfortunately not for IPCS (Donea and Huerta, 2003, remark 6.22, pp. 303-304).
+        # We will still use it in hopes that it helps stability at high Re.
+        #
         # Consistent, residual-based.
         τ_PSPG, enable_PSPG = τ_SUPG, enable_SUPG
         F_PSPG = enable_PSPG * τ_PSPG * dot(nabla_grad(q), R(u_, p)) * dx
