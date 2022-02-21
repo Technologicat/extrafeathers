@@ -152,7 +152,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotutil.mpiplot(solver.u_)
+            theplot = plotutil.mpiplot(solver.u_, cmap="RdBu_r")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -161,7 +161,7 @@ for n in range(nt):
                 plt.subplot(2, 1, 2)
             magu = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                               u0=solver.a.sub(0), u1=solver.a.sub(1))
-            theplot = plotutil.mpiplot(interpolate(magu, V))
+            theplot = plotutil.mpiplot(interpolate(magu, V), cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)

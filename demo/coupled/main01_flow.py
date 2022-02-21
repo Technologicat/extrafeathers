@@ -201,8 +201,11 @@ if V.ufl_element().degree() == 2:
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
-# Reynolds number
-Re = solver.ρ * inflow_max * L / solver.μ
+Re = solver.reynolds(inflow_max, L)
+
+# Enable stabilizers for the Galerkin formulation
+solver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant flows
+solver.enable_LSIC.b = 1.0  # additional stabilizer for high Re
 
 # Time-stepping
 t = 0
@@ -217,9 +220,6 @@ for n in range(nt):
 
     # Update current time
     t += dt
-
-    if n == 50:
-        solver.enable_SUPG.b = 1.0
 
     # Solve one timestep
     solver.step()
@@ -301,7 +301,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotutil.mpiplot(solver.p_)
+            theplot = plotutil.mpiplot(solver.p_, cmap="RdBu_r")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -310,7 +310,7 @@ for n in range(nt):
                 plt.subplot(2, 1, 2)
             magu = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                               u0=solver.u_.sub(0), u1=solver.u_.sub(1))
-            theplot = plotutil.mpiplot(interpolate(magu, V.sub(0).collapse()))
+            theplot = plotutil.mpiplot(interpolate(magu, V.sub(0).collapse()), cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
