@@ -358,10 +358,11 @@ class LaminarFlow:
 
         # LSIC: Artificial diffusion for least-squares stabilization on the incompressibility constraint.
         #
-        # Consistent. Helps stability at moderate to high Reynolds numbers.
+        # Consistent, since for the true solution  div(u) = 0.  Provides additional stability
+        # at high Reynolds numbers.
         #
-        # See Donea & Huerta (2003, sec. 6.7.2).
-        τ_LSIC = (dot(u_n, u_n))**(1 / 2) * h / 2  # [τ_LSIC] = (m / s) * m = m² / s,  like a kinematic viscosity
+        # See Donea & Huerta (2003, sec. 6.7.2, pp. 296-297).
+        #
         # Interpretation?
         #   ∂k ((∂i ui) vk) = (∂i ui) (∂k vk) + (∂k ∂i ui) vk
         # which is to say
@@ -369,25 +370,38 @@ class LaminarFlow:
         # so integrating by parts (divergence theorem)
         #   ∫ (∇·u) (∇·v) dΩ = ∫ n·((∇·u) v) dΓ - ∫ v · (∇ (∇·u)) dΩ
         # so this is in effect penalizing `grad(div(u))` in the direction of `v`.
+        #
         # Note [grad(div(u))] = (1 / m²) (m / s) = 1 / (m s)
-        # so [τ_LSIC grad(div(u))] = m / s²,  an acceleration; this matches the other terms of the strong form.
-        F1_LSIC = τ_LSIC * div(U) * div(v) * dx
+        # so [τ_LSIC] [grad(div(u))] = (m² / s) (1 / (m s)) = m / s²,
+        # an acceleration; thus matching the other terms of the strong form.
+        #
+        # Note we use the unknown `u`, not the `U` used in the θ method; only the solution
+        # at the end of the timestep should be penalized for deviation from known properties
+        # of the true solution.
+        def mag(vec):
+            return dot(vec, vec)**(1 / 2)
+
+        # LSIC stabilizer on/off switch;  b: float, use 0.0 or 1.0
+        # To set it, e.g. `solver.enable_LSIC.b = 1.0`, where `solver` is your `LaminarFlow` instance.
+        enable_LSIC = Expression('b', degree=0, b=1.0)
+        self.enable_LSIC = enable_LSIC
+
+        τ_LSIC = mag(a) * h / 2  # [τ_LSIC] = (m / s) * m = m² / s,  a kinematic viscosity
+        F1_LSIC = enable_LSIC * τ_LSIC * div(u) * div(v) * dx
         F1_varying += F1_LSIC
 
         # SUPG: streamline upwinding Petrov-Galerkin.
         #
-        # Residual-based, consistent. Helps at high Reynolds numbers, and allows using
-        # LBB-incompatible function spaces for velocity and pressure. Note, however,
-        # that to actually use incompatible spaces, the pressure equation needs to be
-        # stabilized, too.
+        # Residual-based, consistent. Stabilizes the Galerkin formulation in the presence
+        # of a dominating convective term in the momentum equation.
         #
-        # TODO: implement also PSPG: pressure-stabilizing Petrov-Galerkin.
-        #
-        # See Donea & Huerta (2003, sec. 6.5.8).
+        # See Donea & Huerta (2003), sec. 6.7.2 (p. 296), 6.5.8 (p. 287), and 5.4.6.2 (p. 232).
+        # See also sec. 2.4, p. 59 ff.
 
         # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
         # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is your `LaminarFlow` instance.
-        enable_SUPG = Expression('b', degree=0, b=0.0)
+        enable_SUPG = Expression('b', degree=0, b=1.0)
+        self.enable_SUPG = enable_SUPG
 
         # [μ] / [ρ] = (Pa s) / (kg / m³)
         #           = (N s / m²) / (kg / m³)
@@ -396,53 +410,17 @@ class LaminarFlow:
         #           = m² / s,  kinematic viscosity
         # α0 = Constant(1 / 3)  # Dones & Huerta, p. 288: "α₀ = 1 / 3 appears to be optimal for linear elements"
         α0 = Constant(1)
-        τ_SUPG = α0 * (h**2 / dt) / (4 * (μ / ρ))  # nondimensional
-        self.enable_SUPG = enable_SUPG
+        # Donea & Huerta (2003, p. 232), based on Shakib et al. (1991).
+        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / h + 4 * (μ / ρ) / h**2)**-1  # seconds
         def adv(U_):  # strong form of the modified advection operator that yields the skew-symmetric weak form
             # To be consistent, we use the same advection velocity `a` as the step 1 equation itself.
             return dot(a, nabla_grad(U_)) + (1 / 2) * div(a) * U_
-        def R(U_):
+        def R(U_, P_):
             # The residual is evaluated elementwise in strong form.
             # To be consistent, we use `p_n` just like the step 1 equation itself.
-            return ρ * (dudt + adv(U_)) - div(σ(U_, p_n, μ)) - ρ * f
-        # Adapted from Donea & Huerta, sec. 5.4.6.4.
-        #   - The `v` term (Galerkin penalization of the residual) is important; without it
-        #     (pure classical SUPG), the simulation fails to converge at high Re (thousands).
-        #   - The relative scalings of the `v` and `adv(v)` terms are important.
-        #   - Note both `v` and `dt * adv(v)` have the units of velocity. This makes the
-        #     product with the residual, integrated over Ω, into a virtual power.
-        #   - Another way to view this is that `adv(...)` has the unit 1/s, so `adv(v)`
-        #     must be multiplied by a time to have the same unit as the `v` term.
-        #   - Computing the residual at the final (unknown) value of `u` seems to make the scheme
-        #     more stable than being consistent and computing it at the midpoint of the timestep,
-        #     despite the θ time integration.
-        #
-        # Interpretation? Observe that for vector `a` and scalar `w`,
-        #   ∇·(a w) = ∂i (ai w) = (∂i ai) w + ai ∂i w = (∇·a) w + (a·∇)w
-        #
-        # If `u` and `v` are scalars, and `L` a scalar differential operator
-        # (e.g. in the advection-diffusion equation):
-        #   w := L(u) v
-        #   ∇·(a L(u) v) = (∇·a) (L(u) v) + (a·∇) (L(u) v)
-        #                 = (∇·a) (L(u) v) + ((a·∇) L(u)) v + L(u) (a·∇)v
-        # ⇒
-        #   ∫ L(u) (a·∇)v dΩ = ∫ (n·a) (L(u) v) dΓ - ∫ (∇·a) (L(u) v) dΩ - ∫ ((a·∇) L(u)) v dΩ
-        #   ∫ ((a·∇)v) L(u) dΩ = ∫ (n·a) (L(u) v) dΓ - ∫ (∇·a) (L(u) v) dΩ - ∫ v ((a·∇) L(u)) dΩ
-        #
-        # If `u` and `v` are vectors, and `L` a scalar differential operator
-        # (e.g. in the Navier-Stokes momentum equation):
-        #   w := L(u) · v
-        #   ∇·(a (L(u) · v)) = (∇·a) (L(u)·v) + (a·∇) (L(u)·v)
-        #                    = (∇·a) (L(u)·v) + (ai ∂i) (L(u)k vk)
-        #                    = (∇·a) (L(u)·v) + ai (∂i L(u)k) vk + ai (L(u)k) (∂i vk)
-        #                    = (∇·a) (L(u)·v) + ai (∂i L(u)k) vk + ai (∂i vk) (L(u)k)
-        #                    = (∇·a) (L(u)·v) + a·(∇L(u))·v + (a·∇v)·L(u)
-        # ⇒
-        #   ∫ (a·∇v)·L(u) dΩ = ∫ (n·a) (L(u)·v) dΓ - ∫ (∇·a) (L(u)·v) dΩ - ∫ a·(∇L(u))·v dΩ
-        #   ∫ ((a·∇)v)·L(u) dΩ = ∫ (n·a) (L(u)·v) dΓ - ∫ (∇·a) (L(u)·v) dΩ - ∫ v·((a·∇)L(u)) dΩ
-        #
-        F1_SUPG = enable_SUPG * τ_SUPG * dot(v + dt * adv(v), R(u)) * dx
-        F1_varying += F1_SUPG
+            return ρ * ((U_ - u_n) / dt + adv(U_)) - div(σ(U_, P_, μ)) - ρ * f
+        F_SUPG = enable_SUPG * τ_SUPG * dot(adv(v), R(u, p_n)) * dx
+        F1_varying += F_SUPG
 
         self.a1_varying = lhs(F1_varying)
         self.a1_constant = lhs(F1_constant)
@@ -507,8 +485,17 @@ class LaminarFlow:
         # https://fenicsproject.org/qa/2406/solve-poisson-problem-with-neumann-bc/
         #
         # Here the LHS coefficients are constant in time.
-        self.a2 = dot(nabla_grad(p), nabla_grad(q)) * dx
+        self.a2_constant = dot(nabla_grad(p), nabla_grad(q)) * dx
         self.L2 = dot(nabla_grad(p_n), nabla_grad(q)) * dx - (ρ / dt) * div(u_) * q * dx
+
+        # PSPG: pressure-stabilizing Petrov-Galerkin.
+        #
+        # Used together with SUPG, allows the use of LBB-incompatible elements.
+        # Consistent, residual-based.
+        τ_PSPG, enable_PSPG = τ_SUPG, enable_SUPG
+        F_PSPG = enable_PSPG * τ_PSPG * dot(nabla_grad(q), R(u_, p)) * dx
+        self.a2_varying = lhs(F_PSPG)
+        self.L2 += rhs(F_PSPG)
 
         # Define variational problem for step 3 (velocity correction)
         # Here the LHS coefficients are constant in time.
@@ -517,11 +504,8 @@ class LaminarFlow:
 
         # Assemble matrices (constant in time; do this once at the start)
         self.A1_constant = assemble(self.a1_constant)
-        self.A2 = assemble(self.a2)
+        self.A2_constant = assemble(self.a2_constant)
         self.A3 = assemble(self.a3)
-
-        # Apply Dirichlet boundary conditions to matrices
-        [bc.apply(self.A2) for bc in self.bcp]
 
     def step(self) -> None:
         """Take a timestep of length `self.dt`.
@@ -539,9 +523,11 @@ class LaminarFlow:
 
         # Step 2: Pressure correction step
         begin("Pressure correction")
+        A2 = self.A2_constant + assemble(self.a2_varying)
         b2 = assemble(self.L2)
+        [bc.apply(A2) for bc in self.bcp]
         [bc.apply(b2) for bc in self.bcp]
-        solve(self.A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
+        solve(A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
         end()
 
         # Step 3: Velocity correction step
