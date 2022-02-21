@@ -150,7 +150,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotutil.mpiplot(solver.u_, cmap="RdBu_r")
+            theplot = plotutil.mpiplot(solver.u_, cmap="coolwarm")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
