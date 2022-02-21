@@ -3,8 +3,8 @@
 // create the bounding box
 Point(1) = {0.0, 0.0,  0, 1.0};  // x, y, z, [mesh element size]
 Point(2) = {0.0, 0.41, 0, 1.0};
-Point(3) = {2.2, 0.41, 0, 1.0};
-Point(4) = {2.2, 0.0,  0, 1.0};
+Point(3) = {4.2, 0.41, 0, 1.0};
+Point(4) = {4.2, 0.0,  0, 1.0};
 Line(1) = {1, 2};
 Line(2) = {2, 3};
 Line(3) = {3, 4};
@@ -60,17 +60,20 @@ Physical Surface("structure") = {12};  // The ID of this physical surface will b
 // Characteristic Length is renamed to MeshSize in Gmsh 4.x.
 // https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
 
-// Characteristic Length {6, 7, 8, 9} = 0.01;  // obstacle (cylinder) surface
-// Characteristic Length {2, 1} = 0.02;        // inflow corners
-// Characteristic Length {3, 4} = 0.08;         // outflow corners
+// Low Reynolds
+Characteristic Length {6, 7, 8, 9} = 0.01;  // obstacle (cylinder) surface
+Characteristic Length {2, 1} = 0.02;        // inflow corners
+Characteristic Length {3, 4} = 0.08;         // outflow corners
 
+// // Medium Reynolds
 // Characteristic Length {6, 7, 8, 9} = 0.005;  // obstacle (cylinder) surface
 // Characteristic Length {2, 1} = 0.02;        // inflow corners
 // Characteristic Length {3, 4} = 0.08;         // outflow corners
 
-Characteristic Length {6, 7, 8, 9} = 0.00125;  // obstacle (cylinder) surface
-Characteristic Length {2, 1} = 0.02;        // inflow corners
-Characteristic Length {3, 4} = 0.08;         // outflow corners
+// // High Reynolds
+// Characteristic Length {6, 7, 8, 9} = 0.00125;  // obstacle (cylinder) surface
+// Characteristic Length {2, 1} = 0.02;        // inflow corners
+// Characteristic Length {3, 4} = 0.08;         // outflow corners
 
 // Mesh.MeshSizeFromPoints = 0;
 // Mesh.MeshSizeFromCurvature = 0;
