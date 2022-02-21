@@ -274,13 +274,16 @@ class AdvectionDiffusion:
 
         # SUPG: streamline upwinding Petrov-Galerkin.
         #
+        def mag(vec):
+            return dot(vec, vec)**(1 / 2)
+
         # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
         # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is your `AdvectionDiffusion` instance.
         enable_SUPG = Expression('b', degree=0, b=0.0)
 
         # [k] / ([ρ] [c]) = m² / s,  a (thermal) kinematic viscosity
         α0 = Constant(1)
-        τ_SUPG = α0 * (he**2 / dt) / (4 * (k / (ρ * c)))  # nondimensional
+        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (k / (ρ * c)) / he**2)**-1  # seconds
         self.enable_SUPG = enable_SUPG
 
         # We need the strong form of the equation to compute the residual
@@ -309,7 +312,7 @@ class AdvectionDiffusion:
                 if self.use_stress:
                     residual += -inner(σ, nabla_grad(a))
                 return residual
-            F_SUPG = enable_SUPG * τ_SUPG * dot(v + dt * adv(v), R(u)) * dx
+            F_SUPG = enable_SUPG * τ_SUPG * dot(adv(v), R(u)) * dx
             F += F_SUPG
 
         self.aform = lhs(F)
