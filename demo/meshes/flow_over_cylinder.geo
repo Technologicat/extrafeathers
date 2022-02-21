@@ -47,7 +47,7 @@
 //
 xmax = 4.2;  // takes a long distance for diffusion to occur
 elsize_inflow = 0.02;
-elsize_obstacle = 0.00125;
+elsize_obstacle = 0.01 / 8;
 elsize_outflow = 0.16;  // even 0.32 is fine here
 
 // --------------------------------------------------------------------------------
