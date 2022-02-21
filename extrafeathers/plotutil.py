@@ -429,10 +429,12 @@ def is_anticlockwise(ps: typing.List[typing.List[float]]) -> typing.Optional[boo
 
 # TODO: not sure what exactly `matplotlib.pyplot.tricontourf` returns or what the type spec for it should be.
 # The point of the Optional return value is to make it explicit it's something-or-None.
-def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optional[typing.Any]:
+def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
+            **kwargs: typing.Any) -> typing.Optional[typing.Any]:
     """Like `dolfin.plot`, but plots the whole field in the root process (MPI rank 0).
 
-    u: `dolfin.Function`; a 2D scalar FEM field
+    `u`: `dolfin.Function`; a 2D scalar FEM field
+    `kwargs`: passed through to `matplotlib.pyplot.tricontourf`
 
     If `u` lives on P2 elements, each element will be internally split into
     four P1 triangles for visualization.
@@ -502,7 +504,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Optio
 
         # Plot the solution on the mesh. The triangulation has been constructed
         # following the FEniCS global DOF numbering, so the data is just v_vec as-is.
-        theplot = plt.tricontourf(tri, v_vec, levels=32)
+        theplot = plt.tricontourf(tri, v_vec, levels=32, **kwargs)
 
         # # DEBUG
         # plt.triplot(tri, color="#404040")  # all edges
