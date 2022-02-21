@@ -92,7 +92,7 @@ solver = AdvectionDiffusion(V, rho, c, k, bc, dt,
 # solver.f.assign(f)
 
 # Enable stabilizers for the Galerkin formulation
-solver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant problems
+solver.enable_SUPG.b = 0.0  # stabilizer for advection-dominant problems
 
 # Time-stepping
 t = 0
