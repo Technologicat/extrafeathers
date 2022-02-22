@@ -95,6 +95,8 @@ solver = AdvectionDiffusion(V, rho, c, k, bc, dt,
 Pe = solver.peclet(inflow_max, L)
 
 # Enable stabilizers for the Galerkin formulation
+#
+# When Co >> 1 at dense parts of the mesh, convergence may actually be better with SUPG off.
 solver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant problems
 
 # Time-stepping
