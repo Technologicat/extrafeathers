@@ -47,7 +47,7 @@
 
 // High Re setup
 elsize_inflow = 0.02;
-elsize_obstacle = 0.01 / 8;
+elsize_obstacle = 0.01 / 8;  // for Re ~ 1e5, needs at least `/ 16`.
 elsize_walls = 0.02;
 elsize_outflow = 0.08 * 2;
 
