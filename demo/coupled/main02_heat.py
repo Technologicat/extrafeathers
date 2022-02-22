@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, DirichletBC,
-                    Expression, Function,
-                    interpolate, Vector,
+                    Expression, Function, Constant,
+                    interpolate, project, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -23,8 +23,8 @@ from extrafeathers import meshutil
 from extrafeathers import plotutil
 
 from .advection_diffusion import AdvectionDiffusion
-from .config import (rho, c, k, dt, nt,
-                     Boundaries,
+from .config import (rho, c, k, dt, nt, inflow_max,
+                     Boundaries, L,
                      mesh_filename,
                      vis_T_filename, sol_T_filename,
                      sol_u_filename)
@@ -36,7 +36,7 @@ my_rank = MPI.rank(MPI.comm_world)
 mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filename)
 
 # Define function space
-V = FunctionSpace(mesh, 'P', 2)
+V = FunctionSpace(mesh, 'P', 1)  # can use 1 or 2
 
 if my_rank == 0:
     print(f"Number of DOFs: temperature {V.dim()}")
@@ -85,11 +85,14 @@ plt.ion()
 
 # Set up the problem
 solver = AdvectionDiffusion(V, rho, c, k, bc, dt,
-                            advection="divergence-free")
+                            advection="divergence-free",
+                            velocity_degree=2)  # must match stored velocity data
 
 # Heat source
 # h: Function = interpolate(Constant(1.0), V)
 # solver.f.assign(f)
+
+Pe = solver.peclet(inflow_max, L)
 
 # Enable stabilizers for the Galerkin formulation
 solver.enable_SUPG.b = 0.0  # stabilizer for advection-dominant problems
@@ -98,6 +101,7 @@ solver.enable_SUPG.b = 0.0  # stabilizer for advection-dominant problems
 t = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
+SUPG_str = "[SUPG] " if solver.enable_SUPG.b else ""  # for messages
 last_plot_walltime_local = 0
 vis_step_walltime_local = 0
 for n in range(nt):
@@ -157,10 +161,11 @@ for n in range(nt):
                 plt.ylabel(r"$T$ (solved)")
                 plt.title(msg)
                 plt.subplot(2, 1, 2)
-            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
+            maga_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=solver.a.sub(0), u1=solver.a.sub(1))
-            magu = interpolate(magu_expr, V)
-            theplot = plotutil.mpiplot(magu, cmap="viridis")
+            maga = interpolate(maga_expr, V)
+            Co = project(maga_expr * Constant(dt) / solver.he, V)  # Courant number
+            theplot = plotutil.mpiplot(maga, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -194,6 +199,10 @@ for n in range(nt):
     maxT_global = MPI.comm_world.allgather(maxT_local)
     maxT = max(maxT_global)
 
+    maxCo_local = np.array(Co.vector()).max()
+    maxCo_global = MPI.comm_world.allgather(maxCo_local)
+    maxCo = max(maxCo_global)
+
     last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
     last_plot_walltime = max(last_plot_walltime_global)
 
@@ -201,7 +210,7 @@ for n in range(nt):
     vis_step_walltime = max(vis_step_walltime_global)
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); min(T) = {minT:0.6g}; max(T) = {maxT:0.6g}; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); wall time {est.formatted_eta}"
+    msg = f"{SUPG_str}Pe = {Pe:0.2g}; max(Co) = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); T ∈ [{minT:0.6g}, {maxT:0.6g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:

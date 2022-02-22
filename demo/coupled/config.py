@@ -41,6 +41,9 @@ mu = 0.001         # dynamic viscosity [Pa s]
 c = 1              # specific heat capacity [J/(kg K)]
 k = 1e-3           # heat conductivity [W/(m K)]
 
+# Velocity at the center point of the inflow profile.
+inflow_max = 1.5  # [m / s]
+
 # --------------------------------------------------------------------------------
 # Numerical
 

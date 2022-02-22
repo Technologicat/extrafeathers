@@ -83,6 +83,13 @@ class AdvectionDiffusion:
 
         "general":         Arbitrary advection velocity.
 
+    `velocity_degree`: The degree of the finite element space of the advection
+                       velocity field. This must match the data you are loading in.
+
+                       The default `None` means "use the same degree as `V`".
+
+                       Used only when `advection != "off"`.
+
     `use_stress`: whether to include the stress term  σ : ∇a,  which represents the
                   contribution of stress to internal energy.
 
@@ -93,6 +100,13 @@ class AdvectionDiffusion:
                   a stress tensor (possibly at each timestep).
 
                   When `use_stress=False`, the stress term is discarded; runs faster.
+
+    `stress_degree`: The degree of the finite element space of the stress field.
+                     This must match the data you are loading in.
+
+                     The default `None` means "use the same degree as `V`".
+
+                     Used only when `use_stress=True`.
 
     The specific heat source `self.h` [W / kg], the advection velocity `self.a` [m / s],
     and the stress tensor `self.σ` [Pa] are assignable FEM functions.
@@ -110,9 +124,11 @@ class AdvectionDiffusion:
     def __init__(self, V: FunctionSpace,
                  ρ: float, c: float, k: ScalarOrTensor,
                  bc: typing.List[DirichletBC],
-                 dt: float, θ: float = 0.5,
+                 dt: float, θ: float = 0.5, *,
                  advection: str = "divergence-free",
-                 use_stress: bool = False):
+                 velocity_degree: int = None,
+                 use_stress: bool = False,
+                 stress_degree: int = None):
         if advection not in ("off", "divergence-free", "general"):
             raise ValueError(f"`advection` must be one of 'off', 'divergence-free', 'general'; got {type(advection)} with value {advection}")
 
@@ -141,13 +157,15 @@ class AdvectionDiffusion:
 
         # Convection velocity
         self.advection = advection
-        V_vec = VectorFunctionSpace(self.mesh, V.ufl_element().family(), V.ufl_element().degree())
+        a_degree = velocity_degree if velocity_degree is not None else V.ufl_element().degree()
+        V_vec = VectorFunctionSpace(self.mesh, V.ufl_element().family(), a_degree)
         self.a = Function(V_vec)
         self.a.vector()[:] = 0.0
 
         # Stress
         self.use_stress = use_stress and self.advection != "off"
-        V_ten = TensorFunctionSpace(self.mesh, V.ufl_element().family(), V.ufl_element().degree())
+        σ_degree = stress_degree if stress_degree is not None else V.ufl_element().degree()
+        V_ten = TensorFunctionSpace(self.mesh, V.ufl_element().family(), σ_degree)
         self.σ = Function(V_ten)
         self.σ.vector()[:] = 0.0
 
@@ -198,6 +216,15 @@ class AdvectionDiffusion:
     def _get_θ(self) -> float:
         return self._θ
     θ = property(fget=_get_θ, fset=_set_θ, doc="Theta-parameter for time integrator")
+
+    def peclet(self, uinf, L):
+        """Return the Péclet number of the heat transport.
+
+        `uinf`: free-stream speed [m / s]
+        `L`: length scale [m]
+        """
+        α = self.k / (self.ρ * self.c)
+        return uinf * L / α
 
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
@@ -282,7 +309,15 @@ class AdvectionDiffusion:
         enable_SUPG = Expression('b', degree=0, b=0.0)
 
         # [k] / ([ρ] [c]) = m² / s,  a (thermal) kinematic viscosity
-        α0 = Constant(1)
+        #
+        # Donea & Huerta (2003, p. 65), discussing the steady-state advection-diffusion equation:
+        #   "It is important to note that for higher-order [as compared to linear] finite elements, apart
+        #   from the results discussed in Section 2.2.4 and Remark 2.11 [referring to analyses of the
+        #   discrete equations in 1D and conditions for exact results at the nodes] (see also Franca, Frey
+        #   and Hughes, 1992; Codina, 1993b), no optimal definition of `τ` exists. Numerical experiments
+        #   seem to indicate that for finite elements of order `p`, the value of the stabilization parameter
+        #   should be approximately `τ / p`."
+        α0 = Constant(1 / self.V.ufl_element().degree())
         τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (k / (ρ * c)) / he**2)**-1  # seconds
         self.enable_SUPG = enable_SUPG
 

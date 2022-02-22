@@ -24,7 +24,7 @@ from extrafeathers import meshutil
 from extrafeathers import plotutil
 
 from .navier_stokes import LaminarFlow
-from .config import (rho, mu, dt, nt,
+from .config import (rho, mu, dt, nt, inflow_max,
                      Boundaries, L,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
@@ -72,7 +72,6 @@ if my_rank == 0:
 # assert sy.simplify(f.subs({x: a + (b - a) / 2})) == 1
 #
 # Thus, the C++ code for the inflow profile Expression is:
-inflow_max = 1.5
 inflow_profile = (f'{inflow_max} * 4.0 * (x[1] - {ymin}) * ({ymax} - x[1]) / pow({ymax} - {ymin}, 2)', '0')
 
 # # using the implicit CompiledSubdomain, as in FEniCS tutorial:
@@ -211,6 +210,8 @@ solver.enable_LSIC.b = 1.0  # additional stabilizer for high Re
 t = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
+SUPG_str = "[SUPG] " if solver.enable_SUPG.b else ""  # for messages
+LSIC_str = "[LSIC] " if solver.enable_LSIC.b else ""  # for messages
 last_plot_walltime_local = 0
 vis_step_walltime_local = 0
 for n in range(nt):
@@ -363,7 +364,7 @@ for n in range(nt):
     vis_step_walltime = max(vis_step_walltime_global)
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"Re = {Re:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); min(|u|) = {minu:0.6g}; max(|u|) = {maxu:0.6g}; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); wall time {est.formatted_eta}"
+    msg = f"{SUPG_str}{LSIC_str}Re = {Re:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:
