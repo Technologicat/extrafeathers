@@ -35,6 +35,34 @@ from enum import IntEnum
 # and for heat transport,
 #
 #   Pe = 1.5 * 0.1 / (1e-3 / (1 * 1)) = 150
+#
+#
+# Specifically, for the two most common everyday fluids, the material properties are:
+#
+#  air @ 25°C:
+#    ρ = 1.184 kg / m³
+#    μ = 18.37e-6 Pa s
+#    c = 0.7180e3 J / (kg K)   (@ 26.9°C)
+#    k = 26.24e-3 W / (m K)
+#  water @ 26.7°C:
+#    ρ = 996.8 kg / m³
+#    μ = 0.847e-3  Pa s
+#    c = 4.179e3 J / (kg K)
+#    k = 609.30e-3 W / (m K)  (@ 26.9°C)
+#
+# Theresore, at u = 1.5 m/s, L = 0.1 m:
+#   air:    Re ≈ 9.66794e3 ≈ 10 k    and  Pe ≈ 4.85963e3 ≈ 5 k
+#   water:  Re ≈ 0.176529e6 ≈ 0.2 M  and  Pe ≈ 1.025511e6 ≈ 1 M
+#
+# https://www.engineeringtoolbox.com/air-properties-d_156.html
+# https://www.engineeringtoolbox.com/air-absolute-kinematic-viscosity-d_601.html
+# https://www.engineeringtoolbox.com/air-density-specific-weight-d_600.html
+# https://www.engineeringtoolbox.com/air-specific-heat-capacity-d_705.html
+# https://www.engineeringtoolbox.com/air-properties-viscosity-conductivity-heat-capacity-d_1509.html
+#
+# https://www.engineeringtoolbox.com/water-properties-d_1258.html
+# https://www.engineeringtoolbox.com/water-dynamic-kinematic-viscosity-d_596.html
+# https://www.engineeringtoolbox.com/water-liquid-gas-thermal-conductivity-temperature-pressure-d_2012.html
 
 rho = 1            # density [kg/m³]
 mu = 0.001         # dynamic viscosity [Pa s]
