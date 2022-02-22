@@ -34,7 +34,7 @@
 // on its downstream side. These are useful to increase the resolution near the
 // obstacle.
 
-// // Low Re setup
+// // Low Re setup (~1e2 ... ~1e3)
 // //
 // // Keep in mind that the problem is highly diffusive; don't make the smallest
 // // element size too small, or be prepared to face the wrath of parabolic partial
@@ -45,7 +45,7 @@
 // elsize_walls = 0.02;
 // elsize_outflow = 0.08;
 
-// High Re setup
+// High Re setup (~1e4)
 elsize_inflow = 0.02;
 elsize_obstacle = 0.01 / 8;  // for Re ~ 1e5, needs at least `/ 16`.
 elsize_walls = 0.02;
