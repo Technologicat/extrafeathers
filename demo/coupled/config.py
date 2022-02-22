@@ -50,7 +50,7 @@ from enum import IntEnum
 #    c = 4.179e3 J / (kg K)
 #    k = 609.30e-3 W / (m K)  (@ 26.9°C)
 #
-# Theresore, at u = 1.5 m/s, L = 0.1 m:
+# Therefore, at u = 1.5 m/s, L = 0.1 m:
 #   air:    Re ≈ 9.66794e3 ≈ 10 k    and  Pe ≈ 4.85963e3 ≈ 5 k
 #   water:  Re ≈ 0.176529e6 ≈ 0.2 M  and  Pe ≈ 1.025511e6 ≈ 1 M
 #
