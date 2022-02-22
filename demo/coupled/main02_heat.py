@@ -36,7 +36,7 @@ my_rank = MPI.rank(MPI.comm_world)
 mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filename)
 
 # Define function space
-V = FunctionSpace(mesh, 'P', 1)  # can use 1 or 2
+V = FunctionSpace(mesh, 'P', 2)  # can use 1 or 2
 
 if my_rank == 0:
     print(f"Number of DOFs: temperature {V.dim()}")
