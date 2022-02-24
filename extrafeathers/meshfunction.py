@@ -1,4 +1,5 @@
 # -*- coding: utf-8; -*-
+"""Utilities related to `dolfin.MeshFunction`."""
 
 __all__ = ["specialize",
            "meshsize",

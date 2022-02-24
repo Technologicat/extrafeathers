@@ -1,4 +1,5 @@
 # -*- coding: utf-8; -*-
+"""Common meta-utilities used by `extrafeathers` itself."""
 
 __all__ = ["make_find_fullmesh_cell", "make_find_fullmesh_facet"]
 
