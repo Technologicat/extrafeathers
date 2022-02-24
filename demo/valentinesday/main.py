@@ -175,7 +175,7 @@ for n in range(nt):
             if n == 0:
                 plt.show()
             # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-            plotutil.mypause(0.2)
+            plotutil.pause(0.2)
 
     # Update progress bar
     progress += 1

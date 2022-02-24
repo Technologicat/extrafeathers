@@ -14,7 +14,7 @@ for some common plotting tasks in 2D solvers:
   it allows to check whether the boundaries have been tagged as expected.
 """
 
-__all__ = ["mypause", "mpiplot", "plot_facet_meshfunction"]
+__all__ = ["pause", "mpiplot", "plot_facet_meshfunction"]
 
 from collections import defaultdict
 from enum import IntEnum
@@ -30,20 +30,31 @@ import dolfin
 from .meshmagic import all_cells, nodes_to_array
 
 
-# Matplotlib (3.3.3) has a habit of popping the figure window to top when it is updated using show() or pause(),
-# which effectively prevents using the machine for anything else while a simulation is in progress.
-#
-# To fix this, the suggestion to use the Qt5Agg backend here:
-#   https://stackoverflow.com/questions/61397176/how-to-keep-matplotlib-from-stealing-focus
-#
-# didn't help on my system (Linux Mint 20.1). And it is somewhat nontrivial to use a `FuncAnimation` here.
-# So we'll use this custom pause function hack instead, courtesy of StackOverflow user @ImportanceOfBeingErnest:
-#   https://stackoverflow.com/a/45734500
-#
-def mypause(interval: float) -> None:
-    """Redraw the current figure without stealing focus.
+def pause(interval: float) -> None:
+    """Redraw the current Matplotlib figure **without stealing focus**.
+
+    **IMPORTANT**:
 
     Works after `plt.show()` has been called at least once.
+
+    **Background**:
+
+    Matplotlib (3.3.3) has a habit of popping the figure window to top when it
+    is updated using show() or pause(), which effectively prevents using the
+    machine for anything else while a simulation is in progress.
+
+    On some systems, it helps to force Matplotlib to use the "Qt5Agg" backend:
+        https://stackoverflow.com/questions/61397176/how-to-keep-matplotlib-from-stealing-focus
+
+    but on some others (Linux Mint 20.1) also that backend steals focus.
+
+    One option is to use a `FuncAnimation`, but it has a different API from
+    just plotting regularly, and it is not applicable in all cases.
+
+    So, we provide this a custom non-focus-stealing pause function hack,
+    based on the StackOverflow answer by user @ImportanceOfBeingErnest:
+        https://stackoverflow.com/a/45734500
+
     """
     backend = plt.rcParams['backend']
     if backend in mpl.rcsetup.interactive_bk:

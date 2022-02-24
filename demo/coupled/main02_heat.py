@@ -177,7 +177,7 @@ for n in range(nt):
                 if n == 0:
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-                plotutil.mypause(0.2)
+                plotutil.pause(0.2)
         if my_rank == 0:
             last_plot_walltime_local = tim.dt
 
