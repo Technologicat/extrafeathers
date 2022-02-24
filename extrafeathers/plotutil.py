@@ -46,8 +46,8 @@ def mypause(interval: float) -> None:
     Works after `plt.show()` has been called at least once.
     """
     backend = plt.rcParams['backend']
-    if backend in matplotlib.rcsetup.interactive_bk:
-        figManager = matplotlib._pylab_helpers.Gcf.get_active()
+    if backend in mpl.rcsetup.interactive_bk:
+        figManager = mpl._pylab_helpers.Gcf.get_active()
         if figManager is not None:
             canvas = figManager.canvas
             if canvas.figure.stale:

@@ -20,6 +20,7 @@ from fenics import (FunctionSpace, DirichletBC,
 
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
+from extrafeathers import meshmagic
 from extrafeathers import plotutil
 
 from .advection_diffusion import AdvectionDiffusion
@@ -45,10 +46,10 @@ if V.ufl_element().degree() == 2:
     if my_rank == 0:
         print("Preparing export of P2 data as refined P1...")
     with timer() as tim:
-        export_mesh = plotutil.midpoint_refine(mesh)
+        export_mesh = meshmagic.midpoint_refine(mesh)
         W = FunctionSpace(export_mesh, 'P', 1)
         w = Function(W)
-        VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
+        VtoW, WtoV = meshmagic.P2_to_refined_P1(V, W)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
         my_W_dofs = W.dofmap().dofs()  # MPI-local

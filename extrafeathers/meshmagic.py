@@ -21,28 +21,31 @@ def my_cells(V: dolfin.FunctionSpace, *,
                                                       typing.Dict[int, typing.List[float]]]:
     """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {0: [x1, y1], ...}
 
-    Nodal (Lagrange) elements only. Note this returns all nodes, not just the mesh vertices.
-    For example, for P2 triangles, you'll get also the nodes at the midpoints of the edges.
+    Nodal (Lagrange) elements only. Note this returns all nodes, not just the
+    mesh vertices. For example, for P2 triangles, you'll get also the nodes at
+    the midpoints of the edges.
 
-    This only sees the cells assigned to the current MPI process; the complete function space
-    is the union of these cell sets from all processes. See `all_cells`, which automatically
-    combines the data from all MPI processes.
+    This only sees the cells assigned to the current MPI process; the complete
+    function space is the union of these cell sets from all processes. See
+    `all_cells`, which automatically combines the data from all MPI processes.
 
     `V`:             Scalar function space.
                        - 2D and 3D ok.
                        - `.sub(j)` of a vector/tensor function space ok.
 
-                     Note that if `V` uses degree 1 Lagrange elements, then the output `nodes`
-                     will be the vertices of the mesh. This can be useful for extracting
-                     mesh data for e.g. `matplotlib`.
+                     Note that if `V` uses degree 1 Lagrange elements, then the
+                     output `nodes` will be the vertices of the mesh. This can
+                     be useful for extracting mesh data for e.g. `matplotlib`.
 
-    `matplotlibize`: If `True`, and `V` is a 2D triangulation, ensure that the cells in the
-                     output list their vertices in an anticlockwise order, as required when
-                     the data is used to construct a `matplotlib.tri.Triangulation`.
+    `matplotlibize`: If `True`, and `V` is a 2D triangulation, ensure that the
+                     cells in the output list their vertices in an
+                     anticlockwise order, as required when the data is used to
+                     construct a `matplotlib.tri.Triangulation`.
 
-    `refine_p2`:     If `True`, and `V` is a 2D P2 triangulation, split each original triangle
-                     into four P1 triangles; one touching each vertex, and one in the middle,
-                     spanning the edge midpoints.
+    `refine_p2`: If `True`, and `V` is a 2D P2 triangulation, split each
+                     original triangle into four P1 triangles; one touching
+                     each vertex, and one in the middle, spanning the edge
+                     midpoints.
 
                      This subtriangle arrangement looks best for visualizing P2 data,
                      when interpolating that data as P1 on the once-refined mesh. It is
@@ -50,16 +53,19 @@ def my_cells(V: dolfin.FunctionSpace, *,
                      visualization.
 
     Returns `(cells, nodes)`, where:
-        - `cells` is a rank-2 `np.array`, with the entries global DOF numbers, one cell per row.
+        - `cells` is a rank-2 `np.array`, with the entries global DOF numbers,
+          one cell per row.
 
         - `nodes` is a `dict`, mapping from global DOF number to global node coordinates.
 
           In serial mode for a scalar `FunctionSpace`, the keys are `range(V.dim())`.
           In MPI mode, each process gets a different subrange due to MPI partitioning.
 
-          Also, if `V` is a `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`,
-          the DOF numbers use the *global* DOF numbering also in the sense that each
-          vector/tensor component of the field maps to its own set of global DOF numbers.
+          Also, if `V` is a `.sub(j)` of a `VectorFunctionSpace` or
+          `TensorFunctionSpace`, the DOF numbers use the *global* DOF numbering
+          also in the sense that each vector/tensor component of the field maps
+          to its own set of global DOF numbers.
+
     """
     if V.ufl_element().num_sub_elements() > 1:
         raise ValueError(f"Expected a scalar `FunctionSpace`, got a function space on {V.ufl_element()}")
@@ -146,7 +152,8 @@ def all_cells(V: dolfin.FunctionSpace, *,
 
     # Combine the cell connectivity lists from all MPI processes.
     # The result is a single rank-2 array, with each row the global DOF numbers for a cell, e.g.:
-    # [[i1, i2, i3], ...], [[j1, j2, j3], ...], ... -> [[i1, i2, i3], ..., [j1, j2, j3], ...]
+    # in:  [[i1, i2, i3], ...], [[j1, j2, j3], ...], ...
+    # out: [[i1, i2, i3], ..., [j1, j2, j3], ...]
     cells = np.concatenate(cells)
 
     # Combine the global DOF index to DOF coordinates mappings from all MPI processes.
@@ -166,12 +173,14 @@ def nodes_to_array(nodes: typing.Dict[int, typing.List[float]]) -> typing.Tuple[
     """Unpack the `nodes` dict return value of `my_cells` or `all_cells`.
 
     Returns `(dofs, nodes_array)`, where:
-        - `dofs` is a rank-1 `np.array` with global DOF numbers, sorted in ascending order.
+        - `dofs` is a rank-1 `np.array` with global DOF numbers, sorted in ascending
+          order.
 
-          For notes on global DOF numbers in the presence of MPI partitioning and `.sub(j)`
-          of vector/tensor function spaces, see `my_cells`.
+          For notes on global DOF numbers in the presence of MPI partitioning and
+          `.sub(j)` of vector/tensor function spaces, see `my_cells`.
 
-        - `nodes_array` is a rank-2 `np.array` with row `j` the coordinates for global DOF `dofs[j]`.
+        - `nodes_array` is a rank-2 `np.array` with row `j` the coordinates for
+          global DOF `dofs[j]`.
     """
     nodes_sorted = list(sorted(nodes.items(), key=lambda item: item[0]))  # key = global DOF number
     global_dofs = [dof for dof, ignored_node in nodes_sorted]
@@ -216,9 +225,9 @@ def make_mesh(cells: typing.List[typing.List[int]],
         geometric_dim = np.shape(vertices)[1]
         topological_dim = geometric_dim  # TODO: get topological dimension from cell type.
         editor.open(mesh, "triangle", topological_dim, geometric_dim)  # TODO: support other cell types; look them up in the FEniCS C++ API docs.
-        # Probably, one of the args is the MPI-local count and the other is the global count,
-        # but this is not documented, and there is no implementation on the Python level;
-        # need to look at the C++ sources of FEniCS to be sure.
+        # Probably, one of the args is the MPI-local count and the other is the global
+        # count, but this is not documented, and there is no implementation on the
+        # Python level; need to look at the C++ sources of FEniCS to be sure.
         editor.init_vertices_global(len(vertices), len(vertices))
         editor.init_cells_global(len(cells), len(cells))
         for dof, vtx in zip(dofs, vertices):
@@ -243,8 +252,8 @@ def midpoint_refine(mesh: dolfin.Mesh) -> dolfin.Mesh:
     Like `dolfin.refine(mesh)` without further options; but we guarantee that one of the
     four subtriangles spans the edge midpoints of the original triangle.
 
-    This subtriangle arrangement looks best for visualizing P2 data, when interpolating that
-    data as P1 on the once-refined mesh.
+    This subtriangle arrangement looks best for visualizing P2 data, when
+    interpolating that data as P1 on the once-refined mesh.
     """
     V = dolfin.FunctionSpace(mesh, 'P', 2)            # define a scalar P2 space...
     cells, nodes_dict = all_cells(V, refine_p2=True)  # ...so that `all_cells` can do our dirty work
@@ -260,8 +269,8 @@ def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
                                      dolfin.TensorFunctionSpace]) -> typing.Tuple[np.array, np.array]:
     """Build a global DOF map between a P2 space `V` and a once-refined P1 space `W`.
 
-    The purpose is to be able to map a nodal values vector from `V` to `W` and vice versa,
-    for interpolation.
+    The purpose is to be able to map a nodal values vector from `V` to `W` and
+    vice versa, for interpolation.
 
     Once particular use case is to export P2 data in MPI mode at full nodal resolution,
     as once-refined P1 data. In general, the MPI partitionings of `V` and `W` will
@@ -270,7 +279,8 @@ def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
     representation. This can be worked around by hacking the DOF vectors directly.
     See example below.
 
-    `V`: P2 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace` on some `mesh`.
+    `V`: P2 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace`
+         on some `mesh`.
     `W`: The corresponding P1 space on `refine(mesh)` or `midpoint_refine(mesh)`.
 
     This function is actually slightly more general than that; that is just the simple
@@ -279,8 +289,10 @@ def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
     the corresponding nodes on `V` and `W` must be geometrically coincident.
 
     Returns `(VtoW, WtoV)`, where:
-      - `VtoW` is a rank-1 `np.array`. Global DOF `k` of `V` matches the global DOF `VtoW[k]` of space `W`.
-      - `WtoV` is a rank-1 `np.array`. Global DOF `k` of `W` matches the global DOF `WtoV[k]` of space `V`.
+      - `VtoW` is a rank-1 `np.array`. Global DOF `k` of `V` matches the global DOF
+        `VtoW[k]` of space `W`.
+      - `WtoV` is a rank-1 `np.array`. Global DOF `k` of `W` matches the global DOF
+        `WtoV[k]` of space `V`.
 
     Example::
 

@@ -21,6 +21,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
 
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
+from extrafeathers import meshmagic
 from extrafeathers import plotutil
 
 from .navier_stokes import NavierStokes
@@ -45,8 +46,8 @@ Q = FunctionSpace(mesh, 'P', 1)
 
 # Detect ymin/ymax for configuring inflow profile.
 with timer() as tim:
-    ignored_cells, nodes_dict = plotutil.all_cells(Q)
-    ignored_dofs, nodes_array = plotutil.nodes_to_array(nodes_dict)
+    ignored_cells, nodes_dict = meshmagic.all_cells(Q)
+    ignored_dofs, nodes_array = meshmagic.nodes_to_array(nodes_dict)
     xmin = np.min(nodes_array[:, 0])
     xmax = np.max(nodes_array[:, 0])
     ymin = np.min(nodes_array[:, 1])
@@ -195,10 +196,10 @@ if V.ufl_element().degree() == 2:
     if my_rank == 0:
         print("Preparing export of P2 data as refined P1...")
     with timer() as tim:
-        export_mesh = plotutil.midpoint_refine(mesh)
+        export_mesh = meshmagic.midpoint_refine(mesh)
         W = VectorFunctionSpace(export_mesh, 'P', 1)
         w = Function(W)
-        VtoW, WtoV = plotutil.P2_to_refined_P1(V, W)
+        VtoW, WtoV = meshmagic.P2_to_refined_P1(V, W)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
         my_W_dofs = W.dofmap().dofs()  # MPI-local
