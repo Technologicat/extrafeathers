@@ -44,10 +44,11 @@ if my_rank == 0:
 # Set up boundary conditions
 bcu_walls = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.WALLS.value)
 bcu_obstacle = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.OBSTACLE.value)
+bcT_walls = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.WALLS.value)
 bcT_obstacle = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.OBSTACLE.value)
 bcu = [bcu_walls, bcu_obstacle]
 bcp = []
-bcT = [bcT_obstacle]
+bcT = [bcT_walls, bcT_obstacle]
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)
@@ -198,14 +199,14 @@ for n in range(nt):
             if my_rank == 0:
                 plt.figure(1)
                 plt.clf()
-                plt.subplot(3, 1, 1)
+                plt.subplot(1, 3, 1)
             theplot = plotmagic.mpiplot(flowsolver.p_, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.ylabel(r"$p$")
+                plt.subplot(1, 3, 2)
                 plt.title(msg)
-                plt.subplot(3, 1, 2)
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=flowsolver.u_.sub(0), u1=flowsolver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
@@ -216,7 +217,7 @@ for n in range(nt):
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.ylabel(r"$|u|$")
-                plt.subplot(3, 1, 3)
+                plt.subplot(1, 3, 3)
             theplot = plotmagic.mpiplot(heatsolver.u_, cmap="coolwarm")
             if my_rank == 0:
                 plt.axis("equal")
