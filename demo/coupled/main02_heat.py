@@ -28,7 +28,6 @@ from .config import (rho, c, k, dt, nt, inflow_max,
                      mesh_filename,
                      vis_T_filename, sol_T_filename,
                      sol_u_filename)
-from .util import mypause
 
 my_rank = MPI.rank(MPI.comm_world)
 
@@ -177,7 +176,7 @@ for n in range(nt):
                 if n == 0:
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-                mypause(0.2)
+                plotutil.mypause(0.2)
         if my_rank == 0:
             last_plot_walltime_local = tim.dt
 

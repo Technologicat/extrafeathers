@@ -29,7 +29,6 @@ from .config import (rho, mu, dt, nt, inflow_max,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
                      vis_p_filename, sol_p_filename)
-from .util import mypause
 
 my_rank = MPI.rank(MPI.comm_world)
 
@@ -298,7 +297,7 @@ for n in range(nt):
     #         if n == 0:
     #             plt.show()
     #         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-    #         mypause(0.2)
+    #         plotutil.mypause(0.2)
 
     # Plot p and the magnitude of u
     if n % 50 == 0 or n == nt - 1:
@@ -340,7 +339,7 @@ for n in range(nt):
                 if n == 0:
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-                mypause(0.2)
+                plotutil.mypause(0.2)
         if my_rank == 0:
             last_plot_walltime_local = tim.dt
 
