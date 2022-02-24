@@ -1,7 +1,12 @@
 # -*- coding: utf-8; -*-
-"""Mesh-handling utilities."""
+"""Mesh-handling utilities.
+
+Currently, some of these are useful for MPI parallel solvers, and some for
+full nodal resolution export of data on P2 triangle meshes.
+"""
 
 __all__ = ["my_cells", "all_cells", "nodes_to_array",
+           "make_mesh",
            "midpoint_refine", "P2_to_refined_P1"]
 
 import typing
@@ -201,6 +206,11 @@ def make_mesh(cells: typing.List[typing.List[int]],
     `vertices`:    Vertex coordinates as rank-2 `np.array`, one vertex per row.
                    `vertices[k]` corresponds to vertex number `dofs[k]`.
 
+                   You can get the `dofs` and `vertices` arrays by
+                   `dofs, vertices = nodes_to_array(nodes_dict)`,
+                   where `nodes_dict` is the dictionary part of the
+                   return value of `all_cells` (for a P1 mesh).
+
     `distributed`:  Used when running in MPI mode:
 
                     If `True`, the mesh will be distributed between the MPI processes.
@@ -285,8 +295,9 @@ def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
 
     This function is actually slightly more general than that; that is just the simple
     way to explain it. The real restriction is that `V` and `W` must have the same number
-    of subspaces, if any, and that they must have the same number of global DOFs. Also,
-    the corresponding nodes on `V` and `W` must be geometrically coincident.
+    of subspaces (vector/tensor components), if any, and that they must have the same
+    number of global DOFs. Also, the corresponding nodes on `V` and `W` must be
+    exactly geometrically coincident (up to machine precision).
 
     Returns `(VtoW, WtoV)`, where:
       - `VtoW` is a rank-1 `np.array`. Global DOF `k` of `V` matches the global DOF
@@ -298,7 +309,7 @@ def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
 
         import numpy as np
         import dolfin
-        from extrafeathers.plotutil import midpoint_refine, P2_to_refined_P1
+        from extrafeathers import midpoint_refine, P2_to_refined_P1
 
         mesh = ...
 

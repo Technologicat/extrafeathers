@@ -29,9 +29,9 @@ def make_find_fullmesh_facet(fullmesh: dolfin.Mesh,
                              find_fullmesh_cell: typing.Optional[typing.Callable] = None) -> typing.Callable:
     """Make a function that maps a facet of `submesh` to the corresponding facet of `fullmesh`.
 
-    If you have already created a cell mapper using `make_find_fullmesh_cell` (for the same
-    combination of `fullmesh` and `submesh`), you can pass that as the optional callable to
-    avoid unnecessarily creating another one.
+    If you have already created a cell mapper using `make_find_fullmesh_cell`
+    (for the same combination of `fullmesh` and `submesh`), you can pass that
+    as the optional callable to avoid unnecessarily creating another one.
     """
     if fullmesh is submesh:
         def find_fullmesh_facet(submesh_facet: dolfin.Facet) -> dolfin.Facet:
@@ -40,7 +40,8 @@ def make_find_fullmesh_facet(fullmesh: dolfin.Mesh,
         # A facet has zero area measure, so to be geometrically robust, we match a cell.
         find_fullmesh_cell = find_fullmesh_cell or make_find_fullmesh_cell(fullmesh, submesh)
         def find_fullmesh_facet(submesh_facet: dolfin.Facet) -> dolfin.Facet:
-            # Get a submesh cell this facet belongs to - if multiple, any one of them is fine.
+            # Get a submesh cell this facet belongs to - if multiple, any one
+            # of them is fine.
             submesh_cells_for_facet = list(dolfin.cells(submesh_facet))
             assert submesh_cells_for_facet  # there should always be at least one
             submesh_cell = submesh_cells_for_facet[0]
@@ -56,7 +57,8 @@ def make_find_fullmesh_facet(fullmesh: dolfin.Mesh,
             # distance to the midpoint of submesh_facet.
             fullmesh_facets = [(fullmesh_facet, fullmesh_facet.midpoint().distance(submesh_facet.midpoint()))
                                for fullmesh_facet in dolfin.facets(fullmesh_cell)]
-            fullmesh_facets = list(sorted(fullmesh_facets, key=lambda item: item[1]))  # sort by distance, ascending
+            # sort by distance, ascending
+            fullmesh_facets = list(sorted(fullmesh_facets, key=lambda item: item[1]))
             fullmesh_facet, ignored_distance = fullmesh_facets[0]
             return fullmesh_facet
     find_fullmesh_facet.__doc__ = """Given a submesh facet, return the corresponding fullmesh facet."""
@@ -66,8 +68,8 @@ def make_find_fullmesh_facet(fullmesh: dolfin.Mesh,
 def is_anticlockwise(ps: typing.List[typing.List[float]]) -> typing.Optional[bool]:
     """[[x1, y1], [x2, y2], [x3, y3]] -> whether the points are listed anticlockwise.
 
-    In the degenerate case where the points are exactly on a line (up to machine precision),
-    returns `None`.
+    In the degenerate case where the points are exactly on a line
+    (up to machine precision), returns `None`.
 
     Based on the shoelace formula:
         https://en.wikipedia.org/wiki/Shoelace_formula

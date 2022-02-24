@@ -3,6 +3,9 @@
 
 Stores the result as a single HDF5 file.
 
+We also provide convenience functions for I/O of meshes and subdomain/boundary data
+as HDF5.
+
 Based on many posts in these discussion threads:
   https://fenicsproject.discourse.group/t/converting-simple-2d-mesh-from-gmsh-to-dolfin/583/4
   https://fenicsproject.discourse.group/t/transitioning-from-mesh-xml-to-mesh-xdmf-from-dolfin-convert-to-meshio/412/9
@@ -28,7 +31,9 @@ def _absolute_path(filename_or_path: typing.Union[pathlib.Path, str]) -> pathlib
     return pathlib.Path(filename_or_path).expanduser().resolve()
 
 
-def read_hdf5_mesh(filename: str) -> typing.Tuple[dolfin.Mesh, dolfin.MeshFunction, dolfin.MeshFunction]:
+def read_hdf5_mesh(filename: str) -> typing.Tuple[dolfin.Mesh,
+                                                  dolfin.MeshFunction,
+                                                  dolfin.MeshFunction]:
     """Read an HDF5 mesh file created using `write_hdf5_mesh` or `import_gmsh`.
 
     The return value is `(mesh, domain_parts, boundary_parts)`.
@@ -171,10 +176,12 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
 
     # Convert Gmsh physical facets (lines in 2D, surfaces in 3D) to XDMF
     #
-    # MeshValueCollection represents raw imported data, which can be then loaded into a MeshFunction.
+    # MeshValueCollection represents raw imported data, which can be then
+    # loaded into a MeshFunction.
     # https://fenicsproject.discourse.group/t/difference-between-meshvaluecollection-and-meshfunction/5219
     #
-    # Note any facet not present in the MeshValueCollection will be tagged with a large number:
+    # Note any facet not present in the MeshValueCollection will be tagged
+    # with a large number:
     # size_t(-1) = 2**64 - 1 = 18446744073709551615
     #
     # https://fenicsproject.discourse.group/t/transitioning-from-mesh-xml-to-mesh-xdmf-from-dolfin-convert-to-meshio/412/35
@@ -215,10 +222,12 @@ def _physical_groups(mesh: meshio.Mesh, kind: str):
     `kind`: "line", "triangle", or "tetra".
     """
     try:
-        # If mesh created with gmsh API it is simple to extract entity data
+        # If the mesh was created with the gmsh API, it is simple to extract
+        # the entity data.
         cell_data = mesh.cell_data_dict["gmsh:physical"][kind]
     except KeyError:
-        # If mesh created with pygmsh, we need to parse through cell sets and sort the data
+        # If the mesh was created with pygmsh, we need to parse through cell sets and
+        # sort the data.
         cell_entities = []
         cell_data = []
         for marker, entity_set in mesh.cell_sets_dict.items():
@@ -227,6 +236,6 @@ def _physical_groups(mesh: meshio.Mesh, kind: str):
                     cell_entities.append(entities)
                     cell_data.append(np.full(len(entities), int(marker)))
         cell_entities = np.hstack(cell_entities)
-        sorted = np.argsort(cell_entities)
-        cell_data = np.hstack(cell_data)[sorted]
+        sorted_cell_entities = np.argsort(cell_entities)
+        cell_data = np.hstack(cell_data)[sorted_cell_entities]
     return cell_data

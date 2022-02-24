@@ -1,5 +1,16 @@
 # -*- coding: utf-8; -*-
-"""Utilities related to `dolfin.MeshFunction`."""
+"""Utilities related to `dolfin.MeshFunction`.
+
+ - `specialize`: convert a `MeshFunction` on a full mesh to the corresponding
+   `MeshFunction` on a `SubMesh` extracted from that mesh.
+
+ - `meshsize`: Return the local mesh size `he` as a `MeshFunction`.
+
+ - `cell_mf_to_expression`: convert a `MeshFunction` on cells to a compiled C++
+   expression that can be used in a UFL form.
+     - Particularly, the incantation `he = cell_mf_to_expression(meshsize(mesh))`
+       is useful for stabilization terms.
+"""
 
 __all__ = ["specialize",
            "meshsize",
