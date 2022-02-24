@@ -16,6 +16,8 @@ ScalarOrTensor = typing.Union[float,
                               ufl.tensors.ListTensor,
                               ufl.tensors.ComponentTensor,
                               ufl.tensoralgebra.Transposed]
+
+
 def istensor(x: ScalarOrTensor) -> bool:
     """Return whether `x` is an UFL tensor expression."""
     # TODO: correct way to detect tensor?
