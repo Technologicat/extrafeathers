@@ -13,7 +13,7 @@ where
 and I is the rank-2 identity tensor.
 """
 
-__all__ = ["NavierStokes"]
+__all__ = ["NavierStokes", "ε", "σ"]
 
 import typing
 
