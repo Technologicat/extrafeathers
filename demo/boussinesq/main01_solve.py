@@ -38,6 +38,9 @@ V = VectorFunctionSpace(mesh, 'P', 2)  # velocity
 Q = FunctionSpace(mesh, 'P', 1)  # pressure
 W = FunctionSpace(mesh, 'P', 2)  # temperature
 
+if my_rank == 0:
+    print(f"Number of DOFs: velocity {V.dim()}, pressure {Q.dim()}, temperature {W.dim()}, total {V.dim() + Q.dim() + W.dim()}")
+
 # Set up boundary conditions
 bcu_walls = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.WALLS.value)
 bcu_obstacle = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.OBSTACLE.value)
