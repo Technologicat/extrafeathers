@@ -8,7 +8,7 @@ import numpy as np
 
 import dolfin
 
-from .autoboundary import _make_find_fullmesh_cell, _make_find_fullmesh_facet
+from .common import make_find_fullmesh_cell, make_find_fullmesh_facet
 
 
 def specialize(f: dolfin.MeshFunction,
@@ -38,8 +38,8 @@ def specialize(f: dolfin.MeshFunction,
     g = dolfin.MeshFunction(mf_objtype_to_name[type(f)], submesh, f.dim())  # value_type, mesh, dimension, [default_value]
     g.set_all(0)
 
-    find_fullmesh_cell = _make_find_fullmesh_cell(fullmesh, submesh)
-    find_fullmesh_facet = _make_find_fullmesh_facet(fullmesh, submesh, find_fullmesh_cell)
+    find_fullmesh_cell = make_find_fullmesh_cell(fullmesh, submesh)
+    find_fullmesh_facet = make_find_fullmesh_facet(fullmesh, submesh, find_fullmesh_cell)
 
     if f.dim() == dim:  # MeshFunction on cells
         entities = dolfin.cells(submesh)
