@@ -280,7 +280,7 @@ for n in range(nt):
     Pe = heatsolver.peclet(maxu, L)
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{flow_stabilizers_str}{heat_stabilizers_str}Re = {Re:0.2g}; Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.2g}; Δt = {dt:0.2g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.2g}, {maxu:0.2g}]; T ∈ [{minT:0.2g}, {maxT:0.2g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
+    msg = f"{flow_stabilizers_str}{heat_stabilizers_str}Re = {Re:0.2g}; Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.3g}; Δt = {dt:0.2g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.2g}, {maxu:0.2g}]; T ∈ [{minT:0.2g}, {maxT:0.2g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:
