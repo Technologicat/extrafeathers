@@ -45,7 +45,7 @@ setup(
     version=version,
     packages=["extrafeathers", "extrafeathers.pdes"],
     provides=["extrafeathers"],
-    keywords=["fenics", "utilities"],
+    keywords=["fenics", "finite-element-method", "partial-differential-equations", "numerics", "utilities"],
     install_requires=["h5py>=3.6.0", "matplotlib>=3.3.3", "meshio>=5.2.2", "numpy>=1.22.0", "unpythonic>=0.15.1"],
     python_requires=">=3.6",
     author="Juha Jeronen",
