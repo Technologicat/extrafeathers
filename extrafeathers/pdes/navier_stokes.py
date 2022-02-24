@@ -26,8 +26,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     lhs, rhs, assemble, solve, project,
                     begin, end)
 
-from extrafeathers import meshfunction
-
+from ..meshfunction import meshsize, cell_mf_to_expression
 from .util import ufl_constant_property
 
 
@@ -169,7 +168,7 @@ class NavierStokes:
         self.p_ = Function(Q)
 
         # Local mesh size (for stabilization terms)
-        self.he = meshfunction.cell_mf_to_expression(meshfunction.meshsize(self.mesh))
+        self.he = cell_mf_to_expression(meshsize(self.mesh))
 
         # Specific body force. FEM function for maximum generality.
         self.f = Function(V)

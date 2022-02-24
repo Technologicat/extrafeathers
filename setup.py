@@ -43,7 +43,7 @@ if not version:
 setup(
     name="extrafeathers",
     version=version,
-    packages=["extrafeathers"],
+    packages=["extrafeathers", "extrafeathers.pdes"],
     provides=["extrafeathers"],
     keywords=["fenics", "utilities"],
     install_requires=["h5py>=3.6.0", "matplotlib>=3.3.3", "meshio>=5.2.2", "numpy>=1.22.0", "unpythonic>=0.15.1"],

@@ -24,7 +24,7 @@ from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotutil
 
-from .navier_stokes import NavierStokes
+from extrafeathers.pdes import NavierStokes
 from .config import (rho, mu, dt, nt, inflow_max,
                      Boundaries, L,
                      mesh_filename,

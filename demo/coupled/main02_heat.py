@@ -23,7 +23,7 @@ from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotutil
 
-from .advection_diffusion import AdvectionDiffusion
+from extrafeathers.pdes import AdvectionDiffusion
 from .config import (rho, c, k, dt, nt, inflow_max,
                      Boundaries, L,
                      mesh_filename,
