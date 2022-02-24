@@ -90,10 +90,6 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
     if mesh.topology().dim() != 2:
         raise NotImplementedError(f"mpiplot currently only supports meshes of topological dimension 2, got {mesh.topology().dim()}")
 
-    # # We do the hifi P2->P1 mapping, so let's not delegate even in serial mode.
-    # if dolfin.MPI.comm_world.size == 1:  # running serially
-    #     return dolfin.plot(u)
-
     # https://fenicsproject.discourse.group/t/gather-function-in-parallel-error/1114
 
     # # global DOF distribution between the MPI processes
