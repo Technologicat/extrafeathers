@@ -49,9 +49,10 @@ bcu_obstacle = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.OBSTA
 bcT_top = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.TOP.value)
 bcT_bottom = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.BOTTOM.value)
 bcT_obstacle = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.OBSTACLE.value)
-bcu = [bcu_top, bcu_walls, bcu_bottom, bcu_obstacle]
-bcp = []  # cavity flow; pressure has pure Dirichlet BCs.
-bcT = [bcT_top, bcT_bottom, bcT_obstacle]
+bcp_top = DirichletBC(Q, Constant(0.0), boundary_parts, Boundaries.TOP.value)
+bcu = [bcu_walls, bcu_bottom, bcu_obstacle]
+bcp = [bcp_top]
+bcT = [bcT_bottom, bcT_obstacle]
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)

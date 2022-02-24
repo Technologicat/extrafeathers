@@ -20,8 +20,8 @@ g = 9.81           # acceleration of gravity [m/s²]
 # --------------------------------------------------------------------------------
 # Numerical
 
-T = 10.0           # final time [s]
-nt = 1000          # number of timesteps
+T = 20.0           # final time [s]
+nt = 2000          # number of timesteps
 dt = T / nt        # timestep size [s]
 
 # --------------------------------------------------------------------------------
