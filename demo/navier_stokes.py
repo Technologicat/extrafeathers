@@ -8,14 +8,16 @@ Scheme (IPCS).
   u' + u . nabla(u)) - div(sigma(u, p)) = f
                                  div(u) = 0
 
-Customized version:
+Customized version using `extrafeathers`:
 
   - Marked submeshes for automatic obstacle boundary extraction.
   - Parallel computation using MPI.
   - Visualization for ongoing simulation also in MPI mode.
 
 There's a more advanced version (with better modularization and
-factoring of the code) in `demo.coupled`.
+factoring of the code, as well as numerical stabilization) in
+`extrafeathers.pdes.navier_stokes`; for invoking it, see
+`demo.coupled.main01_flow`.
 """
 
 from enum import IntEnum
