@@ -128,6 +128,13 @@ set_log_level(LogLevel.WARNING)
 plt.ion()
 
 # Set up the problem
+#
+# TODO: Add support for resuming from the TimeSeries used to store `u_` and `p_`.
+#
+# TODO: Initialize `u_` and `p_` from a potential-flow approximation to have a physically reasonable initial state.
+# TODO: We need to implement a potential-flow solver to be able to do that. It's just a Poisson equation,
+# TODO: but the scalings must match this solver, and we need to produce a pressure field, too.
+#
 solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
 
 # Body force (gravity)

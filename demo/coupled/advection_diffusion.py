@@ -41,21 +41,11 @@ from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, Dir
                     dot, inner, nabla_grad, div, dx, ds,
                     lhs, rhs, assemble, solve,
                     begin, end)
-import ufl
 
 from extrafeathers import autoboundary
 
+from .util import ScalarOrTensor, istensor, ufl_constant_property
 
-ScalarOrTensor = typing.Union[float,
-                              ufl.tensors.ListTensor,
-                              ufl.tensors.ComponentTensor,
-                              ufl.tensoralgebra.Transposed]
-def istensor(x: ScalarOrTensor) -> bool:
-    """Return whether `x` is an UFL tensor expression."""
-    # TODO: correct way to detect tensor?
-    return isinstance(x, (ufl.tensors.ListTensor,
-                          ufl.tensors.ComponentTensor,
-                          ufl.tensoralgebra.Transposed))
 
 class AdvectionDiffusion:
     """Advection-diffusion equation: heat transport in a moving material.
@@ -65,10 +55,10 @@ class AdvectionDiffusion:
     `c`: specific heat capacity [J / (kg K)]
     `k`: heat conductivity [W / (m K)]
          Scalar `k` for thermally isotropic material; rank-2 tensor for anisotropic.
+    `bc`: Dirichlet boundary conditions for temperature
     `dt`: timestep [s]
     `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
-         Default 0.5 gives the implicit midpoint rule; 0 is forward Euler,
-         and 1 is backward Euler.
+         Default 0.5 is Crank-Nicolson; 0 is forward Euler, 1 is backward Euler.
 
     `advection`: one of "off", "divergence-free", "general"
         "off":             Zero advection velocity. Standard heat equation.
@@ -117,9 +107,9 @@ class AdvectionDiffusion:
         solver.h.assign(h)
 
     Anything compatible with a `Function` can be assigned, including FEM fields produced
-    by another solver or loaded from a file (that was produced by a solver on the same mesh!).
-    Technically, `h` lives on a `FunctionSpace`, `a` on a `VectorFunctionSpace`, and `σ` on
-    a `TensorFunctionSpace` compatible with `V`.
+    by another solver or loaded from a file (that was produced by a solver on the same
+    mesh!). Technically, `h` lives on a `FunctionSpace`, `a` on a `VectorFunctionSpace`,
+    and `σ` on a `TensorFunctionSpace` compatible with `V`.
     """
     def __init__(self, V: FunctionSpace,
                  ρ: float, c: float, k: ScalarOrTensor,
@@ -152,70 +142,49 @@ class AdvectionDiffusion:
         self.h = Function(V)
         self.h.vector()[:] = 0.0  # placeholder value
 
-        # We have the convection velocity and stress as general FEM functions
-        # so that we can feed them with a solution of another subproblem.
-
-        # Convection velocity
+        # Convection velocity. FEM function for maximum generality.
         self.advection = advection
         a_degree = velocity_degree if velocity_degree is not None else V.ufl_element().degree()
-        V_vec = VectorFunctionSpace(self.mesh, V.ufl_element().family(), a_degree)
-        self.a = Function(V_vec)
+        V_rank1 = VectorFunctionSpace(self.mesh, V.ufl_element().family(), a_degree)
+        self.a = Function(V_rank1)
         self.a.vector()[:] = 0.0
 
-        # Stress
+        # Stress. FEM function for maximum generality.
         self.use_stress = use_stress and self.advection != "off"
         σ_degree = stress_degree if stress_degree is not None else V.ufl_element().degree()
-        V_ten = TensorFunctionSpace(self.mesh, V.ufl_element().family(), σ_degree)
-        self.σ = Function(V_ten)
+        V_rank2 = TensorFunctionSpace(self.mesh, V.ufl_element().family(), σ_degree)
+        self.σ = Function(V_rank2)
         self.σ.vector()[:] = 0.0
 
         # Parameters.
+        self._ρ = Constant(ρ)
+        self._c = Constant(c)
+        self._k = Constant(k)
+        self._dt = Constant(dt)
+        self._θ = Constant(θ)
+
+        # SUPG stabilizer tuning parameter.
         #
-        # We must initialize the underlying variables for properties directly
-        # to avoid triggering the compile before all necessary parameters are
-        # initialized.
-        self._ρ = ρ
-        self._c = c
-        self._k = k
-        self._dt = dt
-        self._θ = θ
+        # Donea & Huerta (2003, p. 65), discussing the steady-state advection-diffusion
+        # equation:
+        #   "It is important to note that for higher-order [as compared to linear]
+        #   finite elements, apart from the results discussed in Section 2.2.4 and
+        #   Remark 2.11 [referring to analyses of the discrete equations in 1D and
+        #   conditions for exact results at the nodes] (see also Franca, Frey and
+        #   Hughes, 1992; Codina, 1993b), no optimal definition of `τ` exists.
+        #   Numerical experiments seem to indicate that for finite elements of
+        #   order `p`, the value of the stabilization parameter should be
+        #   approximately `τ / p`."
+        self._α0 = Constant(1 / self.V.ufl_element().degree())
+
         self.compile_forms()
 
-    # TODO: should have the `Constant` instance at this level, to make it settable without recompiling forms.
-    def _set_ρ(self, ρ: float) -> None:
-        self._ρ = ρ
-        self.compile_forms()
-    def _get_ρ(self) -> float:
-        return self._ρ
-    ρ = property(fget=_get_ρ, fset=_set_ρ, doc="Density [kg / m³]")
-
-    def _set_c(self, c: float) -> None:
-        self._c = c
-        self.compile_forms()
-    def _get_c(self) -> float:
-        return self._c
-    c = property(fget=_get_c, fset=_set_c, doc="Specific heat capacity [J / (kg K)]")
-
-    def _set_k(self, k: ScalarOrTensor) -> None:
-        self._k = k
-        self.compile_forms()
-    def _get_k(self) -> float:
-        return self._k
-    k = property(fget=_get_k, fset=_set_k, doc="Heat conductivity [W / (m K)]")
-
-    def _set_dt(self, dt: float) -> None:
-        self._dt = dt
-        self.compile_forms()
-    def _get_dt(self) -> float:
-        return self._dt
-    dt = property(fget=_get_dt, fset=_set_dt, doc="Timestep [s]")
-
-    def _set_θ(self, θ: float) -> None:
-        self._θ = θ
-        self.compile_forms()
-    def _get_θ(self) -> float:
-        return self._θ
-    θ = property(fget=_get_θ, fset=_set_θ, doc="Theta-parameter for time integrator")
+    ρ = ufl_constant_property("ρ", doc="Density [kg / m³]")
+    c = ufl_constant_property("c", doc="Specific heat capacity [J / (kg K)]")
+    k = ufl_constant_property("k", doc="Heat conductivity [W / (m K)]")
+    dt = ufl_constant_property("dt", doc="Timestep [s]")
+    θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
+    α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
 
     def peclet(self, uinf, L):
         """Return the Péclet number of the heat transport.
@@ -223,7 +192,7 @@ class AdvectionDiffusion:
         `uinf`: free-stream speed [m / s]
         `L`: length scale [m]
         """
-        α = self.k / (self.ρ * self.c)
+        α = self.k / (self.ρ * self.c)  # thermal diffusivity,  [α] = m² / s
         return uinf * L / α
 
     def compile_forms(self) -> None:
@@ -246,19 +215,21 @@ class AdvectionDiffusion:
         # Local mesh size (for stabilization terms)
         he = self.he
 
-        # Wrap constant parameters in a Constant to allow changing the value without triggering a recompile
-        ρ = Constant(self.ρ)
-        c = Constant(self.c)
-        k = Constant(self.k)
-        dt = Constant(self.dt)
-        θ = Constant(self.θ)
+        # Parameters
+        ρ = self._ρ
+        c = self._c
+        k = self._k
+        dt = self._dt
+        θ = self._θ
+        α0 = self._α0
 
         # Internal energy balance for a moving material, assuming no phase changes.
         # The unknown `u` is the temperature:
         #
         #   ρ c [∂u/∂t + (a·∇)u] - ∇·(k·∇u) = σ : ∇a + ρ h
         #
-        # Derived from the general internal energy balance equation, see Allen et al. (1988).
+        # Derived from the general internal energy balance equation,
+        # see Allen et al. (1988).
         #
         # References:
         #     Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
@@ -283,13 +254,17 @@ class AdvectionDiffusion:
             #       k * dot(n, nabla_grad(U)) * v * ds)
 
         if self.advection == "divergence-free":
-            # Skew-symmetric form for divergence-free advection velocity (see navier_stokes.py).
-            F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v - dot(a, nabla_grad(v)) * U) * dx +
+            # Skew-symmetric form for divergence-free advection velocity
+            # (see navier_stokes.py).
+            F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v -
+                                     dot(a, nabla_grad(v)) * U) * dx +
                   ρ * c * (1 / 2) * dot(n, a) * U * v * ds)
         elif self.advection == "general":
-            # Skew-symmetric advection, as above; but subtract the contribution from the extra term
-            # (∇·a) u, thus producing an extra symmetric term that accounts for the divergence of `a`.
-            F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v - dot(a, nabla_grad(v)) * U) * dx +
+            # Skew-symmetric advection, as above; but subtract the contribution from the
+            # extra term (1/2) (∇·a) u, thus producing an extra symmetric term that
+            # accounts for the divergence of `a`.
+            F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v -
+                                     dot(a, nabla_grad(v)) * U) * dx +
                   ρ * c * (1 / 2) * dot(n, a) * U * v * ds -
                   ρ * c * (1 / 2) * div(a) * U * v * dx)
             # # Just use the asymmetric advection term as-is.
@@ -305,25 +280,20 @@ class AdvectionDiffusion:
             return dot(vec, vec)**(1 / 2)
 
         # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
-        # To set it, e.g. `solver.enable_SUPG.b = 1.0`, where `solver` is your `AdvectionDiffusion` instance.
+        # To set it, e.g. `solver.enable_SUPG.b = 1.0`,
+        # where `solver` is your `AdvectionDiffusion` instance.
         enable_SUPG = Expression('b', degree=0, b=0.0)
 
         # [k] / ([ρ] [c]) = m² / s,  a (thermal) kinematic viscosity
-        #
-        # Donea & Huerta (2003, p. 65), discussing the steady-state advection-diffusion equation:
-        #   "It is important to note that for higher-order [as compared to linear] finite elements, apart
-        #   from the results discussed in Section 2.2.4 and Remark 2.11 [referring to analyses of the
-        #   discrete equations in 1D and conditions for exact results at the nodes] (see also Franca, Frey
-        #   and Hughes, 1992; Codina, 1993b), no optimal definition of `τ` exists. Numerical experiments
-        #   seem to indicate that for finite elements of order `p`, the value of the stabilization parameter
-        #   should be approximately `τ / p`."
-        α0 = Constant(1 / self.V.ufl_element().degree())
-        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (k / (ρ * c)) / he**2)**-1  # seconds
+        # [τ] = s
+        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (k / (ρ * c)) / he**2)**-1
         self.enable_SUPG = enable_SUPG
 
         # We need the strong form of the equation to compute the residual
         if self.advection == "divergence-free":
-            def adv(U_):  # strong form of the modified advection operator that yields the skew-symmetric weak form
+            # Strong form of the modified advection operator that yields the
+            # skew-symmetric weak form.
+            def adv(U_):
                 return dot(a, nabla_grad(U_)) + (1 / 2) * div(a) * U_
         elif self.advection == "general":
             def adv(U_):
@@ -359,7 +329,6 @@ class AdvectionDiffusion:
         Updates `self.u_`.
         """
         begin("Temperature")
-        # TODO: reassemble only the time-varying part of the LHS (advection)
         A = assemble(self.aform)
         b = assemble(self.Lform)
         [bc.apply(A) for bc in self.bc]
