@@ -203,8 +203,9 @@ for n in range(nt):
                 plt.subplot(3, 1, 2)
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=flowsolver.u_.sub(0), u1=flowsolver.u_.sub(1))
-            magu = project(magu_expr, W)
-            Co = project(magu * Constant(dt) / heatsolver.he, W)  # Courant number
+            magu = interpolate(magu_expr, V.sub(0).collapse())
+            # Courant number of *heat* solver
+            Co = project(magu_expr * Constant(dt) / flowsolver.he, V.sub(0).collapse())
             theplot = plotmagic.mpiplot(magu, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
