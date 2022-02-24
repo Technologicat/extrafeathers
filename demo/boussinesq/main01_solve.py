@@ -42,13 +42,16 @@ if my_rank == 0:
     print(f"Number of DOFs: velocity {V.dim()}, pressure {Q.dim()}, temperature {W.dim()}, total {V.dim() + Q.dim() + W.dim()}")
 
 # Set up boundary conditions
+bcu_top = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.TOP.value)
 bcu_walls = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.WALLS.value)
+bcu_bottom = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.BOTTOM.value)
 bcu_obstacle = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.OBSTACLE.value)
-bcT_walls = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.WALLS.value)
+bcT_top = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.TOP.value)
+bcT_bottom = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.BOTTOM.value)
 bcT_obstacle = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.OBSTACLE.value)
-bcu = [bcu_walls, bcu_obstacle]
-bcp = []
-bcT = [bcT_walls, bcT_obstacle]
+bcu = [bcu_top, bcu_walls, bcu_bottom, bcu_obstacle]
+bcp = []  # cavity flow; pressure has pure Dirichlet BCs.
+bcT = [bcT_top, bcT_bottom, bcT_obstacle]
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)

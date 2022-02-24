@@ -24,7 +24,9 @@ Line(3) = {3, 11};
 Line(13) = {11, 4};
 Line(4) = {4, 1};
 
-Physical Line("walls") = {1, 12, 2, 3, 13, 4};
+Physical Line("top") = {2};
+Physical Line("walls") = {1, 12, 3, 13};
+Physical Line("bottom") = {4};
 
 // create the obstacle (cylinder)
 x0 = 0.2;
@@ -45,7 +47,7 @@ Physical Line("obstacle") = {8, 5, 6, 7};
 Line Loop(9) = {2, 3, 13, 4, 1, 12};   // outer boundary: clockwise to have normal pointing out of the flow domain
 Line Loop(10) = {7, 8, 5, 6};  // hole boundary:  counterclockwise to have normal pointing out of the flow domain
 Plane Surface(11) = {9, 10};
-// Because there are two physical boundaries defined above, the ID of the physical surface will be 3.
+// Because there are four physical boundaries defined above, the ID of the physical surface will be 5.
 Physical Surface("fluid") = {11};
 
 // Let's mesh the obstacle part, too. This gives us a mesh with two subdomains,

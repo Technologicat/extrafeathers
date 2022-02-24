@@ -20,8 +20,8 @@ g = 9.81           # acceleration of gravity [m/s²]
 # --------------------------------------------------------------------------------
 # Numerical
 
-T = 5.0            # final time [s]
-nt = 500          # number of timesteps
+T = 10.0           # final time [s]
+nt = 1000          # number of timesteps
 dt = T / nt        # timestep size [s]
 
 # --------------------------------------------------------------------------------
@@ -37,11 +37,13 @@ class Boundaries(IntEnum):
     # Autoboundary always tags internal facets with the value 0.
     # Leave it out from the definitions to make the boundary plotter ignore any facet tagged with that value.
     # NOT_ON_BOUNDARY = 0
-    WALLS = 1
-    OBSTACLE = 2
+    TOP = 1
+    WALLS = 2
+    BOTTOM = 3
+    OBSTACLE = 4
 class Domains(IntEnum):
-    FLUID = 3
-    STRUCTURE = 4  # not used in simulation
+    FLUID = 5
+    STRUCTURE = 6  # not used in simulation
 
 # --------------------------------------------------------------------------------
 # File paths
