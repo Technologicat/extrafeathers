@@ -1,7 +1,8 @@
 # -*- coding: utf-8; -*-
 """Common meta-utilities used by `extrafeathers` itself."""
 
-__all__ = ["make_find_fullmesh_cell", "make_find_fullmesh_facet"]
+__all__ = ["make_find_fullmesh_cell", "make_find_fullmesh_facet",
+           "is_anticlockwise"]
 
 import typing
 
@@ -60,3 +61,24 @@ def make_find_fullmesh_facet(fullmesh: dolfin.Mesh,
             return fullmesh_facet
     find_fullmesh_facet.__doc__ = """Given a submesh facet, return the corresponding fullmesh facet."""
     return find_fullmesh_facet
+
+
+def is_anticlockwise(ps: typing.List[typing.List[float]]) -> typing.Optional[bool]:
+    """[[x1, y1], [x2, y2], [x3, y3]] -> whether the points are listed anticlockwise.
+
+    In the degenerate case where the points are exactly on a line (up to machine precision),
+    returns `None`.
+
+    Based on the shoelace formula:
+        https://en.wikipedia.org/wiki/Shoelace_formula
+    """
+    x1, y1 = ps[0]
+    x2, y2 = ps[1]
+    x3, y3 = ps[2]
+    # https://math.stackexchange.com/questions/1324179/how-to-tell-if-3-connected-points-are-connected-clockwise-or-counter-clockwise
+    s = x1 * y2 - x1 * y3 + y1 * x3 - y1 * x2 + x2 * y3 - y2 * x3
+    if s > 0:
+        return True  # anticlockwise
+    elif s < 0:
+        return False  # clockwise
+    return None  # degenerate case; the points are on a line
