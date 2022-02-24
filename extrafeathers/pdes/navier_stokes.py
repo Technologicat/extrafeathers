@@ -531,7 +531,6 @@ class NavierStokes:
         # which discusses element-local stabilization parameter values in more detail;
         # I'll need to check that out later (see p. 297 in the book for the reference).
         τ_PSPG, enable_PSPG = τ_SUPG, enable_SUPG
-        # TODO: `nabla_grad(q)` or `adv(q)?`
         F_PSPG = enable_PSPG * τ_PSPG * dot(nabla_grad(q), R(u_, p)) * dx
         self.a2_varying = lhs(F_PSPG)
         self.L2 += rhs(F_PSPG)
