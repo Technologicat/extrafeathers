@@ -44,7 +44,7 @@ from mshr import Rectangle, Circle, generate_mesh
 
 # custom utilities for FEniCS
 from extrafeathers import autoboundary
-from extrafeathers import meshutil
+from extrafeathers import meshiowrapper
 from extrafeathers import plotutil
 
 from demo.coupled.util import mypause
@@ -184,7 +184,7 @@ if MPI.comm_world.size == 1:
     # `fluid_mesh`, so they are not applicable here. If we wanted, we could
     # `meshfunction.specialize` it onto `fluid_mesh`. But we don't need the
     # subdomain data in this solver, so we can just leave it out.
-    meshutil.write_hdf5_mesh(mesh_filename, fluid_mesh, None, fluid_boundary_parts)
+    meshiowrapper.write_hdf5_mesh(mesh_filename, fluid_mesh, None, fluid_boundary_parts)
 
     print("Mesh generated, visualizing.")
     print("Please restart in parallel to solve the problem (mpirun ...)")
@@ -209,7 +209,7 @@ if my_rank == 0:
     print("Running in parallel mode. Solving...")
 
 # Read mesh and boundary data from file
-mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filename)
+mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_filename)
 
 # TODO: Nondimensionalize properly so that we can use actual physical values of material parameters.
 # TODO: Investigate possibilities for a simple FSI solver. Starting point:

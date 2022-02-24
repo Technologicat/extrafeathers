@@ -20,7 +20,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     begin, end)
 
 # custom utilities for FEniCS
-from extrafeathers import meshutil
+from extrafeathers import meshiowrapper
 from extrafeathers import plotutil
 
 from .navier_stokes import NavierStokes
@@ -34,7 +34,7 @@ from .util import mypause
 my_rank = MPI.rank(MPI.comm_world)
 
 # Read mesh and boundary data from file
-mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filename)
+mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_filename)
 
 # TODO: Nondimensionalize properly so that we can use actual physical values of material parameters.
 # TODO: Investigate possibilities for a simple FSI solver. Starting point:

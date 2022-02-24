@@ -20,7 +20,7 @@ from dolfin import Point, MeshFunction, SubMesh, Facet, near, MPI
 from mshr import Rectangle, Circle, generate_mesh
 
 from extrafeathers import autoboundary
-from extrafeathers import meshutil
+from extrafeathers import meshiowrapper
 from extrafeathers import plotutil
 
 from .config import (mesh_filename, mesh_resolution,
@@ -104,7 +104,7 @@ def main():
     # `fluid_mesh`, so they are not applicable here. If we wanted, we could
     # `meshfunction.specialize` it onto `fluid_mesh`. But we don't need the
     # subdomain data in this solver, so we can just leave it out.
-    meshutil.write_hdf5_mesh(mesh_filename, fluid_mesh, None, fluid_boundary_parts)
+    meshiowrapper.write_hdf5_mesh(mesh_filename, fluid_mesh, None, fluid_boundary_parts)
 
     print("Mesh generated, visualizing.")
     print("Please run 01_flow.py and then 02_heat.py to solve the problem.")

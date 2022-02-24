@@ -19,7 +19,7 @@ from fenics import (FunctionSpace, DirichletBC,
                     begin, end)
 
 # custom utilities for FEniCS
-from extrafeathers import meshutil
+from extrafeathers import meshiowrapper
 from extrafeathers import plotutil
 
 from .advection_diffusion import AdvectionDiffusion
@@ -33,7 +33,7 @@ from .util import mypause
 my_rank = MPI.rank(MPI.comm_world)
 
 # Read mesh and boundary data from file
-mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(mesh_filename)
+mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_filename)
 
 # Define function space
 V = FunctionSpace(mesh, 'P', 2)  # can use 1 or 2

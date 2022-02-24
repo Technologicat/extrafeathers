@@ -18,7 +18,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     begin, end)
 
 # custom utilities for FEniCS
-from extrafeathers import meshutil
+from extrafeathers import meshiowrapper
 from extrafeathers import plotutil
 
 from demo.coupled.navier_stokes import NavierStokes
@@ -64,7 +64,7 @@ class Domains(IntEnum):
 
 if MPI.comm_world.size == 1:
     print("Running in serial mode. Importing mesh...")
-    meshutil.import_gmsh(gmsh_mesh_filename, h5_mesh_filename)
+    meshiowrapper.import_gmsh(gmsh_mesh_filename, h5_mesh_filename)
     print("Please restart in parallel to solve the problem (mpirun ...)")
     from sys import exit
     exit(0)
@@ -78,7 +78,7 @@ if my_rank == 0:
     print("Running in parallel mode. Solving...")
 
 # Read mesh and boundary data from file
-mesh, ignored_domain_parts, boundary_parts = meshutil.read_hdf5_mesh(h5_mesh_filename)
+mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(h5_mesh_filename)
 
 # Define function spaces
 V = VectorFunctionSpace(mesh, 'P', 2)

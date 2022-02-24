@@ -7,19 +7,19 @@ import matplotlib.pyplot as plt
 import dolfin
 
 from extrafeathers import meshfunction
-from extrafeathers import meshutil
+from extrafeathers import meshiowrapper
 from extrafeathers import plotutil
 
 print(pathlib.Path.cwd())
 
-meshutil.import_gmsh(src="demo/meshes/flow_over_two_cylinders.msh",
-                     dst="demo/meshes/flow_over_cylinder_full.h5")  # for use by the flow solvers
-mesh, domain_parts, boundary_parts = meshutil.read_hdf5_mesh("demo/meshes/flow_over_cylinder_full.h5")
+meshiowrapper.import_gmsh(src="demo/meshes/flow_over_two_cylinders.msh",
+                          dst="demo/meshes/flow_over_cylinder_full.h5")  # for use by the flow solvers
+mesh, domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh("demo/meshes/flow_over_cylinder_full.h5")
 fluid_mesh = dolfin.SubMesh(mesh, domain_parts, 5)
 fluid_domain_parts = meshfunction.specialize(domain_parts, fluid_mesh)
 fluid_boundary_parts = meshfunction.specialize(boundary_parts, fluid_mesh)
-meshutil.write_hdf5_mesh("demo/meshes/flow_over_cylinder_fluid.h5",
-                         fluid_mesh, fluid_domain_parts, fluid_boundary_parts)
+meshiowrapper.write_hdf5_mesh("demo/meshes/flow_over_cylinder_fluid.h5",
+                              fluid_mesh, fluid_domain_parts, fluid_boundary_parts)
 
 plt.figure(1)
 plt.clf()

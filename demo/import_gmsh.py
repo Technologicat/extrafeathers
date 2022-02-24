@@ -16,31 +16,31 @@ import matplotlib.pyplot as plt
 import dolfin
 
 from extrafeathers import meshfunction
-from extrafeathers import meshutil
+from extrafeathers import meshiowrapper
 from extrafeathers import plotutil
 
 print(pathlib.Path.cwd())
 
 # Import the mesh (full domain, containing both fluid and structure)
-meshutil.import_gmsh(src="demo/meshes/flow_over_cylinder.msh",
-                     dst="demo/meshes/flow_over_cylinder_full.h5")
+meshiowrapper.import_gmsh(src="demo/meshes/flow_over_cylinder.msh",
+                          dst="demo/meshes/flow_over_cylinder_full.h5")
 
 # Read the result back in
-mesh, domain_parts, boundary_parts = meshutil.read_hdf5_mesh("demo/meshes/flow_over_cylinder_full.h5")
+mesh, domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh("demo/meshes/flow_over_cylinder_full.h5")
 
 # Separate the fluid and structure meshes (in the `navier_stokes` demo, we only need the fluid mesh)
 # The tag numbers must match those that were used in the input .msh file (see the .geo file it is generated from).
 fluid_mesh = dolfin.SubMesh(mesh, domain_parts, 5)
 fluid_domain_parts = meshfunction.specialize(domain_parts, fluid_mesh)
 fluid_boundary_parts = meshfunction.specialize(boundary_parts, fluid_mesh)
-meshutil.write_hdf5_mesh("demo/meshes/flow_over_cylinder_fluid.h5",
-                         fluid_mesh, fluid_domain_parts, fluid_boundary_parts)
+meshiowrapper.write_hdf5_mesh("demo/meshes/flow_over_cylinder_fluid.h5",
+                              fluid_mesh, fluid_domain_parts, fluid_boundary_parts)
 
 structure_mesh = dolfin.SubMesh(mesh, domain_parts, 6)
 structure_domain_parts = meshfunction.specialize(domain_parts, structure_mesh)
 structure_boundary_parts = meshfunction.specialize(boundary_parts, structure_mesh)
-meshutil.write_hdf5_mesh("demo/meshes/flow_over_cylinder_structure.h5",
-                         structure_mesh, structure_domain_parts, structure_boundary_parts)
+meshiowrapper.write_hdf5_mesh("demo/meshes/flow_over_cylinder_structure.h5",
+                              structure_mesh, structure_domain_parts, structure_boundary_parts)
 
 # --------------------------------------------------------------------------------
 # Visualize
