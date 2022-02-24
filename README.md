@@ -35,7 +35,7 @@ We demonstrate how to [import a Gmsh mesh](demo/import_gmsh.py) with subdomains 
      - Automatically tag facets on internal boundaries between two subdomains. This makes it easier to respect [DRY](https://en.wikipedia.org/wiki/Don't_repeat_yourself) when setting up a small problem for testing, as the internal boundaries only need to be defined in one place (in the actual geometry).
      - Tag also facets belonging to an outer boundary of the domain, via a callback function (that you provide) that gives the tag number for a given facet. This allows easily producing one `MeshFunction` with tags for all boundaries.
      - Here *subdomain* means a `SubMesh`. These may result either from internal mesh generation via the `mshr` component of FEniCS, or from imported meshes. See the [`navier_stokes`](demo/navier_stokes.py) and [`import_gmsh`](demo/import_gmsh.py) demos for examples of both.
-   - `specialize_meshfunction` [**2D**, **3D**] [**serial only**]
+   - `specialize` [**2D**, **3D**] [**serial only**]
      - Convert a `MeshFunction` on cells or facets of a full mesh into the corresponding `MeshFunction` on its `SubMesh`.
      - Cell and facet meshfunctions supported.
      - Useful e.g. when splitting a mesh with subdomains. This function allows converting the `domain_parts` and `boundary_parts` from the full mesh onto each submesh. This allows saving the submeshes, along with their subdomain and boundary tags, as individual standalone meshes in separate HDF5 mesh files. See the `import_gmsh` demo. This is useful, because (as of FEniCS 2019) `SubMesh` is not supported when running in parallel.
@@ -45,9 +45,9 @@ We demonstrate how to [import a Gmsh mesh](demo/import_gmsh.py) with subdomains 
      - Can compute both cell and facet meshfunctions.
      - Useful for stabilization methods in CFD, where `h` typically appears in the stabilization term.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
-   - `cell_meshfunction_to_expression` [**2D**, **3D**]
+   - `cell_mf_to_expression` [**2D**, **3D**]
      - Convert a scalar `double` `MeshFunction` into a `CompiledExpression` that can be used in UFL forms.
-     - For example, `h = cell_meshfunction_to_expression(meshsize(mesh))`.
+     - For example, `h = cell_mf_to_expression(meshsize(mesh))`.
    - `midpoint_refine` [**2D**], `P2_to_refined_P1` [**2D**]
      - Prepare Lagrange P2 (quadratic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization.
        - Essentially, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.

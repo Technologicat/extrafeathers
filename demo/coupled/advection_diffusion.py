@@ -42,7 +42,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, Dir
                     lhs, rhs, assemble, solve,
                     begin, end)
 
-from extrafeathers import autoboundary
+from extrafeathers import meshfunction
 
 from .util import ScalarOrTensor, istensor, ufl_constant_property
 
@@ -136,7 +136,7 @@ class AdvectionDiffusion:
         self.u_ = Function(V)  # suffix _: the latest computed value
 
         # Local mesh size (for stabilization terms)
-        self.he = autoboundary.cell_meshfunction_to_expression(autoboundary.meshsize(self.mesh))
+        self.he = meshfunction.cell_mf_to_expression(meshfunction.meshsize(self.mesh))
 
         # Specific heat source
         self.h = Function(V)

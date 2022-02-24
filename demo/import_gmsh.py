@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 
 import dolfin
 
-from extrafeathers import autoboundary
+from extrafeathers import meshfunction
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
@@ -31,14 +31,14 @@ mesh, domain_parts, boundary_parts = meshutil.read_hdf5_mesh("demo/meshes/flow_o
 # Separate the fluid and structure meshes (in the `navier_stokes` demo, we only need the fluid mesh)
 # The tag numbers must match those that were used in the input .msh file (see the .geo file it is generated from).
 fluid_mesh = dolfin.SubMesh(mesh, domain_parts, 5)
-fluid_domain_parts = autoboundary.specialize_meshfunction(domain_parts, fluid_mesh)
-fluid_boundary_parts = autoboundary.specialize_meshfunction(boundary_parts, fluid_mesh)
+fluid_domain_parts = meshfunction.specialize(domain_parts, fluid_mesh)
+fluid_boundary_parts = meshfunction.specialize(boundary_parts, fluid_mesh)
 meshutil.write_hdf5_mesh("demo/meshes/flow_over_cylinder_fluid.h5",
                          fluid_mesh, fluid_domain_parts, fluid_boundary_parts)
 
 structure_mesh = dolfin.SubMesh(mesh, domain_parts, 6)
-structure_domain_parts = autoboundary.specialize_meshfunction(domain_parts, structure_mesh)
-structure_boundary_parts = autoboundary.specialize_meshfunction(boundary_parts, structure_mesh)
+structure_domain_parts = meshfunction.specialize(domain_parts, structure_mesh)
+structure_boundary_parts = meshfunction.specialize(boundary_parts, structure_mesh)
 meshutil.write_hdf5_mesh("demo/meshes/flow_over_cylinder_structure.h5",
                          structure_mesh, structure_domain_parts, structure_boundary_parts)
 
@@ -66,7 +66,7 @@ for figno, (title, msh, dparts, bparts) in enumerate((("All", mesh,
 
     # local mesh size
     plt.subplot(2, 2, 2)
-    theplot = dolfin.plot(autoboundary.meshsize(msh))
+    theplot = dolfin.plot(meshfunction.meshsize(msh))
     plt.colorbar(theplot)
     plt.ylabel("Local mesh size")
 

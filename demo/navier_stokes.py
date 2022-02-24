@@ -180,9 +180,10 @@ if MPI.comm_world.size == 1:
 
     # Save meshes, subdomains and boundary data as HDF5
     #
-    # Note, however, that our `domain_parts` are specified w.r.t. `mesh`, not `fluid_mesh`,
-    # so they are not applicable here. If we wanted, we could `autoboundary.specialize_meshfunction` it
-    # onto `fluid_mesh`. But we don't need the subdomain data in this solver, so we can just leave it out.
+    # Note, however, that our `domain_parts` are specified w.r.t. `mesh`, not
+    # `fluid_mesh`, so they are not applicable here. If we wanted, we could
+    # `meshfunction.specialize` it onto `fluid_mesh`. But we don't need the
+    # subdomain data in this solver, so we can just leave it out.
     meshutil.write_hdf5_mesh(mesh_filename, fluid_mesh, None, fluid_boundary_parts)
 
     print("Mesh generated, visualizing.")

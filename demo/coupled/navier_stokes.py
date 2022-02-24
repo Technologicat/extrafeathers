@@ -26,7 +26,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     lhs, rhs, assemble, solve, project,
                     begin, end)
 
-from extrafeathers import autoboundary
+from extrafeathers import meshfunction
 
 from .util import ufl_constant_property
 
@@ -166,7 +166,7 @@ class LaminarFlow:
         self.p_ = Function(Q)
 
         # Local mesh size (for stabilization terms)
-        self.he = autoboundary.cell_meshfunction_to_expression(autoboundary.meshsize(self.mesh))
+        self.he = meshfunction.cell_mf_to_expression(meshfunction.meshsize(self.mesh))
 
         # Specific body force. FEM function for maximum generality.
         self.f = Function(V)
