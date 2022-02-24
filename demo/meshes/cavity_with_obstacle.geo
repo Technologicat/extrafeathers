@@ -18,15 +18,18 @@ Line(4) = {4, 1};
 Physical Line("walls")      = {1, 2, 3, 4};
 
 // create the obstacle (cylinder)
-Point(5) = {0.2, 0.2, 0, 1.0};
-Point(6) = {0.15, 0.2, 0, 1.0};
-Point(7) = {0.2, 0.15, 0, 1.0};
-Point(8) = {0.25, 0.2, 0, 1.0};
-Point(9) = {0.2, 0.25, 0, 1.0};
-Circle(5) = {6, 5, 7};
-Circle(6) = {7, 5, 8};
-Circle(7) = {8, 5, 9};
-Circle(8) = {9, 5, 6};
+x0 = 0.2;
+y0 = 0.2;
+r = 0.05;
+Point(5) = {x0, y0, 0, 1.0};      // .
+Point(6) = {x0 - r, y0, 0, 1.0};  // <
+Point(7) = {x0, y0 - r, 0, 1.0};  // v
+Point(8) = {x0 + r, y0, 0, 1.0};  // >
+Point(9) = {x0, y0 + r, 0, 1.0};  // ^
+Circle(5) = {6, 5, 7};            // < . v
+Circle(6) = {7, 5, 8};            // v . >
+Circle(7) = {8, 5, 9};            // > . ^
+Circle(8) = {9, 5, 6};            // ^ . <
 Physical Line("obstacle") = {8, 5, 6, 7};
 
 // define the 2D domain
