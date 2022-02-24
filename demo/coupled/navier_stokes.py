@@ -105,6 +105,8 @@ class NavierStokes:
     as presented in the FEniCS tutorial. Stabilized with SUPG, LSIC, and
     skew-symmetric advection. See Donea & Huerta (2003).
 
+    Time integration is performed using the θ method; Crank-Nicolson by default.
+
     `V`: function space for velocity
     `Q`: function space for pressure
     `ρ`: density [kg / m³]

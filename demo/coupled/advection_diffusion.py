@@ -51,6 +51,8 @@ from .util import ScalarOrTensor, istensor, ufl_constant_property
 class AdvectionDiffusion:
     """Advection-diffusion equation: heat transport in a moving material.
 
+    Time integration is performed using the θ method; Crank-Nicolson by default.
+
     `V`: function space for temperature
     `ρ`: density [kg / m³]
     `c`: specific heat capacity [J / (kg K)]
