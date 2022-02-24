@@ -1,7 +1,7 @@
 // Gmsh 2.16.0 geometry file
 
-elsize_walls = 0.02;
-elsize_obstacle = 0.01;
+elsize_walls = 0.04;
+elsize_obstacle = 0.01 / 2;
 
 // --------------------------------------------------------------------------------
 
