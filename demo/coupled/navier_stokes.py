@@ -13,7 +13,7 @@ where
 and I is the rank-2 identity tensor.
 """
 
-__all__ = ["LaminarFlow"]
+__all__ = ["NavierStokes"]
 
 import typing
 
@@ -94,7 +94,7 @@ def σ(u, p, μ):
     return 2 * μ * ε(u) - p * Identity(p.geometric_dimension())
 
 
-class LaminarFlow:
+class NavierStokes:
     """Incompressible Navier-Stokes solver, no turbulence model.
 
     Main use case is laminar flow. Can be used for direct numerical simulation (DNS)
@@ -389,7 +389,7 @@ class LaminarFlow:
 
         # LSIC stabilizer on/off switch;  b: float, use 0.0 or 1.0
         # To set it, e.g. `solver.enable_LSIC.b = 1.0`,
-        # where `solver` is your `LaminarFlow` instance.
+        # where `solver` is your `NavierStokes` instance.
         enable_LSIC = Expression('b', degree=0, b=1.0)
         self.enable_LSIC = enable_LSIC
 
@@ -407,7 +407,7 @@ class LaminarFlow:
 
         # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
         # To set it, e.g. `solver.enable_SUPG.b = 1.0`,
-        # where `solver` is your `LaminarFlow` instance.
+        # where `solver` is your `NavierStokes` instance.
         enable_SUPG = Expression('b', degree=0, b=1.0)
         self.enable_SUPG = enable_SUPG
 

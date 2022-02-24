@@ -21,7 +21,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
-from demo.coupled.navier_stokes import LaminarFlow
+from demo.coupled.navier_stokes import NavierStokes
 from demo.coupled.util import mypause
 
 my_rank = MPI.rank(MPI.comm_world)
@@ -119,7 +119,7 @@ set_log_level(LogLevel.WARNING)
 plt.ion()
 
 # Set up the problem
-solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
+solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 
 # Time-stepping
 t = 0

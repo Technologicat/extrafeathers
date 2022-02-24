@@ -23,7 +23,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
 from extrafeathers import meshutil
 from extrafeathers import plotutil
 
-from .navier_stokes import LaminarFlow
+from .navier_stokes import NavierStokes
 from .config import (rho, mu, dt, nt, inflow_max,
                      Boundaries, L,
                      mesh_filename,
@@ -135,7 +135,7 @@ plt.ion()
 # TODO: We need to implement a potential-flow solver to be able to do that. It's just a Poisson equation,
 # TODO: but the scalings must match this solver, and we need to produce a pressure field, too.
 #
-solver = LaminarFlow(V, Q, rho, mu, bcu, bcp, dt)
+solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 
 # Body force (gravity)
 # TODO: vertical gravity requires modification of outlet BCs, because it physically changes the outflow profile.
