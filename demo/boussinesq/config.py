@@ -13,7 +13,7 @@ rho = 1            # density [kg/m³]
 mu = 0.001         # dynamic viscosity [Pa s]
 c = 1              # specific heat capacity [J/(kg K)]
 k = 1e-3           # heat conductivity [W/(m K)]
-alpha = 1e-3       # coefficient of thermal expansion [1/K]
+alpha = 0.5        # coefficient of thermal expansion [1/K]
 T0 = 0             # reference temperature at which thermal expansion is zero [K]
 g = 9.81           # acceleration of gravity [m/s²]
 
@@ -21,7 +21,7 @@ g = 9.81           # acceleration of gravity [m/s²]
 # Numerical
 
 T = 5.0            # final time [s]
-nt = 500           # number of timesteps
+nt = 500          # number of timesteps
 dt = T / nt        # timestep size [s]
 
 # --------------------------------------------------------------------------------
