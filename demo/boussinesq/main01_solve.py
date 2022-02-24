@@ -139,13 +139,16 @@ for n in range(nt):
     t += dt
 
     # Solve one timestep
+    begin("Flow solve")
     flowsolver.f.assign(project(specific_buoyancy, V))
     flowsolver.step()
     flowsolver.commit()
-
+    end()
+    begin("Heat solve")
     heatsolver.a.assign(flowsolver.u_)
     heatsolver.step()
     heatsolver.commit()
+    end()
 
     begin("Saving")
 
