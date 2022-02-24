@@ -45,7 +45,7 @@ from mshr import Rectangle, Circle, generate_mesh
 # custom utilities for FEniCS
 from extrafeathers import autoboundary
 from extrafeathers import meshiowrapper
-from extrafeathers import plotutil
+from extrafeathers import plotmagic
 
 my_rank = MPI.rank(MPI.comm_world)
 
@@ -189,7 +189,7 @@ if MPI.comm_world.size == 1:
     from fenics import plot
     plot(fluid_mesh)
     plot(structure_mesh, color="tan")  # note: not saved to file
-    plotutil.plot_facet_meshfunction(fluid_boundary_parts, names=Boundaries)
+    plotmagic.plot_facet_meshfunction(fluid_boundary_parts, names=Boundaries)
     plt.legend(loc="best")
     plt.title("Generated mesh")
     plt.show()
@@ -451,20 +451,20 @@ for n in range(nt):
     #         plt.figure(1)
     #         plt.clf()
     #         plt.subplot(3, 1, 1)
-    #     theplot = plotutil.mpiplot(p_)
+    #     theplot = plotmagic.mpiplot(p_)
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
     #         plt.ylabel(r"$p$")
     #         plt.title(msg)
     #         plt.subplot(3, 1, 2)
-    #     theplot = plotutil.mpiplot(u_.sub(0))
+    #     theplot = plotmagic.mpiplot(u_.sub(0))
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
     #         plt.ylabel(r"$u_x$")
     #         plt.subplot(3, 1, 3)
-    #     theplot = plotutil.mpiplot(u_.sub(1))
+    #     theplot = plotmagic.mpiplot(u_.sub(1))
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
@@ -474,7 +474,7 @@ for n in range(nt):
     #         if n == 0:
     #             plt.show()
     #         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-    #         plotutil.pause(0.2)
+    #         plotmagic.pause(0.2)
 
     # Plot p and the magnitude of u
     if n % 50 == 0 or n == nt - 1:
@@ -482,7 +482,7 @@ for n in range(nt):
             plt.figure(1)
             plt.clf()
             plt.subplot(2, 1, 1)
-        theplot = plotutil.mpiplot(p_)
+        theplot = plotmagic.mpiplot(p_)
         if my_rank == 0:
             plt.axis("equal")
             plt.colorbar(theplot)
@@ -490,7 +490,7 @@ for n in range(nt):
             plt.title(msg)
             plt.subplot(2, 1, 2)
         magu = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2, u0=u_.sub(0), u1=u_.sub(1))
-        theplot = plotutil.mpiplot(interpolate(magu, V.sub(0).collapse()))
+        theplot = plotmagic.mpiplot(interpolate(magu, V.sub(0).collapse()))
         if my_rank == 0:
             plt.axis("equal")
             plt.colorbar(theplot)
@@ -500,7 +500,7 @@ for n in range(nt):
             if n == 0:
                 plt.show()
             # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-            plotutil.pause(0.2)
+            plotmagic.pause(0.2)
 
     # Update progress bar
     progress += 1

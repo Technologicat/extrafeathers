@@ -21,7 +21,7 @@ from fenics import (FunctionSpace, DirichletBC,
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
-from extrafeathers import plotutil
+from extrafeathers import plotmagic
 
 from extrafeathers.pdes import AdvectionDiffusion
 from .config import (rho, c, k, dt, nt, inflow_max,
@@ -156,7 +156,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotutil.mpiplot(solver.u_, cmap="coolwarm")
+            theplot = plotmagic.mpiplot(solver.u_, cmap="coolwarm")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -167,7 +167,7 @@ for n in range(nt):
                                    u0=solver.a.sub(0), u1=solver.a.sub(1))
             maga = interpolate(maga_expr, V)
             Co = project(maga_expr * Constant(dt) / solver.he, V)  # Courant number
-            theplot = plotutil.mpiplot(maga, cmap="viridis")
+            theplot = plotmagic.mpiplot(maga, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -177,7 +177,7 @@ for n in range(nt):
                 if n == 0:
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-                plotutil.pause(0.2)
+                plotmagic.pause(0.2)
         if my_rank == 0:
             last_plot_walltime_local = tim.dt
 

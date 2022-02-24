@@ -8,7 +8,7 @@ import dolfin
 
 from extrafeathers import meshfunction
 from extrafeathers import meshiowrapper
-from extrafeathers import plotutil
+from extrafeathers import plotmagic
 
 print(pathlib.Path.cwd())
 
@@ -43,7 +43,7 @@ plt.ylabel("Phys. surfaces")
 
 # boundary parts
 plt.subplot(2, 2, 4)
-plotutil.plot_facet_meshfunction(boundary_parts, invalid_values=[2**64 - 1])
+plotmagic.plot_facet_meshfunction(boundary_parts, invalid_values=[2**64 - 1])
 plt.axis("scaled")
 plt.legend(loc="best")
 plt.ylabel("Phys. boundaries")

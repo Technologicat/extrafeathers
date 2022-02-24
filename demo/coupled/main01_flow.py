@@ -22,7 +22,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
-from extrafeathers import plotutil
+from extrafeathers import plotmagic
 
 from extrafeathers.pdes import NavierStokes
 from .config import (rho, mu, dt, nt, inflow_max,
@@ -275,20 +275,20 @@ for n in range(nt):
     #         plt.figure(1)
     #         plt.clf()
     #         plt.subplot(3, 1, 1)
-    #     theplot = plotutil.mpiplot(solver.p_)
+    #     theplot = plotmagic.mpiplot(solver.p_)
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
     #         plt.ylabel(r"$p$")
     #         plt.title(msg)
     #         plt.subplot(3, 1, 2)
-    #     theplot = plotutil.mpiplot(solver.u_.sub(0))
+    #     theplot = plotmagic.mpiplot(solver.u_.sub(0))
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
     #         plt.ylabel(r"$u_x$")
     #         plt.subplot(3, 1, 3)
-    #     theplot = plotutil.mpiplot(solver.u_.sub(1))
+    #     theplot = plotmagic.mpiplot(solver.u_.sub(1))
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
@@ -298,7 +298,7 @@ for n in range(nt):
     #         if n == 0:
     #             plt.show()
     #         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-    #         plotutil.pause(0.2)
+    #         plotmagic.pause(0.2)
 
     # Plot p and the magnitude of u
     if n % 50 == 0 or n == nt - 1:
@@ -320,7 +320,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotutil.mpiplot(solver.p_, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
+            theplot = plotmagic.mpiplot(solver.p_, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -330,7 +330,7 @@ for n in range(nt):
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=solver.u_.sub(0), u1=solver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
-            theplot = plotutil.mpiplot(magu, cmap="viridis")
+            theplot = plotmagic.mpiplot(magu, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -340,7 +340,7 @@ for n in range(nt):
                 if n == 0:
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-                plotutil.pause(0.2)
+                plotmagic.pause(0.2)
         if my_rank == 0:
             last_plot_walltime_local = tim.dt
 

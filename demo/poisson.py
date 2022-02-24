@@ -14,7 +14,7 @@ from dolfin import (Point, FunctionSpace, Constant, DirichletBC,
 from mshr import Rectangle, generate_mesh
 
 from extrafeathers import autoboundary
-from extrafeathers import plotutil
+from extrafeathers import plotmagic
 
 my_rank = MPI.comm_world.rank
 
@@ -84,7 +84,7 @@ xdmffile_u.write(u, 0)  # (field, time)
 # Visualize
 if my_rank == 0:
     print("Plotting.")
-theplot = plotutil.mpiplot(u)  # must run in all MPI processes to gather the data
+theplot = plotmagic.mpiplot(u)  # must run in all MPI processes to gather the data
 if my_rank == 0:
     import matplotlib.pyplot as plt
     plt.colorbar(theplot)

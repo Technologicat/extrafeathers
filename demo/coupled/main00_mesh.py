@@ -21,7 +21,7 @@ from mshr import Rectangle, Circle, generate_mesh
 
 from extrafeathers import autoboundary
 from extrafeathers import meshiowrapper
-from extrafeathers import plotutil
+from extrafeathers import plotmagic
 
 from .config import (mesh_filename, mesh_resolution,
                      Boundaries, Domains,
@@ -111,7 +111,7 @@ def main():
     from fenics import plot
     plot(fluid_mesh)
     plot(structure_mesh, color="tan")  # note: not saved to file
-    plotutil.plot_facet_meshfunction(fluid_boundary_parts, names=Boundaries)
+    plotmagic.plot_facet_meshfunction(fluid_boundary_parts, names=Boundaries)
     plt.legend(loc="best")
     plt.title("Generated mesh")
     plt.show()
