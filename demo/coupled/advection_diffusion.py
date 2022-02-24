@@ -47,6 +47,7 @@ from extrafeathers import meshfunction
 from .util import ScalarOrTensor, istensor, ufl_constant_property
 
 
+# TODO: use nondimensional form
 class AdvectionDiffusion:
     """Advection-diffusion equation: heat transport in a moving material.
 

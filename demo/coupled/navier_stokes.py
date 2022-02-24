@@ -94,6 +94,7 @@ def σ(u, p, μ):
     return 2 * μ * ε(u) - p * Identity(p.geometric_dimension())
 
 
+# TODO: use nondimensional form
 class NavierStokes:
     """Incompressible Navier-Stokes solver, no turbulence model.
 
