@@ -128,7 +128,9 @@ specific_buoyancy = ρ_over_ρ0 * Constant((0, -g))  # N / kg = m / s²
 t = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
-flow_stabilizers_str = "[fS] " if flowsolver.enable_SUPG.b or flowsolver.enable_LSIC.b else ""  # for messages
+flow_SUPG_str = "S" if flowsolver.enable_SUPG.b else ""
+flow_LSIC_str = "L" if flowsolver.enable_LSIC.b else ""
+flow_stabilizers_str = f"[f{flow_SUPG_str}{flow_LSIC_str}] " if flowsolver.enable_SUPG.b or flowsolver.enable_LSIC.b else ""  # for messages
 heat_stabilizers_str = "[hS] " if heatsolver.enable_SUPG.b else ""  # for messages
 last_plot_walltime_local = 0
 vis_step_walltime_local = 0
