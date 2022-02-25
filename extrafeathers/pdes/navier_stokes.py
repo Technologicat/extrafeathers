@@ -24,6 +24,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     nabla_grad, div, dx, ds,
                     Identity,
                     lhs, rhs, assemble, solve, project,
+                    interpolate, normalize, VectorSpaceBasis, as_backend_type,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
@@ -154,6 +155,18 @@ class NavierStokes:
 
         # Function space of ℝ (single global DOF), for computing the average pressure.
         self.W = FunctionSpace(self.mesh, "R", 0)
+
+        # Set up the null space of pressure correction subproblem.
+        # We'll need this in cases with only Neumann BCs on pressure.
+        #
+        # https://fenicsproject.org/qa/4121/help-parallelising-space-method-eliminating-rigid-motion/
+        # https://www.mail-archive.com/fenics@fenicsproject.org/msg00912.html
+        # https://www.mail-archive.com/fenics@fenicsproject.org/msg00909.html
+        # https://fenicsproject.org/olddocs/dolfin/latest/python/demos/singular-poisson/demo_singular-poisson.py.html
+        ns = [Constant(1)]  # The null space are the constant functions.
+        null_space_basis = [interpolate(nk, Q).vector() for nk in ns]
+        [normalize(nk_vec, 'l2') for nk_vec in null_space_basis]
+        self.pressure_null_space = VectorSpaceBasis(null_space_basis)
 
         # Trial and test functions
         self.u = TrialFunction(V)  # no suffix: the UFL symbol for the unknown quantity
@@ -563,8 +576,12 @@ class NavierStokes:
         begin("Pressure correction")
         A2 = self.A2_constant + assemble(self.a2_varying)
         b2 = assemble(self.L2)
-        [bc.apply(A2) for bc in self.bcp]
-        [bc.apply(b2) for bc in self.bcp]
+        if not self.bcp:  # pure Neumann pressure BCs
+            as_backend_type(A2).set_nullspace(self.pressure_null_space)
+            self.pressure_null_space.orthogonalize(b2)
+        else:
+            [bc.apply(A2) for bc in self.bcp]
+            [bc.apply(b2) for bc in self.bcp]
         solve(A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
         end()
 
