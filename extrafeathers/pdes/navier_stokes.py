@@ -103,7 +103,8 @@ class NavierStokes:
 
     Uses the IPCS method (incremental pressure correction scheme; Goda, 1979),
     as presented in the FEniCS tutorial. Stabilized with SUPG, LSIC, and
-    skew-symmetric advection. See Donea & Huerta (2003).
+    skew-symmetric advection. See Donea & Huerta (2003). Can handle cases
+    with pure Neumann BCs on pressure.
 
     Time integration is performed using the θ method; Crank-Nicolson by default.
 
