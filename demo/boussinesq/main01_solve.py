@@ -53,11 +53,11 @@ bcp_top = DirichletBC(Q, Constant(0.0), boundary_parts, Boundaries.TOP.value)
 bcp = [bcp_top]
 # bcp = []  # for cavity flows: Dirichlet BC on velocity everywhere, pure Neumann BCs on pressure.
 
-bcT_top = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.TOP.value)
+# bcT_top = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.TOP.value)
 # bcT_walls = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.WALLS.value)
 bcT_bottom = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.BOTTOM.value)
 # bcT_obstacle = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.OBSTACLE.value)
-bcT = [bcT_top, bcT_bottom]
+bcT = [bcT_bottom]
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)
@@ -286,7 +286,7 @@ for n in range(nt):
     Pe = heatsolver.peclet(maxu, L)
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{flow_stabilizers_str}{heat_stabilizers_str}Re = {Re:0.2g}; Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.3g}; Δt = {dt:0.2g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.2g}, {maxu:0.2g}]; T ∈ [{minT:0.2g}, {maxT:0.2g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
+    msg = f"{flow_stabilizers_str}{heat_stabilizers_str}Re = {Re:0.2g}; Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.2g}, {maxu:0.2g}]; T ∈ [{minT:0.2g}, {maxT:0.2g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:

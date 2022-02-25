@@ -10,7 +10,7 @@ from enum import IntEnum
 # Physical
 
 rho = 1            # density [kg/m³]
-mu = 0.001         # dynamic viscosity [Pa s]
+mu = 0.001 / 2     # dynamic viscosity [Pa s]
 c = 1              # specific heat capacity [J/(kg K)]
 k = 1e-3           # heat conductivity [W/(m K)]
 alpha = 0.5        # coefficient of thermal expansion [1/K]

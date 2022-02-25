@@ -9,9 +9,9 @@ elsize_top = 0.08;
 
 // create the bounding box
 xmin = 0.0;
-xmax = 0.4;
+xmax = 0.6;
 ymin = 0.0;
-ymax = 0.8;
+ymax = 1.6;
 Point(1) = {xmin, ymin, 0, 1.0};  // x, y, z, [mesh element size]
 Point(10) = {xmin, (ymin + ymax) / 2.0, 0, 1.0};
 Point(2) = {xmin, ymax, 0, 1.0};
@@ -30,7 +30,7 @@ Physical Line("walls") = {1, 12, 3, 13};
 Physical Line("bottom") = {4};
 
 // create the obstacle (cylinder)
-x0 = 0.2;
+x0 = 0.3;
 y0 = 0.1;
 r = 0.05;
 Point(5) = {x0, y0, 0, 1.0};      // .
