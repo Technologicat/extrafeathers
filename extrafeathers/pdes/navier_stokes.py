@@ -152,7 +152,7 @@ class NavierStokes:
         self.bcu = bcu
         self.bcp = bcp
 
-        # Function space of ℝ (single global DOF), for computing the average pressure
+        # Function space of ℝ (single global DOF), for computing the average pressure.
         self.W = FunctionSpace(self.mesh, "R", 0)
 
         # Trial and test functions
