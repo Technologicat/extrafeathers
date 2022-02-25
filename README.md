@@ -4,12 +4,6 @@ Agility and ease-of-use batteries for the Python layer of the [FEniCS](https://f
 
 See examples in the [`demo/`](demo/) subfolder.
 
-The [Poisson](demo/poisson.py) and [Navier-Stokes](demo/navier_stokes.py) solvers have been adapted, updated and extended from those in [the official FEniCS tutorial book](https://github.com/hplgit/fenics-tutorial).
-
-There is also a multiphysics experiment in [`demo/coupled/`](demo/coupled/), for computing the temperature field driven by a hot cylinder in a cold flow.
-
-We demonstrate how to [import a Gmsh mesh](demo/import_gmsh.py) with subdomains (more than one physical surface in 2D), and then split it into individual meshes for different subproblems (this is useful e.g. for [FSI](https://en.wikipedia.org/wiki/Fluid%E2%80%93structure_interaction)). The physical boundary tags are automatically transferred from the full mesh.
-
 ![Flow over two cylinders](example.png)
 **Figure 1.** *Velocity field from `demo/coupled`, flow over two cylinders. P1 mesh gray; additional subdivisions for P2 visualization dark blue.*
 
