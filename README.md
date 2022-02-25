@@ -6,6 +6,8 @@ Agility and ease-of-use batteries for the Python layer of the [FEniCS](https://f
 
 Usage examples can be found in the [`demo/`](demo/) subfolder.
 
+The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular ready-made solvers. These are mainly for use by the demos, but may be useful elsewhere. Particularly, stabilized Navier-Stokes and advection-diffusion solvers are provided.
+
 
 ## Features
 
