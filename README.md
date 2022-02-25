@@ -171,9 +171,9 @@ but first, make sure you're not in a folder that has an `extrafeathers` subfolde
 
 ## License
 
-All original code in this repository is licensed under [The Unlicense](LICENSE.md). Do whatever you want!
+Starting at v0.2.0, all original code in this repository is licensed under the 2-clause [BSD license](LICENSE.md).
 
-Any code fragments from forums are licensed by their respective authors under the terms the particular forum places on code contributions. In the case of StackOverflow, this means the fragments are used under the CC-BY-SA license. Attribution is given by providing the forum post URL and username in the source code comments.
+A very large majority of the code is original. Any code fragments from forums are licensed by their respective authors under the terms the particular forum places on code contributions. In the case of StackOverflow, this means the fragments are used under the CC-BY-SA license. Attribution is given by providing the forum post URL and username in the source code comments.
 
 
 ## Thanks
