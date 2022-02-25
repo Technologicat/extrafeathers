@@ -509,12 +509,15 @@ class NavierStokes:
 
         # When there are no Dirichlet BCs on p, we just rely on the fact that
         # the Krylov solvers used by FEniCS can handle singular systems
-        # natively. We will postprocess to zero out the average pressure (to
-        # make the pressure always unique).
+        # natively (as long as we tell them about the nullspace). We will
+        # postprocess to zero out the average pressure (to make the pressure
+        # always unique).
         #
         # https://fenicsproject.org/qa/2406/solve-poisson-problem-with-neumann-bc/
         #
-        # Using a Lagrange multiplier is another option:
+        # Using a Lagrange multiplier is another option. Mathematically elegant,
+        # but numerically evil, as it introduces a full row/column, and destroys symmetry.
+        # (To be fair, we don't have symmetry anyway due to PSPG stabilization.)
         # https://fenicsproject.org/olddocs/dolfin/latest/python/demos/neumann-poisson/demo_neumann-poisson.py.html
         #
         # (To see where the weak forms for the Lagrange multiplier term come
