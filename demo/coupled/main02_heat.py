@@ -24,7 +24,7 @@ from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
 from extrafeathers.pdes import AdvectionDiffusion
-from .config import (rho, c, k, dt, nt, inflow_max,
+from .config import (rho, c, k, dt, nt,
                      Boundaries, L,
                      mesh_filename,
                      vis_T_filename, sol_T_filename,
@@ -91,8 +91,6 @@ solver = AdvectionDiffusion(V, rho, c, k, bc, dt,
 # Heat source
 # h: Function = interpolate(Constant(1.0), V)
 # solver.f.assign(f)
-
-Pe = solver.peclet(inflow_max, L)
 
 # Enable stabilizers for the Galerkin formulation
 #
@@ -205,14 +203,21 @@ for n in range(nt):
     maxCo_global = MPI.comm_world.allgather(maxCo_local)
     maxCo = max(maxCo_global)
 
+    # compute maximum advection velocity, for Péclet number
+    maxa_local = np.array(maga.vector()).max()
+    maxa_global = MPI.comm_world.allgather(maxa_local)
+    maxa = max(maxa_global)
+
     last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
     last_plot_walltime = max(last_plot_walltime_global)
 
     vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
     vis_step_walltime = max(vis_step_walltime_global)
 
+    Pe = solver.peclet(maxa, L)
+
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{SUPG_str}Pe = {Pe:0.2g}; max(Co) = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); T ∈ [{minT:0.6g}, {maxT:0.6g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
+    msg = f"{SUPG_str}Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); T ∈ [{minT:0.6g}, {maxT:0.6g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
 
 # Hold plot
 if my_rank == 0:

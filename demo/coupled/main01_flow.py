@@ -207,8 +207,6 @@ if V.ufl_element().degree() == 2:
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
-Re = solver.reynolds(inflow_max, L)
-
 # Enable stabilizers for the Galerkin formulation
 solver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant flows
 solver.enable_LSIC.b = 1.0  # additional stabilizer for high Re
@@ -369,6 +367,8 @@ for n in range(nt):
 
     vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
     vis_step_walltime = max(vis_step_walltime_global)
+
+    Re = solver.reynolds(maxu, L)
 
     # msg for *next* timestep. Loop-and-a-half situation...
     msg = f"{SUPG_str}{LSIC_str}Re = {Re:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"

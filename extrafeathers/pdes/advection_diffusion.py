@@ -188,14 +188,39 @@ class AdvectionDiffusion:
     θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
     α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
 
-    def peclet(self, uinf, L):
+    def peclet(self, u, L):
         """Return the Péclet number of the heat transport.
 
-        `uinf`: free-stream speed [m / s]
+        `u`: characteristic speed (scalar) [m / s]
         `L`: length scale [m]
+
+        The Péclet number is defined as the ratio of advective vs. diffusive
+        effects::
+
+            Pe = u L / α
+
+        where `α = k / (ρ c)` is the heat diffusivity, which has the unit
+        of a kinematic viscosity.
+
+        Choosing representative values for `u` and `L` is more of an art
+        than a science. Typically:
+
+            - In a flow past an obstacle, `u` is the free-stream speed,
+              and `L` is the length of the obstacle along the direction
+              of the free stream.
+
+            - In a lid-driven cavity flow in a square cavity, `u` is the
+              speed of the lid, and `L` is the length of the lid.
+
+            - In a flow in a pipe, `u` is the free-stream speed, and `L`
+              is the pipe diameter.
+
+            - For giving the user a dynamic estimate of `Pe` during computation,
+              the maximum value of `|u|` may be generally useful, but `L`
+              must still be intuited from the problem geometry.
         """
         α = self.k / (self.ρ * self.c)  # thermal diffusivity,  [α] = m² / s
-        return uinf * L / α
+        return u * L / α
 
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)

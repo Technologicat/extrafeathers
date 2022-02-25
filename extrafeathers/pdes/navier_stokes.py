@@ -203,14 +203,38 @@ class NavierStokes:
     θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
     α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
 
-    def reynolds(self, uinf, L):
+    def reynolds(self, u, L):
         """Return the Reynolds number of the flow.
 
-        `uinf`: free-stream speed [m / s]
+        `u`: characteristic speed (scalar) [m / s]
         `L`: length scale [m]
+
+        The Reynolds number is defined as the ratio of advective vs.
+        diffusive effects::
+
+            Re = u L / ν
+
+        where `ν = μ / ρ` is the kinematic viscosity.
+
+        Choosing representative values for `u` and `L` is more of an art
+        than a science. Typically:
+
+            - In a flow past an obstacle, `u` is the free-stream speed,
+              and `L` is the length of the obstacle along the direction
+              of the free stream.
+
+            - In a lid-driven cavity flow in a square cavity, `u` is the
+              speed of the lid, and `L` is the length of the lid.
+
+            - In a flow in a pipe, `u` is the free-stream speed, and `L`
+              is the pipe diameter.
+
+            - For giving the user a dynamic estimate of `Re` during computation,
+              the maximum value of `|u|` may be generally useful, but `L`
+              must still be intuited from the problem geometry.
         """
         nu = self.μ / self.ρ  # kinematic viscosity,  [ν] = m² / s
-        return uinf * L / nu
+        return u * L / nu
 
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
