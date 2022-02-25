@@ -1,8 +1,9 @@
 // Gmsh 2.16.0 geometry file
 
-elsize_walls = 0.04;
-elsize_extrares = 0.04;
 elsize_obstacle = 0.01 / 2;
+elsize_bottom = 0.02;
+elsize_middle = 0.04;
+elsize_top = 0.08;
 
 // --------------------------------------------------------------------------------
 
@@ -59,6 +60,7 @@ Physical Surface("structure") = {12};  // The ID of this physical surface will b
 // Characteristic Length is renamed to MeshSize in Gmsh 4.x.
 // https://gmsh.info/doc/texinfo/gmsh.html#Specifying-mesh-element-sizes
 
-Characteristic Length {1, 2, 3, 4} = elsize_walls;
-Characteristic Length {10, 11} = elsize_extrares;
 Characteristic Length {6, 7, 8, 9} = elsize_obstacle;
+Characteristic Length {1, 4} = elsize_bottom;
+Characteristic Length {10, 11} = elsize_middle;
+Characteristic Length {2, 3} = elsize_top;
