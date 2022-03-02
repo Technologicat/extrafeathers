@@ -397,7 +397,12 @@ class HeatEquation(AdvectionDiffusion):
         g = h / c
 
     Thus, if you wish to set the stress and source fields `σ` and `h`, normalize
-    your input data accordingly.
+    your input data accordingly::
+
+        solver.σ = input_stress / (solver.ρ * solver.c)
+        solver.h = input_source / solver.c
+
+    where `solver` is a `HeatEquation` instance.
 
     The diffusivity `ν` is automatically computed, and available as `self.nu`.
     The type is the same as that of `k` (`float` or a rank-2 tensor).
