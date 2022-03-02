@@ -613,22 +613,29 @@ class NavierStokes:
         solve(A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
         end()
 
-        # Step 2½: Zero out the average pressure.
-        #
-        # Shifting `p` by a constant does not matter as far as the momentum
-        # equation is concerned. We L2-project `p` onto ℝ, and then subtract
-        # the result from `p_`, hence making its mean zero.
-        #
-        # This makes for a nicer-looking visualization, as well as defines the
-        # pressure uniquely even in cases where we have only Neumann BCs on pressure
-        # (e.g. standard cavity flow test cases).
-        #
-        # How to extract the single value of a `Function` on Reals (single
-        # global DOF) is not documented very well. See the source code of
-        # `dolfin.Function`, it has a `__float__` method. The sanity checks
-        # indicate it is intended precisely for this.
-        avgp = project(self.p_, self.W)
-        self.p_.vector()[:] -= float(avgp)
+        if not self.bcp:
+            # Step 2½: In cases with pure Neumann BCs on pressure (e.g.
+            # standard cavity flow test cases), zero out the average.
+            # This defines the pressure uniquely.
+            #
+            # If there is at least one Dirichlet BC on pressure, we skip this
+            # step. One Dirichlet BC is sufficient to make the pressure unique,
+            # and it is better (for least surprise, from a usability perspective)
+            # to then actually produce a solution that satisfies the given Dirichlet BCs.
+            #
+            # Strategy:
+            #
+            # Shifting `p` by a constant does not matter as far as the momentum
+            # equation is concerned. We L2-project `p_` onto ℝ, and then subtract
+            # the result from the original `p_`. Thus the mean of the shifted `p_`
+            # will be zero.
+            #
+            # How to extract the single value of a `Function` on Reals (single
+            # global DOF) is not documented very well. See the source code of
+            # `dolfin.Function`, it has a `__float__` method. The sanity checks
+            # indicate it is intended precisely for this.
+            avgp = project(self.p_, self.W)
+            self.p_.vector()[:] -= float(avgp)
 
         # Step 3: Velocity correction step
         begin("Velocity correction")
