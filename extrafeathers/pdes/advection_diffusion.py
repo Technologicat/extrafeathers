@@ -399,8 +399,8 @@ class HeatEquation(AdvectionDiffusion):
     Thus, if you wish to set the stress and source fields `σ` and `h`, normalize
     your input data accordingly::
 
-        solver.σ = input_stress / (solver.ρ * solver.c)
-        solver.h = input_source / solver.c
+        solver.σ = raw_stress / (solver.ρ * solver.c)
+        solver.h = specific_source / solver.c
 
     where `solver` is a `HeatEquation` instance.
 
