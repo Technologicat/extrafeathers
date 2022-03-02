@@ -1,37 +1,8 @@
 # -*- coding: utf-8; -*-
-"""Advection-diffusion equation: heat transport in a moving material.
+"""Advection-diffusion equation, and its physical realizations."""
 
-This is based on the internal energy (enthalpy) balance of a continuum:
-
-  ρ c [∂u/∂t + (a·∇)u] - ∇·(k ∇u) = σ : ∇a + ρ h
-
-where
-
-  - `u` is the absolute temperature [K],
-  - `a` is the advection velocity [m / s], and
-  - `σ` is the stress tensor [Pa].
-
-This form of the equation is based on Fourier's law, and the modeling
-assumption that the specific internal energy `e` [J / kg] behaves as
-
-  e = c u
-
-i.e. there are no phase changes.
-
-Strictly, we also assume that `c` is a constant independent of the
-temperature `u`. If  c = c(u),  we must add the term
-
-  ρ ∂c/∂u u [∂u/∂t + (a·∇)u]
-
-to the LHS, and the equation becomes nonlinear; this is currently
-not supported by this solver.
-
-See:
-    Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
-    Numerical Modeling in Science and Engineering. Wiley Interscience.
-"""
-
-__all__ = ["AdvectionDiffusion"]
+__all__ = ["HeatEquation",
+           "AdvectionDiffusion"]
 
 import typing
 
@@ -46,24 +17,25 @@ from ..meshfunction import meshsize, cell_mf_to_expression
 from .util import ScalarOrTensor, istensor, ufl_constant_property
 
 
-# TODO: use nondimensional form
 class AdvectionDiffusion:
-    """Advection-diffusion equation: heat transport in a moving material.
+    """Advection-diffusion equation.
+
+      [∂u/∂t + (a·∇)u] - ∇·(ν ∇u) = τ : ∇a + g
 
     Time integration is performed using the θ method; Crank-Nicolson by default.
 
-    `V`: function space for temperature
-    `ρ`: density [kg / m³]
-    `c`: specific heat capacity [J / (kg K)]
-    `k`: heat conductivity [W / (m K)]
-         Scalar `k` for thermally isotropic material; rank-2 tensor for anisotropic.
+    `V`: function space for `u`
+         Here `u` is the abstract generic Eulerian field that undergoes advection
+         and diffusion; for example, in the heat equation, `u` is the temperature.
+    `nu`: diffusivity [m² / s]
+          Scalar `nu` for isotropic material; rank-2 tensor for anisotropic.
     `bc`: Dirichlet boundary conditions for temperature
     `dt`: timestep [s]
     `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
          Default 0.5 is Crank-Nicolson; 0 is forward Euler, 1 is backward Euler.
 
     `advection`: one of "off", "divergence-free", "general"
-        "off":             Zero advection velocity. Standard heat equation.
+        "off":             Zero advection velocity, diffusion only.
                            Discards the advection term; runs faster.
 
         "divergence-free": Treat the advection velocity as divergence-free,
@@ -82,8 +54,12 @@ class AdvectionDiffusion:
 
                        Used only when `advection != "off"`.
 
-    `use_stress`: whether to include the stress term  σ : ∇a,  which represents the
-                  contribution of stress to internal energy.
+    `use_stress`: Support logic, specific to the heat equation of a moving material.
+
+                  Whether to include the stress term  τ : ∇a,  which represents the
+                  contribution of stress to internal energy. The stress is here named
+                  `τ` instead of `σ` for normalization reasons; see `HeatEquation`
+                  for details.
 
                   Due to the factor ∇a, `use_stress` can only be enabled when
                   `advection` is also enabled (i.e. something other than "off").
@@ -93,6 +69,9 @@ class AdvectionDiffusion:
 
                   When `use_stress=False`, the stress term is discarded; runs faster.
 
+                  When using `AdvectionDiffusion` to compute anything other than
+                  heat transport in a moving material, this should be off (`False`).
+
     `stress_degree`: The degree of the finite element space of the stress field.
                      This must match the data you are loading in.
 
@@ -100,10 +79,10 @@ class AdvectionDiffusion:
 
                      Used only when `use_stress=True`.
 
-    The specific heat source `self.h` [W / kg], the advection velocity `self.a` [m / s],
-    and the stress tensor `self.σ` [Pa] are assignable FEM functions.
+    The source `self.h`, the advection velocity `self.a` [m / s], and the stress tensor
+    `self.σ` are assignable FEM functions. The unit of the source is [u] / s.
 
-    For example, to set a constant heat source everywhere::
+    For example, to set a constant source everywhere::
 
         h: Function = interpolate(Constant(1.0), V)
         solver.h.assign(h)
@@ -114,7 +93,7 @@ class AdvectionDiffusion:
     and `σ` on a `TensorFunctionSpace` compatible with `V`.
     """
     def __init__(self, V: FunctionSpace,
-                 ρ: float, c: float, k: ScalarOrTensor,
+                 nu: ScalarOrTensor,
                  bc: typing.List[DirichletBC],
                  dt: float, θ: float = 0.5, *,
                  advection: str = "divergence-free",
@@ -159,9 +138,7 @@ class AdvectionDiffusion:
         self.σ.vector()[:] = 0.0
 
         # Parameters.
-        self._ρ = Constant(ρ)
-        self._c = Constant(c)
-        self._k = Constant(k)
+        self._nu = Constant(nu)
         self._dt = Constant(dt)
         self._θ = Constant(θ)
 
@@ -186,15 +163,13 @@ class AdvectionDiffusion:
 
         self.compile_forms()
 
-    ρ = ufl_constant_property("ρ", doc="Density [kg / m³]")
-    c = ufl_constant_property("c", doc="Specific heat capacity [J / (kg K)]")
-    k = ufl_constant_property("k", doc="Heat conductivity [W / (m K)]")
+    nu = ufl_constant_property("nu", doc="Diffusivity [m² / s]")
     dt = ufl_constant_property("dt", doc="Timestep [s]")
     θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
     α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
 
     def peclet(self, u, L):
-        """Return the Péclet number of the heat transport.
+        """Return the Péclet number.
 
         `u`: characteristic speed (scalar) [m / s]
         `L`: length scale [m]
@@ -202,10 +177,9 @@ class AdvectionDiffusion:
         The Péclet number is defined as the ratio of advective vs. diffusive
         effects::
 
-            Pe = u L / α
+            Pe = u L / ν
 
-        where `α = k / (ρ c)` is the heat diffusivity, which has the unit
-        of a kinematic viscosity.
+        where `ν` is the diffusivity, which has the units of kinematic viscosity.
 
         Choosing representative values for `u` and `L` is more of an art
         than a science. Typically:
@@ -224,13 +198,12 @@ class AdvectionDiffusion:
               the maximum value of `|u|` may be generally useful, but `L`
               must still be intuited from the problem geometry.
         """
-        α = self.k / (self.ρ * self.c)  # thermal diffusivity,  [α] = m² / s
-        return u * L / α
+        return u * L / self.nu
 
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
 
-        # Temperature
+        # The abstract Eulerian field
         u = self.u  # new (unknown)
         v = self.v  # test
         u_n = self.u_n  # old (end of previous timestep)
@@ -248,59 +221,49 @@ class AdvectionDiffusion:
         he = self.he
 
         # Parameters
-        ρ = self._ρ
-        c = self._c
-        k = self._k
+        nu = self._nu
         dt = self._dt
         θ = self._θ
         α0 = self._α0
 
         enable_SUPG = self.enable_SUPG
 
-        # Internal energy balance for a moving material, assuming no phase changes.
-        # The unknown `u` is the temperature:
-        #
-        #   ρ c [∂u/∂t + (a·∇)u] - ∇·(k·∇u) = σ : ∇a + ρ h
-        #
-        # Derived from the general internal energy balance equation,
-        # see Allen et al. (1988).
-        #
-        # References:
-        #     Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
-        #     Numerical Modeling in Science and Engineering. Wiley Interscience.
+        # θ time integration
         U = (1 - θ) * u_n + θ * u
         dudt = (u - u_n) / dt
 
-        F = (ρ * c * dudt * v * dx -
-             ρ * dot(h, v) * dx)
+        # These terms are always the same:
+        F = (dudt * v * dx -
+             dot(h, v) * dx)
 
-        if istensor(self._k):
-            F += dot(dot(k, nabla_grad(U)), nabla_grad(v)) * dx
+        # but the others depend on options:
+        if istensor(self._nu):
+            F += dot(dot(nu, nabla_grad(U)), nabla_grad(v)) * dx
             # TODO: add support for nonzero Neumann BCs
-            # The full weak form of -∇·(k·∇u) is:
-            # F += (dot(dot(k, nabla_grad(U)), nabla_grad(v)) * dx -
-            #       dot(n, dot(k, nabla_grad(U))) * v * ds)
+            # The full weak form of -∇·(nu·∇u) for tensor `nu` is:
+            # F += (dot(dot(nu, nabla_grad(U)), nabla_grad(v)) * dx -
+            #       dot(n, dot(nu, nabla_grad(U))) * v * ds)
         else:
-            F += k * dot(nabla_grad(U), nabla_grad(v)) * dx
+            F += nu * dot(nabla_grad(U), nabla_grad(v)) * dx
             # TODO: add support for nonzero Neumann BCs
-            # The full weak form of -∇·(k·∇u) is:
-            # F += (k * dot(nabla_grad(U), nabla_grad(v)) * dx -
-            #       k * dot(n, nabla_grad(U)) * v * ds)
+            # The full weak form of -∇·(nu·∇u) for scalar `nu` is:
+            # F += (nu * dot(nabla_grad(U), nabla_grad(v)) * dx -
+            #       nu * dot(n, nabla_grad(U)) * v * ds)
 
         if self.advection == "divergence-free":
             # Skew-symmetric form for divergence-free advection velocity
             # (see navier_stokes.py).
-            F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v -
-                                     dot(a, nabla_grad(v)) * U) * dx +
-                  ρ * c * (1 / 2) * dot(n, a) * U * v * ds)
+            F += ((1 / 2) * (dot(a, nabla_grad(U)) * v -
+                             dot(a, nabla_grad(v)) * U) * dx +
+                  (1 / 2) * dot(n, a) * U * v * ds)
         elif self.advection == "general":
             # Skew-symmetric advection, as above; but subtract the contribution from the
             # extra term (1/2) (∇·a) u, thus producing an extra symmetric term that
             # accounts for the divergence of `a`.
-            F += (ρ * c * (1 / 2) * (dot(a, nabla_grad(U)) * v -
-                                     dot(a, nabla_grad(v)) * U) * dx +
-                  ρ * c * (1 / 2) * dot(n, a) * U * v * ds -
-                  ρ * c * (1 / 2) * div(a) * U * v * dx)
+            F += ((1 / 2) * (dot(a, nabla_grad(U)) * v -
+                             dot(a, nabla_grad(v)) * U) * dx +
+                  (1 / 2) * dot(n, a) * U * v * ds -
+                  (1 / 2) * div(a) * U * v * dx)
             # # Just use the asymmetric advection term as-is.
             # # TODO: which form is better? This has fewer operations, but which gives better stability?
             # F += dot(a, nabla_grad(U)) * v * dx
@@ -312,10 +275,13 @@ class AdvectionDiffusion:
         #
         def mag(vec):
             return dot(vec, vec)**(1 / 2)
+        if istensor(self._nu):
+            magnu = inner(nu, nu)**(1 / 2)
+        else:
+            magnu = nu
 
-        # [k] / ([ρ] [c]) = m² / s,  a (thermal) kinematic viscosity
         # [τ] = s
-        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (k / (ρ * c)) / he**2)**-1
+        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * magnu / he**2)**-1
 
         # We need the strong form of the equation to compute the residual
         if self.advection == "divergence-free":
@@ -332,16 +298,16 @@ class AdvectionDiffusion:
 
         # SUPG only makes sense if advection is enabled
         if adv:
-            if istensor(self._k):
+            if istensor(self._nu):
                 def diffusion(U_):
-                    return div(dot(k, nabla_grad(U_)))
+                    return div(dot(nu, nabla_grad(U_)))
             else:
                 def diffusion(U_):
-                    return div(k * nabla_grad(U_))
+                    return div(nu * nabla_grad(U_))
 
             def R(U_):
                 # The residual is evaluated elementwise in strong form.
-                residual = ρ * c * (dudt + adv(U_)) - diffusion(U_) - ρ * h
+                residual = (dudt + adv(U_)) - diffusion(U_) - h
                 if self.use_stress:
                     residual += -inner(σ, nabla_grad(a))
                 return residual
@@ -371,3 +337,118 @@ class AdvectionDiffusion:
         the "old" solution for the next timestep. The old "old" solution is discarded.
         """
         self.u_n.assign(self.u_)
+
+
+class HeatEquation(AdvectionDiffusion):
+    """Heat transport, optionally in a moving material.
+
+    Like `AdvectionDiffusion`, but instead of `nu`, we have three parameters:
+
+    `ρ`: density [kg / m³]
+    `c`: specific heat capacity [J / (kg K)]
+    `k`: heat conductivity [W / (m K)]
+         Scalar `k` for thermally isotropic material; rank-2 tensor for anisotropic.
+
+    The equation for the absolute temperature `T`,  [T] = K,  is based on the
+    internal energy (enthalpy) balance of a continuum (Allen et al., 1988):
+
+      ρ c [∂T/∂t + (a·∇)T] - ∇·(k ∇T) = σ : ∇a + ρ h
+
+    where
+
+      - `T` is the absolute temperature [K],
+      - `a` is the advection velocity [m / s], and
+      - `σ` is the stress tensor [Pa].
+
+    Each term has the units of a volumetric power, [W / m³].
+
+    This form of the equation is based on Fourier's law, and the modeling
+    assumption that the specific internal energy `e` [J / kg] behaves as
+
+      e = c T
+
+    i.e. there are no phase changes.
+
+    Strictly, we also assume that `c` is a constant independent of the
+    temperature `T`. If  c = c(T),  we must add the term
+
+      ρ ∂c/∂T T [∂T/∂t + (a·∇)T]
+
+    to the LHS, and the equation becomes nonlinear; this is currently
+    not supported by this solver.
+
+
+    **Normalization**
+
+    The equation is actually solved as normalized by the volumetric heat capacity
+    `ρ c` [J / (m³ K)], in the form
+
+      [∂u/∂t + (a·∇)u] - ∇·(ν ∇u) = τ : ∇a + g
+
+    where  ν = k / (ρ c)  is the diffusivity, which has the units of a kinematic
+    viscosity:  [ν] = m² / s.  Each term has the units of [u] / s. Because for
+    the heat equation,  u = T,  concretely the units are K / s.
+
+    Due to this normalization, instead of the raw stress field `σ` [Pa] and a
+    specific source `h` [W / kg] (as in the raw equation), the solver actually
+    expects to get as its `σ` and `h` the following quantities:
+
+        τ = σ / (ρ c)
+        g = h / c
+
+    Thus, if you wish to set the stress and source fields `σ` and `h`, normalize
+    your input data accordingly.
+
+    The diffusivity `ν` is automatically computed, and available as `self.nu`.
+    The type is the same as that of `k` (`float` or a rank-2 tensor).
+    Writing to `ρ`, `c`, or `k` automatically updates the diffusivity.
+
+    References:
+        Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
+        Numerical Modeling in Science and Engineering. Wiley Interscience.
+    """
+    def __init__(self, V: FunctionSpace,
+                 ρ: float, c: float, k: ScalarOrTensor,
+                 bc: typing.List[DirichletBC],
+                 dt: float, θ: float = 0.5, *,
+                 advection: str = "divergence-free",
+                 velocity_degree: int = None,
+                 use_stress: bool = False,
+                 stress_degree: int = None):
+        # Here we don't need to wrap the parameters into UFL `Constant` objects,
+        # but we need to make them properties that update the underlying `nu`
+        # (in our parent `AdvectionDiffusion`) when written to.
+        self._ρ = ρ
+        self._c = c
+        self._k = k
+        super().__init__(V, self._update_nu(), bc, dt, θ,
+                         advection=advection,
+                         velocity_degree=velocity_degree,
+                         use_stress=use_stress,
+                         stress_degree=stress_degree)
+
+    def _update_nu(self):
+        """Compute the diffusivity ν from ρ, c, and k."""
+        self._nu = self.k / (self.ρ * self.c)
+        return self._nu
+
+    def _get_ρ(self):
+        return self._ρ
+    def _set_ρ(self, ρ):
+        self._ρ = ρ
+        self._update_nu()
+    ρ = property(fget=_get_ρ, fset=_set_ρ, doc="Density [kg / m³]")
+
+    def _get_c(self):
+        return self._c
+    def _set_c(self, c):
+        self._c = c
+        self._update_nu()
+    c = property(fget=_get_c, fset=_set_c, doc="Specific heat capacity [J / (kg K)]")
+
+    def _get_k(self):
+        return self._k
+    def _set_k(self, k):
+        self._k = k
+        self._update_nu()
+    k = property(fget=_get_k, fset=_set_k, doc="Heat conductivity [W / (m K)]")

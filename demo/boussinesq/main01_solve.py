@@ -20,7 +20,7 @@ from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
-from extrafeathers.pdes import NavierStokes, AdvectionDiffusion
+from extrafeathers.pdes import NavierStokes, HeatEquation
 from .config import (rho, mu, c, k, alpha, T0, g, dt, nt,
                      Boundaries, L,
                      mesh_filename,
@@ -89,9 +89,9 @@ plt.ion()
 # TODO: Add support for resuming from the TimeSeries used to store `u_`, `p_`, and `T_`.
 #
 flowsolver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
-heatsolver = AdvectionDiffusion(W, rho, c, k, bcT, dt,
-                                advection="divergence-free",
-                                velocity_degree=2)
+heatsolver = HeatEquation(W, rho, c, k, bcT, dt,
+                          advection="divergence-free",
+                          velocity_degree=2)
 
 # HACK: Arrange things to allow visualizing P2 fields at full nodal resolution.
 if V.ufl_element().degree() == 2 or W.ufl_element().degree() == 2:

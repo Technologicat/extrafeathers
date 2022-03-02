@@ -23,7 +23,7 @@ from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
-from extrafeathers.pdes import AdvectionDiffusion
+from extrafeathers.pdes import HeatEquation
 from .config import (rho, c, k, dt, nt,
                      Boundaries, L,
                      mesh_filename,
@@ -84,9 +84,9 @@ set_log_level(LogLevel.WARNING)
 plt.ion()
 
 # Set up the problem
-solver = AdvectionDiffusion(V, rho, c, k, bc, dt,
-                            advection="divergence-free",
-                            velocity_degree=2)  # must match stored velocity data
+solver = HeatEquation(V, rho, c, k, bc, dt,
+                      advection="divergence-free",
+                      velocity_degree=2)  # must match stored velocity data
 
 # Heat source
 # h: Function = interpolate(Constant(1.0), V)
