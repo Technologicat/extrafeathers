@@ -542,7 +542,9 @@ class NavierStokes:
         #
         # Using a Lagrange multiplier is another option. Mathematically elegant,
         # but numerically evil, as it introduces a full row/column, and destroys symmetry.
-        # (To be fair, we don't have symmetry anyway due to PSPG stabilization.)
+        # (To be fair, we don't have symmetry anyway due to PSPG stabilization;
+        # but we can avoid the full row/column.)
+        #
         # https://fenicsproject.org/olddocs/dolfin/latest/python/demos/neumann-poisson/demo_neumann-poisson.py.html
         #
         # (To see where the weak forms for the Lagrange multiplier term come
@@ -550,7 +552,9 @@ class NavierStokes:
         # λ * <constraint>; multiply by test function; integrate over Ω; take the
         # Fréchet derivatives (or alternatively, Gateaux derivatives) w.r.t.
         # `u` and `λ` and sum them to get the Euler-Lagrange equation; group
-        # terms by test function.)
+        # terms by test function. Terms with `q` and `∇q` go into the same equation,
+        # because although linearly independent, they are dependent in another sense:
+        # choosing the arbitrary function `q` fully determines `∇q`.)
         #
         # Here the LHS coefficients are constant in time.
         self.a2_constant = dot(nabla_grad(p), nabla_grad(q)) * dx
@@ -565,12 +569,17 @@ class NavierStokes:
         # We will still apply PSPG in hopes that it helps stability at high Re;
         # at least we then treat both equations consistently.
         #
-        # Consistent, residual-based.
+        # Consistent, residual-based. Note the method uses the residual of the
+        # *momentum* equation, but now with the tentative velocity `u_` and the
+        # unknown pressure `p`.
         #
         # There was no value for τ_PSPG given in the book, so we recycle τ_SUPG here.
         # There was a reference, though, to a paper by Tezduyar & Osawa (2000),
         # which discusses element-local stabilization parameter values in more detail;
         # I'll need to check that out later (see p. 297 in the book for the reference).
+        #
+        # (Maybe the exact value doesn't matter that much; these stabilization methods
+        #  usually work as long as the `he` and `Δt` scalings are correct.)
         τ_PSPG, enable_PSPG = τ_SUPG, enable_SUPG
         F_PSPG = enable_PSPG * τ_PSPG * dot(nabla_grad(q), R(u_, p)) * dx
         self.a2_varying = lhs(F_PSPG)
