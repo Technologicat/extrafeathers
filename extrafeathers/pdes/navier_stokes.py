@@ -193,6 +193,15 @@ class NavierStokes:
         self._μ = Constant(μ)
         self._dt = Constant(dt)
         self._θ = Constant(θ)
+
+        # Stabilizer on/off switches;  b: float, use 0.0 or 1.0
+        # To set it, e.g. `solver.enable_LSIC.b = 1.0`,
+        # where `solver` is your `NavierStokes` instance.
+        # The different stabilizers can be switched on/off separately.
+        self.enable_LSIC = Expression('b', degree=0, b=1.0)
+        self.enable_SUPG = Expression('b', degree=0, b=1.0)
+
+        # SUPG stabilizer tuning parameter.
         self._α0 = Constant(1)
 
         self.compile_forms()
@@ -263,6 +272,9 @@ class NavierStokes:
         dt = self._dt
         θ = self._θ
         α0 = self._α0
+
+        enable_LSIC = self.enable_LSIC
+        enable_SUPG = self.enable_SUPG
 
         # Define variational problem for step 1 (tentative velocity)
         #
@@ -427,12 +439,6 @@ class NavierStokes:
         def mag(vec):
             return dot(vec, vec)**(1 / 2)
 
-        # LSIC stabilizer on/off switch;  b: float, use 0.0 or 1.0
-        # To set it, e.g. `solver.enable_LSIC.b = 1.0`,
-        # where `solver` is your `NavierStokes` instance.
-        enable_LSIC = Expression('b', degree=0, b=1.0)
-        self.enable_LSIC = enable_LSIC
-
         τ_LSIC = mag(a) * he / 2  # [τ_LSIC] = (m / s) * m = m² / s, a kinematic viscosity
         F1_LSIC = enable_LSIC * τ_LSIC * div(u) * div(v) * dx
         F1_varying += F1_LSIC
@@ -444,12 +450,6 @@ class NavierStokes:
         #
         # See Donea & Huerta (2003), sec. 6.7.2 (p. 296), 6.5.8 (p. 287),
         # and 5.4.6.2 (p. 232). See also sec. 2.4, p. 59 ff.
-
-        # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
-        # To set it, e.g. `solver.enable_SUPG.b = 1.0`,
-        # where `solver` is your `NavierStokes` instance.
-        enable_SUPG = Expression('b', degree=0, b=1.0)
-        self.enable_SUPG = enable_SUPG
 
         # [μ] / [ρ] = (Pa s) / (kg / m³)
         #           = (N s / m²) / (kg / m³)

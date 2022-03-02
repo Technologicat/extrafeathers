@@ -165,6 +165,11 @@ class AdvectionDiffusion:
         self._dt = Constant(dt)
         self._θ = Constant(θ)
 
+        # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
+        # To set it, e.g. `solver.enable_SUPG.b = 1.0`,
+        # where `solver` is your `AdvectionDiffusion` instance.
+        self.enable_SUPG = Expression('b', degree=0, b=0.0)
+
         # SUPG stabilizer tuning parameter.
         #
         # Donea & Huerta (2003, p. 65), discussing the steady-state advection-diffusion
@@ -250,6 +255,8 @@ class AdvectionDiffusion:
         θ = self._θ
         α0 = self._α0
 
+        enable_SUPG = self.enable_SUPG
+
         # Internal energy balance for a moving material, assuming no phase changes.
         # The unknown `u` is the temperature:
         #
@@ -306,15 +313,9 @@ class AdvectionDiffusion:
         def mag(vec):
             return dot(vec, vec)**(1 / 2)
 
-        # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
-        # To set it, e.g. `solver.enable_SUPG.b = 1.0`,
-        # where `solver` is your `AdvectionDiffusion` instance.
-        enable_SUPG = Expression('b', degree=0, b=0.0)
-
         # [k] / ([ρ] [c]) = m² / s,  a (thermal) kinematic viscosity
         # [τ] = s
         τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (k / (ρ * c)) / he**2)**-1
-        self.enable_SUPG = enable_SUPG
 
         # We need the strong form of the equation to compute the residual
         if self.advection == "divergence-free":
