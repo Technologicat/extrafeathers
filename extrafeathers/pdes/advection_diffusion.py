@@ -59,6 +59,8 @@ class AdvectionDiffusion:
                        Used only when `advection != "off"`.
 
     `use_stress`: Support logic, specific to the heat equation of a moving material.
+                  Comes from the internal energy (enthalpy) balance of a continuum,
+                  see Allen et al. (1988).
 
                   Whether to include the stress term  τ : ∇a,  which represents the
                   contribution of stress to internal energy. The stress is here named
@@ -95,6 +97,10 @@ class AdvectionDiffusion:
     by another solver or loaded from a file (that was produced by a solver on the same
     mesh!). Technically, `h` lives on a `FunctionSpace`, `a` on a `VectorFunctionSpace`,
     and `σ` on a `TensorFunctionSpace` compatible with `V`.
+
+    References:
+        Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
+        Numerical Modeling in Science and Engineering. Wiley Interscience.
     """
     def __init__(self, V: FunctionSpace,
                  ν: ScalarOrTensor,
