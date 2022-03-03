@@ -17,6 +17,8 @@ from ..meshfunction import meshsize, cell_mf_to_expression
 from .util import ScalarOrTensor, istensor, ufl_constant_property
 
 
+# TODO: Add a reaction term with a FEM function coefficient, for chemical reactions and similar.
+# TODO: Make the diffusivity a FEM function. Need also a function outside the ∇· (or in the mat. der. term).
 class AdvectionDiffusion:
     """Advection-diffusion equation.
 
