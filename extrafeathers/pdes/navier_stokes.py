@@ -118,6 +118,10 @@ class NavierStokes:
     `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
          Default 0.5 is Crank-Nicolson; 0 is forward Euler, 1 is backward Euler.
 
+         Note that for θ = 0, the SUPG stabilization parameter τ_SUPG → 0,
+         so when using forward Euler, it does not make sense to enable the
+         SUPG stabilizer.
+
     As the mesh, we use `V.mesh()`; both `V` and `Q` must be defined on the same mesh.
     The function spaces `V` and `Q` must be LBB-compatible. If unsure, use Taylor-Hood
     (a.k.a. P2P1) elements: choose `P2` for `V` and `P1` for `Q`. Q2Q1 works, too.

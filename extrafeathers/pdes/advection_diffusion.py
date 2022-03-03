@@ -34,6 +34,10 @@ class AdvectionDiffusion:
     `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
          Default 0.5 is Crank-Nicolson; 0 is forward Euler, 1 is backward Euler.
 
+         Note that for θ = 0, the SUPG stabilization parameter τ_SUPG → 0,
+         so when using forward Euler, it does not make sense to enable the
+         SUPG stabilizer.
+
     `advection`: one of "off", "divergence-free", "general"
         "off":             Zero advection velocity, diffusion only.
                            Discards the advection term; runs faster.

@@ -219,7 +219,18 @@ for n in range(nt):
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=flowsolver.u_.sub(0), u1=flowsolver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
-            # Courant number of *heat* solver
+            # Advective Courant number of *heat* solver
+            #
+            # Note that for the advection term (model equation  ∂u/∂t + (a·∇)u = 0),
+            # the Courant number is defined as:
+            #    Co = |a| Δt / he
+            # but for the diffusion term (model equation  ∂u/∂t - ν ∇²u = 0),
+            # it is defined as:
+            #    Co = ν Δt / he²
+            #
+            # Compare e.g.
+            #   https://en.wikipedia.org/wiki/Courant%E2%80%93Friedrichs%E2%80%93Lewy_condition
+            #   https://en.wikipedia.org/wiki/Crank%E2%80%93Nicolson_method#Example:_2D_diffusion
             Co = project(magu_expr * Constant(dt) / flowsolver.he, V.sub(0).collapse())
             theplot = plotmagic.mpiplot(magu, cmap="viridis")
             if my_rank == 0:
