@@ -168,6 +168,9 @@ for n in range(nt):
     begin("Saving")
 
     if V.ufl_element().degree() == 2:
+        # HACK: What we want to do:
+        #   u_export.assign(interpolate(flowsolver.u_, V_export))
+        # How we do it in MPI mode (see demo/coupled/main01_flow.py for full explanation):
         flowsolver.u_.vector().gather(u_copy, all_V_dofs)
         u_export.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
         xdmffile_u.write(u_export, t)
