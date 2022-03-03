@@ -246,8 +246,8 @@ class NavierStokes:
               the maximum value of `|u|` may be generally useful, but `L`
               must still be intuited from the problem geometry.
         """
-        nu = self.μ / self.ρ  # kinematic viscosity,  [ν] = m² / s
-        return u * L / nu
+        ν = self.μ / self.ρ  # kinematic viscosity,  [ν] = m² / s
+        return u * L / ν
 
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)

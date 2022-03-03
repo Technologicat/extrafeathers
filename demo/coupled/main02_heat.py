@@ -166,7 +166,7 @@ for n in range(nt):
             maga = interpolate(maga_expr, V)
             # Courant number
             Co_adv = project(maga_expr * Constant(dt) / solver.he, V)
-            Co_dif = project(solver.nu * Constant(dt) / solver.he**2, V)
+            Co_dif = project(solver.ν * Constant(dt) / solver.he**2, V)
             maxCo_adv_local = np.array(Co_adv.vector()).max()
             maxCo_dif_local = np.array(Co_dif.vector()).max()
             maxCo_local = max(maxCo_adv_local, maxCo_dif_local)

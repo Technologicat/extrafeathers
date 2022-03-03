@@ -27,8 +27,8 @@ class AdvectionDiffusion:
     `V`: function space for `u`
          Here `u` is the abstract generic Eulerian field that undergoes advection
          and diffusion; for example, in the heat equation, `u` is the temperature.
-    `nu`: diffusivity [m² / s]
-          Scalar `nu` for isotropic material; rank-2 tensor for anisotropic.
+    `ν`: diffusivity [m² / s]
+         Scalar `ν` for isotropic material; rank-2 tensor for anisotropic.
     `bc`: Dirichlet boundary conditions for temperature
     `dt`: timestep [s]
     `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
@@ -97,7 +97,7 @@ class AdvectionDiffusion:
     and `σ` on a `TensorFunctionSpace` compatible with `V`.
     """
     def __init__(self, V: FunctionSpace,
-                 nu: ScalarOrTensor,
+                 ν: ScalarOrTensor,
                  bc: typing.List[DirichletBC],
                  dt: float, θ: float = 0.5, *,
                  advection: str = "divergence-free",
@@ -142,7 +142,7 @@ class AdvectionDiffusion:
         self.σ.vector()[:] = 0.0
 
         # Parameters.
-        self._nu = Constant(nu)
+        self._ν = Constant(ν)
         self._dt = Constant(dt)
         self._θ = Constant(θ)
 
@@ -167,7 +167,7 @@ class AdvectionDiffusion:
 
         self.compile_forms()
 
-    nu = ufl_constant_property("nu", doc="Diffusivity [m² / s]")
+    ν = ufl_constant_property("ν", doc="Diffusivity [m² / s]")
     dt = ufl_constant_property("dt", doc="Timestep [s]")
     θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
     α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
@@ -202,7 +202,7 @@ class AdvectionDiffusion:
               the maximum value of `|u|` may be generally useful, but `L`
               must still be intuited from the problem geometry.
         """
-        return u * L / self.nu
+        return u * L / self.ν
 
     def compile_forms(self) -> None:
         n = FacetNormal(self.mesh)
@@ -225,7 +225,7 @@ class AdvectionDiffusion:
         he = self.he
 
         # Parameters
-        nu = self._nu
+        ν = self._ν
         dt = self._dt
         θ = self._θ
         α0 = self._α0
@@ -241,18 +241,18 @@ class AdvectionDiffusion:
              dot(h, v) * dx)
 
         # but the others depend on options:
-        if istensor(self._nu):
-            F += dot(dot(nu, nabla_grad(U)), nabla_grad(v)) * dx
+        if istensor(self._ν):
+            F += dot(dot(ν, nabla_grad(U)), nabla_grad(v)) * dx
             # TODO: add support for nonzero Neumann BCs
-            # The full weak form of -∇·(nu·∇u) for tensor `nu` is:
-            # F += (dot(dot(nu, nabla_grad(U)), nabla_grad(v)) * dx -
-            #       dot(n, dot(nu, nabla_grad(U))) * v * ds)
+            # The full weak form of -∇·(nu·∇u) for tensor `ν` is:
+            # F += (dot(dot(ν, nabla_grad(U)), nabla_grad(v)) * dx -
+            #       dot(n, dot(ν, nabla_grad(U))) * v * ds)
         else:
-            F += nu * dot(nabla_grad(U), nabla_grad(v)) * dx
+            F += ν * dot(nabla_grad(U), nabla_grad(v)) * dx
             # TODO: add support for nonzero Neumann BCs
-            # The full weak form of -∇·(nu·∇u) for scalar `nu` is:
-            # F += (nu * dot(nabla_grad(U), nabla_grad(v)) * dx -
-            #       nu * dot(n, nabla_grad(U)) * v * ds)
+            # The full weak form of -∇·(nu·∇u) for scalar `ν` is:
+            # F += (ν * dot(nabla_grad(U), nabla_grad(v)) * dx -
+            #       ν * dot(n, nabla_grad(U)) * v * ds)
 
         if self.advection == "divergence-free":
             # Skew-symmetric form for divergence-free advection velocity
@@ -279,13 +279,13 @@ class AdvectionDiffusion:
         #
         def mag(vec):
             return dot(vec, vec)**(1 / 2)
-        if istensor(self._nu):
-            magnu = inner(nu, nu)**(1 / 2)
+        if istensor(self._ν):
+            mag_ν = inner(ν, ν)**(1 / 2)
         else:
-            magnu = nu
+            mag_ν = ν
 
         # [τ] = s
-        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * magnu / he**2)**-1
+        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag_ν / he**2)**-1
 
         # We need the strong form of the equation to compute the residual
         if self.advection == "divergence-free":
@@ -302,12 +302,12 @@ class AdvectionDiffusion:
 
         # SUPG only makes sense if advection is enabled
         if adv:
-            if istensor(self._nu):
+            if istensor(self._ν):
                 def diffusion(U_):
-                    return div(dot(nu, nabla_grad(U_)))
+                    return div(dot(ν, nabla_grad(U_)))
             else:
                 def diffusion(U_):
-                    return div(nu * nabla_grad(U_))
+                    return div(ν * nabla_grad(U_))
 
             def R(U_):
                 # The residual is evaluated elementwise in strong form.
@@ -346,7 +346,7 @@ class AdvectionDiffusion:
 class HeatEquation(AdvectionDiffusion):
     """Heat transport, optionally in a moving material.
 
-    Like `AdvectionDiffusion`, but instead of `nu`, we have three parameters:
+    Like `AdvectionDiffusion`, but instead of `ν`, we have three parameters:
 
     `ρ`: density [kg / m³]
     `c`: specific heat capacity [J / (kg K)]
@@ -408,7 +408,7 @@ class HeatEquation(AdvectionDiffusion):
 
     where `solver` is a `HeatEquation` instance.
 
-    The diffusivity `ν` is automatically computed, and available as `self.nu`.
+    The diffusivity `ν` is automatically computed, and available as `self.ν`.
     The type is the same as that of `k` (`float` or a rank-2 tensor).
     Writing to `ρ`, `c`, or `k` automatically updates the diffusivity.
 
@@ -425,39 +425,39 @@ class HeatEquation(AdvectionDiffusion):
                  use_stress: bool = False,
                  stress_degree: int = None):
         # Here we don't need to wrap the parameters into UFL `Constant` objects,
-        # but we need to make them properties that update the underlying `nu`
+        # but we need to make them properties that update the underlying `ν`
         # (in our parent `AdvectionDiffusion`) when written to.
         self._ρ = ρ
         self._c = c
         self._k = k
-        super().__init__(V, self._update_nu(), bc, dt, θ,
+        super().__init__(V, self._update_ν(), bc, dt, θ,
                          advection=advection,
                          velocity_degree=velocity_degree,
                          use_stress=use_stress,
                          stress_degree=stress_degree)
 
-    def _update_nu(self):
+    def _update_ν(self):
         """Compute the diffusivity ν from ρ, c, and k."""
-        self._nu = self.k / (self.ρ * self.c)
-        return self._nu
+        self._ν = self.k / (self.ρ * self.c)
+        return self._ν
 
     def _get_ρ(self):
         return self._ρ
     def _set_ρ(self, ρ):
         self._ρ = ρ
-        self._update_nu()
+        self._update_ν()
     ρ = property(fget=_get_ρ, fset=_set_ρ, doc="Density [kg / m³]")
 
     def _get_c(self):
         return self._c
     def _set_c(self, c):
         self._c = c
-        self._update_nu()
+        self._update_ν()
     c = property(fget=_get_c, fset=_set_c, doc="Specific heat capacity [J / (kg K)]")
 
     def _get_k(self):
         return self._k
     def _set_k(self, k):
         self._k = k
-        self._update_nu()
+        self._update_ν()
     k = property(fget=_get_k, fset=_set_k, doc="Heat conductivity [W / (m K)]")

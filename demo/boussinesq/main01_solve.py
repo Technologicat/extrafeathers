@@ -267,7 +267,7 @@ for n in range(nt):
             # MPI-local maximum of each separately here (`V.sub(0)` and `W` may have been
             # MPI-partitioned differently).
             Co_adv = project(magu_expr * Constant(dt) / flowsolver.he, V.sub(0).collapse())
-            Co_dif = project(heatsolver.nu * Constant(dt) / heatsolver.he**2, W)
+            Co_dif = project(heatsolver.ν * Constant(dt) / heatsolver.he**2, W)
             maxCo_adv_local = np.array(Co_adv.vector()).max()
             maxCo_dif_local = np.array(Co_dif.vector()).max()
             maxCo_local = max(maxCo_adv_local, maxCo_dif_local)
