@@ -234,9 +234,9 @@ for n in range(nt):
             # the corresponding analytical domain of dependence. Thus we should take
             # the maximum of these two Courant numbers.
             #
-            # Note, however, that when using implicit time integration, the scheme actually
-            # has access to the solution in all of Ω, because the new value is solved from
-            # a linear equation system that is spatially global.
+            # Note, however, that when using implicit time integration, each degree of freedom
+            # actually has access to the solution in all of Ω, because the new value is solved
+            # from a linear equation system that is spatially global.
             #
             # Indicentally, a similar consideration is also why it is sometimes said that the
             # concept of Courant number makes no sense for the *Navier-Stokes* equations of
