@@ -222,6 +222,38 @@ for n in range(nt):
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=flowsolver.u_.sub(0), u1=flowsolver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
+            theplot = plotmagic.mpiplot(magu, cmap="viridis")
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.ylabel(r"$|u|$")
+                plt.subplot(1, 3, 3)
+            theplot = plotmagic.mpiplot(heatsolver.u_, cmap="coolwarm")
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.ylabel(r"$T$")
+
+            # info for msg (expensive; only update these once per vis step)
+            uvec = np.array(magu.vector())
+            Tvec = np.array(heatsolver.u_.vector())
+
+            minu_local = uvec.min()
+            minu_global = MPI.comm_world.allgather(minu_local)
+            minu = min(minu_global)
+
+            maxu_local = uvec.max()
+            maxu_global = MPI.comm_world.allgather(maxu_local)
+            maxu = max(maxu_global)
+
+            minT_local = Tvec.min()
+            minT_global = MPI.comm_world.allgather(minT_local)
+            minT = min(minT_global)
+
+            maxT_local = Tvec.max()
+            maxT_global = MPI.comm_world.allgather(maxT_local)
+            maxT = max(maxT_global)
+
             # Courant number of *heat* solver
             #
             # For the advection term (model equation  ∂u/∂t + (a·∇)u = 0),
@@ -274,43 +306,10 @@ for n in range(nt):
             maxCo_adv_local = np.array(Co_adv.vector()).max()
             maxCo_dif_local = np.array(Co_dif.vector()).max()
             maxCo_local = max(maxCo_adv_local, maxCo_dif_local)
-            theplot = plotmagic.mpiplot(magu, cmap="viridis")
-            if my_rank == 0:
-                plt.axis("equal")
-                plt.colorbar(theplot)
-                plt.ylabel(r"$|u|$")
-                plt.subplot(1, 3, 3)
-            theplot = plotmagic.mpiplot(heatsolver.u_, cmap="coolwarm")
-            if my_rank == 0:
-                plt.axis("equal")
-                plt.colorbar(theplot)
-                plt.ylabel(r"$T$")
-
-            # info for msg (expensive; only update these once per vis step)
-            uvec = np.array(magu.vector())
-            Tvec = np.array(heatsolver.u_.vector())
-
-            minu_local = uvec.min()
-            minu_global = MPI.comm_world.allgather(minu_local)
-            minu = min(minu_global)
-
-            maxu_local = uvec.max()
-            maxu_global = MPI.comm_world.allgather(maxu_local)
-            maxu = max(maxu_global)
-
-            minT_local = Tvec.min()
-            minT_global = MPI.comm_world.allgather(minT_local)
-            minT = min(minT_global)
-
-            maxT_local = Tvec.max()
-            maxT_global = MPI.comm_world.allgather(maxT_local)
-            maxT = max(maxT_global)
-
             maxCo_global = MPI.comm_world.allgather(maxCo_local)
             maxCo = max(maxCo_global)
 
-            # Compute the Reynolds and Péclet numbers.
-            # We don't have a freestream in this example, so let's use the maximum velocity as representative.
+            # We don't have a freestream in this example, so let's use the maximum velocity.
             Re = flowsolver.reynolds(maxu, L)
             Pe = heatsolver.peclet(maxu, L)
 
