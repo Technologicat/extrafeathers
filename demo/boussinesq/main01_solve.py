@@ -285,6 +285,35 @@ for n in range(nt):
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.ylabel(r"$T$")
+
+            # info for msg (expensive; only update these once per vis step)
+            uvec = np.array(magu.vector())
+            Tvec = np.array(heatsolver.u_.vector())
+
+            minu_local = uvec.min()
+            minu_global = MPI.comm_world.allgather(minu_local)
+            minu = min(minu_global)
+
+            maxu_local = uvec.max()
+            maxu_global = MPI.comm_world.allgather(maxu_local)
+            maxu = max(maxu_global)
+
+            minT_local = Tvec.min()
+            minT_global = MPI.comm_world.allgather(minT_local)
+            minT = min(minT_global)
+
+            maxT_local = Tvec.max()
+            maxT_global = MPI.comm_world.allgather(maxT_local)
+            maxT = max(maxT_global)
+
+            maxCo_global = MPI.comm_world.allgather(maxCo_local)
+            maxCo = max(maxCo_global)
+
+            # Compute the Reynolds and Péclet numbers.
+            # We don't have a freestream in this example, so let's use the maximum velocity as representative.
+            Re = flowsolver.reynolds(maxu, L)
+            Pe = heatsolver.peclet(maxu, L)
+
             if my_rank == 0:
                 plt.draw()
                 if n == 0:
@@ -293,6 +322,8 @@ for n in range(nt):
                 plotmagic.pause(0.2)
         if my_rank == 0:
             last_plot_walltime_local = tim.dt
+        last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
+        last_plot_walltime = max(last_plot_walltime_global)
 
     # Update progress bar
     progress += 1
@@ -303,39 +334,8 @@ for n in range(nt):
     # TODO: make dt, dt_avg part of the public interface in `unpythonic`
     dt_avg = sum(est.que) / len(est.que)
     vis_step_walltime_local = 50 * dt_avg
-
-    uvec = np.array(magu.vector())
-    Tvec = np.array(heatsolver.u_.vector())
-
-    minu_local = uvec.min()
-    minu_global = MPI.comm_world.allgather(minu_local)
-    minu = min(minu_global)
-
-    maxu_local = uvec.max()
-    maxu_global = MPI.comm_world.allgather(maxu_local)
-    maxu = max(maxu_global)
-
-    minT_local = Tvec.min()
-    minT_global = MPI.comm_world.allgather(minT_local)
-    minT = min(minT_global)
-
-    maxT_local = Tvec.max()
-    maxT_global = MPI.comm_world.allgather(maxT_local)
-    maxT = max(maxT_global)
-
-    maxCo_global = MPI.comm_world.allgather(maxCo_local)
-    maxCo = max(maxCo_global)
-
-    last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
-    last_plot_walltime = max(last_plot_walltime_global)
-
     vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
     vis_step_walltime = max(vis_step_walltime_global)
-
-    # Compute the Reynolds and Péclet numbers.
-    # We don't have a freestream in this example, so let's use the maximum velocity as representative.
-    Re = flowsolver.reynolds(maxu, L)
-    Pe = heatsolver.peclet(maxu, L)
 
     # msg for *next* timestep. Loop-and-a-half situation...
     msg = f"{flow_stabilizers_str}{heat_stabilizers_str}Re = {Re:0.2g}; Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.2g}, {maxu:0.2g}]; T ∈ [{minT:0.2g}, {maxT:0.2g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"

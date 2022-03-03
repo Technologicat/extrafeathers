@@ -174,6 +174,28 @@ for n in range(nt):
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.ylabel(r"$|u|$ (from file)")
+
+            # info for msg (expensive; only update these once per vis step)
+            Tvec = np.array(solver.u_.vector())
+
+            minT_local = Tvec.min()
+            minT_global = MPI.comm_world.allgather(minT_local)
+            minT = min(minT_global)
+
+            maxT_local = Tvec.max()
+            maxT_global = MPI.comm_world.allgather(maxT_local)
+            maxT = max(maxT_global)
+
+            maxCo_global = MPI.comm_world.allgather(maxCo_local)
+            maxCo = max(maxCo_global)
+
+            # compute maximum advection velocity, for Péclet number
+            maxa_local = np.array(maga.vector()).max()
+            maxa_global = MPI.comm_world.allgather(maxa_local)
+            maxa = max(maxa_global)
+
+            Pe = solver.peclet(maxa, L)
+
             if my_rank == 0:
                 plt.draw()
                 if n == 0:
@@ -182,6 +204,8 @@ for n in range(nt):
                 plotmagic.pause(0.2)
         if my_rank == 0:
             last_plot_walltime_local = tim.dt
+        last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
+        last_plot_walltime = max(last_plot_walltime_global)
 
     # Update progress bar
     progress += 1
@@ -192,32 +216,8 @@ for n in range(nt):
     # TODO: make dt, dt_avg part of the public interface in `unpythonic`
     dt_avg = sum(est.que) / len(est.que)
     vis_step_walltime_local = 50 * dt_avg
-
-    Tvec = np.array(solver.u_.vector())
-
-    minT_local = Tvec.min()
-    minT_global = MPI.comm_world.allgather(minT_local)
-    minT = min(minT_global)
-
-    maxT_local = Tvec.max()
-    maxT_global = MPI.comm_world.allgather(maxT_local)
-    maxT = max(maxT_global)
-
-    maxCo_global = MPI.comm_world.allgather(maxCo_local)
-    maxCo = max(maxCo_global)
-
-    # compute maximum advection velocity, for Péclet number
-    maxa_local = np.array(maga.vector()).max()
-    maxa_global = MPI.comm_world.allgather(maxa_local)
-    maxa = max(maxa_global)
-
-    last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
-    last_plot_walltime = max(last_plot_walltime_global)
-
     vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
     vis_step_walltime = max(vis_step_walltime_global)
-
-    Pe = solver.peclet(maxa, L)
 
     # msg for *next* timestep. Loop-and-a-half situation...
     msg = f"{SUPG_str}Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); T ∈ [{minT:0.6g}, {maxT:0.6g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
