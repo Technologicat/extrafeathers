@@ -320,7 +320,6 @@ for n in range(nt):
     maxT_global = MPI.comm_world.allgather(maxT_local)
     maxT = max(maxT_global)
 
-    maxCo_local = np.array(Co.vector()).max()
     maxCo_global = MPI.comm_world.allgather(maxCo_local)
     maxCo = max(maxCo_global)
 
