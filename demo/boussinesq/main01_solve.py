@@ -125,9 +125,9 @@ if V.ufl_element().degree() == 2 or W.ufl_element().degree() == 2:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 # Enable stabilizers for the Galerkin formulation
-flowsolver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant flows
-flowsolver.enable_LSIC.b = 1.0  # additional stabilizer for high Re
-heatsolver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant flows
+flowsolver.stabilizers.SUPG = True  # stabilizer for advection-dominant flows
+flowsolver.stabilizers.LSIC = True  # additional stabilizer for high Re
+heatsolver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
 
 # Boussinesq buoyancy term (as an UFL expression).
 #
@@ -141,10 +141,10 @@ specific_buoyancy = ρ_over_ρ0 * Constant((0, -g))  # N / kg = m / s²
 t = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
-flow_SUPG_str = "S" if flowsolver.enable_SUPG.b else ""
-flow_LSIC_str = "L" if flowsolver.enable_LSIC.b else ""
-flow_stabilizers_str = f"[u:{flow_SUPG_str}{flow_LSIC_str}] " if flowsolver.enable_SUPG.b or flowsolver.enable_LSIC.b else ""  # for messages
-heat_stabilizers_str = "[T:S] " if heatsolver.enable_SUPG.b else ""  # for messages
+flow_SUPG_str = "S" if flowsolver.stabilizers.SUPG else ""
+flow_LSIC_str = "L" if flowsolver.stabilizers.LSIC else ""
+flow_stabilizers_str = f"[u:{flow_SUPG_str}{flow_LSIC_str}] " if flowsolver.stabilizers.SUPG or flowsolver.stabilizers.LSIC else ""  # for messages
+heat_stabilizers_str = "[T:S] " if heatsolver.stabilizers.SUPG else ""  # for messages
 last_plot_walltime_local = 0
 vis_step_walltime_local = 0
 for n in range(nt):

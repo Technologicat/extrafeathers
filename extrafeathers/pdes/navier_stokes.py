@@ -94,6 +94,39 @@ def σ(u, p, μ):
     return 2 * μ * ε(u) - p * Identity(p.geometric_dimension())
 
 
+class StabilizerFlags:
+    """Interface for numerical stabilizer on/off flags.
+
+    Collects them into one namespace; handles translation between
+    `bool` values and the UFL expressions that are actually used
+    in the equations.
+
+    Usage::
+
+        print(solver.stabilizers)  # status --> "<StabilizerFlags: LSIC(True), SUPG(True)>"
+        solver.stabilizers.SUPG = True  # enable SUPG
+        solver.stabilizers.SUPG = False  # disable SUPG
+    """
+    def __init__(self):  # set up the UFL expressions for the flags
+        self._LSIC = Expression('b', degree=0, b=1.0)
+        self._SUPG = Expression('b', degree=0, b=1.0)
+    def __str__(self):  # reflection/discoverability
+        descs = [f"{x}({getattr(self, x)})" for x in dir(self) if not x.startswith("_")]
+        return f"<StabilizerFlags: {', '.join(descs)}>"
+
+    def _get_LSIC(self):
+        return bool(self._LSIC.b)
+    def _set_LSIC(self, b):
+        self._LSIC.b = float(b)
+    LSIC = property(fget=_get_LSIC, fset=_set_LSIC, doc="Least-squares incompressibility, for additional stability at high Re.")
+
+    def _get_SUPG(self):
+        return bool(self._SUPG.b)
+    def _set_SUPG(self, b):
+        self._SUPG.b = float(b)
+    SUPG = property(fget=_get_SUPG, fset=_set_SUPG, doc="Streamline upwinding Petrov-Galerkin, for advection-dominant flows.")
+
+
 # TODO: use nondimensional form
 class NavierStokes:
     """Incompressible Navier-Stokes solver, no turbulence model.
@@ -198,12 +231,8 @@ class NavierStokes:
         self._dt = Constant(dt)
         self._θ = Constant(θ)
 
-        # Stabilizer on/off switches;  b: float, use 0.0 or 1.0
-        # To set it, e.g. `solver.enable_LSIC.b = 1.0`,
-        # where `solver` is your `NavierStokes` instance.
-        # The different stabilizers can be switched on/off separately.
-        self.enable_LSIC = Expression('b', degree=0, b=1.0)
-        self.enable_SUPG = Expression('b', degree=0, b=1.0)
+        # Numerical stabilizer on/off flags.
+        self.stabilizers = StabilizerFlags()
 
         # SUPG stabilizer tuning parameter.
         self._α0 = Constant(1)
@@ -277,8 +306,8 @@ class NavierStokes:
         θ = self._θ
         α0 = self._α0
 
-        enable_LSIC = self.enable_LSIC
-        enable_SUPG = self.enable_SUPG
+        enable_LSIC_flag = self.stabilizers._LSIC
+        enable_SUPG_flag = self.stabilizers._SUPG
 
         # Define variational problem for step 1 (tentative velocity)
         #
@@ -444,7 +473,7 @@ class NavierStokes:
             return dot(vec, vec)**(1 / 2)
 
         τ_LSIC = mag(a) * he / 2  # [τ_LSIC] = (m / s) * m = m² / s, a kinematic viscosity
-        F1_LSIC = enable_LSIC * τ_LSIC * div(u) * div(v) * dx
+        F1_LSIC = enable_LSIC_flag * τ_LSIC * div(u) * div(v) * dx
         F1_varying += F1_LSIC
 
         # SUPG: streamline upwinding Petrov-Galerkin.
@@ -472,7 +501,7 @@ class NavierStokes:
         def R(U_, P_):
             # The residual is evaluated elementwise in strong form.
             return ρ * ((U_ - u_n) / dt + adv(U_)) - div(σ(U_, P_, μ)) - ρ * f
-        F_SUPG = enable_SUPG * τ_SUPG * dot(adv(v), R(u, p_n)) * dx
+        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(adv(v), R(u, p_n)) * dx
         F1_varying += F_SUPG
 
         self.a1_varying = lhs(F1_varying)
@@ -584,8 +613,8 @@ class NavierStokes:
         #
         # (Maybe the exact value doesn't matter that much; these stabilization methods
         #  usually work as long as the `he` and `Δt` scalings are correct.)
-        τ_PSPG, enable_PSPG = τ_SUPG, enable_SUPG
-        F_PSPG = enable_PSPG * τ_PSPG * dot(nabla_grad(q), R(u_, p)) * dx
+        τ_PSPG, enable_PSPG_flag = τ_SUPG, enable_SUPG_flag
+        F_PSPG = enable_PSPG_flag * τ_PSPG * dot(nabla_grad(q), R(u_, p)) * dx
         self.a2_varying = lhs(F_PSPG)
         self.L2 += rhs(F_PSPG)
 

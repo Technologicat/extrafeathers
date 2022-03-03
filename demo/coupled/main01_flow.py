@@ -208,15 +208,15 @@ if V.ufl_element().degree() == 2:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 # Enable stabilizers for the Galerkin formulation
-solver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant flows
-solver.enable_LSIC.b = 1.0  # additional stabilizer for high Re
+solver.stabilizers.SUPG = True  # stabilizer for advection-dominant flows
+solver.stabilizers.LSIC = True  # additional stabilizer for high Re
 
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
-SUPG_str = "[SUPG] " if solver.enable_SUPG.b else ""  # for messages
-LSIC_str = "[LSIC] " if solver.enable_LSIC.b else ""  # for messages
+SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
+LSIC_str = "[LSIC] " if solver.stabilizers.LSIC else ""  # for messages
 last_plot_walltime_local = 0
 vis_step_walltime_local = 0
 for n in range(nt):

@@ -95,13 +95,13 @@ solver = HeatEquation(V, rho, c, k, bc, dt,
 # Enable stabilizers for the Galerkin formulation
 #
 # When Co >> 1 at dense parts of the mesh, convergence may actually be better with SUPG off.
-solver.enable_SUPG.b = 1.0  # stabilizer for advection-dominant problems
+solver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
 
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
-SUPG_str = "[SUPG] " if solver.enable_SUPG.b else ""  # for messages
+SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
 last_plot_walltime_local = 0
 vis_step_walltime_local = 0
 for n in range(nt):

@@ -17,6 +17,32 @@ from ..meshfunction import meshsize, cell_mf_to_expression
 from .util import ScalarOrTensor, istensor, ufl_constant_property
 
 
+class StabilizerFlags:
+    """Interface for numerical stabilizer on/off flags.
+
+    Collects them into one namespace; handles translation between
+    `bool` values and the UFL expressions that are actually used
+    in the equations.
+
+    Usage::
+
+        print(solver.stabilizers)  # status --> "<StabilizerFlags: SUPG(False)>"
+        solver.stabilizers.SUPG = True  # enable SUPG
+        solver.stabilizers.SUPG = False  # disable SUPG
+    """
+    def __init__(self):  # set up the UFL expressions for the flags
+        self._SUPG = Expression('b', degree=0, b=0.0)
+    def __str__(self):  # reflection/discoverability
+        descs = [f"{x}({getattr(self, x)})" for x in dir(self) if not x.startswith("_")]
+        return f"<StabilizerFlags: {', '.join(descs)}>"
+
+    def _get_SUPG(self):
+        return bool(self._SUPG.b)
+    def _set_SUPG(self, b):
+        self._SUPG.b = float(b)
+    SUPG = property(fget=_get_SUPG, fset=_set_SUPG, doc="Streamline upwinding Petrov-Galerkin, for advection-dominant problems.")
+
+
 # TODO: Add a reaction term with a FEM function coefficient, for chemical reactions and similar.
 # TODO: Make the diffusivity a FEM function. Need also a function outside the ∇· (or in the mat. der. term).
 class AdvectionDiffusion:
@@ -154,10 +180,8 @@ class AdvectionDiffusion:
         self._dt = Constant(dt)
         self._θ = Constant(θ)
 
-        # SUPG stabilizer on/off switch;  b: float, use 0.0 or 1.0
-        # To set it, e.g. `solver.enable_SUPG.b = 1.0`,
-        # where `solver` is your `AdvectionDiffusion` instance.
-        self.enable_SUPG = Expression('b', degree=0, b=0.0)
+        # Numerical stabilizer on/off flags.
+        self.stabilizers = StabilizerFlags()
 
         # SUPG stabilizer tuning parameter.
         #
@@ -238,7 +262,7 @@ class AdvectionDiffusion:
         θ = self._θ
         α0 = self._α0
 
-        enable_SUPG = self.enable_SUPG
+        enable_SUPG_flag = self.stabilizers._SUPG
 
         # θ time integration
         U = (1 - θ) * u_n + θ * u
@@ -323,7 +347,7 @@ class AdvectionDiffusion:
                 if self.use_stress:
                     residual += -inner(σ, nabla_grad(a))
                 return residual
-            F_SUPG = enable_SUPG * τ_SUPG * dot(adv(v), R(u)) * dx
+            F_SUPG = enable_SUPG_flag * τ_SUPG * dot(adv(v), R(u)) * dx
             F += F_SUPG
 
         self.aform = lhs(F)
