@@ -164,7 +164,12 @@ for n in range(nt):
             maga_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=solver.a.sub(0), u1=solver.a.sub(1))
             maga = interpolate(maga_expr, V)
-            Co = project(maga_expr * Constant(dt) / solver.he, V)  # Courant number
+            # Courant number
+            Co_adv = project(maga_expr * Constant(dt) / solver.he, V)
+            Co_dif = project(solver.nu * Constant(dt) / solver.he**2, V)
+            maxCo_adv_local = np.array(Co_adv.vector()).max()
+            maxCo_dif_local = np.array(Co_dif.vector()).max()
+            maxCo_local = max(maxCo_adv_local, maxCo_dif_local)
             theplot = plotmagic.mpiplot(maga, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
@@ -199,7 +204,6 @@ for n in range(nt):
     maxT_global = MPI.comm_world.allgather(maxT_local)
     maxT = max(maxT_global)
 
-    maxCo_local = np.array(Co.vector()).max()
     maxCo_global = MPI.comm_world.allgather(maxCo_local)
     maxCo = max(maxCo_global)
 

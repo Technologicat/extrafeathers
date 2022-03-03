@@ -219,19 +219,58 @@ for n in range(nt):
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
                                    u0=flowsolver.u_.sub(0), u1=flowsolver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
-            # Advective Courant number of *heat* solver
+            # Courant number of *heat* solver
             #
-            # Note that for the advection term (model equation  ∂u/∂t + (a·∇)u = 0),
+            # For the advection term (model equation  ∂u/∂t + (a·∇)u = 0),
             # the Courant number is defined as:
             #    Co = |a| Δt / he
-            # but for the diffusion term (model equation  ∂u/∂t - ν ∇²u = 0),
+            # For the diffusion term (model equation  ∂u/∂t - ν ∇²u = 0),
             # it is defined as:
             #    Co = ν Δt / he²
             #
-            # Compare e.g.
+            # The idea behind the CFL condition is that the numerical scheme must
+            # be able to access the information needed to determine the solution:
+            # the numerical domain of dependence of a degree of freedom must contain
+            # the corresponding analytical domain of dependence. Thus we should take
+            # the maximum of these two Courant numbers.
+            #
+            # Note, however, that when using implicit time integration, the scheme actually
+            # has access to the solution in all of Ω, because the new value is solved from
+            # a linear equation system that is spatially global.
+            #
+            # Indicentally, a similar consideration is also why it is sometimes said that the
+            # concept of Courant number makes no sense for the *Navier-Stokes* equations of
+            # incompressible flow. There is the ∇p term, which must be adjusted *globally*
+            # at each timestep to satisfy ∇·u = 0. So the analytical domain of dependence
+            # of each point of the solution regardless of the value of Δt is all of Ω.
+            #
+            # When using implicit methods, from a *stability* viewpoint it thus does not matter
+            # if the Courant number is large. However, the Courant number still acts as an
+            # indicator of *accuracy*. It is heuristically clear why: when time integration
+            # is performed essentially by a finite difference approximation of the time
+            # derivative, the method has no access to what should happen "between timesteps".
+            # So especially in an advection problem, the numerical solution will drift away
+            # from the exact solution if the timestep is too large, because the velocity
+            # field is only sampled at the timesteps, and assumed to stay constant during
+            # each timestep. Thus the streamlines of the numerical approximation of the
+            # advection process will be piecewise linear. Obviously, if there are important
+            # details in the velocity field an advected material parcel would hit between
+            # timesteps (in the exact solution), these will be missed by the approximation.
+            #
+            # See e.g.
             #   https://en.wikipedia.org/wiki/Courant%E2%80%93Friedrichs%E2%80%93Lewy_condition
             #   https://en.wikipedia.org/wiki/Crank%E2%80%93Nicolson_method#Example:_2D_diffusion
-            Co = project(magu_expr * Constant(dt) / flowsolver.he, V.sub(0).collapse())
+            #
+            # Note that in general, these expressions live on different function spaces,
+            # because velocity and temperature may use different degree elements.
+            # Thus to minimize the need for MPI communication, it is easiest to take the
+            # MPI-local maximum of each separately here (`V.sub(0)` and `W` may have been
+            # MPI-partitioned differently).
+            Co_adv = project(magu_expr * Constant(dt) / flowsolver.he, V.sub(0).collapse())
+            Co_dif = project(heatsolver.nu * Constant(dt) / heatsolver.he**2, W)
+            maxCo_adv_local = np.array(Co_adv.vector()).max()
+            maxCo_dif_local = np.array(Co_dif.vector()).max()
+            maxCo_local = max(maxCo_adv_local, maxCo_dif_local)
             theplot = plotmagic.mpiplot(magu, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
