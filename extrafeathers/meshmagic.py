@@ -117,6 +117,7 @@ def my_cells(V: dolfin.FunctionSpace, *,
             # 0-5-1      0-5-1
             #  P2         4×P1
             #
+            # See `demo.refelement`, and:
             # https://fenicsproject.discourse.group/t/how-to-get-global-to-local-edge-dof-mapping-for-triangular-p2-elements/5197
             assert len(local_dofs) == 6, len(local_dofs)
             local_dofss = []
@@ -127,6 +128,34 @@ def my_cells(V: dolfin.FunctionSpace, *,
                             (4, 3, 2)):
                 local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k]])
                 nodess.append([nodes[i], nodes[j], nodes[k]])
+
+            # # TODO: finish 2D P3 support (code is here; need to update interface)
+            # #
+            # # - DOFs 0, 1, 2 are at the vertices
+            # # - DOFs 3, 4 are on the side opposite to 0
+            # # - DOFs 5, 6 are on the side opposite to 1
+            # # - DOFs 7, 8 are on the side opposite to 2
+            # # - DOF 8 is at the center of the triangle
+            # #
+            # # ASCII diagram (numbering on the reference element):
+            # #
+            # #       2
+            # #      /|
+            # #     6 4
+            # #    /  |
+            # #   5 9 3
+            # #  /    |
+            # # 0-7-8-1
+            # #
+            # # See `demo.refelement`.
+            # assert len(local_dofs) == 10, len(local_dofs)
+            # local_dofss = []
+            # nodess = []
+            # for i, j, k in ((0, 5, 7), (5, 7, 9), (7, 8, 9), (3, 8, 9), (1, 3, 8),
+            #                 (5, 6, 9), (4, 6, 9), (3, 4, 9),
+            #                 (2, 4, 6)):
+            #     local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k]])
+            #     nodess.append([nodes[i], nodes[j], nodes[k]])
 
         # Convert the constituent cells to global DOF numbering
         for local_dofs, nodes in zip(local_dofss, nodess):
