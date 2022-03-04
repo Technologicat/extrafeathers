@@ -70,10 +70,18 @@ xdmffile_T.parameters["rewrite_function_mesh"] = False
 # Create time series (for use in other FEniCS solvers)
 timeseries_T = TimeSeries(sol_T_filename)
 
-# If we try to read the saved velocity data directly into `solver.a.vector()`, PETSc says the
-# vector is not compatible when we try to use it. To work around this, we read the complete DOF
-# vector (at given `t`) in all processes, and then extract the DOFs each process needs. Thus we
-# make this `TimeSeries` local (`MPI.comm_self`).
+# In MPI mode, reading back a saved `TimeSeries` is a bit tricky.
+#
+# - If we try to read the saved velocity data directly into `solver.a.vector()`, then at the
+#   second timestep, PETSc `VecAXPY` fails (when reading the data), saying the arguments are
+#   not compatible.
+# - If we make a new parallel vector here to hold the data, read the data into it, and try to
+#   assign that data to `solver.a.vector()[:]`, the assignment fails, because the parallel
+#   layouts of the two vectors are not the same.
+#
+# To work around this, we read the complete DOF vector (at given time `t`) in all processes,
+# and then manually extract the DOFs each process needs. Then the assignment works.
+# Thus we make this `TimeSeries` MPI-local (`MPI.comm_self`).
 timeseries_velocity = TimeSeries(MPI.comm_self, sol_u_filename)
 velocity_alldofs = Vector(MPI.comm_self)
 
