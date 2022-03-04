@@ -14,10 +14,10 @@ from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, Dir
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
-from .util import ScalarOrTensor, istensor, ufl_constant_property
+from .util import ScalarOrTensor, istensor, ufl_constant_property, StabilizerFlags
 
 
-class StabilizerFlags:
+class AdvectionDiffusionStabilizerFlags(StabilizerFlags):
     """Interface for numerical stabilizer on/off flags.
 
     Collects them into one namespace; handles translation between
@@ -26,15 +26,13 @@ class StabilizerFlags:
 
     Usage::
 
-        print(solver.stabilizers)  # status --> "<StabilizerFlags: SUPG(False)>"
+        print(solver.stabilizers)  # status --> "<AdvectionDiffusionStabilizerFlags: SUPG(False)>"
         solver.stabilizers.SUPG = True  # enable SUPG
         solver.stabilizers.SUPG = False  # disable SUPG
     """
     def __init__(self):  # set up the UFL expressions for the flags
+        super().__init__()
         self._SUPG = Expression('b', degree=0, b=0.0)
-    def __str__(self):  # reflection/discoverability
-        descs = [f"{x}({getattr(self, x)})" for x in dir(self) if not x.startswith("_")]
-        return f"<StabilizerFlags: {', '.join(descs)}>"
 
     def _get_SUPG(self) -> bool:
         return bool(self._SUPG.b)
@@ -181,7 +179,7 @@ class AdvectionDiffusion:
         self._θ = Constant(θ)
 
         # Numerical stabilizer on/off flags.
-        self.stabilizers = StabilizerFlags()
+        self.stabilizers = AdvectionDiffusionStabilizerFlags()
 
         # SUPG stabilizer tuning parameter.
         #

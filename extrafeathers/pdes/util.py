@@ -2,7 +2,8 @@
 """Miscellaneous utilities."""
 
 __all__ = ["ScalarOrTensor", "istensor",
-           "ufl_constant_property"]
+           "ufl_constant_property",
+           "StabilizerFlags"]
 
 from textwrap import dedent
 import typing
@@ -71,3 +72,27 @@ def ufl_constant_property(name: str, doc: str) -> property:
     # avoid issues with possible quote characters inside `doc`.
     environment[name].__doc__ = doc
     return environment[name]
+
+
+class StabilizerFlags:
+    """Base class for numerical stabilizer on/off flag collections.
+
+    Provides convenient string representation and the possibility
+    to snapshot the current state into a `dict` (for iterable inspection).
+    """
+    def _as_dict(self) -> typing.Dict[str, bool]:
+        """Return a snapshot of the current state as a `dict`.
+
+        Despite the name, this is a public method; all attribute names
+        that do not begin with an underscore are reserved for the actual
+        stabilizer flags.
+        """
+        flagnames = [x for x in dir(self) if not x.startswith("_")]
+        # Each flag is expected to be a property wrapping an UFL expression
+        # (which represents the flag in the PDE), so that reading a flag
+        # will actually return its current state as a `bool`.
+        return {x: getattr(self, x) for x in flagnames}
+
+    def __str__(self) -> str:  # reflection/discoverability
+        statuses = [f"{k}({v})" for k, v in self._as_dict().items()]
+        return f"<{type(self)}: {', '.join(statuses)}>"

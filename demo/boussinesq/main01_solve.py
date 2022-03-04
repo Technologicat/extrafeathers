@@ -143,7 +143,7 @@ est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
 flow_SUPG_str = "S" if flowsolver.stabilizers.SUPG else ""
 flow_LSIC_str = "L" if flowsolver.stabilizers.LSIC else ""
-flow_stabilizers_str = f"u[{flow_SUPG_str}{flow_LSIC_str}] " if flowsolver.stabilizers.SUPG or flowsolver.stabilizers.LSIC else ""  # for messages
+flow_stabilizers_str = f"u[{flow_SUPG_str}{flow_LSIC_str}] " if any(flowsolver.stabilizers._as_dict().values()) else ""  # for messages
 heat_stabilizers_str = "T[S] " if heatsolver.stabilizers.SUPG else ""  # for messages
 vis_step_walltime_local = 0
 for n in range(nt):

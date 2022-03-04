@@ -28,7 +28,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
-from .util import ufl_constant_property
+from .util import ufl_constant_property, StabilizerFlags
 
 
 def ε(u):
@@ -94,7 +94,7 @@ def σ(u, p, μ):
     return 2 * μ * ε(u) - p * Identity(p.geometric_dimension())
 
 
-class StabilizerFlags:
+class NavierStokesStabilizerFlags(StabilizerFlags):
     """Interface for numerical stabilizer on/off flags.
 
     Collects them into one namespace; handles translation between
@@ -103,16 +103,14 @@ class StabilizerFlags:
 
     Usage::
 
-        print(solver.stabilizers)  # status --> "<StabilizerFlags: LSIC(True), SUPG(True)>"
+        print(solver.stabilizers)  # status --> "<NavierStokesStabilizerFlags: LSIC(True), SUPG(True)>"
         solver.stabilizers.SUPG = True  # enable SUPG
         solver.stabilizers.SUPG = False  # disable SUPG
     """
     def __init__(self):  # set up the UFL expressions for the flags
+        super().__init__()
         self._LSIC = Expression('b', degree=0, b=1.0)
         self._SUPG = Expression('b', degree=0, b=1.0)
-    def __str__(self):  # reflection/discoverability
-        descs = [f"{x}({getattr(self, x)})" for x in dir(self) if not x.startswith("_")]
-        return f"<StabilizerFlags: {', '.join(descs)}>"
 
     def _get_LSIC(self) -> bool:
         return bool(self._LSIC.b)
@@ -232,7 +230,7 @@ class NavierStokes:
         self._θ = Constant(θ)
 
         # Numerical stabilizer on/off flags.
-        self.stabilizers = StabilizerFlags()
+        self.stabilizers = NavierStokesStabilizerFlags()
 
         # SUPG stabilizer tuning parameter.
         self._α0 = Constant(1)
