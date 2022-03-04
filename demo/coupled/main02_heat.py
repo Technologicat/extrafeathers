@@ -97,6 +97,9 @@ solver = HeatEquation(V, rho, c, k, bc, dt,
 # When Co >> 1 at dense parts of the mesh, convergence may actually be better with SUPG off.
 solver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
 
+advection_velocity = solver.a
+my_advection_velocity_dofs = advection_velocity.function_space().dofmap().dofs()
+
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
@@ -118,8 +121,7 @@ for n in range(nt):
     # on this mesh. Extract the local DOFs (in the MPI sense) from the complete saved DOF vector.
     begin("Loading velocity")
     timeseries_velocity.retrieve(velocity_alldofs, t)
-    advection_velocity = solver.a
-    advection_velocity.vector()[:] = velocity_alldofs[advection_velocity.function_space().dofmap().dofs()]
+    advection_velocity.vector()[:] = velocity_alldofs[my_advection_velocity_dofs]
     end()
 
     # Solve one timestep
