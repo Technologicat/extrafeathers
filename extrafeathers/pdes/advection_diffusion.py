@@ -357,14 +357,17 @@ class AdvectionDiffusion:
         """Take a timestep of length `self.dt`.
 
         Updates `self.u_`.
+
+        Returns the number of Krylov iterations taken.
         """
         begin("Temperature")
         A = assemble(self.aform)
         b = assemble(self.Lform)
         [bc.apply(A) for bc in self.bc]
         [bc.apply(b) for bc in self.bc]
-        solve(A, self.u_.vector(), b, 'bicgstab', 'hypre_amg')
+        it = solve(A, self.u_.vector(), b, 'bicgstab', 'hypre_amg')
         end()
+        return it
 
     def commit(self) -> None:
         """Commit the latest computed timestep, preparing for the next one.

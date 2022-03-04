@@ -632,6 +632,20 @@ class NavierStokes:
         """Take a timestep of length `self.dt`.
 
         Updates `self.u_` and `self.p_`.
+
+        Returns `(it1, it2, it3)`, where `itK` is the number of
+        Krylov iterations taken by step `K` of the IPCS algorithm:
+
+          - Step 1: momentum equation (tentative velocity)
+                    (non-symmetric, bicgstab with AMG preconditioner)
+          - Step 2: incremental pressure correction
+                    (non-symmetric, bicgstab with AMG preconditioner)
+          - Step 3: incremental velocity correction
+                    (symmetric, cg with SOR preconditioner)
+
+        Note that due to different algebraic structure and different
+        Krylov algorithms, the numbers from the three IPCS steps are
+        not directly comparable.
         """
         # Step 1: Tentative velocity step
         begin("Tentative velocity")
@@ -639,7 +653,7 @@ class NavierStokes:
         b1 = assemble(self.L1)
         [bc.apply(A1) for bc in self.bcu]
         [bc.apply(b1) for bc in self.bcu]
-        solve(A1, self.u_.vector(), b1, 'bicgstab', 'hypre_amg')
+        it1 = solve(A1, self.u_.vector(), b1, 'bicgstab', 'hypre_amg')
         end()
 
         # Step 2: Pressure correction step
@@ -652,7 +666,7 @@ class NavierStokes:
         else:
             [bc.apply(A2) for bc in self.bcp]
             [bc.apply(b2) for bc in self.bcp]
-        solve(A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
+        it2 = solve(A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
         end()
 
         if not self.bcp:
@@ -682,8 +696,10 @@ class NavierStokes:
         # Step 3: Velocity correction step
         begin("Velocity correction")
         b3 = assemble(self.L3)
-        solve(self.A3, self.u_.vector(), b3, 'cg', 'sor')
+        it3 = solve(self.A3, self.u_.vector(), b3, 'cg', 'sor')
         end()
+
+        return it1, it2, it3
 
     def commit(self) -> None:
         """Commit the latest computed timestep, preparing for the next one.
