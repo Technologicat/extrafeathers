@@ -75,9 +75,12 @@ timeseries_T = TimeSeries(sol_T_filename)
 # - If we try to read the saved velocity data directly into `solver.a.vector()`, then at the
 #   second timestep, PETSc `VecAXPY` fails (when reading the data), saying the arguments are
 #   not compatible.
-# - If we make a new parallel vector here to hold the data, read the data into it, and try to
-#   assign that data to `solver.a.vector()[:]`, the assignment fails, because the parallel
-#   layouts of the two vectors are not the same.
+# - If we make a new parallel vector here to hold the data, as `Vector(MPI.comm_world)`,
+#   read the data into it, and try to assign that data to `solver.a.vector()[:]`, the
+#   assignment fails, because the parallel layouts of the two vectors are not the same.
+# - If create a new parallel vector using the copy constructor, `Vector(solver.a.vector())`
+#   (so as to copy its parallel layout), read the data into it, and try to assign it to
+#   `solver.a.vector()[:]`, we again get the first error above (arguments not compatible).
 #
 # To work around this, we read the complete DOF vector (at given time `t`) in all processes,
 # and then manually extract the DOFs each process needs. Then the assignment works.
