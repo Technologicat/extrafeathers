@@ -36,9 +36,9 @@ class StabilizerFlags:
         descs = [f"{x}({getattr(self, x)})" for x in dir(self) if not x.startswith("_")]
         return f"<StabilizerFlags: {', '.join(descs)}>"
 
-    def _get_SUPG(self):
+    def _get_SUPG(self) -> bool:
         return bool(self._SUPG.b)
-    def _set_SUPG(self, b):
+    def _set_SUPG(self, b: bool) -> None:
         self._SUPG.b = float(b)
     SUPG = property(fget=_get_SUPG, fset=_set_SUPG, doc="Streamline upwinding Petrov-Galerkin, for advection-dominant problems.")
 
@@ -204,7 +204,7 @@ class AdvectionDiffusion:
     θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
     α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
 
-    def peclet(self, u, L):
+    def peclet(self, u: float, L: float) -> float:
         """Return the Péclet number.
 
         `u`: characteristic speed (scalar) [m / s]
@@ -353,7 +353,7 @@ class AdvectionDiffusion:
         self.aform = lhs(F)
         self.Lform = rhs(F)
 
-    def step(self) -> None:
+    def step(self) -> int:
         """Take a timestep of length `self.dt`.
 
         Updates `self.u_`.
@@ -471,28 +471,31 @@ class HeatEquation(AdvectionDiffusion):
                          use_stress=use_stress,
                          stress_degree=stress_degree)
 
-    def _update_ν(self):
-        """Compute the diffusivity ν from ρ, c, and k."""
+    def _update_ν(self) -> ScalarOrTensor:
+        """Compute the diffusivity ν from ρ, c, and k.
+
+        Update `self._ν`, and for convenience, return the updated diffusivity.
+        """
         self._ν = self.k / (self.ρ * self.c)
         return self._ν
 
-    def _get_ρ(self):
+    def _get_ρ(self) -> float:
         return self._ρ
-    def _set_ρ(self, ρ):
+    def _set_ρ(self, ρ: float) -> None:
         self._ρ = ρ
         self._update_ν()
     ρ = property(fget=_get_ρ, fset=_set_ρ, doc="Density [kg / m³]")
 
-    def _get_c(self):
+    def _get_c(self) -> float:
         return self._c
-    def _set_c(self, c):
+    def _set_c(self, c: float) -> None:
         self._c = c
         self._update_ν()
     c = property(fget=_get_c, fset=_set_c, doc="Specific heat capacity [J / (kg K)]")
 
-    def _get_k(self):
+    def _get_k(self) -> ScalarOrTensor:
         return self._k
-    def _set_k(self, k):
+    def _set_k(self, k: ScalarOrTensor) -> None:
         self._k = k
         self._update_ν()
     k = property(fget=_get_k, fset=_set_k, doc="Heat conductivity [W / (m K)]")

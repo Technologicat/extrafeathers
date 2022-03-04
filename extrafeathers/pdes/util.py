@@ -28,7 +28,7 @@ def istensor(x: ScalarOrTensor) -> bool:
 
 # TODO: A bit dubious whether this is worth the learning cost of an abstraction,
 # TODO: but the pattern does repeat a lot in the solvers.
-def ufl_constant_property(name, doc):
+def ufl_constant_property(name: str, doc: str) -> property:
     """Make an property for wrapping a UFL `Constant`.
 
     The `Constant` will appear to the outside as if it was a regular `float`

@@ -114,15 +114,15 @@ class StabilizerFlags:
         descs = [f"{x}({getattr(self, x)})" for x in dir(self) if not x.startswith("_")]
         return f"<StabilizerFlags: {', '.join(descs)}>"
 
-    def _get_LSIC(self):
+    def _get_LSIC(self) -> bool:
         return bool(self._LSIC.b)
-    def _set_LSIC(self, b):
+    def _set_LSIC(self, b: bool) -> None:
         self._LSIC.b = float(b)
     LSIC = property(fget=_get_LSIC, fset=_set_LSIC, doc="Least-squares incompressibility, for additional stability at high Re.")
 
-    def _get_SUPG(self):
+    def _get_SUPG(self) -> bool:
         return bool(self._SUPG.b)
-    def _set_SUPG(self, b):
+    def _set_SUPG(self, b: bool) -> None:
         self._SUPG.b = float(b)
     SUPG = property(fget=_get_SUPG, fset=_set_SUPG, doc="Streamline upwinding Petrov-Galerkin, for advection-dominant flows.")
 
@@ -245,7 +245,7 @@ class NavierStokes:
     θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
     α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
 
-    def reynolds(self, u, L):
+    def reynolds(self, u: float, L: float) -> float:
         """Return the Reynolds number of the flow.
 
         `u`: characteristic speed (scalar) [m / s]
@@ -628,7 +628,7 @@ class NavierStokes:
         self.A2_constant = assemble(self.a2_constant)
         self.A3 = assemble(self.a3)
 
-    def step(self) -> None:
+    def step(self) -> typing.Tuple[int, int, int]:
         """Take a timestep of length `self.dt`.
 
         Updates `self.u_` and `self.p_`.
