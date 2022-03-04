@@ -47,6 +47,8 @@ def my_cells(V: dolfin.FunctionSpace, *,
                      anticlockwise order, as required when the data is used to
                      construct a `matplotlib.tri.Triangulation`.
 
+                     Only makes sense when the output is P1.
+
     `refine_p2`: If `True`, and `V` is a 2D P2 triangulation, split each
                      original triangle into four P1 triangles; one touching
                      each vertex, and one in the middle, spanning the edge
