@@ -319,8 +319,7 @@ for n in range(nt):
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
                 plotmagic.pause(0.2)
-        if my_rank == 0:
-            last_plot_walltime_local = tim.dt
+        last_plot_walltime_local = tim.dt
         last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
         last_plot_walltime = max(last_plot_walltime_global)
 
@@ -333,11 +332,18 @@ for n in range(nt):
     # TODO: make dt, dt_avg part of the public interface in `unpythonic`
     dt_avg = sum(est.que) / len(est.que)
     vis_step_walltime_local = 50 * dt_avg
-    vis_step_walltime_global = MPI.comm_world.allgather(vis_step_walltime_local)
-    vis_step_walltime = max(vis_step_walltime_global)
+
+    # In MPI mode, one of the worker processes may have a larger slice of the domain
+    # (or require more Krylov iterations to converge) than the root process.
+    # So to get a reliable ETA, we must take the maximum across all processes.
+    times_global = MPI.comm_world.allgather((vis_step_walltime_local, est.estimate, est.formatted_eta))
+    item_with_max_estimate = max(times_global, key=lambda item: item[1])
+    max_eta = item_with_max_estimate[2]
+    item_with_max_vis_step_walltime = max(times_global, key=lambda item: item[0])
+    max_vis_step_walltime = item_with_max_vis_step_walltime[0]
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{flow_stabilizers_str}{heat_stabilizers_str}Re = {Re:0.2g}; Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.2g}, {maxu:0.2g}]; T ∈ [{minT:0.2g}, {maxT:0.2g}]; vis every {vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {est.formatted_eta}"
+    msg = f"{flow_stabilizers_str}{heat_stabilizers_str}Re = {Re:0.2g}; Pe = {Pe:0.2g}; Co = {maxCo:0.2g}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.2g}, {maxu:0.2g}]; T ∈ [{minT:0.2g}, {maxT:0.2g}]; vis every {max_vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
 
 # Hold plot
 if my_rank == 0:
