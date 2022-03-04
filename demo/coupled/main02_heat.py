@@ -116,9 +116,12 @@ for n in range(nt):
     #
     # Note this is the end-of-timestep velocity; right now we don't have an initial velocity field saved.
     #
-    # We assume the same mesh, same global DOF numbering, and same MPI partitioning as in the saved data.
-    # The data came from a `VectorFunctionSpace` on this mesh, and `solver.a` is also a `VectorFunctionSpace`
-    # on this mesh. Extract the local DOFs (in the MPI sense) from the complete saved DOF vector.
+    # We assume the same mesh and same global DOF numbering as in the saved data. Note that if the MPI
+    # group size has changed (or if running serially vs. MPI), the DOFs may be numbered differently.
+    #
+    # The data came from a `VectorFunctionSpace` on this mesh, and `advection_velocity` is also
+    # a `VectorFunctionSpace` on this mesh. Extract the local DOFs (in the MPI sense) from the
+    # complete saved DOF vector.
     begin("Loading velocity")
     timeseries_velocity.retrieve(velocity_alldofs, t)
     advection_velocity.vector()[:] = velocity_alldofs[my_advection_velocity_dofs]
