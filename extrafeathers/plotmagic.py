@@ -139,11 +139,10 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
         # # TODO: That's all we currently support in this function, so it's ok.
         # # TODO: But for future reference, given a full copy of the global DOF data, this is how to do it.
         # # (A copy of just the MPI-local part won't do, because the triangulation uses also the unowned nodes.)
-        # dof_to_row_dict = {dof: k for k, dof in enumerate(dofs)}
-        # dof_to_row_list = [v for k, v in sorted(dof_to_row_dict.items(), key=lambda item: item[0])]
+        # dof_to_row = {dof: k for k, dof in enumerate(dofs)}  # `dofs` is already sorted by global DOF number
         # new_triangles = []
         # for triangle in triangles:
-        #     new_triangles.append([dof_to_row_list[dof] for dof in triangle])
+        #     new_triangles.append([dof_to_row[dof] for dof in triangle])
 
         tri = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=triangles)
 
