@@ -70,9 +70,10 @@ xdmffile_T.parameters["rewrite_function_mesh"] = False
 # Create time series (for use in other FEniCS solvers)
 timeseries_T = TimeSeries(sol_T_filename)
 
-# MPI partitioning may be different in the saved timeseries, so all processes
-# must read the complete DOF vector (at given `t`), and then extract the relevant DOFs.
-# Thus we make this `TimeSeries` local (`MPI.comm_self`).
+# If we try to read the saved velocity data directly into `solver.a.vector()`, PETSc says the
+# vector is not compatible when we try to use it. To work around this, we read the complete DOF
+# vector (at given `t`) in all processes, and then extract the DOFs each process needs. Thus we
+# make this `TimeSeries` local (`MPI.comm_self`).
 timeseries_velocity = TimeSeries(MPI.comm_self, sol_u_filename)
 velocity_alldofs = Vector(MPI.comm_self)
 
@@ -116,12 +117,13 @@ for n in range(nt):
     #
     # Note this is the end-of-timestep velocity; right now we don't have an initial velocity field saved.
     #
-    # We assume the same mesh and same global DOF numbering as in the saved data. Note that if the MPI
-    # group size has changed (or if running serially vs. MPI), the DOFs may be numbered differently.
+    # The data came from a `VectorFunctionSpace` on our `mesh`, and `advection_velocity` is also
+    # a `VectorFunctionSpace` on `mesh`, with the same element degree. Extract the local DOFs
+    # (in the MPI sense) from the complete saved DOF vector.
     #
-    # The data came from a `VectorFunctionSpace` on this mesh, and `advection_velocity` is also
-    # a `VectorFunctionSpace` on this mesh. Extract the local DOFs (in the MPI sense) from the
-    # complete saved DOF vector.
+    # We assume to have the same global DOF numbering as in the saved data. Note that if the MPI
+    # group size has changed (or if running serially vs. MPI), the DOFs will be numbered differently.
+    # (See `demo.dofnumbering` for a demonstration.)
     begin("Loading velocity")
     timeseries_velocity.retrieve(velocity_alldofs, t)
     advection_velocity.vector()[:] = velocity_alldofs[my_advection_velocity_dofs]
