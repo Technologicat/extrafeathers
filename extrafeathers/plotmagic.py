@@ -83,7 +83,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
 
     In other processes, returns `None`.
     """
-    V = u.ufl_function_space()
+    V = u.function_space()
     mesh = V.mesh()
     my_rank = dolfin.MPI.comm_world.rank
 
