@@ -42,14 +42,14 @@ if my_rank == 0:
     print(f"Number of DOFs: temperature {V.dim()}")
 
 # HACK: Arrange things to allow visualizing the temperature field at full nodal resolution.
-if V.ufl_element().degree() == 2:
+if V.ufl_element().degree() > 1:
     if my_rank == 0:
-        print("Preparing export of P2 data as refined P1...")
+        print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
-        export_mesh = meshmagic.midpoint_refine(mesh)
+        export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
         W = FunctionSpace(export_mesh, 'P', 1)
         w = Function(W)
-        VtoW, WtoV = meshmagic.P2_to_refined_P1(V, W)
+        VtoW, WtoV = meshmagic.map_refined_P1(V, W)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
         my_W_dofs = W.dofmap().dofs()  # MPI-local
@@ -58,8 +58,8 @@ if V.ufl_element().degree() == 2:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 # Define boundary conditions
-bc_inflow = DirichletBC(V, Expression('0', degree=2), boundary_parts, Boundaries.INFLOW.value)
-bc_cylinder = DirichletBC(V, Expression('1', degree=2), boundary_parts, Boundaries.OBSTACLE.value)
+bc_inflow = DirichletBC(V, Expression('0', degree=0), boundary_parts, Boundaries.INFLOW.value)
+bc_cylinder = DirichletBC(V, Expression('1', degree=0), boundary_parts, Boundaries.OBSTACLE.value)
 bc = [bc_inflow, bc_cylinder]
 
 # Create XDMF file (for visualization in ParaView)
@@ -96,9 +96,10 @@ set_log_level(LogLevel.WARNING)
 plt.ion()
 
 # Set up the problem
+velocity_degree = 2  # must match stored velocity data
 solver = HeatEquation(V, rho, c, k, bc, dt,
                       advection="divergence-free",
-                      velocity_degree=2)  # must match stored velocity data
+                      velocity_degree=velocity_degree)
 
 # Heat source
 # h: Function = interpolate(Constant(1.0), V)
@@ -145,7 +146,7 @@ for n in range(nt):
 
     begin("Saving temperature")
 
-    if V.ufl_element().degree() == 2:
+    if V.ufl_element().degree() > 1:
         # HACK: What we want to do:
         #   w.assign(interpolate(solver.u_, W))
         # How we do it in MPI mode (see main01_flow.py for full explanation):
@@ -155,7 +156,7 @@ for n in range(nt):
         xdmffile_T.write(w, t)
     else:  # save at P1 resolution
         xdmffile_T.write(solver.u_, t)
-    timeseries_T.store(solver.u_.vector(), t)  # the timeseries saves the original P2 data
+    timeseries_T.store(solver.u_.vector(), t)  # the timeseries saves the original data
     end()
 
     # Accept the timestep, updating the "old" solution
@@ -177,7 +178,7 @@ for n in range(nt):
                 plt.ylabel(r"$T$ (solved)")
                 plt.title(msg)
                 plt.subplot(2, 1, 2)
-            maga_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
+            maga_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=velocity_degree,
                                    u0=solver.a.sub(0), u1=solver.a.sub(1))
             maga = interpolate(maga_expr, V)
             theplot = plotmagic.mpiplot(maga, cmap="viridis")

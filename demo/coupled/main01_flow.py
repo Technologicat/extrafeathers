@@ -192,14 +192,14 @@ solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 # that takes the data from the P2 function space DOFs to the corresponding P1
 # function space DOFs.
 #
-if V.ufl_element().degree() == 2:
+if V.ufl_element().degree() > 1:
     if my_rank == 0:
-        print("Preparing export of P2 data as refined P1...")
+        print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
-        export_mesh = meshmagic.midpoint_refine(mesh)
+        export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
         W = VectorFunctionSpace(export_mesh, 'P', 1)
         w = Function(W)
-        VtoW, WtoV = meshmagic.P2_to_refined_P1(V, W)
+        VtoW, WtoV = meshmagic.map_refined_P1(V, W)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
         my_W_dofs = W.dofmap().dofs()  # MPI-local
@@ -229,8 +229,8 @@ for n in range(nt):
 
     begin("Saving")
 
-    if V.ufl_element().degree() == 2:
-        # Save the velocity visualization at full nodal resolution (we have a P2 space!).
+    if V.ufl_element().degree() > 1:
+        # Save the velocity visualization at full nodal resolution.
         #
         # HACK: What we want to do:
         #
@@ -257,7 +257,7 @@ for n in range(nt):
     else:  # save at P1 resolution
         xdmffile_u.write(solver.u_, t)
     xdmffile_p.write(solver.p_, t)
-    timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original P2 data
+    timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original data
     timeseries_p.store(solver.p_.vector(), t)
     end()
 
@@ -324,7 +324,7 @@ for n in range(nt):
                 plt.ylabel(r"$p$")
                 plt.title(msg)
                 plt.subplot(2, 1, 2)
-            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
+            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
                                    u0=solver.u_.sub(0), u1=solver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
             theplot = plotmagic.mpiplot(magu, cmap="viridis")

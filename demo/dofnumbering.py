@@ -1,5 +1,5 @@
 # -*- coding: utf-8; -*-
-"""Investigate the global DOF numbering of P1 and P2 meshes in 2D.
+"""Investigate the global DOF numbering of P1, P2 and P3 meshes in 2D.
 
 Can be run serially or in MPI mode.
 
@@ -34,7 +34,7 @@ mesh = dolfin.UnitSquareMesh(N, N)
 # --------------------------------------------------------------------------------
 # Print some stats
 
-V = dolfin.FunctionSpace(mesh, "P", 2)  # try P1 or P2 elements here
+V = dolfin.FunctionSpace(mesh, "P", 2)  # try P1, P2 or P3 elements here
 
 # MPI-local, containing global DOF numbers
 # See also:

@@ -91,32 +91,31 @@ plt.ion()
 flowsolver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 heatsolver = HeatEquation(W, rho, c, k, bcT, dt,
                           advection="divergence-free",
-                          velocity_degree=2)
+                          velocity_degree=V.ufl_element().degree())
 
-# HACK: Arrange things to allow visualizing P2 fields at full nodal resolution.
-if V.ufl_element().degree() == 2 or W.ufl_element().degree() == 2:
+# HACK: Arrange things to allow visualizing P2/P3 fields at full nodal resolution.
+if V.ufl_element().degree() > 1 or W.ufl_element().degree() > 1:
     if my_rank == 0:
-        print("Preparing export of P2 data as refined P1...")
+        print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
-        if my_rank == 0:
-            print("    Mesh...")
-        export_mesh = meshmagic.midpoint_refine(mesh)
-        if V.ufl_element().degree() == 2:
+        if V.ufl_element().degree() > 1:
             if my_rank == 0:
                 print("    Velocity...")
-            V_export = VectorFunctionSpace(export_mesh, 'P', 1)
+            V_export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
+            V_export = VectorFunctionSpace(V_export_mesh, 'P', 1)
             u_export = Function(V_export)
-            VtoVexport, VexporttoV = meshmagic.P2_to_refined_P1(V, V_export)
+            VtoVexport, VexporttoV = meshmagic.map_refined_P1(V, V_export)
             all_V_dofs = np.array(range(V.dim()), "intc")
             u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
             my_Vexport_dofs = V_export.dofmap().dofs()  # MPI-local
             my_V_dofs = VexporttoV[my_Vexport_dofs]  # MPI-local
-        if W.ufl_element().degree() == 2:
+        if W.ufl_element().degree() > 1:
             if my_rank == 0:
                 print("    Temperature...")
-            W_export = FunctionSpace(export_mesh, 'P', 1)
+            W_export_mesh = meshmagic.midpoint_refine(mesh, p=W.ufl_element().degree())
+            W_export = FunctionSpace(W_export_mesh, 'P', 1)
             T_export = Function(W_export)
-            WtoWexport, WexporttoW = meshmagic.P2_to_refined_P1(W, W_export)
+            WtoWexport, WexporttoW = meshmagic.map_refined_P1(W, W_export)
             all_W_dofs = np.array(range(W.dim()), "intc")
             T_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on W
             my_Wexport_dofs = W_export.dofmap().dofs()  # MPI-local
@@ -166,7 +165,7 @@ for n in range(nt):
 
     begin("Saving")
 
-    if V.ufl_element().degree() == 2:
+    if V.ufl_element().degree() > 1:
         # HACK: What we want to do:
         #   u_export.assign(interpolate(flowsolver.u_, V_export))
         # How we do it in MPI mode (see demo/coupled/main01_flow.py for full explanation):
@@ -176,10 +175,10 @@ for n in range(nt):
     else:
         xdmffile_u.write(flowsolver.u_, t)
     xdmffile_p.write(flowsolver.p_, t)
-    timeseries_u.store(flowsolver.u_.vector(), t)  # the timeseries saves the original P2 data
+    timeseries_u.store(flowsolver.u_.vector(), t)  # the timeseries saves the original data
     timeseries_p.store(flowsolver.p_.vector(), t)
 
-    if W.ufl_element().degree() == 2:
+    if W.ufl_element().degree() > 1:
         heatsolver.u_.vector().gather(T_copy, all_W_dofs)
         T_export.vector()[:] = T_copy[my_W_dofs]  # LHS MPI-local; RHS global
         xdmffile_T.write(T_export, t)
@@ -218,7 +217,7 @@ for n in range(nt):
                 plt.ylabel(r"$p$")
                 plt.subplot(1, 3, 2)
                 plt.title(msg)
-            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=2,
+            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
                                    u0=flowsolver.u_.sub(0), u1=flowsolver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
             theplot = plotmagic.mpiplot(magu, cmap="viridis")

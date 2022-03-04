@@ -2,12 +2,12 @@
 """Mesh-handling utilities.
 
 Currently, some of these are useful for MPI parallel solvers, and some for
-full nodal resolution export of data on P2 triangle meshes.
+full nodal resolution export of data on P2 or P3 triangle meshes.
 """
 
 __all__ = ["my_cells", "all_cells", "nodes_to_array",
            "make_mesh",
-           "midpoint_refine", "P2_to_refined_P1"]
+           "midpoint_refine", "map_refined_P1"]
 
 import typing
 
@@ -22,8 +22,8 @@ from .common import is_anticlockwise
 # TODO: Does the refine belong here, or in `midpoint_refine` itself?
 def my_cells(V: dolfin.FunctionSpace, *,
              matplotlibize: bool = False,
-             refine_p2: bool = False) -> typing.Tuple[np.array,
-                                                      typing.Dict[int, typing.List[float]]]:
+             refine: bool = False) -> typing.Tuple[np.array,
+                                                   typing.Dict[int, typing.List[float]]]:
     """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {0: [x1, y1], ...}
 
     Nodal (Lagrange) elements only. Note this returns all nodes, not just the
@@ -49,13 +49,12 @@ def my_cells(V: dolfin.FunctionSpace, *,
 
                      Only makes sense when the output is P1.
 
-    `refine_p2`: If `True`, and `V` is a 2D P2 triangulation, split each
-                     original triangle into four P1 triangles; one touching
-                     each vertex, and one in the middle, spanning the edge
-                     midpoints.
+    `refine`:        If `True`, and `V` is a 2D P2 or P3 triangulation, split each
+                     original triangle into P1 triangles (four for P2, nine for P3).
 
-                     This subtriangle arrangement looks best for visualizing P2 data,
-                     when interpolating that data as P1 on the once-refined mesh. It is
+                     The subtriangles are arranged in an aesthetically pleasing
+                     pattern, intended for visualizing P2 or P3 data, when
+                     interpolating that data as P1 on the once-refined mesh. It is
                      particularly useful for export into a vertex-based format, for
                      visualization.
 
@@ -77,16 +76,18 @@ def my_cells(V: dolfin.FunctionSpace, *,
     if V.ufl_element().num_sub_elements() > 1:
         raise ValueError(f"Expected a scalar `FunctionSpace`, got a function space on {V.ufl_element()}")
 
+    input_degree = V.ufl_element().degree()
     if not (V.mesh().topology().dim() == 2 and
             str(V.ufl_element().cell()) == "triangle"):
         matplotlibize = False
+    if input_degree > 1 and not refine:
+        matplotlibize = False  # only P1 output can be matplotlibized
 
-    # TODO: refine also P3 triangles in 2D?
     # TODO: refine also P2/P3 tetras in 3D?
     if not (V.mesh().topology().dim() == 2 and
             str(V.ufl_element().cell()) == "triangle" and
-            V.ufl_element().degree() == 2):
-        refine_p2 = False
+            input_degree > 1):
+        refine = False  # only P2 and P3 triangles can be refined by this function
 
     # "my" = local to this MPI process
     all_my_cells = []  # e.g. [[i1, i2, i3], ...] in global DOF numbering
@@ -97,10 +98,10 @@ def my_cells(V: dolfin.FunctionSpace, *,
     for cell in dolfin.cells(V.mesh()):
         local_dofs = dofmap.cell_dofs(cell.index())  # DOF numbers, local to this MPI process
         nodes = element.tabulate_dof_coordinates(cell)  # [[x1, y1], [x2, y2], [x3, y3]], global coordinates
-        if not refine_p2:  # general case
+        if not refine:  # general case
             local_dofss = [local_dofs]
             nodess = [nodes]
-        else:  # 2D P2 -> once-refined 2D P1
+        elif input_degree == 2:  # 2D P2 -> once-refined 2D P1
             # Split into four P1 triangles.
             #
             # - DOFs 0, 1, 2 are at the vertices
@@ -128,34 +129,34 @@ def my_cells(V: dolfin.FunctionSpace, *,
                             (4, 3, 2)):
                 local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k]])
                 nodess.append([nodes[i], nodes[j], nodes[k]])
-
-            # # TODO: finish 2D P3 support (code is here; need to update interface)
-            # #
-            # # - DOFs 0, 1, 2 are at the vertices
-            # # - DOFs 3, 4 are on the side opposite to 0
-            # # - DOFs 5, 6 are on the side opposite to 1
-            # # - DOFs 7, 8 are on the side opposite to 2
-            # # - DOF 8 is at the center of the triangle
-            # #
-            # # ASCII diagram (numbering on the reference element):
-            # #
-            # #       2
-            # #      /|
-            # #     6 4
-            # #    /  |
-            # #   5 9 3
-            # #  /    |
-            # # 0-7-8-1
-            # #
-            # # See `demo.refelement`.
-            # assert len(local_dofs) == 10, len(local_dofs)
-            # local_dofss = []
-            # nodess = []
-            # for i, j, k in ((0, 5, 7), (5, 7, 9), (7, 8, 9), (3, 8, 9), (1, 3, 8),
-            #                 (5, 6, 9), (4, 6, 9), (3, 4, 9),
-            #                 (2, 4, 6)):
-            #     local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k]])
-            #     nodess.append([nodes[i], nodes[j], nodes[k]])
+        elif input_degree == 3:  # 2D P3 -> once-refined 2D P1
+            # Split into nine P1 triangles.
+            #
+            # - DOFs 0, 1, 2 are at the vertices
+            # - DOFs 3, 4 are on the side opposite to 0
+            # - DOFs 5, 6 are on the side opposite to 1
+            # - DOFs 7, 8 are on the side opposite to 2
+            # - DOF 8 is at the center of the triangle
+            #
+            # ASCII diagram (numbering on the reference element):
+            #
+            #       2
+            #      /|
+            #     6 4
+            #    /  |
+            #   5 9 3
+            #  /    |
+            # 0-7-8-1
+            #
+            # See `demo.refelement`.
+            assert len(local_dofs) == 10, len(local_dofs)
+            local_dofss = []
+            nodess = []
+            for i, j, k in ((0, 5, 7), (5, 7, 9), (7, 8, 9), (3, 8, 9), (1, 3, 8),
+                            (5, 6, 9), (4, 6, 9), (3, 4, 9),
+                            (2, 4, 6)):
+                local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k]])
+                nodess.append([nodes[i], nodes[j], nodes[k]])
 
         # Convert the constituent cells to global DOF numbering
         for local_dofs, nodes in zip(local_dofss, nodess):
@@ -175,14 +176,14 @@ def my_cells(V: dolfin.FunctionSpace, *,
 
 def all_cells(V: dolfin.FunctionSpace, *,
               matplotlibize: bool = False,
-              refine_p2: bool = False) -> typing.Tuple[np.array,
-                                                       typing.Dict[int, typing.List[float]]]:
+              refine: bool = False) -> typing.Tuple[np.array,
+                                                    typing.Dict[int, typing.List[float]]]:
     """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {0: [x1, y1], ...}
 
     Like `my_cells` (which see for details), but combining data from all MPI processes.
     Each process gets a full copy of all data.
     """
-    cells, nodes = my_cells(V, matplotlibize=matplotlibize, refine_p2=refine_p2)
+    cells, nodes = my_cells(V, matplotlibize=matplotlibize, refine=refine)
     cells = dolfin.MPI.comm_world.allgather(cells)
     nodes = dolfin.MPI.comm_world.allgather(nodes)
 
@@ -287,40 +288,44 @@ def make_mesh(cells: typing.List[typing.List[int]],
     return mesh
 
 
-def midpoint_refine(mesh: dolfin.Mesh) -> dolfin.Mesh:
-    """Given a 2D triangle mesh `mesh`, return a new mesh that has additional vertices at edge midpoints.
+def midpoint_refine(mesh: dolfin.Mesh, p: int = 2) -> dolfin.Mesh:
+    """Given a 2D triangle mesh `mesh`, return a new mesh for exporting P2 or P3 data as P1.
 
-    Like `dolfin.refine(mesh)` without further options; but we guarantee that one of the
-    four subtriangles spans the edge midpoints of the original triangle.
+    Like `dolfin.refine(mesh)` without further options; but we guarantee an aesthetically optimal fill,
+    designed for visualizing P2/P3 data, when interpolating that data as P1 on the once-refined mesh.
 
-    This subtriangle arrangement looks best for visualizing P2 data, when
-    interpolating that data as P1 on the once-refined mesh.
+    `p`: The original degree of the elements your data lives on.
+       `p=2` will generate a P1 mesh for P2 data, with an additional vertex placed at each edge midpoint.
+       `p=3` will generate a P1 mesh for P3 data, with two additional vertices placed per edge, and one
+             additional vertex placed in the interior of each triangle.
     """
-    V = dolfin.FunctionSpace(mesh, 'P', 2)            # define a scalar P2 space...
-    cells, nodes_dict = all_cells(V, refine_p2=True)  # ...so that `all_cells` can do our dirty work
+    if p not in (2, 3):
+        raise ValueError(f"Expected p = 2 or 3, got {p}.")
+    V = dolfin.FunctionSpace(mesh, 'P', p)         # define a scalar P2/P3 space...
+    cells, nodes_dict = all_cells(V, refine=True)  # ...so that `all_cells` can do our dirty work
     dofs, nodes_array = nodes_to_array(nodes_dict)
     return make_mesh(cells, dofs, nodes_array, distributed=True)
 
 
-def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
+def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
                                      dolfin.VectorFunctionSpace,
                                      dolfin.TensorFunctionSpace],
                      W: typing.Union[dolfin.FunctionSpace,
                                      dolfin.VectorFunctionSpace,
                                      dolfin.TensorFunctionSpace]) -> typing.Tuple[np.array, np.array]:
-    """Build a global DOF map between a P2 space `V` and a once-refined P1 space `W`.
+    """Build a global DOF map between a P2 or P3 space `V` and a once-refined P1 space `W`.
 
     The purpose is to be able to map a nodal values vector from `V` to `W` and
     vice versa, for interpolation.
 
-    Once particular use case is to export P2 data in MPI mode at full nodal resolution,
+    Once particular use case is to export P2/P3 data in MPI mode at full nodal resolution,
     as once-refined P1 data. In general, the MPI partitionings of `V` and `W` will
     not match, and thus `interpolate(..., W)` will not work, because each process is
     missing some of the input data needed to construct its part of the P1
     representation. This can be worked around by hacking the DOF vectors directly.
     See example below.
 
-    `V`: P2 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace`
+    `V`: P2 or P3 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace`
          on some `mesh`.
     `W`: The corresponding P1 space on `refine(mesh)` or `midpoint_refine(mesh)`.
 
@@ -340,7 +345,7 @@ def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
 
         import numpy as np
         import dolfin
-        from extrafeathers import midpoint_refine, P2_to_refined_P1
+        from extrafeathers import midpoint_refine, map_refined_P1
 
         mesh = ...
 
@@ -355,7 +360,7 @@ def P2_to_refined_P1(V: typing.Union[dolfin.FunctionSpace,
         W = dolfin.FunctionSpace(export_mesh, 'P', 1)
         w = dolfin.Function(W)
 
-        VtoW, WtoV = P2_to_refined_P1(V, W)
+        VtoW, WtoV = map_refined_P1(V, W)
 
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = dolfin.Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V

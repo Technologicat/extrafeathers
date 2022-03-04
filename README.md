@@ -44,20 +44,20 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Convert a scalar `double` `MeshFunction` into a `CompiledExpression` that can be used in UFL forms.
      - For example, `h = cell_mf_to_expression(meshsize(mesh))`.
      - For full examples, see [`extrafeathers.pdes.navier_stokes`](extrafeathers/pdes/navier_stokes.py) and [`extrafeathers.pdes.advection_diffusion`](extrafeathers/pdes/advection_diffusion.py), which use this in SUPG stabilization.
-   - `midpoint_refine` [**2D**], `P2_to_refined_P1` [**2D**]
-     - Prepare Lagrange P2 (quadratic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization.
+   - `midpoint_refine` [**2D**], `map_refined_P1` [**2D**]
+     - Prepare Lagrange P2 (quadratic) or P3 (cubic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization.
        - Essentially, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
-       - However, in parallel, the P2 and P1 meshes will have different MPI partitioning, so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2 DOF vector, and then assign the data to the corresponding DOFs of `w`.
-     - `midpoint_refine` differs from `dolfin.refine` in that we guarantee to create a subtriangle out of the midpoints of the sides of each original triangle. This subtriangle arrangement looks best for visualizing P2 data, when pretending that the data is P1 on the refined mesh (i.e. interpolating it instead of L2-projecting).
+       - However, in parallel, the P2/P3 and P1 meshes will have different MPI partitioning, so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2/P3 DOF vector, and then assign the data to the corresponding DOFs of `w`.
+     - `midpoint_refine` differs from `dolfin.refine` in that we guarantee an aesthetically pleasing fill, which looks best for visualizing P2/P3 data, when interpolating that data as P1 on the refined mesh.
        - If you don't care about the aesthetics, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.midpoint_refine(mesh)` works just as well.
-     - `P2_to_refined_P1` supports both scalar and vector function spaces. Not tested on tensor fields yet.
+     - `map_refined_P1` supports both scalar and vector function spaces. Not tested on tensor fields yet.
      - For full usage examples, see [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) (vector), [`demo.coupled.main02_heat`](demo/coupled/main02_heat.py) (scalar), and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) (both).
  - **Plotting**
    - `mpiplot` [**2D**]
      - Plot the *whole* solution in the root process while running in parallel. For quick on-the-fly visualization.
        - The full triangulation is automatically pieced together from all the MPI processes. For implementation simplicity, the visualization always uses linear triangle elements; other degrees are interpolated onto `P1`.
-       - P2 data is automatically converted onto once-refined P1, to display it at full nodal resolution.
-     - As of v0.1.0, scalar field on a triangle mesh only.
+       - P2/P3 data is automatically converted onto once-refined P1, to display it at full nodal resolution.
+     - As of v0.3.0, scalar field on a triangle mesh only.
        - Note you can take a component of a vector field, or interpolate an expression onto your function space, as usual. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) for examples.
      - Meant for debugging and visualizing simulation progress, especially for a lightweight MPI job that runs locally on a laptop (but still much faster with 4 cores rather than 1). Allows near-realtime visual feedback, and avoids the need to start [ParaView](https://www.paraview.org/) midway through the computation just to quickly check if the solver is still computing and if the results look reasonable.
    - `plot_facet_meshfunction` [**2D**] [**serial only**]

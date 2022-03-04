@@ -75,8 +75,8 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
     `u`: `dolfin.Function`; a 2D scalar FEM field
     `kwargs`: passed through to `matplotlib.pyplot.tricontourf`
 
-    If `u` lives on P2 elements, each element will be internally split into
-    four P1 triangles for visualization.
+    If `u` lives on P2 or P3 elements, each element will be internally split into
+    P1 triangles for visualization.
 
     In the root process (MPI rank 0), returns the plot object.
     See the return value of `matplotlib.pyplot.tricontourf`.
@@ -97,7 +97,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
     # print(my_rank, min(d), max(d))
 
     # Project to P1 elements for easy reconstruction for visualization.
-    if V.ufl_element().degree() not in (1, 2) or str(V.ufl_element().cell()) != "triangle":
+    if V.ufl_element().degree() not in (1, 2, 3) or str(V.ufl_element().cell()) != "triangle":
         # if my_rank == 0:
         #     print(f"Interpolating solution from {str(V.ufl_element())} to P1 triangles for MPI-enabled visualization.")
         V_vis = dolfin.FunctionSpace(mesh, "P", 1)
@@ -124,7 +124,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
 
     # Assemble the complete mesh from the partitioned pieces. This treats arbitrary domain shapes correctly.
     # We get the list of triangles from each MPI process and then combine the lists in the root process.
-    triangles, nodes_dict = all_cells(V_vis, matplotlibize=True, refine_p2=True)
+    triangles, nodes_dict = all_cells(V_vis, matplotlibize=True, refine=True)
     if my_rank == 0:
         assert len(nodes_dict) == n_global_dofs  # each global DOF has coordinates
         assert len(v_vec) == n_global_dofs  # we have a data value at each DOF
@@ -152,10 +152,10 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
 
         # # DEBUG
         # plt.triplot(tri, color="#404040")  # all edges
-        # if V_vis.ufl_element().degree() == 2:
-        #     # Original element edges for P2 element; these are the edges of the corresponding P1 triangulation.
+        # if V_vis.ufl_element().degree() > 1:
+        #     # Original element edges for P2/P3 element, i.e. the edges of the corresponding P1 triangulation.
         #     V_lin = dolfin.FunctionSpace(mesh, "P", 1)
-        #     triangles2, nodes_dict2 = all_cells(V_lin, matplotlibize=True, refine_p2=True)
+        #     triangles2, nodes_dict2 = all_cells(V_lin, matplotlibize=True)
         #     dofs2, nodes2 = nodes_to_array(nodes_dict2)
         #     # TODO: map `triangles2`
         #     tri2 = mtri.Triangulation(nodes2[:, 0], nodes2[:, 1], triangles=triangles2)
