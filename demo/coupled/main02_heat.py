@@ -58,8 +58,8 @@ if V.ufl_element().degree() > 1:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 # Define boundary conditions
-bc_inflow = DirichletBC(V, Expression('0', degree=0), boundary_parts, Boundaries.INFLOW.value)
-bc_cylinder = DirichletBC(V, Expression('1', degree=0), boundary_parts, Boundaries.OBSTACLE.value)
+bc_inflow = DirichletBC(V, Constant(0), boundary_parts, Boundaries.INFLOW.value)
+bc_cylinder = DirichletBC(V, Constant(1), boundary_parts, Boundaries.OBSTACLE.value)
 bc = [bc_inflow, bc_cylinder]
 
 # Create XDMF file (for visualization in ParaView)
