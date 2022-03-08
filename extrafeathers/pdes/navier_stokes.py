@@ -589,7 +589,7 @@ class NavierStokes:
         #
         # Here the LHS coefficients are constant in time.
         self.a2_constant = dot(nabla_grad(p), nabla_grad(q)) * dx
-        self.L2 = dot(nabla_grad(p_n), nabla_grad(q)) * dx - (ρ / dt) * div(u_) * q * dx
+        self.L2 = dot(nabla_grad(p_n), nabla_grad(q)) * dx(self.Q.mesh()) - (ρ / dt) * div(u_) * q * dx
 
         # PSPG: pressure-stabilizing Petrov-Galerkin.
         #
@@ -619,7 +619,7 @@ class NavierStokes:
         # Define variational problem for step 3 (velocity correction)
         # Here the LHS coefficients are constant in time.
         self.a3 = ρ * dot(u, v) * dx
-        self.L3 = ρ * dot(u_, v) * dx - dt * dot(nabla_grad(p_ - p_n), v) * dx
+        self.L3 = ρ * dot(u_, v) * dx - dt * dot(nabla_grad(p_ - p_n), v) * dx(self.V.mesh())
 
         # Assemble matrices (constant in time; do this once at the start)
         self.A1_constant = assemble(self.a1_constant)
