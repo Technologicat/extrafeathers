@@ -460,6 +460,19 @@ class NavierStokes:
         #   ∫ (∇·u) (∇·v) dΩ = ∫ n·((∇·u) v) dΓ - ∫ v · (∇ (∇·u)) dΩ
         # so this is in effect penalizing `grad(div(u))` in the direction of `v`.
         #
+        # On the other hand, by comparing to isotropic linear elasticity, where
+        # the stress term can be written as (see e.g. Brenner & Scott, 2010, p. 314)
+        #   ∫ 2 μ ε(u) : ε(v) + λ div(u) div(v) dΩ
+        # where μ and λ are the Lamé parameters; we can conclude that for the flow
+        # problem, the  div(u) div(v)  term represents a volumetric viscosity. Thus,
+        # it tends to resist compression and expansion. (Keep in mind that in the
+        # case of a flow, `u` is a velocity, not a displacement, so this will
+        # actually resist *accelerations* of this kind.)
+        #
+        # Reference:
+        #   Susanne C. Brenner & L. Ridgway Scott. 2010. The Mathematical Theory
+        #   of Finite Element Methods. 3rd edition. Springer. ISBN 978-1-4419-2611-1.
+        #
         # Note [grad(div(u))] = (1 / m²) (m / s) = 1 / (m s)
         # so [τ_LSIC] [grad(div(u))] = (m² / s) (1 / (m s)) = m / s²,
         # an acceleration; thus matching the other terms of the strong form.
