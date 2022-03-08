@@ -108,7 +108,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
 
     # make a complete copy of the DOF vector onto the root process
     v_vec = u_vis.vector().gather_on_zero()
-    n_global_dofs = V.dim()
+    n_global_dofs = V_vis.dim()
 
     # # make a complete copy of the DOF vector u_vec to all MPI processes
     # u_vec = u.vector()
