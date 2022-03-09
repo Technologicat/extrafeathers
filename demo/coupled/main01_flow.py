@@ -227,6 +227,12 @@ for n in range(nt):
     # Solve one timestep
     solver.step()
 
+    # EXPERIMENTAL:
+    # If P1P1 discretization (which does not satisfy the LBB condition),
+    # postprocess the pressure to kill off the checkerboard mode.
+    if V.ufl_element().degree() == 1:
+        solver.p_.assign(meshmagic.patch_average(solver.p_))
+
     begin("Saving")
 
     if V.ufl_element().degree() > 1:

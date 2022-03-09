@@ -155,6 +155,11 @@ for n in range(nt):
     begin("Flow solve")
     flowsolver.f.assign(project(specific_buoyancy, V))
     flowsolver.step()
+    # EXPERIMENTAL:
+    # If P1P1 discretization (which does not satisfy the LBB condition),
+    # postprocess the pressure to kill off the checkerboard mode.
+    if V.ufl_element().degree() == 1:
+        flowsolver.p_.assign(meshmagic.patch_average(flowsolver.p_))
     flowsolver.commit()
     end()
     begin("Heat solve")
