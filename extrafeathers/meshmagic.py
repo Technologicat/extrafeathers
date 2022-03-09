@@ -7,8 +7,10 @@ full nodal resolution export of data on P2 or P3 triangle meshes.
 
 __all__ = ["my_cells", "all_cells", "nodes_to_array",
            "make_mesh",
-           "midpoint_refine", "map_refined_P1"]
+           "midpoint_refine", "map_refined_P1",
+           "my_patches", "all_patches", "patch_average"]
 
+from collections import defaultdict
 import typing
 
 import numpy as np
@@ -444,3 +446,88 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
     assert len(set(WtoV)) == len(WtoV)  # each dof of W was mapped to a *different* dof of V
 
     return VtoW, WtoV
+
+
+def my_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
+    """Return a dict of rank-1 np.arrays, mapping DOF number to connected cell numbers.
+
+    Only DOFs belonging to this MPI process are listed. See `all_patches`.
+    """
+    dofmap = V.dofmap()
+    l2g = dofmap.tabulate_local_to_global_dofs()
+    dof_to_cells = defaultdict(lambda: set())
+    for cell in dolfin.cells(V.mesh()):
+        local_cell_idx = cell.index()  # MPI-local cell index
+        local_dofs = dofmap.cell_dofs(local_cell_idx)  # MPI-local DOF numbers
+        # https://fenicsproject.discourse.group/t/indices-of-cells-and-facets-in-parallel/6212/2
+        global_cell_idx = cell.global_index()
+        global_dofs = l2g[local_dofs]
+        for global_dof in global_dofs:
+            dof_to_cells[global_dof].add(global_cell_idx)
+    return {k: np.array(list(v), dtype="intc") for k, v in dof_to_cells.items()}
+
+def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
+    """Return a dict of rank-1 np.arrays, mapping DOF number to connected cell numbers.
+
+    Like `my_patches`, but combining data from all MPI processes.
+    Each process gets a full copy of all data.
+    """
+    dof_to_cells = my_patches(V)
+    dof_to_cells = dolfin.MPI.comm_world.allgather(dof_to_cells)
+
+    def merge(mappings):
+        merged = {}
+        while mappings:
+            mapping = mappings.pop()
+            for global_dof, cell_indices in mapping.items():
+                if global_dof not in merged:  # vertex not seen yet?
+                    merged[global_dof] = cell_indices
+                else:  # vertex seen, add the cells from this MPI process
+                    combined = set(merged[global_dof]).union(set(cell_indices))
+                    merged[global_dof] = np.array(list(combined),
+                                                  dtype="intc")
+        return merged
+    dof_to_cells = merge(dof_to_cells)
+    assert len(dof_to_cells) == V.dim()
+
+    return dof_to_cells
+
+def patch_average(f: dolfin.Function):
+    """Patch-average the P1 `Function` `f`, returning the result as a new P1 function.
+
+    Useful as a postprocess step in some nonconforming methods (can eliminate some
+    checkerboard modes).
+    """
+    # TODO: P1 spaces only; sanity check input
+    V = f.ufl_function_space()
+    V_dof_to_cells = all_patches(V)
+
+    mesh = V.mesh()
+    W = dolfin.FunctionSpace(mesh, 'DG', 0)
+    # interpolate doesn't work in MPI mode (different partitioning of V and W)
+    f_dG0: dolfin.Function = dolfin.project(f, W)
+    dG0_vec = f_dG0.vector()
+
+    # Get the "patches" of the dG0 space W; each DOF corresponds to just one cell.
+    # We can use this to find the W DOFs for the cells in each patch of V.
+    W_dof_to_cells = all_patches(W)
+    assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
+    W_dof_to_cell = {dof: cell_indices[0] for dof, cell_indices in W_dof_to_cells.items()}
+    cell_to_W_dof = {cell_index: dof for dof, cell_index in W_dof_to_cell.items()}
+
+    # make a local copy of the whole dG0 DOF vector in all processes
+    all_W_dofs = np.array(range(W.dim()), "intc")
+    dG0_vec_copy = dolfin.Vector(dolfin.MPI.comm_self)
+    dG0_vec.gather(dG0_vec_copy, all_W_dofs)
+
+    my_V_dofs = V.dofmap().dofs()
+    f_pavg = dolfin.Function(V)
+    pavg_vec = f_pavg.vector()
+    averages = []
+    for global_V_dof in my_V_dofs:
+        cell_indices = V_dof_to_cells[global_V_dof]
+        global_W_dofs = np.array([cell_to_W_dof[k] for k in cell_indices], dtype="intc")
+        average = sum(dG0_vec_copy[global_W_dofs]) / len(global_W_dofs)
+        averages.append(average)
+    pavg_vec[:] = averages  # MPI-enabled, must run in all processes
+    return f_pavg
