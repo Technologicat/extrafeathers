@@ -499,7 +499,7 @@ def patch_average(f: dolfin.Function):
     checkerboard modes).
     """
     # TODO: P1 spaces only; sanity check input
-    V = f.ufl_function_space()
+    V = f.function_space()
     V_dof_to_cells = all_patches(V)
 
     mesh = V.mesh()
