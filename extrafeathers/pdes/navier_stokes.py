@@ -604,6 +604,17 @@ class NavierStokes:
         self.a2_constant = dot(nabla_grad(p), nabla_grad(q)) * dx
         self.L2 = dot(nabla_grad(p_n), nabla_grad(q)) * dx(self.Q.mesh()) - (ρ / dt) * div(u_) * q * dx
 
+        # TODO: support dG0 for pressure
+        # # In the symmetric interior penalty dG method, the bilinear form
+        # #   a2 = dot(nabla_grad(p_n), nabla_grad(q)) * dx
+        # # becomes
+        # λ = Constant(1e10)  # penalty parameter
+        # a2 = inner(grad(p_n), grad(q)) * dx -   # this term is zero for dG0
+        #      (dot(avg(grad(p_n)), jump(q, n)) +
+        #       dot(avg(grad(q)), jump(p_n, n)) -
+        #       λ * dot(jump(p_n, n), jump(q, n))) * dS
+        # # But how to modify the linear form L3?
+
         # PSPG: pressure-stabilizing Petrov-Galerkin.
         #
         # Used together with SUPG, for some schemes this allows the use of
