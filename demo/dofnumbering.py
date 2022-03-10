@@ -97,9 +97,11 @@ if dolfin.MPI.comm_world.rank == 0:
     plt.colorbar(theplot)
 
     # Each legend entry from `triplot` is doubled for some reason,
-    # so plot a dummy point with each of the line colors and label them.
+    # so plot a dummy point (at NaN so it won't be drawn) with
+    # each of the line colors and label them.
     for mpi_rank in range(dolfin.MPI.comm_world.size):
-        plt.plot([0], [0], color=colors[mpi_rank], label=f"MPI rank {mpi_rank}")
+        plt.plot([np.nan], [np.nan], color=colors[mpi_rank],
+                 label=f"MPI rank {mpi_rank}")
     plt.legend(loc="upper right")
 
     plt.show()
