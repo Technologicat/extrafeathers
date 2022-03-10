@@ -499,9 +499,12 @@ def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
 
     return dof_to_cells
 
-# TODO: generalize for VectorFunctionSpace, TensorFunctionSpace
-def map_dG0(V: dolfin.FunctionSpace,
-            W: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
+def map_dG0(V: typing.Union[dolfin.FunctionSpace,
+                            dolfin.VectorFunctionSpace,
+                            dolfin.TensorFunctionSpace],
+            W: typing.Union[dolfin.FunctionSpace,
+                            dolfin.VectorFunctionSpace,
+                            dolfin.TensorFunctionSpace]) -> typing.Dict[int, np.array]:
     """Map each global DOF of V to a patch of DOFs on dG0 space W.
 
     That is, determine the W DOFs that contribute to each V DOF
@@ -512,35 +515,61 @@ def map_dG0(V: dolfin.FunctionSpace,
     The return value is a dict of rank-1 np.arrays, mapping the
     global V DOF number to an array of global W DOF numbers.
     """
-    if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
-            W.ufl_element().degree() == 0):
-        raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} with degree {W.ufl_element().degree()}")
+    if W.num_sub_spaces() != V.num_sub_spaces():
+        raise ValueError(f"V and W must have as many subspaces; V has {V.num_sub_spaces()}, but W has {W.num_sub_spaces()}.")
 
-    # Get the patches of cells connected to each global DOF of V.
-    V_dof_to_cells = all_patches(V)
-
-    # Get the "patches" of the dG0 space W; each DOF of W is connected to just one cell.
-    # We can use this to find the W DOFs for the cells in each patch of V...
-    W_dof_to_cells = all_patches(W)
-    assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
-
-    # ...by inverting, so that each global cell maps to a DOF of W:
-    cell_to_W_dof = {cell_indices[0]: dof
-                     for dof, cell_indices in W_dof_to_cells.items()}
-    assert len(cell_to_W_dof) == W.mesh().num_entities_global(W.mesh().topology().dim())
-
-    # Map each global DOF of V to those DOFs of W that contribute to the patch.
-    # The strategy works correctly also when V is a P2 or P3 space, because
-    # `my_patches` does.
+    # In a vector/tensor function space, each geometric node (global DOF
+    # coordinates) has an independent instance for each field component,
+    # so we must work one component at a time.
+    if V.num_sub_spaces() > 1:
+        spaces = [(V.sub(j), W.sub(j)) for j in range(V.num_sub_spaces())]
+    else:
+        spaces = [(V, W)]
     V_dof_to_W_dofs = {}
-    for global_V_dof, cell_indices in V_dof_to_cells.items():
-        cell_indices = V_dof_to_cells[global_V_dof]
-        V_dof_to_W_dofs[global_V_dof] = np.array([cell_to_W_dof[k]
-                                                  for k in cell_indices], dtype="intc")
+
+    # Note that in MPI mode each process constructs its own full copy independently.
+    seenV = set()
+    seenW = set()
+    for subV, subW in spaces:
+        if not (str(subW.ufl_element().family()) == "Discontinuous Lagrange" and
+                subW.ufl_element().degree() == 0):
+            raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {subW.ufl_element().family()} with degree {subW.ufl_element().degree()}")
+
+        # The MPI partitionings of V and W are in general different, so to be
+        # able to do the matching, we must gather the data for the whole mesh.
+
+        # Get the patches of cells connected to each global DOF of V.
+        V_dof_to_cells = all_patches(subV)
+
+        # Get the "patches" of the dG0 space W; each DOF of W is connected to just one cell.
+        # We can use this to find the W DOFs for the cells in each patch of V...
+        W_dof_to_cells = all_patches(subW)
+        assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
+
+        # ...by inverting, so that each global cell maps to a DOF of W:
+        cell_to_W_dof = {cell_indices[0]: dof
+                         for dof, cell_indices in W_dof_to_cells.items()}
+        assert len(cell_to_W_dof) == subW.mesh().num_entities_global(subW.mesh().topology().dim())
+
+        # Map each global DOF of V to those DOFs of W that contribute to the patch.
+        # The strategy works correctly also when V is a P2 or P3 space, because
+        # `my_patches` does.
+        for global_V_dof, cell_indices in V_dof_to_cells.items():
+            seenV.add(global_V_dof)
+            cell_indices = V_dof_to_cells[global_V_dof]
+            V_dof_to_W_dofs[global_V_dof] = np.array([cell_to_W_dof[k]
+                                                      for k in cell_indices],
+                                                     dtype="intc")
+            [seenW.add(W_dof) for W_dof in V_dof_to_W_dofs[global_V_dof]]
+    # postconditions
+    assert set(range(V.dim())) - seenV == set()  # all DOFs of V seen
+    assert set(range(W.dim())) - seenW == set()  # all DOFs of W mapped to at least once
     return V_dof_to_W_dofs
 
 def patch_average(f: dolfin.Function,
-                  W: typing.Optional[dolfin.FunctionSpace] = None,
+                  W: typing.Optional[typing.Union[dolfin.FunctionSpace,
+                                                  dolfin.VectorFunctionSpace,
+                                                  dolfin.TensorFunctionSpace]] = None,
                   VtoW: typing.Optional[typing.Dict[int, np.array]] = None) -> dolfin.Function:
     """Patch-average the P1 `Function` `f`, returning the result as a new P1 function.
 
@@ -548,7 +577,8 @@ def patch_average(f: dolfin.Function,
     checkerboard modes).
 
     The optional arguments allow skipping the expensive patch extraction and
-    DOF mapping step when there is a need to patch-average functions in a loop:
+    DOF mapping step when there is a need to patch-average functions in a loop.
+    They are also mandatory if `f` is a vector or tensor function.
 
       `W`: The dG0 space associated with `V = f.function_space()`.
            Used for computing the patch average.
@@ -563,6 +593,9 @@ def patch_average(f: dolfin.Function,
         V = f.function_space()
         W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
         VtoW = map_dG0(V, W)
+
+    Note `W` should be a `FunctionSpace`, `VectorFunctionSpace`, or
+    `TensorFunctionSpace`, as appropriate (i.e. the same kind `V` is).
     """
     if W:
         if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and

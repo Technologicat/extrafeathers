@@ -7,41 +7,76 @@ Works both serially and in MPI mode.
     mpirun python -m demo.patch_average
 """
 
-import numpy as np
-import matplotlib.tri as mtri
 import matplotlib.pyplot as plt
 
 import dolfin
 import extrafeathers
 
+# --------------------------------------------------------------------------------
+# Demo
+
 N = 4
 mesh = dolfin.UnitSquareMesh(N, N)
+
+# patch-average a scalar field
 V = dolfin.FunctionSpace(mesh, 'P', 1)
-f = dolfin.Expression('sin(N/4 * 2 * pi * x[0])', degree=2, N=N)
+f = dolfin.Expression('1 - (4*pow(x[0] - 0.5, 2) + 4*pow(x[1] - 0.5, 2))', degree=2, N=N)
 g = dolfin.project(f, V)
+g_pavg = extrafeathers.patch_average(g)
 
-# TODO: need a utility for this. `demo.dofnumbering` needs something similar, too.
-def mpiplot_mesh():
-    cells, nodes_dict = extrafeathers.meshmagic.all_cells(V)
-    dofs, nodes = extrafeathers.meshmagic.nodes_to_array(nodes_dict)
-    if dolfin.MPI.comm_world.rank == 0:
-        cells = np.array(cells, dtype=np.int64)
-        # This relies on the fact that for p>1, in FEniCS the vertices are the first DOFs in each triangle.
-        tri = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=cells[:, :3])
-        plt.triplot(tri, color="#a0a0a040")
+# patch-average a vector field
+W = dolfin.VectorFunctionSpace(mesh, 'P', 1)
+Wproj = dolfin.VectorFunctionSpace(mesh, 'DG', 0)
+WtoWproj = extrafeathers.map_dG0(W, Wproj)
+f2 = dolfin.Expression(('sin(N/4 * 2 * pi * x[0])',
+                        'sin(N/4 * 2 * pi * x[1])'), degree=2, N=N)
+g2 = dolfin.project(f2, W)
+g2_pavg = extrafeathers.patch_average(g2, Wproj, WtoWproj)
 
+# --------------------------------------------------------------------------------
+# Visualize
+
+# Scalar
 if dolfin.MPI.comm_world.rank == 0:
+    plt.figure(1)
     plt.subplot(2, 1, 1)
-    plt.title("Patch-averaging demo")
-theplot = extrafeathers.mpiplot(g)
-mpiplot_mesh()
+theplot = extrafeathers.mpiplot(g, show_mesh=True)
 if dolfin.MPI.comm_world.rank == 0:
+    plt.axis("equal")
     plt.ylabel("Original")
     plt.colorbar(theplot)
     plt.subplot(2, 1, 2)
-theplot = extrafeathers.mpiplot(extrafeathers.patch_average(g))
-mpiplot_mesh()
+theplot = extrafeathers.mpiplot(g_pavg, show_mesh=True)
+if dolfin.MPI.comm_world.rank == 0:
+    plt.axis("equal")
+    plt.ylabel("Patch-averaged")
+    plt.colorbar(theplot)
+    plt.suptitle("Patch-averaging demo (scalar)")
+
+# Vector
+if dolfin.MPI.comm_world.rank == 0:
+    plt.figure(2)
+    plt.subplot(2, 2, 1)
+    plt.title(r"$g_1$")
+theplot = extrafeathers.mpiplot(g2.sub(0), show_mesh=True)
+if dolfin.MPI.comm_world.rank == 0:
+    plt.ylabel("Original")
+    plt.colorbar(theplot)
+    plt.subplot(2, 2, 2)
+    plt.title(r"$g_2$")
+theplot = extrafeathers.mpiplot(g2.sub(1), show_mesh=True)
+if dolfin.MPI.comm_world.rank == 0:
+    plt.colorbar(theplot)
+    plt.subplot(2, 2, 3)
+theplot = extrafeathers.mpiplot(g2_pavg.sub(0), show_mesh=True)
 if dolfin.MPI.comm_world.rank == 0:
     plt.ylabel("Patch-averaged")
     plt.colorbar(theplot)
+    plt.subplot(2, 2, 4)
+theplot = extrafeathers.mpiplot(g2_pavg.sub(1), show_mesh=True)
+if dolfin.MPI.comm_world.rank == 0:
+    plt.colorbar(theplot)
+    plt.suptitle("Patch-averaging demo (vector)")
+
+if dolfin.MPI.comm_world.rank == 0:
     plt.show()
