@@ -33,6 +33,19 @@ import dolfin
 from .meshmagic import all_cells, my_cells, nodes_to_array
 
 
+# Use `matplotlib`'s default color sequence.
+# https://matplotlib.org/stable/gallery/color/named_colors.html
+# https://matplotlib.org/stable/tutorials/intermediate/color_cycle.html
+colors = [item["color"] for item in mpl.rcParams["axes.prop_cycle"]]
+
+# Mix translucent versions for plotting MPI partitioning.
+# `colors` must be in "#rrggbb" format for this to work.
+def _colors_with_alpha(aa):
+    return [f"{color}{aa}" for color in colors]
+colors20 = _colors_with_alpha("20")
+colors40 = _colors_with_alpha("40")
+
+
 def pause(interval: float) -> None:
     """Redraw the current Matplotlib figure **without stealing focus**.
 
@@ -126,6 +139,7 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
 # The point of the Optional return value is to make it explicit it's something-or-None.
 def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
             show_mesh: bool = False,
+            show_partitioning: bool = False,
             **kwargs: typing.Any) -> typing.Optional[typing.Any]:
     """Like `dolfin.plot`, but plots the whole field in the root process (MPI rank 0).
 
@@ -133,6 +147,9 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
          (`.sub(j)` of a vector or tensor field is fine)
     `show_mesh`: if `True`, show the element edges (and P1 vis edges too,
                  if `u` is a `P2` or `P3` function).
+    `show_partitioning`: Used only if `show_mesh=True`.
+                     If `True`, color-code the mesh parts for different MPI ranks.
+                     You can use `matplotlib.pyplot.legend` to show which is which.
     `kwargs`: passed through to `matplotlib.pyplot.tricontourf`
 
     If `u` lives on P2 or P3 elements, each element will be internally split into
@@ -194,7 +211,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
         v_vec = v_vec[subspace_dofs]
 
     theplot = None
-    tri = as_mpl_triangulation(V_vis, refine=True)
+    tri = as_mpl_triangulation(V_vis, refine=True)  # this converts P2/P3 -> P1
     if my_rank == 0:
         assert len(tri.x) == n_global_dofs  # each global DOF has coordinates
         assert len(v_vec) == n_global_dofs  # we have a data value at each DOF
@@ -209,7 +226,9 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
         # theplot = ax.plot_trisurf(xs, ys, v_vec)
 
     if show_mesh:
-        mpiplot_mesh(V_vis, _triangulation=tri)
+        mpiplot_mesh(V_vis,
+                     show_partitioning=show_partitioning,
+                     _triangulation=tri)
 
     return theplot
 
@@ -218,6 +237,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                  main_color: str = "#80808040",
                  aux_color: str = "#80808020",
                  show_aux: bool = True,
+                 show_partitioning: bool = False,
                  _triangulation=None) -> typing.Optional[typing.Any]:
     """Plot the mesh of a `FunctionSpace`.
 
@@ -231,21 +251,52 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     `aux_color`: "#RRGGBBAA", internal edges for P1 vis refinements.
                  Used only if `V` is a P2 or P3 function space.
     `show_aux`: Whether to plot the P1 vis refinement edges if present.
+    `show_partitioning`: If `True`, color-code the mesh parts for different
+                         MPI ranks. You can use `matplotlib.pyplot.legend`
+                         to show which is which.
 
-    `_triangulation` is used by `mpiplot` to re-use the triangulation
-    it must build anyway to visualize the actual function. If you want
-    to generate one yourself, see `as_mpl_triangulation`.
+    `_triangulation` allows skipping the expensive auto-generation of a
+    Matplotlib triangulation of the mesh, in case you already happen to
+    have one. It is only used when `show_partitioning=False`. `mpiplot`
+    uses this to send in the triangulation it has built anyway (to be
+    able to visualize the actual function). If you want to generate one
+    yourself, see `as_mpl_triangulation`.
 
-    In the root process (MPI rank 0), returns the plot object for the
-    element edges. See the return value of `matplotlib.pyplot.triplot`.
+    If `show_partitioning=False`:
+        In the root process (MPI rank 0), returns the plot object for the
+        element edges. See the return value of `matplotlib.pyplot.triplot`.
 
-    In other processes, returns `None`.
+        In other processes, returns `None`.
+
+    If `show_partitioning=True`:
+        Returns `None` in all processes.
     """
-    # See `mpiplot` for detailed explanation. We essentially re-do the
-    # relevant parts here so that this function also works standalone.
-    if not _triangulation:
-        _triangulation = as_mpl_triangulation(V, refine=True)
+    # TODO: eliminate the almost-identical code
+    if show_partitioning:  # color-code MPI partitions
+        my_triangulation = as_mpl_triangulation(V, mpi_global=False, refine=True)
+        all_triangulations = dolfin.MPI.comm_world.gather(my_triangulation, root=0)
+        if show_aux or V.ufl_element().degree() <= 1:
+            if dolfin.MPI.comm_world.rank == 0:
+                all_edges_colors = colors20 if V.ufl_element().degree() > 1 else colors40
+                for k, tri in enumerate(all_triangulations):
+                    plt.triplot(tri, color=all_edges_colors[k % len(all_edges_colors)])
+        if V.ufl_element().degree() > 1:
+            my_triangulation = as_mpl_triangulation(V, mpi_global=False, refine=False)
+            all_triangulations = dolfin.MPI.comm_world.gather(my_triangulation, root=0)
+            if dolfin.MPI.comm_world.rank == 0:
+                for k, tri in enumerate(all_triangulations):
+                    plt.triplot(tri, color=colors40[k % len(colors40)])
+        # Each legend entry from `triplot` is doubled for some reason,
+        # so plot a dummy point (at NaN so it won't be drawn) with
+        # each of the line colors and label them.
+        for mpi_rank in range(dolfin.MPI.comm_world.size):
+            plt.plot([np.nan], [np.nan], color=colors40[mpi_rank % len(colors40)],
+                     label=f"MPI rank {mpi_rank}")
+        return
 
+    # single color for all MPI partitions
+    if not _triangulation:  # TODO: doesn't interact with `show_partitioning`
+        _triangulation = as_mpl_triangulation(V, refine=True)
     main_plot = None
     if show_aux or V.ufl_element().degree() <= 1:
         if dolfin.MPI.comm_world.rank == 0:
@@ -258,10 +309,6 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     return main_plot
 
 
-# Use `matplotlib`'s default color sequence.
-# https://matplotlib.org/stable/gallery/color/named_colors.html
-# https://matplotlib.org/stable/tutorials/intermediate/color_cycle.html
-colors = [item["color"] for item in mpl.rcParams["axes.prop_cycle"]]
 def plot_facet_meshfunction(f: dolfin.MeshFunction,
                             names: typing.Optional[IntEnum] = None,
                             invalid_values: typing.Optional[typing.List[int]] = None) -> None:
