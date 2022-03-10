@@ -495,7 +495,7 @@ def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
                                                   dtype="intc")
         return merged
     dof_to_cells = merge(dof_to_cells)
-    assert len(dof_to_cells) == V.dim()
+    assert len(dof_to_cells) == V.dim()  # each DOF was seen
 
     return dof_to_cells
 
@@ -521,9 +521,10 @@ def map_dG0(V: dolfin.FunctionSpace,
     W_dof_to_cells = all_patches(W)
     assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
 
-    # ...by inverting:
+    # ...by inverting, so that each global cell maps to a DOF of W:
     cell_to_W_dof = {cell_indices[0]: dof
                      for dof, cell_indices in W_dof_to_cells.items()}
+    assert len(cell_to_W_dof) == W.mesh().num_entities_global(W.mesh().topology().dim())
 
     # Map each global DOF of V to those DOFs of W that contribute to the patch.
     # The strategy works correctly also when V is a P2 or P3 space, because
