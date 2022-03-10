@@ -505,7 +505,9 @@ def map_dG0(V: dolfin.FunctionSpace,
     """Map each global DOF of V to a patch of DOFs on dG0 space W.
 
     That is, determine the W DOFs that contribute to each V DOF
-    if we were to patch-average a function on V.
+    if we were to patch-average a function on V by projecting it
+    to W (to get a representative value for each cell) and then
+    averaging the cell values appropriately.
 
     The return value is a dict of rank-1 np.arrays, mapping the
     global V DOF number to an array of global W DOF numbers.
