@@ -15,14 +15,10 @@ data locality when numbering DOFs in MPI mode.
 
 import sys
 
-import numpy as np
-import matplotlib as mpl
-import matplotlib.tri as mtri
 import matplotlib.pyplot as plt
 
 import dolfin
 
-from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
 # --------------------------------------------------------------------------------
