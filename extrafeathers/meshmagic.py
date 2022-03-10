@@ -557,9 +557,12 @@ def patch_average(f: dolfin.Function,
     If you use either, both must be specified. To use the optional arguments,
     set them up like this::
 
+        import dolfin
+        from extrafeathers import map_dG0
+
         V = f.function_space()
         W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
-        VtoW = extrafeathers.meshmagic.map_dG0(V, W)
+        VtoW = map_dG0(V, W)
     """
     if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
             W.ufl_element().degree() == 0):
