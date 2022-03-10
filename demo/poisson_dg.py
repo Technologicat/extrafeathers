@@ -163,11 +163,12 @@ if MPI.comm_world.rank == 0:
 
 print(f'Process {MPI.comm_world.rank}: max(u) = {np.array(u_.vector()).max():0.6g}')
 
-# vtkfile = File("poisson_dg_solution/solution.pvd")
+# vtkfile = File("demo/output/poisson_dg/solution.pvd")
 # vtkfile << u_
 # Create XDMF file for visualization output
-xdmffile_u = XDMFFile(MPI.comm_world, 'poisson_dg/u.xdmf')
+xdmffile_u = XDMFFile(MPI.comm_world, 'demo/output/poisson_dg/u.xdmf')
 xdmffile_u.parameters["flush_output"] = True
+xdmffile_u.parameters["rewrite_function_mesh"] = False
 xdmffile_u.write(u_, 0)  # (field, time)
 
 # --------------------------------------------------------------------------------
