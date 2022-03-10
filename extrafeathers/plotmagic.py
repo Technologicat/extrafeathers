@@ -108,7 +108,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
         # if my_rank == 0:
         #     print(f"Interpolating solution from {str(V.ufl_element())} to P1 triangles for MPI-enabled visualization.")
         V_vis = dolfin.FunctionSpace(mesh, "P", 1)
-        u_vis = dolfin.interpolate(u, V_vis)
+        u_vis = dolfin.project(u, V_vis)
     else:
         V_vis = V
         u_vis = u
