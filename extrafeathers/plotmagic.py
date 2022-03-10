@@ -184,7 +184,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
 
 def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                  main_color: str = "#80808040",
-                 aux_color: str = "#c0c0c040",
+                 aux_color: str = "#80808020",
                  show_aux: bool = True,
                  _triangulation=None) -> typing.Optional[typing.Any]:
     """Plot the mesh of a `FunctionSpace`.
