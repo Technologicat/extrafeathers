@@ -502,6 +502,14 @@ def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
 # TODO: generalize for VectorFunctionSpace, TensorFunctionSpace
 def map_dG0(V: dolfin.FunctionSpace,
             W: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
+    """Map each global DOF of V to a patch of DOFs on dG0 space W.
+
+    That is, determine the W DOFs that contribute to each V DOF
+    if we were to patch-average a function on V.
+
+    The return value is a dict of rank-1 np.arrays, mapping the
+    global V DOF number to an array of global W DOF numbers.
+    """
     # TODO: sanity check input
     # Get the patches of cells connected to each global DOF of V.
     V_dof_to_cells = all_patches(V)
