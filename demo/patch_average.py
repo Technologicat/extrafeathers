@@ -28,7 +28,7 @@ def mpiplot_mesh():
         cells = np.array(cells, dtype=np.int64)
         # This relies on the fact that for p>1, in FEniCS the vertices are the first DOFs in each triangle.
         tri = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=cells[:, :3])
-        plt.triplot(tri, color="#a0a0a0")
+        plt.triplot(tri, color="#a0a0a040")
 
 if dolfin.MPI.comm_world.rank == 0:
     plt.subplot(2, 1, 1)
