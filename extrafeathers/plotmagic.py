@@ -289,9 +289,10 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
         # Each legend entry from `triplot` is doubled for some reason,
         # so plot a dummy point (at NaN so it won't be drawn) with
         # each of the line colors and label them.
-        for mpi_rank in range(dolfin.MPI.comm_world.size):
-            plt.plot([np.nan], [np.nan], color=colors40[mpi_rank % len(colors40)],
-                     label=f"MPI rank {mpi_rank}")
+        if dolfin.MPI.comm_world.rank == 0:
+            for mpi_rank in range(dolfin.MPI.comm_world.size):
+                plt.plot([np.nan], [np.nan], color=colors40[mpi_rank % len(colors40)],
+                         label=f"MPI rank {mpi_rank}")
         return
 
     # single color for all MPI partitions
