@@ -84,7 +84,8 @@ gathered_cells = dolfin.MPI.comm_world.allgather(my_cells)
 # https://matplotlib.org/stable/tutorials/intermediate/color_cycle.html
 colors = [item["color"] for item in mpl.rcParams["axes.prop_cycle"]]
 
-# Plot the mesh parts.
+# Plot the mesh parts, color-coding the MPI processes.
+# TODO: refactor this as an option into `plotmagic.mpiplot_mesh`
 if dolfin.MPI.comm_world.rank == 0:
     for mpi_rank, cells in enumerate(gathered_cells):
         cells = np.array(cells, dtype=np.int64)
