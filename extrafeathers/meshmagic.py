@@ -310,11 +310,11 @@ def midpoint_refine(mesh: dolfin.Mesh, p: int = 2) -> dolfin.Mesh:
 
 
 def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
-                                     dolfin.VectorFunctionSpace,
-                                     dolfin.TensorFunctionSpace],
-                     W: typing.Union[dolfin.FunctionSpace,
-                                     dolfin.VectorFunctionSpace,
-                                     dolfin.TensorFunctionSpace]) -> typing.Tuple[np.array, np.array]:
+                                   dolfin.VectorFunctionSpace,
+                                   dolfin.TensorFunctionSpace],
+                   W: typing.Union[dolfin.FunctionSpace,
+                                   dolfin.VectorFunctionSpace,
+                                   dolfin.TensorFunctionSpace]) -> typing.Tuple[np.array, np.array]:
     """Build a global DOF map between a P2 or P3 space `V` and a once-refined P1 space `W`.
 
     The purpose is to be able to map a nodal values vector from `V` to `W` and
