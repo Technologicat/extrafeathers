@@ -8,7 +8,7 @@ full nodal resolution export of data on P2 or P3 triangle meshes.
 __all__ = ["my_cells", "all_cells", "nodes_to_array",
            "make_mesh",
            "midpoint_refine", "map_refined_P1",
-           "my_patches", "all_patches", "patch_average"]
+           "my_patches", "all_patches", "map_dG0", "patch_average"]
 
 from collections import defaultdict
 import typing
@@ -492,42 +492,76 @@ def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
 
     return dof_to_cells
 
-def patch_average(f: dolfin.Function):
+# TODO: generalize for VectorFunctionSpace, TensorFunctionSpace
+def map_dG0(V: dolfin.FunctionSpace,
+            W: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
+    # Get the patches of cells connected to each global DOF of V.
+    V_dof_to_cells = all_patches(V)
+
+    # Get the "patches" of the dG0 space W; each DOF of W corresponds to just one cell.
+    # We can use this to find the W DOFs for the cells in each patch of V.
+    W_dof_to_cells = all_patches(W)
+
+    assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
+    W_dof_to_cell = {dof: cell_indices[0]
+                     for dof, cell_indices in W_dof_to_cells.items()}
+    cell_to_W_dof = {cell_index: dof
+                     for dof, cell_index in W_dof_to_cell.items()}
+
+    # Map each global DOF of V to those DOFs of W that contribute to the patch
+    # (note the strategy works correctly for P2 and P3, too)
+    V_dof_to_W_dofs = {}
+    for global_V_dof, cell_indices in V_dof_to_cells.items():
+        cell_indices = V_dof_to_cells[global_V_dof]
+        V_dof_to_W_dofs[global_V_dof] = np.array([cell_to_W_dof[k]
+                                                  for k in cell_indices], dtype="intc")
+    return V_dof_to_W_dofs
+
+def patch_average(f: dolfin.Function,
+                  W: typing.Optional[dolfin.FunctionSpace] = None,
+                  VtoW: typing.Optional[typing.Dict[int, np.array]] = None) -> dolfin.Function:
     """Patch-average the P1 `Function` `f`, returning the result as a new P1 function.
 
     Useful as a postprocess step in some nonconforming methods (can eliminate some
     checkerboard modes).
-    """
-    # TODO: P1 spaces only; sanity check input
-    V = f.function_space()
-    V_dof_to_cells = all_patches(V)
 
+    The optional arguments allow skipping the expensive patch extraction and
+    DOF mapping step when there is a need to patch-average functions in a loop:
+
+      `W`: the dG0 space associated with `V = f.function_space()`
+      `VtoW`: mapping of DOFs of V onto patches of DOFs of W
+
+    If you use either, both must be specified. To use the optional arguments,
+    set them up like this::
+
+        V = f.function_space()
+        W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
+        VtoW = extrafeathers.meshmagic.map_dG0(V, W)
+    """
+    # TODO: sanity check input
+    V = f.function_space()
     mesh = V.mesh()
-    W = dolfin.FunctionSpace(mesh, 'DG', 0)
+
+    # expensive patch extraction and DOF mapping V -> W
+    if not (W and VtoW):
+        W = dolfin.FunctionSpace(mesh, 'DG', 0)
+        VtoW = map_dG0(V, W)
+
     # interpolate doesn't work in MPI mode (different partitioning of V and W)
     f_dG0: dolfin.Function = dolfin.project(f, W)
-    dG0_vec = f_dG0.vector()
-
-    # Get the "patches" of the dG0 space W; each DOF corresponds to just one cell.
-    # We can use this to find the W DOFs for the cells in each patch of V.
-    W_dof_to_cells = all_patches(W)
-    assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
-    W_dof_to_cell = {dof: cell_indices[0] for dof, cell_indices in W_dof_to_cells.items()}
-    cell_to_W_dof = {cell_index: dof for dof, cell_index in W_dof_to_cell.items()}
 
     # make a local copy of the whole dG0 DOF vector in all processes
     all_W_dofs = np.array(range(W.dim()), "intc")
     dG0_vec_copy = dolfin.Vector(dolfin.MPI.comm_self)
+    dG0_vec = f_dG0.vector()
     dG0_vec.gather(dG0_vec_copy, all_W_dofs)
 
     my_V_dofs = V.dofmap().dofs()
     f_pavg = dolfin.Function(V)
     pavg_vec = f_pavg.vector()
-    averages = []
-    for global_V_dof in my_V_dofs:
-        cell_indices = V_dof_to_cells[global_V_dof]
-        global_W_dofs = np.array([cell_to_W_dof[k] for k in cell_indices], dtype="intc")
-        average = sum(dG0_vec_copy[global_W_dofs]) / len(global_W_dofs)
-        averages.append(average)
+    averages = np.empty(len(my_V_dofs), dtype=np.float64)
+    for k, global_V_dof in enumerate(my_V_dofs):
+        global_W_dofs = VtoW[global_V_dof]
+        averages[k] = dG0_vec_copy[global_W_dofs].sum() / len(global_W_dofs)
     pavg_vec[:] = averages  # MPI-enabled, must run in all processes
     return f_pavg

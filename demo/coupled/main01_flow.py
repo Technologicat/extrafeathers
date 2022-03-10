@@ -207,6 +207,15 @@ if V.ufl_element().degree() > 1:
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
+# EXPERIMENTAL:
+# If P1P1 discretization (which does not satisfy the LBB condition),
+# postprocess the pressure to kill off the checkerboard mode.
+#
+# We perform the expensive patch extraction just once at the start.
+if V.ufl_element().degree() == 1:
+    Qproj = FunctionSpace(mesh, "DG", 0)
+    QtoQproj = meshmagic.map_dG0(Q, Qproj)
+
 # Enable stabilizers for the Galerkin formulation
 solver.stabilizers.SUPG = True  # stabilizer for advection-dominant flows
 solver.stabilizers.LSIC = True  # additional stabilizer for high Re
@@ -231,7 +240,7 @@ for n in range(nt):
     # If P1P1 discretization (which does not satisfy the LBB condition),
     # postprocess the pressure to kill off the checkerboard mode.
     if V.ufl_element().degree() == 1:
-        solver.p_.assign(meshmagic.patch_average(solver.p_))
+        solver.p_.assign(meshmagic.patch_average(solver.p_, Qproj, QtoQproj))
 
     begin("Saving")
 
