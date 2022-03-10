@@ -79,11 +79,12 @@ f = Expression("10*exp(-(pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2)) / 0.02)", degr
 #   <U> = (1/2) (U+ + U-)
 #   <v> = (1/2) (v+ + v-)
 # and `n` points from the `+` side to the `-` side.
-# Here we need:
+#
+# Here integration by parts produces, on the interior facets, the term:
 #   n·(∇u+ v+ - ∇u- v-) = [∇u v] = [∇u] <v> + <∇u> · [v]
 # Letting [∇u] → 0 in the result (weakly enforcing the continuity of the flux),
 #   n·(∇u+ v+ - ∇u- v-) = <∇u> · [v]
-# which is the "integration by parts" term below.
+# which is the term labeled as "integration by parts" below.
 #
 # https://fenicsproject.org/qa/9020/derivation-of-weak-form-in-undocumented-dg-poisson-demo/
 #
