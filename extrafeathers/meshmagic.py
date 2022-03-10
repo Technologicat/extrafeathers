@@ -512,7 +512,10 @@ def map_dG0(V: dolfin.FunctionSpace,
     The return value is a dict of rank-1 np.arrays, mapping the
     global V DOF number to an array of global W DOF numbers.
     """
-    # TODO: sanity check input
+    if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
+            W.ufl_element().degree() == 0):
+        raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} with degree {W.ufl_element().degree()}")
+
     # Get the patches of cells connected to each global DOF of V.
     V_dof_to_cells = all_patches(V)
 
@@ -558,7 +561,10 @@ def patch_average(f: dolfin.Function,
         W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
         VtoW = extrafeathers.meshmagic.map_dG0(V, W)
     """
-    # TODO: sanity check input
+    if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
+            W.ufl_element().degree() == 0):
+        raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} with degree {W.ufl_element().degree()}")
+
     V = f.function_space()
 
     # Patch extraction and DOF mapping V -> W.
