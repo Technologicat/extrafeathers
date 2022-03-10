@@ -185,6 +185,9 @@ def all_cells(V: dolfin.FunctionSpace, *,
     Like `my_cells` (which see for details), but combining data from all MPI processes.
     Each process gets a full copy of all data.
     """
+    # Assemble the complete mesh from the partitioned pieces. This treats arbitrary
+    # domain shapes correctly. We get the list of triangles from each MPI process
+    # and then combine the lists in the root process.
     cells, nodes = my_cells(V, matplotlibize=matplotlibize, refine=refine)
     cells = dolfin.MPI.comm_world.allgather(cells)
     nodes = dolfin.MPI.comm_world.allgather(nodes)

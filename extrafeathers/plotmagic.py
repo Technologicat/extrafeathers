@@ -139,9 +139,6 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
         subspace_dofs = np.sort(np.concatenate(dofmaps))
         v_vec = v_vec[subspace_dofs]
 
-    # Assemble the complete mesh from the partitioned pieces. This treats arbitrary
-    # domain shapes correctly. We get the list of triangles from each MPI process
-    # and then combine the lists in the root process.
     triangles, nodes_dict = all_cells(V_vis, matplotlibize=True, refine=True)
     if my_rank == 0:
         assert len(nodes_dict) == n_global_dofs  # each global DOF has coordinates
