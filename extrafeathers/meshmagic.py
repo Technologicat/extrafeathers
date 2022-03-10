@@ -540,11 +540,10 @@ def patch_average(f: dolfin.Function,
     """
     # TODO: sanity check input
     V = f.function_space()
-    mesh = V.mesh()
 
     # expensive patch extraction and DOF mapping V -> W
     if not (W and VtoW):
-        W = dolfin.FunctionSpace(mesh, 'DG', 0)
+        W = dolfin.FunctionSpace(V.mesh(), 'DG', 0)
         VtoW = map_dG0(V, W)
 
     # interpolate doesn't work in MPI mode (different partitioning of V and W)
@@ -553,15 +552,15 @@ def patch_average(f: dolfin.Function,
     # make a local copy of the whole dG0 DOF vector in all processes
     all_W_dofs = np.array(range(W.dim()), "intc")
     dG0_vec_copy = dolfin.Vector(dolfin.MPI.comm_self)
-    dG0_vec = f_dG0.vector()
-    dG0_vec.gather(dG0_vec_copy, all_W_dofs)
+    f_dG0.vector().gather(dG0_vec_copy, all_W_dofs)
 
+    # compute patch averages for V DOFs owned by this MPI process
     my_V_dofs = V.dofmap().dofs()
-    f_pavg = dolfin.Function(V)
-    pavg_vec = f_pavg.vector()
     averages = np.empty(len(my_V_dofs), dtype=np.float64)
     for k, global_V_dof in enumerate(my_V_dofs):
         global_W_dofs = VtoW[global_V_dof]
         averages[k] = dG0_vec_copy[global_W_dofs].sum() / len(global_W_dofs)
-    pavg_vec[:] = averages  # MPI-enabled, must run in all processes
+
+    f_pavg = dolfin.Function(V)
+    f_pavg.vector()[:] = averages  # MPI-enabled, must run in all processes
     return f_pavg
