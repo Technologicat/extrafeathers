@@ -449,7 +449,9 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
 
 
 def my_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
-    """Return a dict of rank-1 np.arrays, mapping DOF number to connected cell numbers.
+    """Map each global DOF number to connected global cell numbers.
+
+    The return value is a dict of rank-1 np.arrays.
 
     Only DOFs belonging to this MPI process are listed. See `all_patches`.
     """
@@ -467,7 +469,9 @@ def my_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
     return {k: np.array(list(v), dtype="intc") for k, v in dof_to_cells.items()}
 
 def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
-    """Return a dict of rank-1 np.arrays, mapping DOF number to connected cell numbers.
+    """Map each global DOF number to connected global cell numbers.
+
+    The return value is a dict of rank-1 np.arrays.
 
     Like `my_patches`, but combining data from all MPI processes.
     Each process gets a full copy of all data.
@@ -480,9 +484,9 @@ def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
         while mappings:
             mapping = mappings.pop()
             for global_dof, cell_indices in mapping.items():
-                if global_dof not in merged:  # vertex not seen yet?
+                if global_dof not in merged:  # This global DOF not seen yet
                     merged[global_dof] = cell_indices
-                else:  # vertex seen, add the cells from this MPI process
+                else:  # DOF already seen, add new unique cells from this MPI process
                     combined = set(merged[global_dof]).union(set(cell_indices))
                     merged[global_dof] = np.array(list(combined),
                                                   dtype="intc")
@@ -528,8 +532,9 @@ def patch_average(f: dolfin.Function,
     The optional arguments allow skipping the expensive patch extraction and
     DOF mapping step when there is a need to patch-average functions in a loop:
 
-      `W`: the dG0 space associated with `V = f.function_space()`
-      `VtoW`: mapping of DOFs of V onto patches of DOFs of W
+      `W`: The dG0 space associated with `V = f.function_space()`.
+           Used for computing the patch average.
+      `VtoW`: Mapping of DOFs of V onto patches of DOFs of W
 
     If you use either, both must be specified. To use the optional arguments,
     set them up like this::
@@ -541,20 +546,20 @@ def patch_average(f: dolfin.Function,
     # TODO: sanity check input
     V = f.function_space()
 
-    # expensive patch extraction and DOF mapping V -> W
+    # Patch extraction and DOF mapping V -> W.
     if not (W and VtoW):
         W = dolfin.FunctionSpace(V.mesh(), 'DG', 0)
         VtoW = map_dG0(V, W)
 
-    # interpolate doesn't work in MPI mode (different partitioning of V and W)
+    # Interpolate doesn't work in MPI mode (different partitioning of V and W).
     f_dG0: dolfin.Function = dolfin.project(f, W)
 
-    # make a local copy of the whole dG0 DOF vector in all processes
+    # Make a local copy of the whole dG0 DOF vector in all processes.
     all_W_dofs = np.array(range(W.dim()), "intc")
     dG0_vec_copy = dolfin.Vector(dolfin.MPI.comm_self)
     f_dG0.vector().gather(dG0_vec_copy, all_W_dofs)
 
-    # compute patch averages for V DOFs owned by this MPI process
+    # Compute patch averages for V DOFs owned by this MPI process.
     my_V_dofs = V.dofmap().dofs()
     averages = np.empty(len(my_V_dofs), dtype=np.float64)
     for k, global_V_dof in enumerate(my_V_dofs):
