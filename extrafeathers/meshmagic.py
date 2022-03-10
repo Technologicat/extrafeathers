@@ -564,9 +564,10 @@ def patch_average(f: dolfin.Function,
         W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
         VtoW = map_dG0(V, W)
     """
-    if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
-            W.ufl_element().degree() == 0):
-        raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} with degree {W.ufl_element().degree()}")
+    if W:
+        if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
+                W.ufl_element().degree() == 0):
+            raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} with degree {W.ufl_element().degree()}")
 
     V = f.function_space()
 
