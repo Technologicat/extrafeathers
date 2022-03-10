@@ -464,6 +464,9 @@ def my_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
         # https://fenicsproject.discourse.group/t/indices-of-cells-and-facets-in-parallel/6212/2
         global_cell_idx = cell.global_index()
         global_dofs = l2g[local_dofs]
+        # Note this strategy works correctly also when V is a P2 or P3 space;
+        # the nodes on facets will have smaller patches (just two cells) than
+        # the nodes at vertices.
         for global_dof in global_dofs:
             dof_to_cells[global_dof].add(global_cell_idx)
     return {k: np.array(list(v), dtype="intc") for k, v in dof_to_cells.items()}
@@ -499,21 +502,22 @@ def all_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
 # TODO: generalize for VectorFunctionSpace, TensorFunctionSpace
 def map_dG0(V: dolfin.FunctionSpace,
             W: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
+    # TODO: sanity check input
     # Get the patches of cells connected to each global DOF of V.
     V_dof_to_cells = all_patches(V)
 
-    # Get the "patches" of the dG0 space W; each DOF of W corresponds to just one cell.
-    # We can use this to find the W DOFs for the cells in each patch of V.
+    # Get the "patches" of the dG0 space W; each DOF of W is connected to just one cell.
+    # We can use this to find the W DOFs for the cells in each patch of V...
     W_dof_to_cells = all_patches(W)
-
     assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
-    W_dof_to_cell = {dof: cell_indices[0]
+
+    # ...by inverting:
+    cell_to_W_dof = {cell_indices[0]: dof
                      for dof, cell_indices in W_dof_to_cells.items()}
-    cell_to_W_dof = {cell_index: dof
-                     for dof, cell_index in W_dof_to_cell.items()}
 
     # Map each global DOF of V to those DOFs of W that contribute to the patch
-    # (note the strategy works correctly for P2 and P3, too)
+    # (Note the strategy works correctly also when V is a P2 or P3 space,
+    #  because `my_patches` does.)
     V_dof_to_W_dofs = {}
     for global_V_dof, cell_indices in V_dof_to_cells.items():
         cell_indices = V_dof_to_cells[global_V_dof]
