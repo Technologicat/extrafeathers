@@ -77,6 +77,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
     """Like `dolfin.plot`, but plots the whole field in the root process (MPI rank 0).
 
     `u`: `dolfin.Function`; a 2D scalar FEM field
+         (`.sub(j)` of a vector or tensor field is fine)
     `show_mesh`: if `True`, show the element edges (and P1 vis edges too,
                  if `u` is a `P2` or `P3` function).
     `kwargs`: passed through to `matplotlib.pyplot.tricontourf`
