@@ -14,7 +14,9 @@ for some common plotting tasks in 2D solvers:
   it allows to check whether the boundaries have been tagged as expected.
 """
 
-__all__ = ["pause", "mpiplot", "plot_facet_meshfunction"]
+__all__ = ["pause",
+           "mpiplot", "mpiplot_mesh",
+           "plot_facet_meshfunction"]
 
 from collections import defaultdict
 from enum import IntEnum
@@ -69,6 +71,8 @@ def pause(interval: float) -> None:
 # TODO: not sure what exactly `matplotlib.pyplot.tricontourf` returns or what the type spec for it should be.
 # The point of the Optional return value is to make it explicit it's something-or-None.
 def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
+            *,
+            show_mesh: bool = False,
             **kwargs: typing.Any) -> typing.Optional[typing.Any]:
     """Like `dolfin.plot`, but plots the whole field in the root process (MPI rank 0).
 
@@ -106,7 +110,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
         V_vis = V
         u_vis = u
 
-    # make a complete copy of the DOF vector onto the root process
+    # Make a complete copy of the DOF vector onto the root process.
     v_vec = u_vis.vector().gather_on_zero()
     n_global_dofs = V_vis.dim()
 
@@ -122,8 +126,19 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
     # v_vec = dolfin.Vector(dolfin.MPI.comm_self, u_vec.local_size())
     # u_vec.gather(v_vec, V.dofmap().dofs())  # in_vec.gather(out_vec, indices)
 
-    # Assemble the complete mesh from the partitioned pieces. This treats arbitrary domain shapes correctly.
-    # We get the list of triangles from each MPI process and then combine the lists in the root process.
+    # The global DOF vector always refers to the complete function space.
+    # If `V` is a subspace (vector/tensor field component), the DOF vector
+    # will include also those DOFs that are not part of `V`. Extract the
+    # V DOFs.
+    dofmaps = dolfin.MPI.comm_world.gather(V_vis.dofmap().dofs(), root=0)
+    if my_rank == 0:
+        # CAUTION: `all_cells` sorts its `dofs` by global DOF number; match the ordering.
+        subspace_dofs = np.sort(np.concatenate(dofmaps))
+        v_vec = v_vec[subspace_dofs]
+
+    # Assemble the complete mesh from the partitioned pieces. This treats arbitrary
+    # domain shapes correctly. We get the list of triangles from each MPI process
+    # and then combine the lists in the root process.
     triangles, nodes_dict = all_cells(V_vis, matplotlibize=True, refine=True)
     if my_rank == 0:
         assert len(nodes_dict) == n_global_dofs  # each global DOF has coordinates
@@ -133,33 +148,27 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
 
         # Reassemble the mesh in Matplotlib.
 
-        # # TODO: map `triangles`; it has global DOF numbers `dofs[k]`, whereas we need just `k`
-        # # TODO: so that the numbering corresponds to the rows of `nodes`.
-        # # TODO: Ignoring the mapping works as long as the data comes from a scalar `FunctionSpace`.
-        # # TODO: That's all we currently support in this function, so it's ok.
-        # # TODO: But for future reference, given a full copy of the global DOF data, this is how to do it.
-        # # (A copy of just the MPI-local part won't do, because the triangulation uses also the unowned nodes.)
-        # dof_to_row = {dof: k for k, dof in enumerate(dofs)}  # `dofs` is already sorted by global DOF number
-        # new_triangles = []
-        # for triangle in triangles:
-        #     new_triangles.append([dof_to_row[dof] for dof in triangle])
+        # Map `triangles`; it has global DOF numbers `dofs[k]`, whereas we need just `k`
+        # so that the numbering corresponds to the rows of `nodes`.
+        #
+        # Ignoring the mapping works as long as the data comes from a scalar
+        # `FunctionSpace`; then it's the identity mapping. But with subspace data
+        # we need to do this.
+        #
+        # Note that to perform this mapping we need a full copy of the global DOF
+        # data, because the triangulation uses also the unowned nodes. Thus the
+        # MPI-local part is not enough.
+        dof_to_row = {dof: k for k, dof in enumerate(dofs)}  # `dofs` is already sorted by global DOF number
+        new_triangles = [[dof_to_row[dof] for dof in triangle]
+                         for triangle in triangles]
 
-        tri = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=triangles)
+        # Now we can construct the triangulation.
+        tri = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=new_triangles)
 
-        # Plot the solution on the mesh. The triangulation has been constructed
-        # following the FEniCS global DOF numbering, so the data is just v_vec as-is.
+        # Plot the function, and optionally also the mesh.
         theplot = plt.tricontourf(tri, v_vec, levels=32, **kwargs)
-
-        # # DEBUG
-        # plt.triplot(tri, color="#404040")  # all edges
-        # if V_vis.ufl_element().degree() > 1:
-        #     # Original element edges for P2/P3 element, i.e. the edges of the corresponding P1 triangulation.
-        #     V_lin = dolfin.FunctionSpace(mesh, "P", 1)
-        #     triangles2, nodes_dict2 = all_cells(V_lin, matplotlibize=True)
-        #     dofs2, nodes2 = nodes_to_array(nodes_dict2)
-        #     # TODO: map `triangles2`
-        #     tri2 = mtri.Triangulation(nodes2[:, 0], nodes2[:, 1], triangles=triangles2)
-        #     plt.triplot(tri2, color="k")
+        if show_mesh:
+            mpiplot_mesh(V_vis, _triangulation=tri)
 
         # # Alternative visualization style.
         # theplot = plt.tripcolor(tri, v_vec, shading="gouraud", **kwargs)
@@ -171,6 +180,54 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression],
 
         return theplot
     return None
+
+
+def mpiplot_mesh(V: dolfin.FunctionSpace, *,
+                 main_color: str = "#80808040",
+                 aux_color: str = "#c0c0c040",
+                 show_aux: bool = True,
+                 _triangulation=None):
+    """Plot the mesh of a `FunctionSpace`.
+
+    `main_color`: "#RRGGBBAA", element edges.
+    `aux_color`: "#RRGGBBAA", internal edges for P1 vis refinements.
+                 Used only if `V` is a P2 or P3 function space.
+    `show_aux`: Whether to plot the P1 vis refinement edges if present.
+
+    `_triangulation` is an internal parameter used by `mpiplot`, so that
+    the `show_mesh` mode can re-use the triangulation `mpiplot` must build
+    anyway to visualize the actual function. If interested, see the source
+    code of `mpiplot_mesh` and `mpiplot`.
+    """
+    # See `mpiplot` for detailed explanation. We essentially re-do the
+    # relevant parts here so that this function also works standalone.
+    if not _triangulation:
+        triangles, nodes_dict = all_cells(V, matplotlibize=True, refine=True)
+        if dolfin.MPI.comm_world.rank == 0:
+            dofs, nodes = nodes_to_array(nodes_dict)
+            dof_to_row = {dof: k for k, dof in enumerate(dofs)}
+            new_triangles = [[dof_to_row[dof] for dof in triangle]
+                             for triangle in triangles]
+            _triangulation = mtri.Triangulation(nodes[:, 0], nodes[:, 1],
+                                                triangles=new_triangles)
+
+    main_plot = None
+    all_edges_color = aux_color if V.ufl_element().degree() > 1 else main_color
+    if dolfin.MPI.comm_world.rank == 0:
+        if show_aux or V.ufl_element().degree() <= 1:
+            main_plot = plt.triplot(_triangulation, color=all_edges_color)
+    if V.ufl_element().degree() > 1:
+        # Original element edges for P2/P3 element, i.e. the edges of the
+        # corresponding P1 triangulation.
+        V_lin = dolfin.FunctionSpace(V.mesh(), "P", 1)
+        triangles2, nodes_dict2 = all_cells(V_lin, matplotlibize=True)
+        dofs2, nodes2 = nodes_to_array(nodes_dict2)
+        if dolfin.MPI.comm_world.rank == 0:
+            # `V_lin` is always scalar, so `triangles2` needs no DOF->row mapping.
+            tri2 = mtri.Triangulation(nodes2[:, 0], nodes2[:, 1],
+                                      triangles=triangles2)
+            main_plot = plt.triplot(tri2, color=main_color)
+    return main_plot
 
 
 # Use `matplotlib`'s default color sequence.

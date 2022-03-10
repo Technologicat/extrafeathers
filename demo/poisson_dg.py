@@ -10,7 +10,6 @@ could be added to `extrafeathers.pdes` later.
 """
 
 import numpy as np
-import matplotlib.tri as mtri
 import matplotlib.pyplot as plt
 
 from dolfin import (UnitSquareMesh, FunctionSpace, DOLFIN_EPS, Constant,  # DirichletBC,
@@ -174,20 +173,9 @@ xdmffile_u.write(u_, 0)  # (field, time)
 # --------------------------------------------------------------------------------
 # Visualize
 
-# TODO: need a utility for this. `demo.dofnumbering` needs something similar, too.
-def mpiplot_mesh():
-    cells, nodes_dict = extrafeathers.meshmagic.all_cells(V)
-    dofs, nodes = extrafeathers.meshmagic.nodes_to_array(nodes_dict)
-    if MPI.comm_world.rank == 0:
-        cells = np.array(cells, dtype=np.int64)
-        # This relies on the fact that for p>1, in FEniCS the vertices are the first DOFs in each triangle.
-        tri = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=cells[:, :3])
-        plt.triplot(tri, color="#a0a0a040")
-
 if MPI.comm_world.rank == 0:
     print("Plotting.")
-theplot = extrafeathers.mpiplot(u_)
-mpiplot_mesh()
+theplot = extrafeathers.mpiplot(u_, show_mesh=True)
 if MPI.comm_world.rank == 0:
     plt.colorbar(theplot)
     plt.title(f"Poisson with dG({V.ufl_element().degree()}) + SIPG")
