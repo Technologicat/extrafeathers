@@ -525,9 +525,9 @@ def map_dG0(V: dolfin.FunctionSpace,
     cell_to_W_dof = {cell_indices[0]: dof
                      for dof, cell_indices in W_dof_to_cells.items()}
 
-    # Map each global DOF of V to those DOFs of W that contribute to the patch
-    # (Note the strategy works correctly also when V is a P2 or P3 space,
-    #  because `my_patches` does.)
+    # Map each global DOF of V to those DOFs of W that contribute to the patch.
+    # The strategy works correctly also when V is a P2 or P3 space, because
+    # `my_patches` does.
     V_dof_to_W_dofs = {}
     for global_V_dof, cell_indices in V_dof_to_cells.items():
         cell_indices = V_dof_to_cells[global_V_dof]
