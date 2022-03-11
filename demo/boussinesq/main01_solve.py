@@ -54,10 +54,10 @@ bcp = [bcp_top]
 # bcp = []  # for cavity flows: Dirichlet BC on velocity everywhere, pure Neumann BCs on pressure.
 
 # bcT_top = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.TOP.value)
-# bcT_walls = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.WALLS.value)
-bcT_bottom = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.BOTTOM.value)
-# bcT_obstacle = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.OBSTACLE.value)
-bcT = [bcT_bottom]
+bcT_walls = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.WALLS.value)
+bcT_bottom = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.BOTTOM.value)
+bcT_obstacle = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.OBSTACLE.value)
+bcT = [bcT_walls, bcT_bottom, bcT_obstacle]
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)
