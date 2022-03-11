@@ -154,8 +154,6 @@ class NavierStokes:
          SUPG stabilizer.
 
     As the mesh, we use `V.mesh()`; both `V` and `Q` must be defined on the same mesh.
-    The function spaces `V` and `Q` must be LBB-compatible. If unsure, use Taylor-Hood
-    (a.k.a. P2P1) elements: choose `P2` for `V` and `P1` for `Q`. Q2Q1 works, too.
 
     The specific body force `self.f` [N / kg] = [m / s²] is an assignable FEM function.
     Interpolate or project what you want onto `V`, and then `.assign`. For example,
@@ -167,13 +165,40 @@ class NavierStokes:
     (Note that if you do simulate gravity, you may need to change some of your boundary
     conditions to accommodate.)
 
+    **Allowed element types**:
+
+    Because incompressible flow is a saddle-point problem, the function spaces
+    `V` and `Q` must be LBB-compatible, i.e. they must satisfy the inf-sup condition
+    (a.k.a. the Ladyzhenskaya–Babuška–Brezzi condition) for the linear form
+    b(v, q) := ∫ (∇·v) q dΩ (see Brenner & Scott, sec. 12.5, 12.6).
+
+    Taylor-Hood (a.k.a. P2P1) elements are the classical choice; choose `P2` for `V`
+    and `P1` for `Q`. Q2Q1 works, too.
+
+    It is nontrivial to tell whether an arbitrary pair of `V` and `Q` are LBB-compatible
+    or not. A typical symptom of an LBB violation are high spatial frequency numerical
+    pressure oscillations.
+
+    Non-compatible elements (e.g. P1P1 or Q1Q1) can be made to work by patch-averaging
+    the pressure field between timesteps using a least-squares approach (see `patch_average`),
+    which reduces oscillations at the size scale of a single element. This technique is
+    sometimes used in elasticity, where mixed formulations run into the same issue.
+    See Hughes, sec. 4.4.1 and app. 4.II.
+
     References:
+        Susanne C. Brenner & L. Ridgway Scott. 2010. The Mathematical Theory
+        of Finite Element Methods. 3rd edition. Springer. ISBN 978-1-4419-2611-1.
+
         Jean Donea and Antonio Huerta. 2003. Finite Element Methods for Flow Problems.
         Wiley. ISBN 0-471-49666-9.
 
         Katuhiko Goda. A multistep technique with implicit difference schemes for
         calculating two- or three-dimensional cavity flows. Journal of Computational
         Physics, 30(1):76–95, 1979.
+
+        Thomas J. R. Hughes. 2000. The Finite Element Method: Linear Static and Dynamic
+        Finite Element Analysis. Dover. Corrected and updated reprint of the 1987 edition.
+        ISBN 978-0-486-41181-1.
     """
     def __init__(self, V: VectorFunctionSpace, Q: FunctionSpace,
                  ρ: float, μ: float,
