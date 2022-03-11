@@ -5,11 +5,13 @@
 **Fixed**:
 
 - `mpiplot` now works correctly for tensor/vector component functions (`mpiplot(u.sub(k))`)
+  - The global DOF numbers are now correctly mapped to vertices of the Matplotlib triangulation.
 - `mpiplot` now L2-projects (instead of interpolating) if the input is not P1, P2 or P3.
 - **Fixes to solvers**:
-  - `pdes.navier_stokes`: zero out mean pressure only if no Dirichlet BCs on pressure.
-    - E.g. cavity flow test cases are like this.
-    - Thus, now the pressure solution actually satisfies the Dirichlet BCs if any were given.
+  - `pdes.navier_stokes`:
+    - Zero out mean pressure only if no Dirichlet BCs on pressure (e.g. cavity flow test cases are like this).
+      - Thus, now the pressure solution actually satisfies the Dirichlet BCs if any were given.
+    - Fix crash during form compilation if the pressure space is dG0. Using that space doesn't work, because we need to take the gradient in the corrector steps of IPCS, but it shouldn't crash compilation.
   - `solver.step()` now returns the number of Krylov iterations taken. See `pdes.navier_stokes` and `pdes.advection_diffusion` for details.
 - **Fixes to demos**:
   - Fix Courant number computation.
@@ -22,11 +24,12 @@
 - `mpiplot` now has `show_mesh` and `show_partitioning` flags.
   - The mesh is drawn translucently on top of the function data, allowing to see at a glance whether the discretization looks fine or if more resolution is needed at some parts of the domain.
   - When *not* displaying the MPI partitioning, `mpiplot(u, show_mesh=True)` is more efficient than `mpiplot(u)` followed separately by `mpiplot_mesh(u.function_space().mesh())`, because it constructs the full nodal resolution Matplotlib triangulation just once.
-- `all_cells`/`my_cells` now subdivides P3 meshes, too. Used by `mpiplot` and `midpoint_refine`, so these can now refine P3 data into full-nodal-resolution P1 for visualization and export.
-- Demos involving incompressible flow now run also when using a P1P1 discretization, which is LBB-incompatible.
+- `all_cells`/`my_cells` now refines P3 meshes, too. Used by `mpiplot` and `midpoint_refine`, so these can now **refine P3 data** into full-nodal-resolution P1 for visualization and export. Each P3 triangle is split into nine P1 triangles, with an aesthetically pleasing fill.
+- Demos involving **incompressible flow** now run also when **using a P1P1 discretization**, which is LBB-incompatible.
   - Based on a least-squares pressure smoothing technique to eliminate high spatial frequency numerical oscillations in the pressure field. Details in the docstring of `pdes.navier_stokes.NavierStokes`, and in the demos `demo.coupled.main01_flow` and `demo.boussinesq.main01_solve`.
   - P1P1 is not as accurate as P2P1 on the same mesh, but is much faster; may be useful for an initial investigation when there is a need to complete many ballpark simulations quickly.
   - The main point, however, is that now it is *possible* to choose a P1 space for the velocity field, should one desire to do so.
+- Refactor heat equation solver into a generic constant-coefficient `AdvectionDiffusion`, and a separate, specific `HeatEquation`.
 - Add a logo for the project.
 - Tweak parameters of Boussinesq example.
 
@@ -38,8 +41,8 @@
     - The added subdivisions for P1 visualization of P2 and P3 fields can be optionally shown; by default, these are drawn in a more translucent color to distinguish them from element edges.
   - `patch_average` to compute the patch average of a P1/P2/P3 function. Works on scalars/vectors/tensors.
 - **New demos**:
-  - `demo.dofnumbering`: visualize how FEniCS allocates its global DOFs, both in serial and in parallel. Display also the MPI partitioning of the mesh.
-  - `demo.refelement`: visualize the DOF numbering on a P2 or P3 element, both locally (reference element) and globally (on a very small triangle mesh on the unit square).
+  - `demo.dofnumbering`: visualize how FEniCS allocates its global DOFs (in 2D), both in serial and in parallel. Display also the MPI partitioning of the mesh.
+  - `demo.refelement`: visualize the DOF numbering on a P2 or P3 element (in 2D), both locally (reference element) and globally (on a very small triangle mesh on the unit square).
     - MPI mode draws these diagrams individually for each process.
   - `demo.patch_average`: demo of the new `patch_average` function.
   - `demo.poisson_dg`: Poisson equation using symmetric interior penalty discontinuous Galerkin (SIPG) method.
