@@ -569,6 +569,7 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
     assert set(range(W.dim())) - seenW == set()  # all DOFs of W mapped to at least once
     return V_dof_to_W_dofs
 
+# TODO: maybe this should just patch-average a dG0 function onto a target space `V`
 def patch_average(f: dolfin.Function,
                   W: typing.Optional[typing.Union[dolfin.FunctionSpace,
                                                   dolfin.VectorFunctionSpace,
