@@ -2,30 +2,43 @@
 <img src="extrafeathers-logo.png" alt="Extrafeathers"/>
 </p>
 
-Agility and ease-of-use batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on MPI-enabled 2D on P1 and P2 meshes. Mesh import and closely related utilities run only serially. Most of our utilities do support 3D meshes, but this is currently not a priority.
+**Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2** and **P3** meshes. Mesh import and closely related utilities run only serially. Most of our utilities do support 3D meshes, but this is currently not a priority.
 
 Usage examples can be found in the [`demo/`](demo/) subfolder.
 
 The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular ready-made solvers. These are mainly for use by the demos, but may be useful elsewhere. Particularly, stabilized Navier-Stokes and advection-diffusion solvers are provided.
 
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [Features](#features)
+    - [Mesh utilities](#mesh-utilities)
+    - [Plotting](#plotting)
+    - [Mesh I/O](#mesh-io)
+- [Demos (with pictures!)](#demos-with-pictures)
+    - [DOF numbering related](#dof-numbering-related)
+    - [Patch averaging](#patch-averaging)
+    - [Poisson equation](#poisson-equation)
+    - [Gmsh mesh import](#gmsh-mesh-import)
+    - [Navier-Stokes (incompressible flow)](#navier-stokes-incompressible-flow)
+    - [Coupled problem (one-way, staged)](#coupled-problem-one-way-staged)
+    - [Boussinesq flow (natural convection, two-way coupled problem)](#boussinesq-flow-natural-convection-two-way-coupled-problem)
+    - [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
+- [Dependencies](#dependencies)
+- [Install & uninstall](#install--uninstall)
+    - [From source](#from-source)
+- [License](#license)
+- [Thanks](#thanks)
+
+<!-- markdown-toc end -->
+
 
 ## Features
 
-*Supported mesh dimensionalities are indicated in brackets.*
+*Supported mesh dimensionalities are indicated in brackets. MPI is supported, unless indicated "serial only".*
 
-*MPI is supported, unless indicated "serial only".*
+### Mesh utilities
 
- - **Mesh I/O**
-   - `import_gmsh` [**2D**, **3D**] [**serial only**]
-     - Easily import a [Gmsh](https://gmsh.info/) mesh into FEniCS via [`meshio`](https://github.com/nschloe/meshio). Fire-and-forget convenience function for this common use case, to cover the gap created by the deprecation of the old `dolfin-convert`.
-     - Simplicial meshes (triangles, tetrahedra) only.
-     - Outputs a single HDF5 file with three datasets: `/mesh`, `/domain_parts` (physical cells i.e. subdomains), and `/boundary_parts` (physical facets i.e. boundaries).
-   - `read_hdf5_mesh` [**2D**, **3D**]
-     - Read in an imported mesh, and its physical cell and facet data.
-     - When running in parallel, we let FEniCS create a fresh MPI partitioning (so that it does not matter how many processes were running when the mesh file was written).
-   - `write_hdf5_mesh` [**2D**, **3D**]
-     - Write a mesh, and optionally its physical cell and facet data, in the same format as the output of `import_gmsh`.
- - **Mesh utilities**
    - `find_subdomain_boundaries` [**2D**, **3D**] [**serial only**]
      - Automatically tag facets on internal boundaries between two subdomains. This makes it easier to respect [DRY](https://en.wikipedia.org/wiki/Don't_repeat_yourself) when setting up a small problem for testing, as the internal boundaries only need to be defined in one place (in the actual geometry).
      - Tag also facets belonging to an outer boundary of the domain, via a callback function (that you provide) that gives the tag number for a given facet. This allows easily producing one `MeshFunction` with tags for all boundaries.
@@ -52,7 +65,9 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
        - If you don't care about the aesthetics, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.midpoint_refine(mesh)` works just as well.
      - `map_refined_P1` supports both scalar and vector function spaces. Not tested on tensor fields yet.
      - For full usage examples, see [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) (vector), [`demo.coupled.main02_heat`](demo/coupled/main02_heat.py) (scalar), and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) (both).
- - **Plotting**
+
+### Plotting
+
    - `mpiplot` [**2D**]
      - Plot the *whole* solution in the root process while running in parallel. For quick on-the-fly visualization.
        - The full triangulation is automatically pieced together from all the MPI processes. For implementation simplicity, the visualization always uses linear triangle elements; other degrees are interpolated onto `P1`.
@@ -64,8 +79,20 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Visualize whether the boundaries of a 2D mesh have been tagged as expected. Debug tool, for use when generating and importing meshes. This functionality is oddly missing from `dolfin.plot`.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
 
+### Mesh I/O
 
-## Running the demos
+   - `import_gmsh` [**2D**, **3D**] [**serial only**]
+     - Easily import a [Gmsh](https://gmsh.info/) mesh into FEniCS via [`meshio`](https://github.com/nschloe/meshio). Fire-and-forget convenience function for this common use case, to cover the gap created by the deprecation of the old `dolfin-convert`.
+     - Simplicial meshes (triangles, tetrahedra) only.
+     - Outputs a single HDF5 file with three datasets: `/mesh`, `/domain_parts` (physical cells i.e. subdomains), and `/boundary_parts` (physical facets i.e. boundaries).
+   - `read_hdf5_mesh` [**2D**, **3D**]
+     - Read in an imported mesh, and its physical cell and facet data.
+     - When running in parallel, we let FEniCS create a fresh MPI partitioning (so that it does not matter how many processes were running when the mesh file was written).
+   - `write_hdf5_mesh` [**2D**, **3D**]
+     - Write a mesh, and optionally its physical cell and facet data, in the same format as the output of `import_gmsh`.
+
+
+## Demos (with pictures!)
 
 With a terminal **in the top level directory of the project**, demos are run as Python modules. This will use the version of `extrafeathers` in the source tree (instead of an installed one, if any).
 
@@ -73,21 +100,76 @@ Output of all demos will appear various subfolders of the `demo/output/` folder,
 
 Gmsh `.msh` files and their original `.geo` files can be found in the [`demo/meshes/`](demo/meshes/) folder.
 
-To run the **Poisson** demo,
+
+### DOF numbering related
 
 ```bash
-python -m demo.poisson  # serial
-mpirun python -m demo.poisson  # parallel
+python -m demo.dofnumbering
+mpirun -n 2 python -m demo.dofnumbering
+mpirun python -m demo.dofnumbering
 ```
 
-To run the **Navier-Stokes** demo, with **uniform mesh generated via `mshr`**:
+![DOF numbering demo output](img/dofnumbering.png)
+
+The strong lines are element edges; the faint lines indicate the automatically generated subdivisions for visualization of the P2 function as a once-refined P1 function. Each P2 triangle is split into four P1 triangles for visualization.
 
 ```bash
-python -m demo.navier_stokes  # serial mode = generate HDF5 mesh file
-mpirun python -m demo.navier_stokes  # parallel mode = solve
+python -m demo.refelement
 ```
 
-To run the **Navier-Stokes** demo, with a **graded mesh imported from Gmsh**:
+![Reference element demo output](img/refelement.png)
+
+
+### Patch averaging
+
+```bash
+python -m demo.patch_average
+mpirun python -m demo.patch_average
+```
+
+![Patch average demo output](img/patchaverage.png)
+
+
+### Poisson equation
+
+The classic: the Poisson equation with zero Dirichlet BCs, here on an L-shaped domain. Simple example of `find_subdomain_boundaries` and `mpiplot`.
+
+```bash
+python -m demo.poisson
+mpirun python -m demo.poisson
+```
+
+![Poisson demo output](img/poisson.png)
+
+Poisson equation using symmetric interior penalty discontinuous Galerkin (SIPG) method. Example of `cell_mf_to_expression` and `meshsize`, as well as showing that `mpiplot` can plot the mesh (optionally, displaying its MPI partitioning) on top of the function data:
+
+```bash
+python -m demo.poisson_dg
+mpirun python -m demo.poisson_dg
+```
+
+![Poisson dG demo output](img/poisson_dg.png)
+
+
+### Gmsh mesh import
+
+```bash
+python -m demo.import_gmsh
+```
+
+![Gmsh mesh import demo output](img/import_gmsh.png)
+
+
+### Navier-Stokes (incompressible flow)
+
+With **uniform mesh generated via `mshr`**:
+
+```bash
+python -m demo.navier_stokes   # serial mode = generate HDF5 mesh file
+mpirun python -m demo.navier_stokes   # parallel mode = solve
+```
+
+With a **graded mesh imported from Gmsh**:
 
 ```bash
 python -m demo.import_gmsh  # generate HDF5 mesh file, overwriting the earlier one
@@ -96,13 +178,16 @@ mpirun python -m demo.navier_stokes
 
 The Navier-Stokes demo supports solving only in parallel, because even a simple 2D [CFD](https://en.wikipedia.org/wiki/Computational_fluid_dynamics) problem requires so much computing power that it makes no sense to run it serially on a garden-variety multicore laptop. Also, this way we can keep the script as simple as possible, and just abuse the MPI group size to decide what to do, instead of building a proper command-line interface using [`argparse`](https://docs.python.org/3/library/argparse.html).
 
-To run the **coupled problem** (one-way, staged) demo:
+![Navier-Stokes demo output](img/navier_stokes.png)
 
-This demo uses the same HDF5 mesh file as the Navier-Stokes demo. Create it with one of:
+
+### Coupled problem (one-way, staged)
+
+This demo uses the same HDF5 mesh file as the *Navier-Stokes* demo. Create it with one of:
 
 ```bash
-python -m demo.import_gmsh
-python -m demo.coupled.main00_mesh
+python -m demo.import_gmsh  # graded mesh from Gmsh
+python -m demo.coupled.main00_mesh  # internal uniform mshr mesh
 ```
 
 If you want flow over *two* cylinders instead of just one, there's another Gmsh `.msh` file for that. To import it:
@@ -124,7 +209,8 @@ Be sure to wait until the flow simulation completes before running the heat simu
 
 Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/config.py), as well as the parameters for internal `mshr` mesh generation using [`demo.coupled.main00_mesh`](demo/coupled/main00_mesh.py).
 
-To run the **Boussinesq flow** (natural convection, two-way coupled problem) demo:
+
+### Boussinesq flow (natural convection, two-way coupled problem)
 
 ```bash
 python -m demo.boussinesq.main00_mesh
