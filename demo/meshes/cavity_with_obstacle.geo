@@ -3,7 +3,7 @@
 elsize_obstacle = 0.01 / 2;
 elsize_bottom = 0.02;
 elsize_middle = 0.04;
-elsize_top = 0.08;
+elsize_top = 0.08 * 4;
 
 // --------------------------------------------------------------------------------
 
@@ -11,12 +11,13 @@ elsize_top = 0.08;
 xmin = 0.0;
 xmax = 0.6;
 ymin = 0.0;
-ymax = 1.6;
+ymax = 3.0;
+ymid = 0.75;
 Point(1) = {xmin, ymin, 0, 1.0};  // x, y, z, [mesh element size]
-Point(10) = {xmin, (ymin + ymax) / 2.0, 0, 1.0};
+Point(10) = {xmin, ymid, 0, 1.0};
 Point(2) = {xmin, ymax, 0, 1.0};
 Point(3) = {xmax, ymax, 0, 1.0};
-Point(11) = {xmax, (ymin + ymax) / 2.0, 0, 1.0};
+Point(11) = {xmax, ymid, 0, 1.0};
 Point(4) = {xmax, ymin, 0, 1.0};
 Line(1) = {1, 10};
 Line(12) = {10, 2};
