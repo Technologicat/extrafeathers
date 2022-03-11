@@ -194,9 +194,10 @@ def all_cells(V: dolfin.FunctionSpace, *,
 
     # Combine the cell connectivity lists from all MPI processes.
     # The result is a single rank-2 array, with each row the global DOF numbers for a cell, e.g.:
-    # in:  [[i1, i2, i3], ...], [[j1, j2, j3], ...], ...
-    # out: [[i1, i2, i3], ..., [j1, j2, j3], ...]
-    cells = np.concatenate(cells)
+    #   in:  [[i1, i2, i3], ...], [[j1, j2, j3], ...], ...
+    #   out: [[i1, i2, i3], ..., [j1, j2, j3], ...]
+    # Drop empty lists when combining (in case some MPI process doesn't have any cells)
+    cells = np.concatenate([c for c in cells if c])
 
     # Combine the global DOF index to DOF coordinates mappings from all MPI processes.
     # After this step, each global DOF should have a corresponding vertex.
