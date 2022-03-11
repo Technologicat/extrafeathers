@@ -238,7 +238,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                  aux_color: str = "#80808020",
                  show_aux: bool = True,
                  show_partitioning: bool = False,
-                 _triangulation=None) -> typing.Optional[typing.Any]:
+                 _triangulation=None,
+                 **kwargs) -> typing.Optional[typing.Any]:
     """Plot the mesh of a `FunctionSpace`.
 
     2D triangle meshes only.
@@ -254,6 +255,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     `show_partitioning`: If `True`, color-code the mesh parts for different
                          MPI ranks. You can use `matplotlib.pyplot.legend`
                          to show which is which.
+    `kwargs`: passed through to `matplotlib.pyplot.triplot`.
 
     `_triangulation` allows skipping the expensive auto-generation of a
     Matplotlib triangulation of the mesh, in case you already happen to
@@ -279,13 +281,14 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             if dolfin.MPI.comm_world.rank == 0:
                 all_edges_colors = colors20 if V.ufl_element().degree() > 1 else colors40
                 for k, tri in enumerate(all_triangulations):
-                    plt.triplot(tri, color=all_edges_colors[k % len(all_edges_colors)])
+                    plt.triplot(tri, color=all_edges_colors[k % len(all_edges_colors)],
+                                **kwargs)
         if V.ufl_element().degree() > 1:
             my_triangulation = as_mpl_triangulation(V, mpi_global=False, refine=False)
             all_triangulations = dolfin.MPI.comm_world.gather(my_triangulation, root=0)
             if dolfin.MPI.comm_world.rank == 0:
                 for k, tri in enumerate(all_triangulations):
-                    plt.triplot(tri, color=colors40[k % len(colors40)])
+                    plt.triplot(tri, color=colors40[k % len(colors40)], **kwargs)
         # Each legend entry from `triplot` is doubled for some reason,
         # so plot a dummy point (at NaN so it won't be drawn) with
         # each of the line colors and label them.
@@ -302,11 +305,11 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     if show_aux or V.ufl_element().degree() <= 1:
         if dolfin.MPI.comm_world.rank == 0:
             all_edges_color = aux_color if V.ufl_element().degree() > 1 else main_color
-            main_plot = plt.triplot(_triangulation, color=all_edges_color)
+            main_plot = plt.triplot(_triangulation, color=all_edges_color, **kwargs)
     if V.ufl_element().degree() > 1:
         element_edges = as_mpl_triangulation(V, refine=False)
         if dolfin.MPI.comm_world.rank == 0:
-            main_plot = plt.triplot(element_edges, color=main_color)
+            main_plot = plt.triplot(element_edges, color=main_color, **kwargs)
     return main_plot
 
 
