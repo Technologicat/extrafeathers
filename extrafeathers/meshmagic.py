@@ -574,18 +574,19 @@ def patch_average(f: dolfin.Function,
                                                   dolfin.VectorFunctionSpace,
                                                   dolfin.TensorFunctionSpace]] = None,
                   VtoW: typing.Optional[typing.Dict[int, np.array]] = None) -> dolfin.Function:
-    """Patch-average the P1 `Function` `f`, returning the result as a new P1 function.
+    """Patch-average the `Function` `f` into a new function on the same function space.
 
     Useful as a postprocess step in some nonconforming methods (can eliminate some
     checkerboard modes).
+
+      `f`: a scalar FEM function with nodal DOFs.
 
     The optional arguments allow skipping the expensive patch extraction and
     DOF mapping step when there is a need to patch-average functions in a loop.
     They are also mandatory if `f` is a vector or tensor function.
 
       `W`: The dG0 space associated with `V = f.function_space()`.
-           Used for computing the patch average.
-      `VtoW`: Mapping of DOFs of V onto patches of DOFs of W
+      `VtoW`: Mapping, each global DOF of V onto an np.array of DOFs of W
 
     If you use either, both must be specified. To use the optional arguments,
     set them up like this::
@@ -599,6 +600,50 @@ def patch_average(f: dolfin.Function,
 
     Note `W` should be a `FunctionSpace`, `VectorFunctionSpace`, or
     `TensorFunctionSpace`, as appropriate (i.e. the same kind `V` is).
+
+
+    **Algorithm**:
+
+      1) L2-project `f` onto the dG0 space `W`, i.e. solve for `w` such that:
+             ∫ v w dΩ = ∫ v f dΩ  ∀ v ∈ W
+      2) For each DOF of `V`, average the dG0 cell values over the patch of cells
+         connected to that DOF.
+      3) Define a new function on `V`, setting the patch averages from step 2
+         as the values of its DOFs.
+
+    **Notes**:
+
+    There is a related discussion in Hughes (sec. 4.4.1) on pressure smoothing.
+    The difference is that our `f` is C0 continuous, and the least-squares averaging
+    is performed in projection onto dG0. Hughes, on the other hand, starts from a
+    piecewise constant (i.e. dG0) function, and performs least-squares averaging in
+    projection of that function onto a C0 continuous finite element space.
+
+    Consider representing `w` as a Galerkin series:
+
+        w := ∑k wk φk,
+
+    where wk are the coefficients, and φk ∈ W are the basis functions. Minimizing
+    (w - f)² in a least-squares sense means that must find coefficients wk such that:
+
+        0 = ∂/∂wi ∫ (w - f)² dΩ  (∀ i)
+          = ∂/∂wi ∫ (∑i wi φi - f) (∑k wk φk - f) dΩ
+          = ∫ φi (∑k wk φk - f) dΩ
+          = ∑k wk ∫ φi φk dΩ - ∫ φi f dΩ
+
+    (This extremum is guaranteed to be a minimum, because the expression is quadratic
+     in w, with a positive leading term.)
+
+    In other words:
+
+        ∑k ∫ φi φk dΩ wk = ∫ φi f dΩ  (∀ i)
+
+    which is exactly the Galerkin discretization of the L2 projection onto `W`.
+
+    References:
+        Thomas J. R. Hughes. 2000. The Finite Element Method: Linear Static and Dynamic
+        Finite Element Analysis. Dover. Corrected and updated reprint of the 1987 edition.
+        ISBN 978-0-486-41181-1.
     """
     if W:
         if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
