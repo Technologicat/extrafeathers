@@ -7,6 +7,7 @@
 - `mpiplot` now works correctly for tensor/vector component functions (`mpiplot(u.sub(k))`)
   - The global DOF numbers are now correctly mapped to vertices of the Matplotlib triangulation.
 - `mpiplot` now L2-projects (instead of interpolating) if the input is not P1, P2 or P3.
+- `all_cells` no longer crashes if some MPI process has no cells.
 - **Fixes to solvers**:
   - [`pdes.navier_stokes`](extrafeathers/pdes/navier_stokes.py):
     - Zero out mean pressure only if no Dirichlet BCs on pressure (e.g. cavity flow test cases are like this).
