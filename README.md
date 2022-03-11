@@ -1,5 +1,5 @@
 <p align="center">
-<img src="extrafeathers-logo.png" alt="Extrafeathers"/>
+<img src="img/extrafeathers-logo.png" alt="Extrafeathers"/>
 </p>
 
 **Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2** and **P3** meshes. Mesh import and closely related utilities run only serially. Most of our utilities do support 3D meshes, but this is currently not a priority.
@@ -98,7 +98,9 @@ With a terminal **in the top level directory of the project**, demos are run as 
 
 Output of all demos will appear various subfolders of the `demo/output/` folder, which is automatically created if not present.
 
-Gmsh `.msh` files and their original `.geo` files can be found in the [`demo/meshes/`](demo/meshes/) folder.
+Gmsh `.msh` files and the original `.geo` files to generate them can be found in the [`demo/meshes/`](demo/meshes/) folder.
+
+*For judging the run time of the examples that display it on the screenshot, the demos were run in MPI mode, on four cores on a laptop with an Intel i7 4710-MQ @ 2.50 GHz CPU. Newer CPUs and especially desktop PCs are probably somewhat faster. Peak memory usage was under 1GB for the four MPI processes in total, due to the 2D nature of the examples, and appropriately graded meshes to focus the allocation of DOFs into those parts of the domain where the resolution is actually needed.*
 
 
 ### DOF numbering related
@@ -175,12 +177,14 @@ python -m demo.navier_stokes   # serial mode = generate HDF5 mesh file
 mpirun python -m demo.navier_stokes   # parallel mode = solve
 ```
 
-With a **graded mesh imported from Gmsh**:
+With a **graded mesh imported from Gmsh** (generated from [`demo/meshes/flow_over_cylinder.geo`](demo/meshes/flow_over_cylinder.geo)):
 
 ```bash
 python -m demo.import_gmsh  # generate HDF5 mesh file, overwriting the earlier one
 mpirun python -m demo.navier_stokes
 ```
+
+The Gmsh mesh is recommended, to place the DOFs where they matter the most. Keep in mind [Gresho & Sani](https://www.wiley.com/en-us/Incompressible+Flow+and+the+Finite+Element+Method%2C+Volume+1%3A+Advection+Diffusion+and+Isothermal+Laminar+Flow-p-9780471492498).
 
 The Navier-Stokes demo supports solving only in parallel, because even a simple 2D [CFD](https://en.wikipedia.org/wiki/Computational_fluid_dynamics) problem requires so much computing power that it makes no sense to run it serially on a garden-variety multicore laptop. Also, this way we can keep the script as simple as possible, and just abuse the MPI group size to decide what to do, instead of building a proper command-line interface using [`argparse`](https://docs.python.org/3/library/argparse.html).
 
@@ -198,7 +202,7 @@ python -m demo.import_gmsh  # graded mesh from Gmsh
 python -m demo.coupled.main00_mesh  # internal uniform mshr mesh
 ```
 
-If you want flow over *two* cylinders instead of just one, there's another Gmsh `.msh` file for that. To import it:
+If you want flow over *two* cylinders instead of just one, we provide [another Gmsh mesh](demo/meshes/flow_over_two_cylinders.geo) for that. To import it:
 
 ```bash
 python -m demo.coupled.main00_alternative_mesh
@@ -219,23 +223,29 @@ Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/
 
 ![Coupled problem demo output (flow field)](img/coupled01.png)
 
-*Flow over a cylinder using the improved, stabilized solver. P2P1 (Taylor-Hood) elements.*
+*Flow over a cylinder using the improved, stabilized solver. P2P1 (Taylor-Hood) elements. SUPG and LSIC stabilization, and skew-symmetric advection.*
 
 ![Coupled problem demo output (temperature field)](img/coupled02.png)
 
-*Temperature field advected by the flow. P2 elements.*
+*Temperature field advected by the flow. P2 elements. SUPG stabilization and skew-symmetric advection.*
 
 
 ### Boussinesq flow (natural convection, two-way coupled problem)
 
+This demo has its own Gmsh mesh; see [`demo/meshes/cavity_with_obstacle.geo`](demo/meshes/cavity_with_obstacle.geo).
+
 ```bash
-python -m demo.boussinesq.main00_mesh
+python -m demo.boussinesq.main00_mesh  # import Gmsh mesh
 mpirun python -m demo.boussinesq.main01_solve
 ```
 
 The solver supports both serial and parallel mode; parallel mode is recommended.
 
 Some simulation parameters can be found in [`demo.boussinesq.config`](demo/boussinesq/config.py).
+
+![Boussinesq demo output](img/boussinesq.png)
+
+*Note the orientation; gravity has been added to the model, pointing down in the image. The [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)) automatically generates the hydrostatic pressure. Flow solved using P2P1 (Taylor-Hood) elements, SUPG and LSIC stabilization, and skew-symmetric advection. Temperature solved using P2 elements, SUPG stabilization, and skew-symmetric advection.*
 
 
 ### What's up with the Unicode variable names?
