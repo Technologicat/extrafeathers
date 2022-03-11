@@ -38,8 +38,7 @@ from .meshmagic import all_cells, my_cells, nodes_to_array
 # https://matplotlib.org/stable/tutorials/intermediate/color_cycle.html
 colors = [item["color"] for item in mpl.rcParams["axes.prop_cycle"]]
 
-# Mix translucent versions for plotting MPI partitioning.
-# `colors` must be in "#rrggbb" format for this to work.
+# Mix translucent versions. `colors` must be in "#rrggbb" format for this to work.
 def _colors_with_alpha(aa):
     return [f"{color}{aa}" for color in colors]
 colors20 = _colors_with_alpha("20")
