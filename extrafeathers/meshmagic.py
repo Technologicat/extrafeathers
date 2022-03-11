@@ -683,7 +683,8 @@ def patch_average(f: dolfin.Function,
     averages = np.empty(len(my_V_dofs), dtype=np.float64)
     for k, global_V_dof in enumerate(my_V_dofs):
         global_W_dofs = VtoW[global_V_dof]
-        averages[k] = dG0_vec_copy[global_W_dofs].sum() / len(global_W_dofs)  # TODO: weight by cell size
+        # TODO: weight by `cell.volume()` (and divide by sum of volumes for patch)
+        averages[k] = dG0_vec_copy[global_W_dofs].sum() / len(global_W_dofs)
 
     f_pavg = dolfin.Function(V)
     f_pavg.vector()[:] = averages  # MPI-enabled, must run in all processes
