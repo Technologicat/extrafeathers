@@ -573,16 +573,20 @@ def patch_average(f: dolfin.Function,
                   W: typing.Optional[typing.Union[dolfin.FunctionSpace,
                                                   dolfin.VectorFunctionSpace,
                                                   dolfin.TensorFunctionSpace]] = None,
-                  VtoW: typing.Optional[typing.Dict[int, np.array]] = None) -> dolfin.Function:
+                  VtoW: typing.Optional[typing.Dict[int, np.array]] = None,
+                  *, mode: str = "project") -> dolfin.Function:
     """Patch-average the `Function` `f` into a new function on the same function space.
 
     Useful as a postprocess step in some nonconforming methods (can eliminate some
     checkerboard modes).
 
       `f`: a scalar FEM function with nodal DOFs.
+      `mode`: how to produce the piecewise constant cell values (which will be averaged
+              to compute the patch average). One of "project", "interpolate". These
+              correspond to using the DOLFIN function of the same name.
 
-    The optional arguments allow skipping the expensive patch extraction and
-    DOF mapping step when there is a need to patch-average functions in a loop.
+    The optional arguments `W` and `VtoW` allow skipping the expensive patch extraction
+    and DOF mapping step when there is a need to patch-average functions in a loop.
     They are also mandatory if `f` is a vector or tensor function.
 
       `W`: The dG0 space associated with `V = f.function_space()`.
@@ -604,6 +608,8 @@ def patch_average(f: dolfin.Function,
 
     **Algorithm**:
 
+    In "project" mode:
+
       1) L2-project `f` onto the dG0 space `W`, i.e. solve for `w` such that:
              ∫ v w dΩ = ∫ v f dΩ  ∀ v ∈ W
       2) For each DOF of `V`, average the dG0 cell values over the patch of cells
@@ -611,7 +617,10 @@ def patch_average(f: dolfin.Function,
       3) Define a new function on `V`, setting the patch averages from step 2
          as the values of its DOFs.
 
-    **Notes**:
+    In "interpolate" mode, step 1 is changed to just sample `f` at the cell midpoints
+    to produce the dG0 function.
+
+    **Notes** on "project" mode:
 
     There is a related discussion in Hughes (sec. 4.4.1) on pressure smoothing.
     The difference is that our `f` is C0 continuous, and the least-squares averaging
@@ -645,6 +654,8 @@ def patch_average(f: dolfin.Function,
         Finite Element Analysis. Dover. Corrected and updated reprint of the 1987 edition.
         ISBN 978-0-486-41181-1.
     """
+    if mode not in ("project", "interpolate"):
+        raise ValueError(f"Expected `mode` to be one of 'project', 'interpolate'; got {mode}")
     if W:
         if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
                 W.ufl_element().degree() == 0):
@@ -657,8 +668,8 @@ def patch_average(f: dolfin.Function,
         W = dolfin.FunctionSpace(V.mesh(), 'DG', 0)
         VtoW = map_dG0(V, W)
 
-    # Interpolate doesn't work in MPI mode (different partitioning of V and W).
-    f_dG0: dolfin.Function = dolfin.project(f, W)
+    P = dolfin.interpolate if mode == "interpolate" else dolfin.project
+    f_dG0: dolfin.Function = P(f, W)
 
     # Make a local copy of the whole dG0 DOF vector in all processes.
     all_W_dofs = np.array(range(W.dim()), "intc")
@@ -670,7 +681,7 @@ def patch_average(f: dolfin.Function,
     averages = np.empty(len(my_V_dofs), dtype=np.float64)
     for k, global_V_dof in enumerate(my_V_dofs):
         global_W_dofs = VtoW[global_V_dof]
-        averages[k] = dG0_vec_copy[global_W_dofs].sum() / len(global_W_dofs)
+        averages[k] = dG0_vec_copy[global_W_dofs].sum() / len(global_W_dofs)  # TODO: weight by cell size
 
     f_pavg = dolfin.Function(V)
     f_pavg.vector()[:] = averages  # MPI-enabled, must run in all processes
