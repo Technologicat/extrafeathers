@@ -37,7 +37,7 @@ mesh = UnitSquareMesh(N, N)
 # mesh = generate_mesh(domain, N)
 
 # Note dG0 won't work, because we need to take the gradient.
-V = FunctionSpace(mesh, "DG", 1)
+V = FunctionSpace(mesh, "DG", 2)
 # V = FunctionSpace(mesh, "P", 1)  # for classical Galerkin
 u = TrialFunction(V)
 v = TestFunction(V)
@@ -175,7 +175,7 @@ xdmffile_u.write(u_, 0)  # (field, time)
 
 if MPI.comm_world.rank == 0:
     print("Plotting.")
-theplot = extrafeathers.mpiplot(u_, show_mesh=True)
+theplot = extrafeathers.mpiplot(u_, show_mesh=True, show_partitioning=True)
 if MPI.comm_world.rank == 0:
     plt.colorbar(theplot)
     plt.title(f"Poisson with dG({V.ufl_element().degree()}) + SIPG")
