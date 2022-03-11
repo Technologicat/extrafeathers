@@ -172,18 +172,34 @@ class NavierStokes:
     (a.k.a. the Ladyzhenskaya–Babuška–Brezzi condition) for the linear form
     b(v, q) := ∫ (∇·v) q dΩ (see Brenner & Scott, sec. 12.5, 12.6).
 
-    Taylor-Hood (a.k.a. P2P1) elements are the classical choice; choose `P2` for `V`
-    and `P1` for `Q`. Q2Q1 works, too.
+    Taylor-Hood (a.k.a. P2P1) elements are the classical LBB-compatible choice;
+    choose `P2` for `V` and `P1` for `Q`. Q2Q1 works, too.
 
     It is nontrivial to tell whether an arbitrary pair of `V` and `Q` are LBB-compatible
     or not. A typical symptom of an LBB violation are high spatial frequency numerical
     pressure oscillations.
 
-    Non-compatible elements (e.g. P1P1 or Q1Q1) can be made to work by patch-averaging
-    the pressure field between timesteps using a least-squares approach (see `patch_average`),
-    which reduces oscillations at the size scale of a single element. This technique is
-    sometimes used in elasticity, where mixed formulations run into the same issue.
-    See Hughes, sec. 4.4.1 and app. 4.II.
+    Non-compatible discretizations (e.g. P1P1 or Q1Q1) can be made to work by postprocessing
+    the pressure field between timesteps with a least-squares smoother, thereby reducing
+    oscillations at the scale of the local element size. This technique is sometimes
+    used in elasticity, where mixed formulations run into the same issue. See Hughes,
+    sec. 4.4.1 and appendix 4.II. Hughes particularly notes that in order for the smoothing
+    to have the desired effect, it should be based on a least-squares approach.
+
+    To perform such smoothing, you can e.g.::
+
+        from dolfin import project, interpolate, FunctionSpace
+        Qproj = FunctionSpace(Q.mesh(), "DG", 0)
+
+    where `Q` is your pressure function space, and then in your timestep loop::
+
+        solver.step()
+        solver.p_.assign(project(interpolate(solver.p_, Qproj), Q))
+        solver.commit()
+
+    where `solver` is your `NavierStokes` instance. Classical patch averaging
+    (projecting onto dG0 and then averaging the resulting piecewise constant field)
+    is also available as `extrafeathers.patch_average`.
 
     References:
         Susanne C. Brenner & L. Ridgway Scott. 2010. The Mathematical Theory
