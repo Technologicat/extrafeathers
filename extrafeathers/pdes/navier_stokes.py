@@ -197,9 +197,15 @@ class NavierStokes:
         solver.p_.assign(project(interpolate(solver.p_, Qproj), Q))
         solver.commit()
 
-    where `solver` is your `NavierStokes` instance. Classical patch averaging
-    (projecting onto dG0 and then averaging the resulting piecewise constant field)
-    is also available as `extrafeathers.patch_average`.
+    where `solver` is your `NavierStokes` instance. Technically, we should::
+
+        project(project(solver.p_, Qproj), Q)
+
+    but when `Q` is a P1 space, `project(interpolate(...))` produces the same result,
+    while being faster, since it only needs to solve one linear equation system (not two).
+
+    Classical patch averaging (projecting or interpolating onto dG0 and then averaging
+    the resulting piecewise constant field) is also available, as `patch_average`.
 
     References:
         Susanne C. Brenner & L. Ridgway Scott. 2010. The Mathematical Theory
