@@ -102,7 +102,7 @@ Gmsh `.msh` files and the original `.geo` files to generate them can be found in
 
 *For judging the run time of the examples that display it on the screenshot, the demos were run in MPI mode, on four cores on a laptop with an Intel i7 4710-MQ @ 2.50 GHz CPU. Newer CPUs and especially desktop PCs are probably somewhat faster.*
 
-*Peak memory usage was under 1GB for the four MPI processes in total, due to the 2D nature of the examples, and appropriately graded meshes to focus the allocation of DOFs into those parts of the domain where the resolution is actually needed.*
+*Peak memory usage was under 1GB for the four MPI processes in total, due to the 2D nature of the examples, and (for any but the most trivial examples) appropriately graded meshes to focus the allocation of DOFs into those parts of the domain where the resolution is actually needed.*
 
 
 ### DOF numbering related
