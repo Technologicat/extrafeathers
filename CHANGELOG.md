@@ -45,7 +45,7 @@
   - [`demo.refelement`](demo/refelement.py): visualize the DOF numbering on a P2 or P3 element (in 2D), both locally (reference element) and globally (on a very small triangle mesh on the unit square).
     - MPI mode draws these diagrams individually for each process.
   - [`demo.patch_average`](demo/patch_average.py): demo of the new `patch_average` function.
-  - [`demo.poisson_dg`](demo_poisson_dg.py): Poisson equation using symmetric interior penalty discontinuous Galerkin (SIPG) method.
+  - [`demo.poisson_dg`](demo/poisson_dg.py): Poisson equation using symmetric interior penalty discontinuous Galerkin (SIPG) method.
     - Based on existing FEniCS demos and various internet sources. The main motivation of having this here is to collect the relevant information and links into one place. Each term of the variational problem is commented in detail, conceptually different but similar-looking terms are kept separate (e.g. Nitsche vs. dG stabilization), and the formulation accounts for a general Dirichlet BC. Comments also explain how to add Neumann and Robin BCs.
 - **New other**:
   - [`countlines.py`](countlines.py) for project SLOC estimation. This is the same script as in `mcpyrate` and `unpythonic`.
