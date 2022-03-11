@@ -21,7 +21,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
     - [Poisson equation](#poisson-equation)
     - [Gmsh mesh import](#gmsh-mesh-import)
     - [Navier-Stokes (incompressible flow)](#navier-stokes-incompressible-flow)
-    - [Coupled problem (one-way, staged)](#coupled-problem-one-way-staged)
+    - [Temperature field in a flow (one-way coupled problem, staged)](#temperature-field-in-a-flow-one-way-coupled-problem-staged)
     - [Boussinesq flow (natural convection, two-way coupled problem)](#boussinesq-flow-natural-convection-two-way-coupled-problem)
     - [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
 - [Dependencies](#dependencies)
@@ -111,13 +111,15 @@ mpirun python -m demo.dofnumbering
 
 ![DOF numbering demo output](img/dofnumbering.png)
 
-The strong lines are element edges; the faint lines indicate the automatically generated subdivisions for visualization of the P2 function as a once-refined P1 function. Each P2 triangle is split into four P1 triangles for visualization.
+*The strong lines are element edges; the faint lines indicate the automatically generated subdivisions for visualization of the P2 function as a once-refined P1 function. Each P2 triangle is split into four P1 triangles for visualization.*
 
 ```bash
 python -m demo.refelement
 ```
 
 ![Reference element demo output](img/refelement.png)
+
+*Local and global DOF numbering for P1, P2 and P3 elements.*
 
 
 ### Patch averaging
@@ -150,6 +152,8 @@ mpirun python -m demo.poisson_dg
 
 ![Poisson dG demo output](img/poisson_dg.png)
 
+*Poisson equation with dG(2) elements. Note the visualization of the elements, and MPI mesh partitioning.*
+
 
 ### Gmsh mesh import
 
@@ -158,6 +162,8 @@ python -m demo.import_gmsh
 ```
 
 ![Gmsh mesh import demo output](img/import_gmsh.png)
+
+*Physical groups are extracted by the importer. Here the fluid and structure meshes are imported into separate `.h5` files.*
 
 
 ### Navier-Stokes (incompressible flow)
@@ -180,8 +186,10 @@ The Navier-Stokes demo supports solving only in parallel, because even a simple 
 
 ![Navier-Stokes demo output](img/navier_stokes.png)
 
+*Flow over a cylinder using P2P1 (Taylor-Hood) elements.*
 
-### Coupled problem (one-way, staged)
+
+### Temperature field in a flow (one-way coupled problem, staged)
 
 This demo uses the same HDF5 mesh file as the *Navier-Stokes* demo. Create it with one of:
 
@@ -208,6 +216,14 @@ These solvers support both serial and parallel mode; parallel mode is recommende
 Be sure to wait until the flow simulation completes before running the heat simulation; the heat solver gets its advection velocity field from the timeseries file written by the flow solver.
 
 Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/config.py), as well as the parameters for internal `mshr` mesh generation using [`demo.coupled.main00_mesh`](demo/coupled/main00_mesh.py).
+
+![Coupled problem demo output (flow field)](img/coupled01.png)
+
+*Flow over a cylinder using the improved, stabilized solver. P2P1 (Taylor-Hood) elements.*
+
+![Coupled problem demo output (temperature field)](img/coupled02.png)
+
+*Temperature field advected by the flow. P2 elements.*
 
 
 ### Boussinesq flow (natural convection, two-way coupled problem)
