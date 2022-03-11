@@ -6,10 +6,10 @@
 
 - `mpiplot` now works correctly for tensor/vector component functions (`mpiplot(u.sub(k))`)
 - `mpiplot` now L2-projects (instead of interpolating) if the input is not P1, P2 or P3.
-- Solvers:
+- **Fixes to solvers**:
   - `pdes.navier_stokes`: zero out mean pressure only if no Dirichlet BCs on pressure (e.g. cavity flow test cases are like this).
   - `solver.step()` now returns the number of Krylov iterations taken. See `pdes.navier_stokes` and `pdes.advection_diffusion` for details.
-- Demos:
+- **Fixes to demos**:
   - Fix Courant number computation.
   - Fix ETA computation: take maximum estimate across MPI processes.
   - Improve stabilizer status indicators.
