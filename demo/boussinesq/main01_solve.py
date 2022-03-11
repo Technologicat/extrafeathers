@@ -168,7 +168,14 @@ for n in range(nt):
     # If P1P1 discretization (which does not satisfy the LBB condition),
     # postprocess the pressure to kill off the checkerboard mode.
     if V.ufl_element().degree() == 1:
-        flowsolver.p_.assign(meshmagic.patch_average(flowsolver.p_, Qproj, QtoQproj))
+        # L2-project onto dG0, then patch-average onto P1:
+        # flowsolver.p_.assign(meshmagic.patch_average(flowsolver.p_, Qproj, QtoQproj))
+
+        # Pick cell midpoint value onto dG0, then L2-project to P1:
+        flowsolver.p_.assign(project(interpolate(flowsolver.p_, Qproj), Q))
+
+        # L2-project to dG0 and then back to P1:
+        # flowsolver.p_.assign(project(project(flowsolver.p_, Qproj), Q))
     flowsolver.commit()
     end()
     begin("Heat solve")
