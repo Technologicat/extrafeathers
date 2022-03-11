@@ -536,7 +536,7 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
     for subV, subW in spaces:
         if not (str(subW.ufl_element().family()) == "Discontinuous Lagrange" and
                 subW.ufl_element().degree() == 0):
-            raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {subW.ufl_element().family()} with degree {subW.ufl_element().degree()}")
+            raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {subW.ufl_element().family()} space with degree {subW.ufl_element().degree()}")
 
         # The MPI partitionings of V and W are in general different, so to be
         # able to do the matching, we must gather the data for the whole mesh.
@@ -648,7 +648,7 @@ def patch_average(f: dolfin.Function,
     if W:
         if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
                 W.ufl_element().degree() == 0):
-            raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} with degree {W.ufl_element().degree()}")
+            raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} space with degree {W.ufl_element().degree()}")
 
     V = f.function_space()
 
