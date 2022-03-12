@@ -107,6 +107,8 @@ Gmsh `.msh` files and the original `.geo` files to generate them can be found in
 
 ### DOF numbering related
 
+To illustrate how FEniCS numbers the global DOFs to maximize data locality:
+
 ```bash
 python -m demo.dofnumbering
 mpirun -n 2 python -m demo.dofnumbering
