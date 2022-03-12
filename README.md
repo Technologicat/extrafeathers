@@ -123,7 +123,7 @@ python -m demo.refelement
 
 ![Reference element demo output](img/refelement.png)
 
-*Local and global DOF numbering for P1, P2 and P3 elements.*
+*Local and global DOF numbering for P1, P2, P3, DP1, DP2, and DP3 elements.*
 
 
 ### Patch averaging
