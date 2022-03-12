@@ -20,8 +20,8 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
     - [Patch averaging](#patch-averaging)
     - [Poisson equation](#poisson-equation)
     - [Gmsh mesh import](#gmsh-mesh-import)
-    - [Navier-Stokes (incompressible flow)](#navier-stokes-incompressible-flow)
-    - [Temperature field in a flow (one-way coupled problem, staged)](#temperature-field-in-a-flow-one-way-coupled-problem-staged)
+    - [Incompressible flow (Navier-Stokes)](#incompressible-flow-navier-stokes)
+    - [Incompressible flow and temperature (one-way coupled problem)](#incompressible-flow-and-temperature-one-way-coupled-problem)
     - [Boussinesq flow (natural convection, two-way coupled problem)](#boussinesq-flow-natural-convection-two-way-coupled-problem)
     - [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
 - [Dependencies](#dependencies)
@@ -187,7 +187,7 @@ python -m demo.import_gmsh
 *Physical groups are extracted by the importer. Here the fluid and structure meshes are imported into separate `.h5` files.*
 
 
-### Navier-Stokes (incompressible flow)
+### Incompressible flow (Navier-Stokes)
 
 With **uniform mesh generated via `mshr`**:
 
@@ -212,7 +212,7 @@ The Navier-Stokes demo supports solving only in parallel, because even a simple 
 *Flow over a cylinder using P2P1 (Taylor-Hood) elements.*
 
 
-### Temperature field in a flow (one-way coupled problem, staged)
+### Incompressible flow and temperature (one-way coupled problem)
 
 This demo uses the same HDF5 mesh file as the *Navier-Stokes* demo. Create it with one of:
 
@@ -227,7 +227,7 @@ If you want flow over *two* cylinders instead of just one, we provide [another G
 python -m demo.coupled.main00_alternative_mesh
 ```
 
-Then to run the actual demo:
+The actual demo is run in two stages:
 
 ```bash
 mpirun python -m demo.coupled.main01_flow
