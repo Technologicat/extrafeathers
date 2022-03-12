@@ -23,7 +23,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
     - [Incompressible flow (Navier-Stokes)](#incompressible-flow-navier-stokes)
     - [Incompressible flow and temperature (one-way coupled problem)](#incompressible-flow-and-temperature-one-way-coupled-problem)
     - [Boussinesq flow (natural convection, two-way coupled problem)](#boussinesq-flow-natural-convection-two-way-coupled-problem)
-    - [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
+- [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
 - [Dependencies](#dependencies)
 - [Install & uninstall](#install--uninstall)
     - [From source](#from-source)
@@ -267,7 +267,7 @@ Some simulation parameters can be found in [`demo.boussinesq.config`](demo/bouss
 *Note the orientation; gravity has been added to the model, pointing down in the image. The [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)) automatically generates the hydrostatic pressure. Flow solved using P2P1 (Taylor-Hood) elements, SUPG and LSIC stabilization, and skew-symmetric advection. Temperature solved using P2 elements, SUPG stabilization, and skew-symmetric advection.*
 
 
-### What's up with the Unicode variable names?
+## What's up with the Unicode variable names?
 
 Looks more like math to use `ρ` instead of `rho`. Too bad Python doesn't accept `∇` or `∂` in variable names; with those, the PDEs would look [even better](https://github.com/gridap/Gridap.jl).
 
