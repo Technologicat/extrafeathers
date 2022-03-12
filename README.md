@@ -121,6 +121,19 @@ mpirun python -m demo.dofnumbering
 python -m demo.refelement
 ```
 
+Can also specify the element type:
+
+```bash
+python -m demo.refelement P1
+python -m demo.refelement P2
+python -m demo.refelement P3
+python -m demo.refelement DP1
+python -m demo.refelement DP2
+python -m demo.refelement DP3
+```
+
+Any of these works also in MPI mode, showing the MPI partitioning (coded by line color).
+
 ![Reference element demo output](img/refelement.png)
 
 *Local and global DOF numbering for P1, P2, P3, DP1, DP2, and DP3 elements.*
