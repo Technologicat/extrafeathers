@@ -119,6 +119,8 @@ mpirun python -m demo.dofnumbering
 
 *The strong lines are element edges; the faint lines indicate the automatically generated subdivisions for visualization of the P2 function as a once-refined P1 function. Each P2 triangle is split into four P1 triangles for visualization.*
 
+To see both the global and the reference-element DOF numbers on a 2×2 unit square mesh:
+
 ```bash
 python -m demo.refelement
 ```
