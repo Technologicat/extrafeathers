@@ -694,6 +694,10 @@ def patch_average(f: dolfin.Function,
         W = dolfin.FunctionSpace(V.mesh(), 'DG', 0)
         VtoW, Wtocell = map_dG0(V, W)
         cell_volume = cellvolume(W.mesh())
+    # TODO: API of `map_dG0`? Does a dict make sense at all?
+    assert set(Wtocell.keys()) == set(range(W.dim()))
+    # Dict[int, int] -> np.array[int], the row index is the key.
+    Wtocell = np.array([cell for global_W_dof, cell in sorted(Wtocell.items(), key=lambda item: item[0])])
 
     f_dG0: dolfin.Function = dolfin.project(f, W)
 
@@ -711,9 +715,9 @@ def patch_average(f: dolfin.Function,
     averages = np.empty(len(my_V_dofs), dtype=np.float64)
     for k, global_V_dof in enumerate(my_V_dofs):
         global_W_dofs = VtoW[global_V_dof]
-        cells = np.array([Wtocell[global_W_dof] for global_W_dof in global_W_dofs])
+        cells = Wtocell[global_W_dofs]
         patch_cell_volumes = all_cell_volumes[cells]
-        patch_total_volume = sum(patch_cell_volumes)
+        patch_total_volume = patch_cell_volumes.sum()
         averages[k] = (dG0_vec_copy[global_W_dofs] * patch_cell_volumes).sum() / patch_total_volume
 
     f_pavg = dolfin.Function(V)
