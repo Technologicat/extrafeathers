@@ -17,6 +17,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
 
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
+from extrafeathers import meshfunction
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
@@ -130,7 +131,8 @@ if V.ufl_element().degree() > 1 or W.ufl_element().degree() > 1:
 # We perform the expensive patch extraction just once at the start.
 if V.ufl_element().degree() == 1:
     Qproj = FunctionSpace(mesh, "DG", 0)
-    QtoQproj = meshmagic.map_dG0(Q, Qproj)
+    QtoQproj, Qprojtocell = meshmagic.map_dG0(Q, Qproj)
+    cell_volume = meshfunction.cellvolume(mesh)
 
 # Enable stabilizers for the Galerkin formulation
 flowsolver.stabilizers.SUPG = True  # stabilizer for advection-dominant flows
@@ -169,7 +171,7 @@ for n in range(nt):
     # postprocess the pressure to kill off the checkerboard mode.
     if V.ufl_element().degree() == 1:
         # L2-project onto dG0, then patch-average onto P1:
-        # flowsolver.p_.assign(meshmagic.patch_average(flowsolver.p_, Qproj, QtoQproj))
+        # flowsolver.p_.assign(meshmagic.patch_average(flowsolver.p_, Qproj, QtoQproj, Qprojtocell, cell_volume))
 
         # Pick cell midpoint value onto dG0, then L2-project to P1:
         flowsolver.p_.assign(project(interpolate(flowsolver.p_, Qproj), Q))

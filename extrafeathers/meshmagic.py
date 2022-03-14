@@ -19,6 +19,7 @@ import scipy.spatial.ckdtree
 import dolfin
 
 from .common import is_anticlockwise
+from .meshfunction import cellvolume
 
 
 # TODO: Does the refine belong here, or in `midpoint_refine` itself?
@@ -508,16 +509,16 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
                             dolfin.TensorFunctionSpace],
             W: typing.Union[dolfin.FunctionSpace,
                             dolfin.VectorFunctionSpace,
-                            dolfin.TensorFunctionSpace]) -> typing.Dict[int, np.array]:
-    """Map each global DOF of V to a patch of DOFs on dG0 space W.
+                            dolfin.TensorFunctionSpace]) -> typing.Tuple[typing.Dict[int, np.array],
+                                                                         typing.Dict[int, int]]:
+    """Map each global DOF of V to DOFs on dG0 space W.
 
-    That is, determine the W DOFs that contribute to each V DOF
-    if we were to patch-average a function on V by projecting it
-    to W (to get a representative value for each cell) and then
-    averaging the cell values appropriately.
+    That is, determine the W DOFs that contribute to each V DOF if we were
+    to patch-average a function on V by projecting it to W (to get a
+    representative value for each cell) and then averaging the cell values
+    appropriately.
 
-    The return value is a dict of rank-1 np.arrays, mapping the
-    global V DOF number to an array of global W DOF numbers.
+    The return value is `(V_dof_to_W_dofs, W_dof_to_cell)`.
     """
     if W.num_sub_spaces() != V.num_sub_spaces():
         raise ValueError(f"V and W must have as many subspaces; V has {V.num_sub_spaces()}, but W has {W.num_sub_spaces()}.")
@@ -530,6 +531,7 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
     else:
         spaces = [(V, W)]
     V_dof_to_W_dofs = {}
+    W_dof_to_cell_all = {}
 
     # Note that in MPI mode each process constructs its own full copy independently.
     seenV = set()
@@ -543,6 +545,7 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
         # able to do the matching, we must gather the data for the whole mesh.
 
         # Get the patches of cells connected to each global DOF of V.
+        # Note that for a vector/tensor space, multiple DOFs will map to the same set of cells.
         V_dof_to_cells = all_patches(subV)
 
         # Get the "patches" of the dG0 space W; each DOF of W is connected to just one cell.
@@ -550,9 +553,14 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
         W_dof_to_cells = all_patches(subW)
         assert all(len(cell_indices) == 1 for cell_indices in W_dof_to_cells.values())
 
-        # ...by inverting, so that each global cell maps to a DOF of W:
-        cell_to_W_dof = {cell_indices[0]: dof
+        W_dof_to_cell = {dof: cell_indices[0]
                          for dof, cell_indices in W_dof_to_cells.items()}
+        W_dof_to_cell_all.update(W_dof_to_cell)
+
+        # ...by inverting, so that each global cell maps to a DOF of W:
+        cell_to_W_dof = {cell_index: dof
+                         for dof, cell_index in W_dof_to_cell.items()}
+        W_dof_to_cell_all.update(W_dof_to_cell)
         assert len(cell_to_W_dof) == subW.mesh().num_entities_global(subW.mesh().topology().dim())
 
         # Map each global DOF of V to those DOFs of W that contribute to the patch.
@@ -568,7 +576,7 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
     # postconditions
     assert set(range(V.dim())) - seenV == set()  # all DOFs of V seen
     assert set(range(W.dim())) - seenW == set()  # all DOFs of W mapped to at least once
-    return V_dof_to_W_dofs
+    return V_dof_to_W_dofs, W_dof_to_cell_all
 
 # TODO: maybe this should just patch-average a dG0 function onto a target space `V`
 def patch_average(f: dolfin.Function,
@@ -576,53 +584,69 @@ def patch_average(f: dolfin.Function,
                                                   dolfin.VectorFunctionSpace,
                                                   dolfin.TensorFunctionSpace]] = None,
                   VtoW: typing.Optional[typing.Dict[int, np.array]] = None,
-                  *, mode: str = "project") -> dolfin.Function:
+                  Wtocell: typing.Optional[typing.Dict[int, int]] = None,
+                  cell_volume: typing.Optional[typing.Union[dolfin.Function,
+                                                            dolfin.Expression]] = None) -> dolfin.Function:
     """Patch-average the `Function` `f` into a new function on the same function space.
 
     Useful as a postprocess step in some nonconforming methods (can eliminate some
     checkerboard modes).
 
       `f`: a scalar FEM function with nodal DOFs.
-      `mode`: how to produce the piecewise constant cell values (which will be averaged
-              to compute the patch average). One of "project", "interpolate". These
-              correspond to using the DOLFIN function of the same name.
 
-    The optional arguments `W` and `VtoW` allow skipping the expensive patch extraction
-    and DOF mapping step when there is a need to patch-average functions in a loop.
+    The optional arguments allow skipping the expensive patch extraction and
+    DOF mapping step when there is a need to patch-average functions in a loop.
     They are also mandatory if `f` is a vector or tensor function.
 
       `W`: The dG0 space associated with `V = f.function_space()`.
-      `VtoW`: Mapping, each global DOF of V onto an np.array of DOFs of W
+      `VtoW`, `Wtocell`: as returned by `map_dG0`
+      `cell_volume`: The local cell volume of `W.mesh()`.
 
-    If you use either, both must be specified. To use the optional arguments,
-    set them up like this::
+    To use the optional arguments, set them up like this (and be sure to
+    set up all of them)::
 
         import dolfin
-        from extrafeathers import map_dG0
+        from extrafeathers import map_dG0, cellvolume
 
         V = f.function_space()
         W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
-        VtoW = map_dG0(V, W)
+        VtoW, Wtocell = map_dG0(V, W)
+        cell_volume = cellvolume(W.mesh())
 
     Note `W` should be a `FunctionSpace`, `VectorFunctionSpace`, or
     `TensorFunctionSpace`, as appropriate (i.e. the same kind `V` is).
 
 
-    **Algorithm**:
+    **CAUTION**:
 
-    In "project" mode:
+    Rather than patch-averaging, it is in general better to interpolate to a dG0
+    (elementwise constant) space and then project back to the input (continuous)
+    space::
+
+        import dolfin
+
+        W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
+        f_averaged = dolfin.project(dolfin.interpolate(f, W), V)
+
+    Patch-averaging gives the same result if `V` is a P1 space; in all other cases,
+    `project(interpolate(...))` does the same thing in spirit, but correctly.
+
+    This function is provided just because patch-averaging is a classical
+    postprocessing method.
+
+
+    **Algorithm**:
 
       1) L2-project `f` onto the dG0 space `W`, i.e. solve for `w` such that:
              ∫ v w dΩ = ∫ v f dΩ  ∀ v ∈ W
       2) For each DOF of `V`, average the dG0 cell values over the patch of cells
-         connected to that DOF.
+         connected to that DOF, weighted by the relative cell volume of each
+         contributing cell.
       3) Define a new function on `V`, setting the patch averages from step 2
          as the values of its DOFs.
 
-    In "interpolate" mode, step 1 is changed to just sample `f` at the cell midpoints
-    to produce the dG0 function.
 
-    **Notes** on "project" mode:
+    **Notes**:
 
     There is a related discussion in Hughes (sec. 4.4.1) on pressure smoothing.
     The difference is that our `f` is C0 continuous, and the least-squares averaging
@@ -656,35 +680,41 @@ def patch_average(f: dolfin.Function,
         Finite Element Analysis. Dover. Corrected and updated reprint of the 1987 edition.
         ISBN 978-0-486-41181-1.
     """
-    if mode not in ("project", "interpolate"):
-        raise ValueError(f"Expected `mode` to be one of 'project', 'interpolate'; got {mode}")
     if W:
         if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
                 W.ufl_element().degree() == 0):
             raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} space with degree {W.ufl_element().degree()}")
+    if any((W, VtoW, Wtocell, cell_volume)) and not all((W, VtoW, Wtocell, cell_volume)):
+        raise ValueError(f"When the optional arguments are used, all of them must be provided. Got W = {W}, VtoW = {VtoW}, Vtocells = {Wtocell}, cell_volume = {cell_volume}.")
 
     V = f.function_space()
 
     # Patch extraction and DOF mapping V -> W.
-    if not (W and VtoW):
+    if not (W and VtoW and Wtocell and cell_volume):
         W = dolfin.FunctionSpace(V.mesh(), 'DG', 0)
-        VtoW = map_dG0(V, W)
+        VtoW, Wtocell = map_dG0(V, W)
+        cell_volume = cellvolume(W.mesh())
 
-    P = dolfin.interpolate if mode == "interpolate" else dolfin.project
-    f_dG0: dolfin.Function = P(f, W)
+    f_dG0: dolfin.Function = dolfin.project(f, W)
 
     # Make a local copy of the whole dG0 DOF vector in all processes.
     all_W_dofs = np.array(range(W.dim()), "intc")
     dG0_vec_copy = dolfin.Vector(dolfin.MPI.comm_self)
     f_dG0.vector().gather(dG0_vec_copy, all_W_dofs)
 
+    # Also get a full copy of the cell volume vector in all processes.
+    all_cell_volumes = np.concatenate(dolfin.MPI.comm_world.allgather(cell_volume.array()))
+
     # Compute patch averages for V DOFs owned by this MPI process.
+    # (The patches may refer to cells not owned by this process.)
     my_V_dofs = V.dofmap().dofs()
     averages = np.empty(len(my_V_dofs), dtype=np.float64)
     for k, global_V_dof in enumerate(my_V_dofs):
         global_W_dofs = VtoW[global_V_dof]
-        # TODO: weight by `cell.volume()` (and divide by sum of volumes for patch)
-        averages[k] = dG0_vec_copy[global_W_dofs].sum() / len(global_W_dofs)
+        cells = np.array([Wtocell[global_W_dof] for global_W_dof in global_W_dofs])
+        patch_cell_volumes = all_cell_volumes[cells]
+        patch_total_volume = sum(patch_cell_volumes)
+        averages[k] = (dG0_vec_copy[global_W_dofs] * patch_cell_volumes).sum() / patch_total_volume
 
     f_pavg = dolfin.Function(V)
     f_pavg.vector()[:] = averages  # MPI-enabled, must run in all processes

@@ -27,11 +27,12 @@ g_pavg = extrafeathers.patch_average(g)
 # patch-average a vector field
 W = dolfin.VectorFunctionSpace(mesh, 'P', 1)
 Wproj = dolfin.VectorFunctionSpace(mesh, 'DG', 0)
-WtoWproj = extrafeathers.map_dG0(W, Wproj)
+WtoWproj, Wprojtocell = extrafeathers.map_dG0(W, Wproj)
+cell_volume = extrafeathers.cellvolume(W.mesh())
 f2 = dolfin.Expression(('sin(N/4 * 2 * pi * x[0])',
                         'sin(N/4 * 2 * pi * x[1])'), degree=2, N=N)
 g2 = dolfin.project(f2, W)
-g2_pavg = extrafeathers.patch_average(g2, Wproj, WtoWproj)
+g2_pavg = extrafeathers.patch_average(g2, Wproj, WtoWproj, Wprojtocell, cell_volume)
 
 # --------------------------------------------------------------------------------
 # Visualize

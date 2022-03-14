@@ -13,7 +13,7 @@
 """
 
 __all__ = ["specialize",
-           "meshsize",
+           "meshsize", "cellvolume",
            "cell_mf_to_expression"]
 
 import numpy as np
@@ -70,7 +70,9 @@ def specialize(f: dolfin.MeshFunction,
 
 def meshsize(mesh: dolfin.Mesh,
              kind: str = "cell") -> dolfin.MeshFunction:
-    """Return a `MeshFunction` that gives the local meshsize `h` on each cell or facet of `mesh`.
+    """Return the local meshsize `h` as a `MeshFunction` on cells or facets of `mesh`.
+
+    The local meshsize is defined as the length of the longest edge of the cell/facet.
 
     kind: "cell" or "facet"
     """
@@ -105,6 +107,15 @@ def meshsize(mesh: dolfin.Mesh,
             edge_lengths = [euclidean_distance(vtxpair) for vtxpair in vtxpairs]
             f[entity] = max(edge_lengths)
 
+    return f
+
+
+def cellvolume(mesh: dolfin.Mesh) -> dolfin.MeshFunction:
+    """Return the local cell volume as a `MeshFunction` on cells of `mesh`."""
+    f = dolfin.MeshFunction("double", mesh, mesh.topology().dim())
+    f.set_all(0.0)
+    for cell in dolfin.cells(mesh):
+        f[cell] = cell.volume()
     return f
 
 
