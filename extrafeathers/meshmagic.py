@@ -586,13 +586,17 @@ def patch_average(f: dolfin.Function,
                   VtoW: typing.Optional[typing.Dict[int, np.array]] = None,
                   Wtocell: typing.Optional[typing.Dict[int, int]] = None,
                   cell_volume: typing.Optional[typing.Union[dolfin.Function,
-                                                            dolfin.Expression]] = None) -> dolfin.Function:
+                                                            dolfin.Expression]] = None,
+                  *, mode: str = "project") -> dolfin.Function:
     """Patch-average the `Function` `f` into a new function on the same function space.
 
     Useful as a postprocess step in some nonconforming methods (can eliminate some
     checkerboard modes).
 
       `f`: a scalar FEM function with nodal DOFs.
+      `mode`: how to produce the piecewise constant cell values (which will be averaged
+              to compute the patch average). One of "project", "interpolate". These
+              correspond to using the DOLFIN function of the same name.
 
     The optional arguments allow skipping the expensive patch extraction and
     DOF mapping step when there is a need to patch-average functions in a loop.
@@ -637,6 +641,8 @@ def patch_average(f: dolfin.Function,
 
     **Algorithm**:
 
+    In "project" mode:
+
       1) L2-project `f` onto the dG0 space `W`, i.e. solve for `w` such that:
              ∫ v w dΩ = ∫ v f dΩ  ∀ v ∈ W
       2) For each DOF of `V`, average the dG0 cell values over the patch of cells
@@ -645,8 +651,11 @@ def patch_average(f: dolfin.Function,
       3) Define a new function on `V`, setting the patch averages from step 2
          as the values of its DOFs.
 
+    In "interpolate" mode, step 1 is changed to just sample `f` at the cell midpoints
+    to produce the dG0 function.
 
-    **Notes**:
+
+    **Notes** on "project" mode:
 
     There is a related discussion in Hughes (sec. 4.4.1) on pressure smoothing.
     The difference is that our `f` is C0 continuous, and the least-squares averaging
@@ -680,6 +689,8 @@ def patch_average(f: dolfin.Function,
         Finite Element Analysis. Dover. Corrected and updated reprint of the 1987 edition.
         ISBN 978-0-486-41181-1.
     """
+    if mode not in ("project", "interpolate"):
+        raise ValueError(f"Expected `mode` to be one of 'project', 'interpolate'; got {mode}")
     if W:
         if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
                 W.ufl_element().degree() == 0):
@@ -699,7 +710,8 @@ def patch_average(f: dolfin.Function,
     # Dict[int, int] -> np.array[int], the row index is the key.
     Wtocell = np.array([cell for global_W_dof, cell in sorted(Wtocell.items(), key=lambda item: item[0])])
 
-    f_dG0: dolfin.Function = dolfin.project(f, W)
+    P = dolfin.interpolate if mode == "interpolate" else dolfin.project
+    f_dG0: dolfin.Function = P(f, W)
 
     # Make a local copy of the whole dG0 DOF vector in all processes.
     all_W_dofs = np.array(range(W.dim()), "intc")
