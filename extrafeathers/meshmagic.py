@@ -685,7 +685,7 @@ def patch_average(f: dolfin.Function,
                 W.ufl_element().degree() == 0):
             raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} space with degree {W.ufl_element().degree()}")
     if any((W, VtoW, Wtocell, cell_volume)) and not all((W, VtoW, Wtocell, cell_volume)):
-        raise ValueError(f"When the optional arguments are used, all of them must be provided. Got W = {W}, VtoW = {VtoW}, Vtocells = {Wtocell}, cell_volume = {cell_volume}.")
+        raise ValueError(f"When the optional arguments are used, all of them must be provided. Got W = {W}, VtoW = {VtoW}, Wtocell = {Wtocell}, cell_volume = {cell_volume}.")
 
     V = f.function_space()
 
