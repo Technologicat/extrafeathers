@@ -208,6 +208,9 @@ if V.ufl_element().degree() > 1:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
 
+from dolfin import project
+Qproj = FunctionSpace(mesh, "DG", 0)
+
 # Enable stabilizers for the Galerkin formulation
 solver.stabilizers.SUPG = True  # stabilizer for advection-dominant flows
 solver.stabilizers.LSIC = True  # additional stabilizer for high Re
@@ -227,6 +230,8 @@ for n in range(nt):
 
     # Solve one timestep
     solver.step()
+    if V.ufl_element().degree() == 1:
+        solver.p_.assign(project(interpolate(solver.p_, Qproj), Q))
 
     begin("Saving")
 
