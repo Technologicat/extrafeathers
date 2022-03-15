@@ -30,7 +30,7 @@ from .config import (rho, c, k, dt, nt,
                      vis_T_filename, sol_T_filename,
                      sol_u_filename)
 
-my_rank = MPI.rank(MPI.comm_world)
+my_rank = MPI.comm_world.rank
 
 # Read mesh and boundary data from file
 mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_filename)
