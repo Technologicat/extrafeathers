@@ -49,7 +49,7 @@ from extrafeathers import autoboundary
 from extrafeathers import meshiowrapper
 from extrafeathers import plotmagic
 
-my_rank = MPI.rank(MPI.comm_world)
+my_rank = MPI.comm_world.rank
 
 # --------------------------------------------------------------------------------
 # Settings

@@ -23,7 +23,7 @@ from extrafeathers import plotmagic
 
 from demo.coupled.navier_stokes import NavierStokes
 
-my_rank = MPI.rank(MPI.comm_world)
+my_rank = MPI.comm_world.rank
 
 # --------------------------------------------------------------------------------
 # Settings

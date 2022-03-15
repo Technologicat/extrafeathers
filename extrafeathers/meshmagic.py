@@ -269,7 +269,7 @@ def make_mesh(cells: typing.List[typing.List[int]],
     else:
         mesh = dolfin.Mesh(dolfin.MPI.comm_self)  # mesh local to each MPI process
 
-    if not distributed or dolfin.MPI.rank(dolfin.MPI.comm_world) == 0:
+    if not distributed or dolfin.MPI.comm_world.rank == 0:
         editor = dolfin.MeshEditor()
         geometric_dim = np.shape(vertices)[1]
         topological_dim = geometric_dim  # TODO: get topological dimension from cell type.
