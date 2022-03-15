@@ -69,7 +69,6 @@ def pause(interval: float) -> None:
     So, we provide this a custom non-focus-stealing pause function hack,
     based on the StackOverflow answer by user @ImportanceOfBeingErnest:
         https://stackoverflow.com/a/45734500
-
     """
     backend = plt.rcParams['backend']
     if backend in mpl.rcsetup.interactive_bk:
