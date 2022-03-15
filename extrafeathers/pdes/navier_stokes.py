@@ -186,7 +186,8 @@ class NavierStokes:
     sec. 4.4.1 and appendix 4.II. Hughes particularly notes that in order for the smoothing
     to have the desired effect, it should be based on a least-squares approach.
 
-    To perform such smoothing, you can e.g.::
+    We perform least-squares smoothing automatically if `V` is a P1 space.
+    If you need to do it manually for some reason, you can e.g.::
 
         from dolfin import project, interpolate, FunctionSpace
         Qproj = FunctionSpace(Q.mesh(), "DG", 0)
@@ -233,6 +234,11 @@ class NavierStokes:
 
         self.V = V
         self.Q = Q
+        # EXPERIMENTAL:
+        # If P1P1 discretization (which does not satisfy the LBB condition),
+        # postprocess the pressure to kill off the checkerboard mode.
+        if self.V.ufl_element().degree() == 1:
+            self.Qproj = FunctionSpace(self.mesh, "DG", 0)
         self.bcu = bcu
         self.bcp = bcp
 
@@ -725,6 +731,11 @@ class NavierStokes:
             [bc.apply(A2) for bc in self.bcp]
             [bc.apply(b2) for bc in self.bcp]
         it2 = solve(A2, self.p_.vector(), b2, 'bicgstab', 'hypre_amg')
+        # EXPERIMENTAL:
+        # If P1P1 discretization (which does not satisfy the LBB condition),
+        # postprocess the pressure to kill off the checkerboard mode.
+        # if self.V.ufl_element().degree() == 1:
+        #     self.p_.assign(project(interpolate(self.p_, self.Qproj), self.Q))
         end()
 
         if not self.bcp:
