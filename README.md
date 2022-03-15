@@ -21,9 +21,11 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
     - [Poisson equation](#poisson-equation)
     - [Gmsh mesh import](#gmsh-mesh-import)
     - [Incompressible flow (Navier-Stokes)](#incompressible-flow-navier-stokes)
-    - [Incompressible flow and temperature (one-way coupled problem)](#incompressible-flow-and-temperature-one-way-coupled-problem)
-    - [Boussinesq flow (natural convection, two-way coupled problem)](#boussinesq-flow-natural-convection-two-way-coupled-problem)
-- [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
+    - [Forced convection (one-way coupled problem)](#forced-convection-one-way-coupled-problem)
+    - [Natural convection (two-way coupled problem)](#natural-convection-two-way-coupled-problem)
+- [Questions & answers](#questions--answers)
+    - [How to list the whole public API, and only the public API?](#how-to-list-the-whole-public-api-and-only-the-public-api)
+    - [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
 - [Dependencies](#dependencies)
 - [Install & uninstall](#install--uninstall)
     - [From source](#from-source)
@@ -53,6 +55,9 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Can compute both cell and facet meshfunctions.
      - Useful for stabilization methods in advection-dominated problems, where `h` typically appears in the stabilization terms.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
+   - `cellvolume` [**2D**, **3D**]
+     - Compute the local cell volume, producing a `MeshFunction` on cells.
+     - Convenience function; uses `dolfin.Cell.volume`.
    - `cell_mf_to_expression` [**2D**, **3D**]
      - Convert a scalar `double` `MeshFunction` into a `CompiledExpression` that can be used in UFL forms.
      - For example, `h = cell_mf_to_expression(meshsize(mesh))`.
@@ -65,6 +70,34 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
        - If you don't care about the aesthetics, for P2 data, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.midpoint_refine(mesh)` works just as well.
      - `map_refined_P1` supports both scalar and vector function spaces. Not tested on tensor fields yet.
      - For full usage examples, see [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) (vector), [`demo.coupled.main02_heat`](demo/coupled/main02_heat.py) (scalar), and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) (both).
+   - `map_dG0` [**2D**, **3D**]
+     - Given a function space `V` and a dG0 function space `W` on the same mesh, determine the DOFs of `W` that are in the support (mathematical sense) of each DOF of `V`. Return a mapping, where the global `V` DOF number maps to an `np.array` of `W` DOF numbers.
+     - Also return another related mapping, from global `W` DOF number to cell index.
+     - This is useful as a setup step for patch averaging.
+   - Some lower-level utilities; see their docstrings:
+     - `all_cells`, `all_patches`, `my_cells`, `my_patches` [**2D**, **3D**]
+     - `is_anticlockwise` [**2D**]
+     - `make_mesh` [**2D**]
+       - Takes arrays of cells and vertices, and constructs a mesh using `dolfin.MeshEditor`.
+       - For now, 2D triangle meshes only.
+       - In MPI mode, can make a distributed mesh or an MPI-local mesh, as desired.
+   - `patch_average` [**2D**, **3D**]
+     - Given a scalar, vector or tensor function on a P1, P2 or P3 function space, patch-average it (weighted by relative cell volumes), and return the result as a new function on the same function space as the input.
+     - This is sometimes useful as a postprocess step to eliminate some checkerboard modes, such as when using LBB-incompatible element types in a Navier-Stokes solver.
+     - However, instead of patch-averaging, it is in general better to interpolate (or project) to a dG0 (elementwise constant) space and then just project back to the input (continuous) space:
+
+       ```python
+       import dolfin
+
+       W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
+       f_averaged = dolfin.project(dolfin.interpolate(f, W), V)
+       ```
+
+       If `V` is a P1 space, the results are identical to patch-averaging; in all other cases,
+        `project(interpolate(...))` (or `project(project(...))`) does the same thing in spirit, but correctly.
+
+       The `patch_average` function is provided just because patch-averaging is a classical
+       postprocessing method.
 
 ### Plotting
 
@@ -75,9 +108,19 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - As of v0.3.0, scalar field on a triangle mesh only.
        - Note you can take a component of a vector field, or interpolate an expression onto your function space, as usual. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) for examples.
      - Meant for debugging and visualizing simulation progress, especially for a lightweight MPI job that runs locally on a laptop (but still much faster with 4 cores rather than 1). Allows near-realtime visual feedback, and avoids the need to start [ParaView](https://www.paraview.org/) midway through the computation just to quickly check if the solver is still computing and if the results look reasonable.
+     - Can optionally display the mesh and its MPI partitioning, on top of the function data. See `mpiplot_mesh`.
+   - `mpiplot_mesh` [**2D**]
+     - Plot the *whole* mesh in the root process while running in parallel.
+     - Can optionally color-code the edges by MPI-partitioning.
+     - Can optionally display the P1 visualization edges (generated by `extrafeathers`) of a P2 or P3 `FunctionSpace`.
    - `plot_facet_meshfunction` [**2D**] [**serial only**]
      - Visualize whether the boundaries of a 2D mesh have been tagged as expected. Debug tool, for use when generating and importing meshes. This functionality is oddly missing from `dolfin.plot`.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
+   - Lower-level utility `as_mpl_triangulation` [**2D**].
+     - Takes a `dolfin.FunctionSpace` (or a `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`), and represents its mesh as a `matplotlib.tri.Triangulation`.
+     - Has flags to refine P2/P3 to P1, and to get the whole mesh or just the MPI-local part.
+   - `pause`
+     - Non-focus-stealing pause helper for prodding Matplotlib into updating the figure window, courtesy of [this StackOverflow post](https://stackoverflow.com/a/45734500).
 
 ### Mesh I/O
 
@@ -207,14 +250,16 @@ The Gmsh mesh is recommended, to place the DOFs where they matter the most. Keep
 
 The Navier-Stokes demo supports solving only in parallel, because even a simple 2D [CFD](https://en.wikipedia.org/wiki/Computational_fluid_dynamics) problem requires so much computing power that it makes no sense to run it serially on a garden-variety multicore laptop. Also, this way we can keep the script as simple as possible, and just abuse the MPI group size to decide what to do, instead of building a proper command-line interface using [`argparse`](https://docs.python.org/3/library/argparse.html).
 
+There is a more advanced version of the Navier-Stokes solver (with better modularization and factoring of the code, as well as numerical stabilization) in [`extrafeathers.pdes.navier_stokes`](extrafeathers/pdes/navier_stokes.py); for invoking it, see the forced convection demo below ([`demo.coupled.main01_flow`](demo/coupled/main01_flow.py)).
+
 ![Navier-Stokes demo output](img/navier_stokes.png)
 
 *Flow over a cylinder using P2P1 (Taylor-Hood) elements.*
 
 
-### Incompressible flow and temperature (one-way coupled problem)
+### Forced convection (one-way coupled problem)
 
-This demo uses the same HDF5 mesh file as the *Navier-Stokes* demo. Create it with one of:
+This demo uses the same HDF5 mesh file as the *Navier-Stokes* demo, but a more advanced Navier-Stokes solver. Create the mesh with one of:
 
 ```bash
 python -m demo.import_gmsh  # graded mesh from Gmsh
@@ -249,7 +294,9 @@ Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/
 *Temperature field advected by the flow. P2 elements. SUPG stabilization and skew-symmetric advection.*
 
 
-### Boussinesq flow (natural convection, two-way coupled problem)
+### Natural convection (two-way coupled problem)
+
+The model is based on the [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)).
 
 This demo has its own Gmsh mesh; see [`demo/meshes/cavity_with_obstacle.geo`](demo/meshes/cavity_with_obstacle.geo).
 
@@ -267,7 +314,66 @@ Some simulation parameters can be found in [`demo.boussinesq.config`](demo/bouss
 *Note the orientation; gravity has been added to the model, pointing down in the image. The [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)) automatically generates the hydrostatic pressure. Flow solved using P2P1 (Taylor-Hood) elements, SUPG and LSIC stabilization, and skew-symmetric advection. Temperature solved using P2 elements, SUPG stabilization, and skew-symmetric advection.*
 
 
-## What's up with the Unicode variable names?
+## Questions & answers
+
+### How to list the whole public API, and only the public API?
+
+In short, use Python's introspection capabilities. There are some subtleties here; below are some recipes.
+
+To view **the public API of a given submodule**:
+
+```python
+import sys
+print(sys.modules["extrafeathers.debug"].__all__)  # for example
+```
+
+If the `__all__` attribute for some submodule is missing, that submodule has no public API.
+
+To view **the whole public API**, grouped by submodule:
+
+```python
+import sys
+
+import extrafeathers
+
+submodules = [name for name in dir(extrafeathers)
+              if f"extrafeathers.{name}" in sys.modules]
+
+for name in submodules:
+    module = sys.modules[f"extrafeathers.{name}"]
+    if hasattr(module, "__all__"):  # has a public API?
+        print("=" * 79)
+        print(f"Public API of extrafeathers.{name}':")
+        print(module.__all__)
+```
+
+**Do not** do this to retrieve the submodules:
+
+```python
+import types
+submodules_wrong = [name for name in dir(extrafeathers)
+                    if issubclass(type(getattr(extrafeathers, name)), types.ModuleType)] 
+```
+
+because generally speaking, it is subtly wrong. If there happens to be an object imported from a submodule that has the same name as the submodule itself, that submodule will be missing from the list, because the object overrides the submodule in the parent module's namespace. The first approach is correct and always works.
+
+
+To view **the whole public API** available in the top-level namespace:
+
+```python
+import types
+
+import extrafeathers
+
+non_module_names = [name for name in dir(extrafeathers)
+                    if not issubclass(type(getattr(extrafeathers, name)), types.ModuleType)]
+print(non_module_names)
+```
+
+Now be very very careful: for the same reason as above, for the correct semantics we must use `issubclass(..., types.ModuleType)`, not `... in sys.modules`. Here we want to list each symbol in the top-level namespace of `extrafeathers` that does not point to a module; **including** any objects that override a module in the top-level namespace.
+
+
+### What's up with the Unicode variable names?
 
 Looks more like math to use `ρ` instead of `rho`. Too bad Python doesn't accept `∇` or `∂` in variable names; with those, the PDEs would look [even better](https://github.com/gridap/Gridap.jl).
 
