@@ -297,6 +297,8 @@ Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/
 
   - As usual, stability does not imply accuracy; if the timestep is too large, the advection will skip over small-scale features in the flow field.
 
+  - The solver can handle cases with pure Neumann boundary conditions on pressure (such as the standard [cavity flow example](https://www.cfd-online.com/Wiki/Lid-driven_cavity_problem)). In these cases, we define the unique pressure field as that whose mean value is zero.
+
   - In the flow problem, a Dirichlet boundary condition on pressure (such as at an outlet) will force the pressure to reach its prescribed boundary value *over **one** layer of elements*.
   
     Hence, it may be useful to deliberately use a low mesh resolution near the outlet, so that the discrete function space itself helps destroy any remaining nontrivial structure in the solution, before such structure gets an opportunity to hit the outflow boundary and cause a conflict with the boundary conditions (since that will often lead to a convergence failure). In an advection-dominated problem, the effects of this "smoothing by mesh geometry" on the upstream parts of the solution are negligible.
