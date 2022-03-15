@@ -1,6 +1,14 @@
 # Changelog
 
-**0.3.0** (in progress, last updated 11 March 2022):
+**0.4.0** (in progress, last updated 15 March 2022):
+
+*No user-visible changes yet.*
+
+
+---
+
+
+**0.3.0** (15 March 2022):
 
 **Fixed**:
 
@@ -51,6 +59,7 @@
     - Based on existing FEniCS demos and various internet sources. The main motivation of having this here is to collect the relevant information and links into one place. Each term of the variational problem is commented in detail, conceptually different but similar-looking terms are kept separate (e.g. Nitsche vs. dG stabilization), and the formulation accounts for a general Dirichlet BC. Comments also explain how to add Neumann and Robin BCs.
 - **New other**:
   - [`countlines.py`](countlines.py) for project SLOC estimation. This is the same script as in `mcpyrate` and `unpythonic`.
+
 
 ---
 
