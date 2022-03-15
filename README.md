@@ -12,7 +12,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
 **Table of Contents**
 
 - [Features](#features)
-    - [Mesh utilities](#mesh-utilities)
+    - [Mesh-related utilities](#mesh-related-utilities)
     - [Plotting](#plotting)
     - [Mesh I/O](#mesh-io)
 - [Demos (with pictures!)](#demos-with-pictures)
@@ -37,67 +37,70 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
 
 ## Features
 
-*Supported mesh dimensionalities are indicated in brackets. MPI is supported, unless indicated "serial only".*
+*Supported mesh dimensionalities are indicated in brackets. MPI is supported, unless indicated as "serial only".*
 
-### Mesh utilities
+### Mesh-related utilities
 
+   - `cell_mf_to_expression` [**2D**, **3D**]
+     - Convert a scalar `double` `MeshFunction` into a `CompiledExpression` that can be used in UFL forms.
+     - For example, `h = cell_mf_to_expression(meshsize(mesh))`.
+     - For full examples, see [`extrafeathers.pdes.navier_stokes`](extrafeathers/pdes/navier_stokes.py) and [`extrafeathers.pdes.advection_diffusion`](extrafeathers/pdes/advection_diffusion.py), which use this in SUPG stabilization.
+   - `cellvolume` [**2D**, **3D**]
+     - Compute the local cell volume for the whole mesh.
+     - Convenience function; essentially just loops `dolfin.Cell.volume` over the mesh, and packs the result into a `MeshFunction`.
    - `find_subdomain_boundaries` [**2D**, **3D**] [**serial only**]
      - Automatically tag facets on internal boundaries between two subdomains. This makes it easier to respect [DRY](https://en.wikipedia.org/wiki/Don't_repeat_yourself) when setting up a small problem for testing, as the internal boundaries only need to be defined in one place (in the actual geometry).
      - Tag also facets belonging to an outer boundary of the domain, via a callback function (that you provide) that gives the tag number for a given facet. This allows easily producing one `MeshFunction` with tags for all boundaries.
      - Here *subdomain* means a `SubMesh`. These may result either from internal mesh generation via the `mshr` component of FEniCS, or from imported meshes. See the [`navier_stokes`](demo/navier_stokes.py) and [`import_gmsh`](demo/import_gmsh.py) demos for examples of both.
-   - `specialize` a meshfunction [**2D**, **3D**] [**serial only**]
-     - Convert a `MeshFunction` on cells or facets of a full mesh into the corresponding `MeshFunction` on its `SubMesh`.
-     - Cell and facet meshfunctions supported.
-     - Useful e.g. when splitting a mesh with subdomains. This function allows converting the `domain_parts` and `boundary_parts` from the full mesh onto each submesh. This allows saving the submeshes, along with their subdomain and boundary tags, as individual standalone meshes in separate HDF5 mesh files. See the `import_gmsh` demo. This is useful, because (as of FEniCS 2019) `SubMesh` is not supported when running in parallel.
-     - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
    - `meshsize` [**2D**, **3D**]
      - Compute the local mesh size (the `h` in finite element literature), defined as the maximum edge length of each mesh entity. The result is returned as a `MeshFunction`.
      - Can compute both cell and facet meshfunctions.
      - Useful for stabilization methods in advection-dominated problems, where `h` typically appears in the stabilization terms.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
-   - `cellvolume` [**2D**, **3D**]
-     - Compute the local cell volume, producing a `MeshFunction` on cells.
-     - Convenience function; uses `dolfin.Cell.volume`.
-   - `cell_mf_to_expression` [**2D**, **3D**]
-     - Convert a scalar `double` `MeshFunction` into a `CompiledExpression` that can be used in UFL forms.
-     - For example, `h = cell_mf_to_expression(meshsize(mesh))`.
-     - For full examples, see [`extrafeathers.pdes.navier_stokes`](extrafeathers/pdes/navier_stokes.py) and [`extrafeathers.pdes.advection_diffusion`](extrafeathers/pdes/advection_diffusion.py), which use this in SUPG stabilization.
    - `midpoint_refine` [**2D**], `map_refined_P1` [**2D**]
-     - Prepare Lagrange P2 (quadratic) or P3 (cubic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization.
-       - Essentially, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
-       - However, in parallel, the P2/P3 and P1 meshes will have different MPI partitioning, so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2/P3 DOF vector, and then assign the data to the corresponding DOFs of `w`.
-     - `midpoint_refine` differs from `dolfin.refine` in that we guarantee an aesthetically pleasing fill, which looks best for visualizing P2/P3 data, when interpolating that data as P1 on the refined mesh.
+     - Prepare Lagrange P2 (quadratic) or P3 (cubic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization even when the file format is vertex-based.
+       - Essentially, in a solver that does this, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
+       - However, in parallel, the P2/P3 and P1 meshes will have different MPI partitioning (due to mesh editing), so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2/P3 DOF vector, and then assign the data to the corresponding DOFs of `w`.
+     - `midpoint_refine` differs from `dolfin.refine` in that we guarantee an aesthetically pleasing fill, which looks best for visualizing P2/P3 data, when interpolating that data as P1 on the refined mesh. Also, `midpoint_refine` always produces a global refinement; every triangle is refined.
        - If you don't care about the aesthetics, for P2 data, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.midpoint_refine(mesh)` works just as well.
      - `map_refined_P1` supports both scalar and vector function spaces. Not tested on tensor fields yet.
      - For full usage examples, see [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) (vector), [`demo.coupled.main02_heat`](demo/coupled/main02_heat.py) (scalar), and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) (both).
-   - `map_dG0` [**2D**, **3D**]
-     - Given a function space `V` and a dG0 function space `W` on the same mesh, determine the DOFs of `W` that are in the support (mathematical sense) of each DOF of `V`. Return a mapping, where the global `V` DOF number maps to an `np.array` of `W` DOF numbers.
-     - Also return another related mapping, from global `W` DOF number to cell index.
-     - This is useful as a setup step for patch averaging.
-   - Some lower-level utilities; see their docstrings:
+   - `patch_average`, `map_dG0` [**2D**, **3D**]
+     - `map_dG0`:
+       - Given a function space `V` and a dG0 function space `W` on the same mesh, determine the DOFs of `W`, and mesh cells, that form the support (mathematical sense) of each DOF of `V`.
+       - Return two mappings:
+         - Global `V` DOF number to an `np.array` of `W` DOF numbers.
+         - Global `W` DOF number to cell index.
+       - This is useful as a setup step for patch averaging.
+     - `patch_average`:
+       - Given a scalar, vector or tensor function on a P1, P2 or P3 function space, patch-average it (weighted by relative cell volumes), and return the result as a new function on the same function space as the input.
+       - This is sometimes useful as a postprocess step to eliminate some checkerboard modes, such as when using LBB-incompatible element types in a Navier-Stokes solver.
+       - However, instead of patch-averaging, it is in general better to interpolate (or project) to a dG0 (elementwise constant) space and then just project back to the input (continuous) space:
+
+         ```python
+         import dolfin
+
+         W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
+         f_averaged = dolfin.project(dolfin.interpolate(f, W), V)
+         ```
+
+         If `V` is a P1 space, the results are identical to patch-averaging; in all other cases,
+         `project(interpolate(...))` (or `project(project(...))`) does the same thing in spirit, but correctly.
+
+         The `patch_average` function is provided just because patch-averaging is a classical
+         postprocessing method.
+   - `specialize` a meshfunction [**2D**, **3D**] [**serial only**]
+     - Convert a `MeshFunction` on cells or facets of a full mesh into the corresponding `MeshFunction` on its `SubMesh`.
+     - Cell and facet meshfunctions supported.
+     - Useful e.g. when splitting a mesh with subdomains. This function allows converting the `domain_parts` and `boundary_parts` from the full mesh onto each submesh. This allows saving the submeshes, along with their subdomain and boundary tags, as individual standalone meshes in separate HDF5 mesh files. See the `import_gmsh` demo. This is useful, because (as of FEniCS 2019) `SubMesh` is not supported when running in parallel.
+     - See [`demo.import_gmsh`](demo/import_gmsh.py) for an example.
+   - Low-level utilities; for more information, see docstrings:
      - `all_cells`, `all_patches`, `my_cells`, `my_patches` [**2D**, **3D**]
      - `is_anticlockwise` [**2D**]
      - `make_mesh` [**2D**]
-       - Takes arrays of cells and vertices, and constructs a mesh using `dolfin.MeshEditor`.
-       - For now, 2D triangle meshes only.
+       - Construct a `dolfin.Mesh` from arrays of cells and vertices, using `dolfin.MeshEditor`.
+       - As of v0.3.0, 2D triangle meshes only.
        - In MPI mode, can make a distributed mesh or an MPI-local mesh, as desired.
-   - `patch_average` [**2D**, **3D**]
-     - Given a scalar, vector or tensor function on a P1, P2 or P3 function space, patch-average it (weighted by relative cell volumes), and return the result as a new function on the same function space as the input.
-     - This is sometimes useful as a postprocess step to eliminate some checkerboard modes, such as when using LBB-incompatible element types in a Navier-Stokes solver.
-     - However, instead of patch-averaging, it is in general better to interpolate (or project) to a dG0 (elementwise constant) space and then just project back to the input (continuous) space:
-
-       ```python
-       import dolfin
-
-       W = dolfin.FunctionSpace(V.mesh(), "DG", 0)
-       f_averaged = dolfin.project(dolfin.interpolate(f, W), V)
-       ```
-
-       If `V` is a P1 space, the results are identical to patch-averaging; in all other cases,
-        `project(interpolate(...))` (or `project(project(...))`) does the same thing in spirit, but correctly.
-
-       The `patch_average` function is provided just because patch-averaging is a classical
-       postprocessing method.
 
 ### Plotting
 
@@ -106,21 +109,22 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
        - The full triangulation is automatically pieced together from all the MPI processes. For implementation simplicity, the visualization always uses linear triangle elements; other degrees are interpolated onto `P1`.
        - P2/P3 data is automatically converted onto once-refined P1, to display it at full nodal resolution.
      - As of v0.3.0, scalar field on a triangle mesh only.
-       - Note you can take a component of a vector field, or interpolate an expression onto your function space, as usual. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) for examples.
+       - Note you can take a component of a vector or tensor field (`.sub(j)`), or interpolate an expression onto your function space, as usual. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) for examples.
      - Meant for debugging and visualizing simulation progress, especially for a lightweight MPI job that runs locally on a laptop (but still much faster with 4 cores rather than 1). Allows near-realtime visual feedback, and avoids the need to start [ParaView](https://www.paraview.org/) midway through the computation just to quickly check if the solver is still computing and if the results look reasonable.
-     - Can optionally display the mesh and its MPI partitioning, on top of the function data. See `mpiplot_mesh`.
+     - Can optionally display the mesh and its MPI partitioning on top of the function data. See also `mpiplot_mesh` to do that separately.
    - `mpiplot_mesh` [**2D**]
      - Plot the *whole* mesh in the root process while running in parallel.
-     - Can optionally color-code the edges by MPI-partitioning.
-     - Can optionally display the P1 visualization edges (generated by `extrafeathers`) of a P2 or P3 `FunctionSpace`.
+     - Can optionally color-code the edges by MPI partitioning. Use `matplotlib.pyplot.legend` to see which is which.
+     - Can optionally display the P1 visualization edges (generated by `extrafeathers`) of a P2 or P3 `FunctionSpace` (in a fainter color, to distinguish them from element edges).
    - `plot_facet_meshfunction` [**2D**] [**serial only**]
      - Visualize whether the boundaries of a 2D mesh have been tagged as expected. Debug tool, for use when generating and importing meshes. This functionality is oddly missing from `dolfin.plot`.
-     - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
-   - Lower-level utility `as_mpl_triangulation` [**2D**].
-     - Takes a `dolfin.FunctionSpace` (or a `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`), and represents its mesh as a `matplotlib.tri.Triangulation`.
-     - Has flags to refine P2/P3 to P1, and to get the whole mesh or just the MPI-local part.
-   - `pause`
-     - Non-focus-stealing pause helper for prodding Matplotlib into updating the figure window, courtesy of [this StackOverflow post](https://stackoverflow.com/a/45734500).
+     - See [`demo.import_gmsh`](demo/import_gmsh.py) for an example.
+   - Low-level utilities:
+     - `as_mpl_triangulation` [**2D**].
+       - Represent the mesh of a scalar `dolfin.FunctionSpace` (or a component `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`) as a `matplotlib.tri.Triangulation`.
+       - Has flags to refine P2/P3 onto P1, and to represent the whole mesh or just the MPI-local part.
+     - `pause`
+       - Non-focus-stealing pause helper for prodding Matplotlib into updating the figure window, courtesy of [this StackOverflow post](https://stackoverflow.com/a/45734500).
 
 ### Mesh I/O
 
@@ -150,7 +154,7 @@ Gmsh `.msh` files and the original `.geo` files to generate them can be found in
 
 ### DOF numbering related
 
-To illustrate how FEniCS numbers the global DOFs to maximize data locality:
+To illustrate how FEniCS numbers the global DOFs to maximize data locality (given that each process is allocated a contiguous chunk of DOFs):
 
 ```bash
 python -m demo.dofnumbering
@@ -179,11 +183,11 @@ python -m demo.refelement DP2
 python -m demo.refelement DP3
 ```
 
-Any of these works also in MPI mode, showing the MPI partitioning (coded by line color).
+Any of these works also in MPI mode, then color-coding the MPI partitioning by edge color. MPI-local node numbers (for the global DOFs) are **not** shown.
 
 ![Reference element demo output](img/refelement.png)
 
-*Local and global DOF numbering for P1, P2, P3, DP1, DP2, and DP3 elements.*
+*Reference-element and global DOF numbering for P1, P2, P3, DP1, DP2, and DP3 elements.*
 
 
 ### Patch averaging
@@ -216,7 +220,7 @@ mpirun python -m demo.poisson_dg
 
 ![Poisson dG demo output](img/poisson_dg.png)
 
-*Poisson equation with dG(2) elements. Note the visualization of the elements, and MPI mesh partitioning.*
+*Poisson equation with dG(2) elements. Note the visualization of the elements, and MPI mesh partitioning (4 processes: blue, orange, green, red, in that order).*
 
 
 ### Gmsh mesh import
@@ -246,20 +250,22 @@ python -m demo.import_gmsh  # generate HDF5 mesh file, overwriting the earlier o
 mpirun python -m demo.navier_stokes
 ```
 
-The Gmsh mesh is recommended, to place the DOFs where they matter the most. Keep in mind [Gresho & Sani](https://www.wiley.com/en-us/Incompressible+Flow+and+the+Finite+Element+Method%2C+Volume+1%3A+Advection+Diffusion+and+Isothermal+Laminar+Flow-p-9780471492498).
+The Gmsh mesh is recommended, to place the DOFs where they matter the most. Keep in mind [Gresho & Sani (2000)](https://www.wiley.com/en-us/Incompressible+Flow+and+the+Finite+Element+Method%2C+Volume+1%3A+Advection+Diffusion+and+Isothermal+Laminar+Flow-p-9780471492498).
 
-The Navier-Stokes demo supports solving only in parallel, because even a simple 2D [CFD](https://en.wikipedia.org/wiki/Computational_fluid_dynamics) problem requires so much computing power that it makes no sense to run it serially on a garden-variety multicore laptop. Also, this way we can keep the script as simple as possible, and just abuse the MPI group size to decide what to do, instead of building a proper command-line interface using [`argparse`](https://docs.python.org/3/library/argparse.html).
+This Navier-Stokes demo supports solving only in parallel.
 
-There is a more advanced version of the Navier-Stokes solver (with better modularization and factoring of the code, as well as numerical stabilization) in [`extrafeathers.pdes.navier_stokes`](extrafeathers/pdes/navier_stokes.py); for invoking it, see the forced convection demo below ([`demo.coupled.main01_flow`](demo/coupled/main01_flow.py)).
+There is a more advanced version of the Navier-Stokes solver (with better modularization and factoring of the code, as well as three kinds of numerical stabilization) in [`extrafeathers.pdes.navier_stokes`](extrafeathers/pdes/navier_stokes.py); for invoking it, see the forced convection demo below ([`demo.coupled.main01_flow`](demo/coupled/main01_flow.py)).
 
 ![Navier-Stokes demo output](img/navier_stokes.png)
 
-*Flow over a cylinder using P2P1 (Taylor-Hood) elements.*
+*Flow over a cylinder using P2P1 (Taylor-Hood) elements, i.e. P2 velocity and P1 pressure.*
 
 
 ### Forced convection (one-way coupled problem)
 
-This demo uses the same HDF5 mesh file as the *Navier-Stokes* demo, but a more advanced Navier-Stokes solver. Create the mesh with one of:
+This demo uses the same HDF5 mesh file as the Navier-Stokes demo, but comes with a more advanced Navier-Stokes solver with stabilization.
+
+Create the mesh with one of:
 
 ```bash
 python -m demo.import_gmsh  # graded mesh from Gmsh
@@ -285,18 +291,36 @@ Be sure to wait until the flow simulation completes before running the heat simu
 
 Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/config.py), as well as the parameters for internal `mshr` mesh generation using [`demo.coupled.main00_mesh`](demo/coupled/main00_mesh.py).
 
+**Convergence and accuracy**:
+
+  - With θ ≥ 1/2, the time integrator is A-stable. We use the skew-symmetric discretization for the advection term to allow this to work ([Donea & Huerta, 2003](https://www.wiley.com/en-us/Finite+Element+Methods+for+Flow+Problems-p-9780471496663), sec. 6.7.1).
+
+  - As usual, stability does not imply accuracy; if the timestep is too large, the advection will skip over small-scale features in the flow field.
+
+  - In the flow problem, a Dirichlet boundary condition on pressure (such as at an outlet) will force the pressure to reach its prescribed boundary value *over **one** layer of elements*.
+  
+    Hence, it may be useful to deliberately use a low mesh resolution near the outlet, so that the discrete function space itself helps destroy any remaining nontrivial structure in the solution, before such structure gets an opportunity to hit the outflow boundary and cause a conflict with the boundary conditions (since that will often lead to a convergence failure). In an advection-dominated problem, the effects of this "smoothing by mesh geometry" on the upstream parts of the solution are negligible.
+
+  - In the flow problem, LBB-compatible elements (e.g. P2P1) are recommended, but not mandatory. When P1 is used for velocity, [the demo solver](demo/coupled_main01_flow.py) will postprocess the pressure field at each timestep to eliminate checkerboard modes (which often arise as a symptom of LBB incompatibility).
+
+    However, note that for vector P1 elements, there are no divergence-free fields except the identically zero field (as pointed out by [Brenner & Scott, 2010](https://link.springer.com/book/10.1007/978-0-387-75934-0), p. 285), so accuracy will suffer. During software testing of multiphysics solvers, P1 for the flow subproblem may still be useful, as it runs much faster. (Can use P2 just for the final simulation.)
+
 ![Coupled problem demo output (flow field)](img/coupled01.png)
 
 *Flow over a cylinder using the improved, stabilized solver. P2P1 (Taylor-Hood) elements. SUPG and LSIC stabilization, and skew-symmetric advection.*
 
 ![Coupled problem demo output (temperature field)](img/coupled02.png)
 
-*Temperature field advected by the flow. P2 elements. SUPG stabilization and skew-symmetric advection.*
+*Forced convection over a hot cylinder kept at fixed temperature. Temperature field advected by the flow. P2 elements. SUPG stabilization and skew-symmetric advection.*
+
+![Advanced Navier-Stokes solver output](img/re150k.png)
+
+*The [advanced Navier-Stokes solver](extrafeathers/pdes/navier_stokes.py) can **survive** at Re = 1.5e5, essentially producing a [direct numerical simulation](https://en.wikipedia.org/wiki/Direct_numerical_simulation) of turbulent flow. However, for accurate results, the mesh and timestep need to be much finer than those used here. This is using the "high Re setup" in [the geometry file](demo/meshes/flow_over_cylinder.geo), and Δt = 2e-3. P2P1 elements, SUPG, LSIC, and skew-symmetric advection. Detail view of |u| near the cylinder. Visualized in ParaView.*
 
 
 ### Natural convection (two-way coupled problem)
 
-The model is based on the [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)).
+The model is based on the [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)). It uses the same Navier-Stokes solver as the forced convection demo, but now we add buoyancy via a Boussinesq source term for the velocity.
 
 This demo has its own Gmsh mesh; see [`demo/meshes/cavity_with_obstacle.geo`](demo/meshes/cavity_with_obstacle.geo).
 
@@ -311,7 +335,7 @@ Some simulation parameters can be found in [`demo.boussinesq.config`](demo/bouss
 
 ![Boussinesq demo output](img/boussinesq.png)
 
-*Note the orientation; gravity has been added to the model, pointing down in the image. The [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)) automatically generates the hydrostatic pressure. Flow solved using P2P1 (Taylor-Hood) elements, SUPG and LSIC stabilization, and skew-symmetric advection. Temperature solved using P2 elements, SUPG stabilization, and skew-symmetric advection.*
+*Natural convection induced by a hot cylinder kept at fixed temperature. We use a fine mesh for y ∈ [0, 0.75], and coarsen toward y = 3.0. Note the orientation; gravity has been added to the model, pointing down in the image. The [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)) automatically generates the hydrostatic pressure. Flow solved using P2P1 (Taylor-Hood) elements, SUPG and LSIC stabilization, and skew-symmetric advection. Temperature solved using P2 elements, SUPG stabilization, and skew-symmetric advection.*
 
 
 ## Questions & answers
@@ -429,4 +453,4 @@ A very large majority of the code is original. Any code fragments from forums ar
 
 ## Thanks
 
-Everyone who has posted solutions on the [old FEniCS Q&A forum](https://fenicsproject.org/qa/) (now archived) and the [discourse group](https://fenicsproject.discourse.group/); especially @Dokken.
+Everyone who has posted solutions on the [old FEniCS Q&A forum](https://fenicsproject.org/qa/) (now archived) and the [discourse group](https://fenicsproject.discourse.group/); especially @Dokken. These resources were great for getting started.
