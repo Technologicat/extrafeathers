@@ -241,14 +241,24 @@ def make_mesh(cells: typing.List[typing.List[int]],
 
     `cells`:       Cell connectivity data as rank-2 `np.array`, one cell per row.
                    (This is the format returned by `all_cells`.)
-    `dofs`:        Vertex numbers used by the `cells` array to refer to the vertices.
+    `dofs`:        Vertex numbers used by `cells` to refer to `vertices`.
     `vertices`:    Vertex coordinates as rank-2 `np.array`, one vertex per row.
-                   `vertices[k]` corresponds to vertex number `dofs[k]`.
 
-                   You can get the `dofs` and `vertices` arrays by
+                   `vertices[k]` are the coordinates for global vertex number
+                   `dofs[k]`, so that `zip(dofs, vertices)` is the sequence
+                   `((vertex_index, coordinates), ...)`.
+
+                   If you're constructing a mesh from scratch, you can use
+                   `dofs=range(len(vertices))`. This reason extra level of
+                   indirection exists at all is that analyzing an existing
+                   mesh will produce data in that format.
+
+                   To create a new mesh based on an existing one, you can get
+                   the `dofs` and `vertices` arrays of the original mesh by
                    `dofs, vertices = nodes_to_array(nodes_dict)`,
                    where `nodes_dict` is the dictionary part of the
-                   return value of `all_cells` (for a P1 mesh).
+                   return value of `all_cells` (for a P1 `FunctionSpace`
+                   based on that mesh).
 
     `distributed`:  Used when running in MPI mode:
 
