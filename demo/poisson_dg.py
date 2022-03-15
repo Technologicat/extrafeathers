@@ -111,6 +111,22 @@ f = Expression("10*exp(-(pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2)) / 0.02)", degr
 # https://scicomp.stackexchange.com/questions/20078/matlab-implementation-of-2d-interior-penalty-discontinuous-galerkin-poisson-prob
 # https://fenicsproject.org/qa/3974/expression-in-interior-facets/
 #
+#
+# Also see Brenner & Scott, sec. 10.5. Reading between the lines, the motivation of the
+# stabilization term seems to be that it is needed to set up a suitable energy norm
+# from which one can prove coercivity, whence stability.
+#
+# The authors also remark (p. 291) that for a consistent method, convergence only
+# depends on stability, which in turn involves boundedness (i.e. continuity in the
+# bilinear form sense) and coercivity of the relevant bilinear forms. It turns out that
+# there is a critical value for the stabilization parameter; the parameter must be
+# critical or larger for the discrete bilinear form to be coercive. See lemma 10.5.19.
+#
+# Reference:
+#   Susanne C. Brenner & L. Ridgway Scott. 2010. The Mathematical Theory
+#   of Finite Element Methods. 3rd edition. Springer. ISBN 978-1-4419-2611-1.
+#
+#
 # TL;DR summary: in a consistent formulation, we can arbitrarily add:
 #   - Terms with [u] on the interior facets
 #   - Terms with (u - u0) on the Dirichlet boundary facets
