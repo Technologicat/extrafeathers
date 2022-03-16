@@ -186,7 +186,8 @@ class NavierStokes:
     sec. 4.4.1 and appendix 4.II. Hughes particularly notes that in order for the smoothing
     to have the desired effect, it should be based on a least-squares approach.
 
-    To perform such smoothing, you can e.g.::
+    This solver automatically least-squares-smooths the pressure if `V` is a P1 space.
+    If you need to perform such smoothing manually for some reason, you can e.g.::
 
         from dolfin import project, interpolate, FunctionSpace
         Qproj = FunctionSpace(Q.mesh(), "DG", 0)
@@ -197,7 +198,9 @@ class NavierStokes:
         solver.p_.assign(project(interpolate(solver.p_, Qproj), Q))
         solver.commit()
 
-    where `solver` is your `NavierStokes` instance. Technically, we should::
+    where `solver` is your `NavierStokes` instance. This is how the solver does it.
+
+    Technically, to be fully correct::
 
         project(project(solver.p_, Qproj), Q)
 
@@ -233,6 +236,7 @@ class NavierStokes:
 
         self.V = V
         self.Q = Q
+        self.dG0 = FunctionSpace(self.mesh, "DG", 0)  # for P1P1 pressure postprocessing
         self.bcu = bcu
         self.bcp = bcp
 
@@ -756,6 +760,23 @@ class NavierStokes:
         b3 = assemble(self.L3)
         it3 = solve(self.A3, self.u_.vector(), b3, 'cg', 'sor')
         end()
+
+        # EXPERIMENTAL:
+        # If P1P1 discretization (which does not satisfy the LBB condition),
+        # postprocess the pressure to kill off the checkerboard mode.
+        #
+        # Doing this after step 3 yields a velocity field with fewer spurious oscillations
+        # (especially at the start of the simulation, when the field does not yet satisfy
+        # the PDE) than if we did this between steps 2 and 2½.
+        if self.V.ufl_element().degree() == 1:
+            begin("Smooth pressure")
+            self.p_.assign(project(interpolate(self.p_, self.dG0), self.Q))
+            # # Alternative strategies:
+            # # 2-way projection, best accuracy in general case
+            # self.p_.assign(project(project(self.p_, self.dG0), self.Q))
+            # # classical patch averaging (see docstring on setting up QtodG0, dG0tocell, cell_volume)
+            # self.p_.assign(meshmagic.patch_average(self.p_, self.dG0, QtodG0, dG0tocell, cell_volume))
+            end()
 
         return it1, it2, it3
 

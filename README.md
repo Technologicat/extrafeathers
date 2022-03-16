@@ -303,9 +303,9 @@ Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/
   
     Hence, it may be useful to deliberately use a low mesh resolution near the outlet, so that the discrete function space itself helps destroy any remaining nontrivial structure in the solution, before such structure gets an opportunity to hit the outflow boundary and cause a conflict with the boundary conditions (since that will often lead to a convergence failure). In an advection-dominated problem, the effects of this "smoothing by mesh geometry" on the upstream parts of the solution are negligible.
 
-  - In the flow problem, LBB-compatible elements (e.g. P2P1) are recommended, but not mandatory. When P1 is used for velocity, [the demo solver](demo/coupled_main01_flow.py) will postprocess the pressure field at each timestep to eliminate checkerboard modes (which often arise as a symptom of LBB incompatibility).
+  - In the flow problem, [LBB-compatible](https://en.wikipedia.org/wiki/Ladyzhenskaya%E2%80%93Babu%C5%A1ka%E2%80%93Brezzi_condition) elements (e.g. P2P1) are recommended, but not mandatory. When P1 is used for velocity, the solver will postprocess the pressure field at the end of each timestep to eliminate checkerboard modes (which often arise as a symptom of LBB incompatibility).
 
-    However, note that for vector P1 elements, there are no divergence-free fields except the identically zero field (as pointed out by [Brenner & Scott, 2010](https://link.springer.com/book/10.1007/978-0-387-75934-0), p. 285), so accuracy will suffer. During software testing of multiphysics solvers, P1 for the flow subproblem may still be useful, as it runs much faster. (Can use P2 just for the final simulation.)
+    However, note that for vector P1 elements, there are no divergence-free fields except the identically zero field (as pointed out by [Brenner & Scott, 2010](https://link.springer.com/book/10.1007/978-0-387-75934-0), p. 285), so when using P1 velocity, accuracy will suffer. During software testing of multiphysics solvers, P1 velocity may still be useful, as it runs much faster. (Can use P2 just for the final simulation.)
 
 ![Coupled problem demo output (flow field)](img/coupled01.png)
 
