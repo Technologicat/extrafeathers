@@ -74,7 +74,6 @@ def my_cells(V: dolfin.FunctionSpace, *,
           `TensorFunctionSpace`, the DOF numbers use the *global* DOF numbering
           also in the sense that each vector/tensor component of the field maps
           to its own set of global DOF numbers.
-
     """
     if V.ufl_element().num_sub_elements() > 1:
         raise ValueError(f"Expected a scalar `FunctionSpace`, got a function space on {V.ufl_element()}")
