@@ -717,6 +717,7 @@ class NavierStokes:
         # `form_compiler_parameters`, for example:
         #     A = assemble(form, form_compiler_parameters={"quadrature_degree": 2})
         # https://fenicsproject.org/qa/10991/expression-degree-and-quadrature-rules/
+        # https://fenicsproject.org/qa/7415/question-concerning-the-number-of-integration-points/
         A1 = self.A1_constant + assemble(self.a1_varying)
         b1 = assemble(self.L1)
         [bc.apply(A1) for bc in self.bcu]
