@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
-                    Expression, Constant, Function,
+                    Expression, Constant,
                     interpolate, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -196,14 +196,9 @@ if V.ufl_element().degree() > 1:
     if my_rank == 0:
         print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
-        export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
-        W = VectorFunctionSpace(export_mesh, 'P', 1)
-        w = Function(W)
-        VtoW, WtoV = meshmagic.map_refined_P1(V, W)
+        u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-        my_W_dofs = W.dofmap().dofs()  # MPI-local
-        my_V_dofs = WtoV[my_W_dofs]  # MPI-local
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
@@ -234,26 +229,28 @@ for n in range(nt):
         #
         # HACK: What we want to do:
         #
-        #   w.assign(interpolate(solver.u_, W))
+        #   u_P1.assign(interpolate(solver.u_, V_P1))
         #
-        # In MPI mode, the problem is that the DOFs of V and W partition differently,
-        # so each MPI process has no access to some of the `solver.u_` data it needs
-        # to construct its part of `w`.
+        # which does work in serial mode. In MPI mode, the problem is that the
+        # DOFs of `V` and `V_P1` partition differently (essentially because the
+        # P1 mesh is independent of the original mesh), so each MPI process has
+        # no access to some of the `solver.u_` data it needs to construct its
+        # part of `u_P1`.
         #
         # One option would be to make a separate serial postprocess script
         # that loads `u_` from the timeseries file (on the original P2 space;
         # now not partitioned because serial mode), performs this interpolation,
         # and generates the visualization file.
         #
-        # But using the DOF mappings defined above, we can generate the visualization
-        # right now, in MPI mode. We allgather the DOFs of the solution on V, and then
-        # remap them onto the corresponding DOFS on W:
-        solver.u_.vector().gather(u_copy, all_V_dofs)
-        w.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        # Now `w` is a refined P1 representation of the velocity field.
+        # But with the help of `meshmagic.prepare_export_as_P1`, we allgather the
+        # DOFs of the solution on V, and then remap them onto the corresponding
+        # DOFs on W:
+        solver.u_.vector().gather(u_copy, all_V_dofs)  # allgather to `u_copy`
+        u_P1.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        # Now `u_P1` is a refined P1 representation of the velocity field.
 
         # TODO: refactor access to u_, p_?
-        xdmffile_u.write(w, t)
+        xdmffile_u.write(u_P1, t)
     else:  # save at P1 resolution
         xdmffile_u.write(solver.u_, t)
     xdmffile_p.write(solver.p_, t)

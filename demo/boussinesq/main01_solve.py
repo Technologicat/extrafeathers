@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
-                    Expression, Constant, Function,
+                    Expression, Constant,
                     interpolate, project, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -103,25 +103,15 @@ if V.ufl_element().degree() > 1 or W.ufl_element().degree() > 1:
         if V.ufl_element().degree() > 1:
             if my_rank == 0:
                 print("    Velocity...")
-            V_export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
-            V_export = VectorFunctionSpace(V_export_mesh, 'P', 1)
-            u_export = Function(V_export)
-            VtoVexport, VexporttoV = meshmagic.map_refined_P1(V, V_export)
+            u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
             all_V_dofs = np.array(range(V.dim()), "intc")
             u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-            my_Vexport_dofs = V_export.dofmap().dofs()  # MPI-local
-            my_V_dofs = VexporttoV[my_Vexport_dofs]  # MPI-local
         if W.ufl_element().degree() > 1:
             if my_rank == 0:
                 print("    Temperature...")
-            W_export_mesh = meshmagic.midpoint_refine(mesh, p=W.ufl_element().degree())
-            W_export = FunctionSpace(W_export_mesh, 'P', 1)
-            T_export = Function(W_export)
-            WtoWexport, WexporttoW = meshmagic.map_refined_P1(W, W_export)
+            T_P1, my_W_dofs = meshmagic.prepare_export_as_P1(W)
             all_W_dofs = np.array(range(W.dim()), "intc")
             T_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on W
-            my_Wexport_dofs = W_export.dofmap().dofs()  # MPI-local
-            my_W_dofs = WexporttoW[my_Wexport_dofs]  # MPI-local
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
@@ -169,11 +159,11 @@ for n in range(nt):
 
     if V.ufl_element().degree() > 1:
         # HACK: What we want to do:
-        #   u_export.assign(interpolate(flowsolver.u_, V_export))
+        #   u_P1.assign(interpolate(flowsolver.u_, V_P1))
         # How we do it in MPI mode (see demo/coupled/main01_flow.py for full explanation):
-        flowsolver.u_.vector().gather(u_copy, all_V_dofs)
-        u_export.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_u.write(u_export, t)
+        flowsolver.u_.vector().gather(u_copy, all_V_dofs)  # allgather into `u_copy`
+        u_P1.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        xdmffile_u.write(u_P1, t)
     else:
         xdmffile_u.write(flowsolver.u_, t)
     xdmffile_p.write(flowsolver.p_, t)
@@ -181,9 +171,9 @@ for n in range(nt):
     timeseries_p.store(flowsolver.p_.vector(), t)
 
     if W.ufl_element().degree() > 1:
-        heatsolver.u_.vector().gather(T_copy, all_W_dofs)
-        T_export.vector()[:] = T_copy[my_W_dofs]  # LHS MPI-local; RHS global
-        xdmffile_T.write(T_export, t)
+        heatsolver.u_.vector().gather(T_copy, all_W_dofs)  # allgather into `T_copy`
+        T_P1.vector()[:] = T_copy[my_W_dofs]  # LHS MPI-local; RHS global
+        xdmffile_T.write(T_P1, t)
     else:
         xdmffile_T.write(heatsolver.u_, t)
     timeseries_T.store(heatsolver.u_.vector(), t)
