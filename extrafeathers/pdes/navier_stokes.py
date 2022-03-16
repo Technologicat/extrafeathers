@@ -711,6 +711,12 @@ class NavierStokes:
         """
         # Step 1: Tentative velocity step
         begin("Tentative velocity")
+        # For P3 velocity in 2D, FEniCS may use over 100 quadrature points per cell
+        # when assembling `A1` and `b1`, so that the integrals are exact for the
+        # highest-degree polynomials in the form. We could tune this using
+        # `form_compiler_parameters`, for example:
+        #     A = assemble(form, form_compiler_parameters={"quadrature_degree": 2})
+        # https://fenicsproject.org/qa/10991/expression-degree-and-quadrature-rules/
         A1 = self.A1_constant + assemble(self.a1_varying)
         b1 = assemble(self.L1)
         [bc.apply(A1) for bc in self.bcu]
