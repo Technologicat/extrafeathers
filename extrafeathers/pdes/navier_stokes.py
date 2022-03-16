@@ -85,8 +85,8 @@ def σ(u, p, μ):
         def dev(T):
             '''Deviatoric part of rank-2 tensor `T`.'''
             return T - (1 / 3) * tr(T) * Identity(T.geometric_dimension())
-        # `solver._μ` is the UFL `Constant` object; `solver.`
-        σ = σ(solver.u, solver.p, solver._μ)
+        # `solver._μ` is the UFL `Constant` object
+        σ = σ(solver.u_, solver.p_, solver._μ)
         s = dev(σ)
         vonMises = sqrt(3 / 2 * inner(s, s))
         plot(project(vonMises, W))
