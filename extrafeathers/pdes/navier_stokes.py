@@ -416,7 +416,7 @@ class NavierStokes:
         #
         # To see this equivalence, consider the conversion of the modified term
         # into weak form:
-        #    (a·∇) u · v dx  +  (1/2) (∇·a) u · v dx
+        #    ((a·∇) u) · v dx  +  (1/2) (∇·a) u · v dx
         # Observing that
         #    ∂i (ai uk vk) = (∂i ai) uk vk + ai ∂i (uk vk)
         #    ∇·(a (u · v)) = (∇·a) u · v  +  a · ∇(u · v)
@@ -428,7 +428,7 @@ class NavierStokes:
         #                  = a · ∇u · v  +  a · ∇v · u
         #                  = a · [∇u · v + ∇v · u]
         # and
-        #    (a·∇) u · v = ((ai ∂i) uk) vk = ai (∂i uk) vk = a · ∇u · v
+        #    ((a·∇) u) · v = ((ai ∂i) uk) vk = ai (∂i uk) vk = a · ∇u · v
         # we have the terms
         #      a · ∇u · v dx
         #    - (1/2) a · [∇u · v + ∇v · u] dx
