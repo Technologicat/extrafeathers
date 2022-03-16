@@ -44,6 +44,7 @@ def my_cells(V: dolfin.FunctionSpace, *,
                      Note that if `V` uses degree 1 Lagrange elements, then the
                      output `nodes` will be the vertices of the mesh. This can
                      be useful for extracting mesh data for e.g. `matplotlib`.
+                     (For that, see `as_mpl_triangulation`.)
 
     `matplotlibize`: If `True`, and `V` is a 2D triangulation, ensure that the
                      cells in the output list their vertices in an
