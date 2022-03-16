@@ -36,7 +36,9 @@ mesh = UnitSquareMesh(N, N)
 # # domain = bigbox - circle
 # mesh = generate_mesh(domain, N)
 
-# Note dG0 won't work, because we need to take the gradient.
+# Note dG0 won't work, because:
+#  - We need to take the gradient, and for dG0 it's identically zero.
+#  - dG0 has no DOFs on element edges, so it does not see the facet integrals.
 V = FunctionSpace(mesh, "DG", 2)
 # V = FunctionSpace(mesh, "P", 1)  # for classical Galerkin
 u = TrialFunction(V)
@@ -168,6 +170,10 @@ L = rhs(F)
 
 A = assemble(a)
 b = assemble(L)
+
+# Maybe useful for debugging (e.g. to see that using dG0 leads to the zero matrix):
+# print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()), A.array())
+
 # bc.apply(A)
 # bc.apply(b)
 u_ = Function(V)
