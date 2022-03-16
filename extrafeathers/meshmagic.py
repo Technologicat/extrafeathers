@@ -86,7 +86,7 @@ def my_cells(V: dolfin.FunctionSpace, *,
     if input_degree > 1 and not refine:
         matplotlibize = False  # only P1 output can be matplotlibized
 
-    # TODO: refine also P2/P3 tetras in 3D?
+    # TODO: refine also P2/P3 tetras in 3D? (would allow `midpoint_refine`, `prepare_export_as_P1` for 3D)
     if not (V.mesh().topology().dim() == 2 and
             str(V.ufl_element().cell()) == "triangle" and
             input_degree > 1):
@@ -283,6 +283,7 @@ def make_mesh(cells: typing.List[typing.List[int]],
         editor = dolfin.MeshEditor()
         geometric_dim = np.shape(vertices)[1]
         topological_dim = geometric_dim  # TODO: get topological dimension from cell type.
+        # TODO: support creating 3D meshes
         editor.open(mesh, "triangle", topological_dim, geometric_dim)  # TODO: support other cell types; look them up in the FEniCS C++ API docs.
         # Probably, one of the args is the MPI-local count and the other is the global
         # count, but this is not documented, and there is no implementation on the
@@ -380,6 +381,7 @@ def prepare_export_as_P1(V: typing.Union[dolfin.FunctionSpace,
         raise ValueError(f"Expected `V` to use a P2 or P3 element, got {element.family()} with degree {element.degree()}")
     if str(element.cell()) != "triangle":
         raise ValueError(f"Expected `V` to use a triangle mesh, got {element.cell()}")
+    # TODO: support `prepare_export_as_P1` for 3D meshes (needs 3D refine support in `my_cells`)
     mesh_for_P1 = midpoint_refine(V.mesh(), p=element.degree())
     tensor_rank = len(element.value_shape())
     constructors = {0: dolfin.FunctionSpace,
@@ -414,6 +416,7 @@ def midpoint_refine(mesh: dolfin.Mesh, p: int = 2) -> dolfin.Mesh:
     if p not in (2, 3):
         raise ValueError(f"Expected p = 2 or 3, got {p}.")
     V = dolfin.FunctionSpace(mesh, 'P', p)         # define a scalar P2/P3 space...
+    # TODO: support refining 3D meshes in `my_cells` to allow `midpoint_refine` to work on 3D meshes
     cells, nodes_dict = all_cells(V, refine=True)  # ...so that `all_cells` can do our dirty work
     dofs, nodes_array = nodes_to_array(nodes_dict)
     return make_mesh(cells, dofs, nodes_array, distributed=True)
