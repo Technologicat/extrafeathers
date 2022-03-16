@@ -158,8 +158,8 @@ solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 # So, given that the P2 space already gives us additional DOF data, can we
 # improve the export quality at a given element size?
 #
-# By refining the mesh once, we can obtain a new mesh that *does* have
-# additional vertices at the midpoints of the edges of the original mesh.
+# By appropriately refining the original mesh, we can create a new mesh that
+# *does* have vertices at the locations of all DOFs of the original function space.
 # We can then set up a P1 function space on this refined mesh. Pretending that
 # the data is P1, we can just map the DOF data onto the new mesh (i.e. essentially
 # `dolfin.interpolate` it onto the P1 space), export that as P1, and it'll work
@@ -172,7 +172,8 @@ solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 #
 # An L2 projection onto the P1 space would be better, but it is costly, and
 # importantly, tricky to do in parallel when the meshes have different MPI
-# partitioning.
+# partitioning (which they will, because the mesh objects are independent, so
+# FEniCS will partition each without regard to the partitioning of the other).
 #
 # Even the simple interpolation approach gives a marked improvement on the
 # visual quality of the exported data, at a small fraction of the cost,
@@ -182,7 +183,7 @@ solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 # DOFs for saving. It is important to re-use the same `Function` object
 # instance when saving each timestep, because by default constructing a
 # `Function` gives the field a new name (unless you pass in `name=...`).
-# ParaView, on the other hand, needs the name to stay the same over the whole
+# ParaView, on the other hand, expects the name to stay the same over the whole
 # simulation to recognize it as the same field. (FEniCS's default is "f_xxx"
 # for a running number xxx, incremented each time a `Function` is created.)
 #
@@ -190,7 +191,7 @@ solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 # has P1 Lagrange elements, we can interpolate by simply copying the DOF values
 # at the coincident nodes. So we just need a mapping for the global DOF vector
 # that takes the data from the P2 function space DOFs to the corresponding P1
-# function space DOFs.
+# function space DOFs. This is what `prepare_export_as_P1` does.
 #
 if V.ufl_element().degree() > 1:
     if my_rank == 0:
