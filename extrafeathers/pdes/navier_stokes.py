@@ -162,8 +162,9 @@ class NavierStokes:
         f: Function = interpolate(Constant((0, -9.81)), V)
         solver.f.assign(f)
 
-    (Note that if you do simulate gravity, you may need to change some of your boundary
-    conditions to accommodate.)
+    (Note that if you do simulate gravity, you may need to modify some of your boundary
+    conditions to accommodate. Specifically, any Dirichlet boundary conditions on pressure
+    must account for the hydrostatic pressure, p = ρ g h.)
 
     **Allowed element types**:
 

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
-                    Expression, Constant,
+                    Expression, Constant, Function,
                     interpolate, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -82,10 +82,17 @@ inflow_profile = (f'{inflow_max} * 4.0 * (x[1] - {ymin}) * ({ymax} - x[1]) / pow
 # # using tags from mesh file:
 bcu_inflow = DirichletBC(V, Expression(inflow_profile, degree=2), boundary_parts, Boundaries.INFLOW.value)
 bcu_walls = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.WALLS.value)
-bcp_outflow = DirichletBC(Q, Constant(0), boundary_parts, Boundaries.OUTFLOW.value)
+bcp_outflow = DirichletBC(Q, Constant(0), boundary_parts, Boundaries.OUTFLOW.value)  # if no gravity
 bcu_cylinder = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.OBSTACLE.value)
 bcu = [bcu_inflow, bcu_walls, bcu_cylinder]
 bcp = [bcp_outflow]
+
+# # Optional: body force: gravity
+# g = 9.81
+# gravity = Constant((0, -g))  # specific body force, i.e. acceleration
+# hydrostatic_pressure = Expression(f"rho * g * ({ymax} - x[1])", degree=2, rho=rho, g=g)  # p = ρ g h, where h = depth
+# bcp_outflow = DirichletBC(Q, hydrostatic_pressure, boundary_parts, Boundaries.OUTFLOW.value)
+# bcp = [bcp_outflow]
 
 # Create XDMF files (for visualization in ParaView)
 #
@@ -137,10 +144,9 @@ plt.ion()
 #
 solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 
-# Body force (gravity)
-# TODO: vertical gravity requires modification of outlet BCs, because it physically changes the outflow profile.
-# f: Function = interpolate(Constant((0, -10.0)), V)
-# solver.f.assign(f)
+# Optional: body force: gravity
+# f: Function = interpolate(gravity, V)
+# solver.f.assign(f)  # constant in time, so enough to set it once outside the timestep loop
 
 # HACK: Arrange things to allow exporting the velocity field at full nodal resolution.
 # TODO: is it possible to export curved (quadratic isoparametric) FEM data to ParaView?
