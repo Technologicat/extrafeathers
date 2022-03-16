@@ -57,7 +57,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Can compute both cell and facet meshfunctions.
      - Useful for stabilization methods in advection-dominated problems, where `h` typically appears in the stabilization terms.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
-   - `midpoint_refine` [**2D**], `map_refined_P1` [**2D**]
+   - `midpoint_refine` [**2D**], `map_refined_P1` [**2D**, **3D**]
      - Prepare Lagrange P2 (quadratic) or P3 (cubic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization even when the file format is vertex-based.
        - Essentially, in a solver that does this, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
        - However, in parallel, the P2/P3 and P1 meshes will have different MPI partitioning (due to mesh editing), so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2/P3 DOF vector, and then assign the data to the corresponding DOFs of `w`.
@@ -65,14 +65,14 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
        - If you don't care about the aesthetics, for P2 data, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.midpoint_refine(mesh)` works just as well.
      - `map_refined_P1` supports both scalar and vector function spaces. Not tested on tensor fields yet.
      - For full usage examples, see [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) (vector), [`demo.coupled.main02_heat`](demo/coupled/main02_heat.py) (scalar), and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) (both).
-   - `patch_average`, `map_dG0` [**2D**, **3D**]
-     - `map_dG0`:
+   - `patch_average`, `map_dG0`
+     - `map_dG0` [**2D**, **3D**]:
        - Given a function space `V` and a dG0 function space `W` on the same mesh, determine the DOFs of `W`, and mesh cells, that form the support (mathematical sense) of each DOF of `V`.
        - Return two mappings:
          - Global `V` DOF number to an `np.array` of `W` DOF numbers.
          - Global `W` DOF number to cell index.
        - This is useful as a setup step for patch averaging.
-     - `patch_average`:
+     - `patch_average` [**2D**, **3D**]:
        - Given a scalar, vector or tensor function on a P1, P2 or P3 function space, patch-average it (weighted by relative cell volumes), and return the result as a new function on the same function space as the input.
        - This is sometimes useful as a postprocess step to eliminate some checkerboard modes, such as when using LBB-incompatible element types in a Navier-Stokes solver.
        - However, instead of patch-averaging, it is in general better to interpolate (or project) to a dG0 (elementwise constant) space and then just project back to the input (continuous) space:
@@ -96,6 +96,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - See [`demo.import_gmsh`](demo/import_gmsh.py) for an example.
    - Low-level utilities; for more information, see docstrings:
      - `all_cells`, `all_patches`, `my_cells`, `my_patches` [**2D**, **3D**]
+       - As of v0.3.0, the `refine` and `matplotlibize` options of `all_cells`/`my_cells` are only available for 2D triangle meshes.
      - `is_anticlockwise` [**2D**]
      - `make_mesh` [**2D**]
        - Construct a `dolfin.Mesh` from arrays of cells and vertices, using `dolfin.MeshEditor`.
