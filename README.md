@@ -58,6 +58,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Useful for stabilization methods in advection-dominated problems, where `h` typically appears in the stabilization terms.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
    - `midpoint_refine` [**2D**], `map_refined_P1` [**2D**, **3D**]
+     - These are the low-level functions that power `prepare_export_as_P1`.
      - Prepare Lagrange P2 (quadratic) or P3 (cubic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization even when the file format is vertex-based.
        - Essentially, in a solver that does this, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
        - However, in parallel, the P2/P3 and P1 meshes will have different MPI partitioning (due to mesh editing), so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2/P3 DOF vector, and then assign the data to the corresponding DOFs of `w`.
@@ -89,6 +90,11 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
 
          The `patch_average` function is provided just because patch-averaging is a classical
          postprocessing method.
+   - `prepare_export_as_P1` [**2D**]
+     - Exactly as it says on the tin, for P2 and P3 input data. Allows full nodal resolution export of P2 and P3 data into a vertex-based format (represented as refined P1).
+     - High-level function built on `midpoint_refine` and `map_refined_P1`.
+     - That is, given a P2 or P3 function space, prepare a P1 `dolfin.Function` on an appropriately refined mesh, and a DOF mapping that can be used to interpolate DOFs from the original space onto the DOFs of the P1 space.
+     - See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
    - `specialize` a meshfunction [**2D**, **3D**] [**serial only**]
      - Convert a `MeshFunction` on cells or facets of a full mesh into the corresponding `MeshFunction` on its `SubMesh`.
      - Cell and facet meshfunctions supported.
