@@ -7,7 +7,7 @@ full nodal resolution export of data on P2 or P3 triangle meshes.
 
 __all__ = ["my_cells", "all_cells", "nodes_to_array",
            "make_mesh",
-           "midpoint_refine", "map_refined_P1",
+           "prepare_export_as_P1", "midpoint_refine", "map_refined_P1",
            "my_patches", "all_patches", "map_dG0", "patch_average"]
 
 from collections import defaultdict
@@ -305,11 +305,106 @@ def make_mesh(cells: typing.List[typing.List[int]],
     return mesh
 
 
+# If you need the refined mesh, get it as `u_P1.function_space().mesh()`
+def prepare_export_as_P1(V: typing.Union[dolfin.FunctionSpace,
+                                         dolfin.VectorFunctionSpace,
+                                         dolfin.TensorFunctionSpace]) -> typing.Tuple[dolfin.Function,
+                                                                                      np.array]:
+    """Allow exporting P2/P3 data at full nodal resolution in a vertex-based format.
+
+    2D triangle meshes only.
+
+    See also `midpoint_refine` and `map_refined_P1`, both of which are used by this function.
+
+    `V`: P2 or P3 space. Scalar/vector/tensor ok.
+
+    Returns the tuple `(u_P1, my_V_dofs)`, where:
+        - `u_P1` is a `Function` on the once-refined P1 space based on `V`.
+        - `my_V_dofs` is an `np.array` of DOFs of `V` that correspond to the MPI-local part of `u_P1`.
+
+
+    **Usage notes**:
+
+    Given something like::
+
+        import dolfin
+        from extrafeathers import meshmagic
+
+        mesh = ...  # some 2D triangle mesh
+        V = dolfin.FunctionSpace(mesh, "P", 2)  # or 3
+        u = dolfin.Function(V)
+
+        # for export to ParaView
+        xdmffile_u = dolfin.XDMFFile(dolfin.MPI.comm_world, "u.xdmf")
+        xdmffile_u.parameters["flush_output"] = True
+        xdmffile_u.parameters["rewrite_function_mesh"] = False
+
+    we would like to set up a P1 space with nodes coincident with those of `V`::
+
+        mesh_P1 = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
+        V_P1 = FunctionSpace(mesh_P1, "P", 1)
+        u_P1 = Function(V_P1)
+
+    and then in the timestep loop, export `u` on this P1 space::
+
+        u_P1.assign(dolfin.interpolate(u, V_P1))
+        xdmffile_u.write(u_P1, t)
+
+    which does work in serial mode.
+
+    In MPI mode, the problem is that the DOFs of `V` and `V_P1` partition differently
+    (essentially because `mesh_P1` is independent of the original `mesh`), so each
+    MPI process has no access to some of the `u` data it needs to construct its part
+    of `u_P1`.
+
+    This is where this function comes in. Set up the P1 representation like this::
+
+        u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
+        all_V_dofs = np.array(range(V.dim()), "intc")
+        u_copy = dolfin.Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+
+    Then in the timestep loop, to export `u` on the P1 space::
+
+        u.vector().gather(u_copy, all_V_dofs)  # allgather to `u_copy`
+        u_P1.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        xdmffile_u.write(u_P1, t)
+
+    Note that if you need them for other purposes, the P1 function space and mesh are
+    available as::
+
+        V_P1 = u_P1.function_space()
+        mesh_P1 = V_P1.mesh()
+    """
+    element = V.ufl_element()
+    if element.degree() < 2 or str(element.family()) != "Lagrange":
+        raise ValueError(f"Expected `V` to use a P2 or P3 element, got {element.family()} with degree {element.degree()}")
+    if str(element.cell()) != "triangle":
+        raise ValueError(f"Expected `V` to use a triangle mesh, got {element.cell()}")
+    mesh_for_P1 = midpoint_refine(V.mesh(), p=element.degree())
+    tensor_rank = len(element.value_shape())
+    constructors = {0: dolfin.FunctionSpace,
+                    1: dolfin.VectorFunctionSpace,
+                    2: dolfin.TensorFunctionSpace}
+    try:
+        V_P1 = (constructors[tensor_rank])(mesh_for_P1, 'P', 1)
+    except KeyError as err:
+        raise ValueError(f"Don't know what to do with tensors of rank > 2, got {tensor_rank}") from err
+    u_P1 = dolfin.Function(V_P1)
+    VtoVexport, VexporttoV = map_refined_P1(V, V_P1)
+    my_Vexport_dofs = V_P1.dofmap().dofs()  # MPI-local
+    my_V_dofs = VexporttoV[my_Vexport_dofs]  # MPI-local
+    return u_P1, my_V_dofs
+
+
 def midpoint_refine(mesh: dolfin.Mesh, p: int = 2) -> dolfin.Mesh:
-    """Given a 2D triangle mesh `mesh`, return a new mesh for exporting P2 or P3 data as P1.
+    """Given a `mesh`, return a new mesh for exporting P2 or P3 data as P1.
+
+    2D triangle meshes only.
 
     Like `dolfin.refine(mesh)` without further options; but we guarantee an aesthetically optimal fill,
     designed for visualizing P2/P3 data, when interpolating that data as P1 on the once-refined mesh.
+
+    See also `prepare_export_as_P1` for an all-in-one solution.
 
     `p`: The original degree of the elements your data lives on.
        `p=2` will generate a P1 mesh for P2 data, with an additional vertex placed at each edge midpoint.
@@ -341,6 +436,8 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
     missing some of the input data needed to construct its part of the P1
     representation. This can be worked around by hacking the DOF vectors directly.
     See example below.
+
+    See also `prepare_export_as_P1` for an all-in-one solution.
 
     `V`: P2 or P3 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace`
          on some `mesh`.
