@@ -373,8 +373,8 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
         V = dolfin.FunctionSpace(mesh, 'P', 2)
         u = dolfin.Function(V)
 
-        export_mesh = midpoint_refine(mesh)
-        W = dolfin.FunctionSpace(export_mesh, 'P', 1)
+        mesh_for_P1 = midpoint_refine(mesh)
+        W = dolfin.FunctionSpace(mesh_for_P1, 'P', 1)
         w = dolfin.Function(W)
 
         VtoW, WtoV = map_refined_P1(V, W)
