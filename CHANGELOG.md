@@ -1,8 +1,10 @@
 # Changelog
 
-**0.4.0** (in progress, last updated 15 March 2022):
+**0.4.0** (in progress, last updated 16 March 2022):
 
-*No user-visible changes yet.*
+**Added**:
+
+- Add `prepare_export_as_P1`. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
 
 
 ---
