@@ -440,7 +440,7 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
 
     `V`: P2 or P3 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace`
          on some `mesh`.
-    `W`: The corresponding P1 space on `refine(mesh)` or `midpoint_refine(mesh)`.
+    `W`: The corresponding P1 space on `midpoint_refine(mesh)`.
 
     This function is actually slightly more general than that; that is just the simple
     way to explain it. The real restriction is that `V` and `W` must have the same number
