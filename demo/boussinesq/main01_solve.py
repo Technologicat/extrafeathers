@@ -95,7 +95,7 @@ heatsolver = HeatEquation(W, rho, c, k, bcT, dt,
                           advection="divergence-free",
                           velocity_degree=V.ufl_element().degree())
 
-# HACK: Arrange things to allow visualizing P2/P3 fields at full nodal resolution.
+# HACK: Arrange things to allow exporting P2/P3 fields at full nodal resolution.
 if V.ufl_element().degree() > 1 or W.ufl_element().degree() > 1:
     if my_rank == 0:
         print("Preparing export of higher-degree data as refined P1...")

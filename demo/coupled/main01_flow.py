@@ -142,7 +142,7 @@ solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 # f: Function = interpolate(Constant((0, -10.0)), V)
 # solver.f.assign(f)
 
-# HACK: Arrange things to allow visualizing the velocity field at full nodal resolution.
+# HACK: Arrange things to allow exporting the velocity field at full nodal resolution.
 # TODO: is it possible to export curved (quadratic isoparametric) FEM data to ParaView?
 #
 # For `u`, we use the P2 element, which does not export at full quality into
