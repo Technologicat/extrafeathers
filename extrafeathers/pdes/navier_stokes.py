@@ -752,8 +752,10 @@ class NavierStokes:
             # global DOF) is not documented very well. See the source code of
             # `dolfin.Function`, it has a `__float__` method. The sanity checks
             # indicate it is intended precisely for this.
+            begin("Zero out mean pressure")
             avgp = project(self.p_, self.W)
             self.p_.vector()[:] -= float(avgp)
+            end()
 
         # Step 3: Velocity correction step
         begin("Velocity correction")
