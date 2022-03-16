@@ -298,9 +298,6 @@ for n in range(nt):
             #
             # Note that in general, these expressions live on different function spaces,
             # because velocity and temperature may use different degree elements.
-            # Thus to minimize the need for MPI communication, it is easiest to take the
-            # MPI-local maximum of each separately here (`V.sub(0)` and `W` may have been
-            # MPI-partitioned differently).
             Co_adv = project(magu_expr * Constant(dt) / flowsolver.he, V.sub(0).collapse())
             Co_dif = project(heatsolver.ν * Constant(dt) / heatsolver.he**2, W)
             maxCo_adv_local = np.array(Co_adv.vector()).max()
