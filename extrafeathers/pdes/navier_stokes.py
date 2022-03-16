@@ -772,11 +772,15 @@ class NavierStokes:
         # the PDE) than if we did this between steps 2 and 2½.
         if self.V.ufl_element().degree() == 1:
             begin("Smooth pressure")
-            self.p_.assign(project(interpolate(self.p_, self.dG0), self.Q))
-            # # Alternative strategies:
-            # # 2-way projection, best accuracy in general case
-            # self.p_.assign(project(project(self.p_, self.dG0), self.Q))
-            # # classical patch averaging (see docstring on setting up QtodG0, dG0tocell, cell_volume)
+            if self.Q.ufl_element().degree() == 1:
+                # When pressure is P1, sampling at the element midpoint (which is also the dG0
+                # integration point) is a cheap way to get the average of the field over the element.
+                # This saves us one linear solve.
+                self.p_.assign(project(interpolate(self.p_, self.dG0), self.Q))
+            else:
+                # Otherwise, we must project to dG0 to obtain the average.
+                self.p_.assign(project(project(self.p_, self.dG0), self.Q))
+            # # alternative: classical patch averaging (see docstring for setting up the extra args)
             # self.p_.assign(meshmagic.patch_average(self.p_, self.dG0, QtodG0, dG0tocell, cell_volume))
             end()
 
