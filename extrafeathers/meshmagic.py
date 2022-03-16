@@ -335,7 +335,7 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
     The purpose is to be able to map a nodal values vector from `V` to `W` and
     vice versa, for interpolation.
 
-    Once particular use case is to export P2/P3 data in MPI mode at full nodal resolution,
+    One particular use case is to export P2/P3 data in MPI mode at full nodal resolution,
     as once-refined P1 data. In general, the MPI partitionings of `V` and `W` will
     not match, and thus `interpolate(..., W)` will not work, because each process is
     missing some of the input data needed to construct its part of the P1
