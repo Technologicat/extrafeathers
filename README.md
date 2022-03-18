@@ -161,6 +161,8 @@ Gmsh `.msh` files and the original `.geo` files to generate them can be found in
 
 ### DOF numbering related
 
+**Code**: [[global DOF numbering](demo/dofnumbering.py)] [[reference element](demo/refelement.py)]
+
 To illustrate how FEniCS numbers the global DOFs to maximize data locality (given that each process is allocated a contiguous chunk of DOFs):
 
 ```bash
@@ -199,6 +201,8 @@ Any of these works also in MPI mode, then color-coding the MPI partitioning by e
 
 ### Patch averaging
 
+[[code](demo/patch_average.py)]
+
 ```bash
 python -m demo.patch_average
 mpirun python -m demo.patch_average
@@ -208,6 +212,8 @@ mpirun python -m demo.patch_average
 
 
 ### Poisson equation
+
+**Code**: [[classic](demo/poisson.py)] [[dG (SIPG)](demo/poisson_dg.py)]
 
 The classic: the Poisson equation with zero Dirichlet BCs, here on an L-shaped domain. Simple example of `find_subdomain_boundaries` and `mpiplot`.
 
@@ -232,6 +238,8 @@ mpirun python -m demo.poisson_dg
 
 ### Gmsh mesh import
 
+[[code](demo/import_gmsh.py)]
+
 ```bash
 python -m demo.import_gmsh
 ```
@@ -242,6 +250,8 @@ python -m demo.import_gmsh
 
 
 ### Incompressible flow (Navier-Stokes)
+
+**Code**: [[mesh import](demo/import_gmsh.py)] [[solver](demo/navier_stokes.py)]
 
 With **uniform mesh generated via `mshr`**:
 
@@ -269,6 +279,9 @@ There is a more advanced version of the Navier-Stokes solver (with better modula
 
 
 ### Forced convection (one-way coupled problem)
+
+**Code**: [[mesh import](demo/import_gmsh.py)] [[alt. mesh import](demo/coupled/main00_alternative_mesh.py)] [[internal mesh generation](demo/coupled/main00_mesh.py)] [[configuration](demo/coupled/config.py)] [[flow solver](demo/coupled/main01_flow.py)] [[heat solver](demo/coupled/main02_heat.py)]  
+**Reusable PDEs**: [[Navier-Stokes](extrafeathers/pdes/navier_stokes.py)] [[heat equation](extrafeathers/pdes/advection_diffusion.py)]
 
 This demo uses the same HDF5 mesh file as the Navier-Stokes demo, but comes with a more advanced Navier-Stokes solver with stabilization.
 
@@ -328,6 +341,9 @@ Some simulation parameters can be found in [`demo.coupled.config`](demo/coupled/
 
 
 ### Natural convection (two-way coupled problem)
+
+**Code**: [[mesh import](demo/boussinesq/main00_mesh.py)] [[configuration](demo/coupled/config.py)] [[solver](demo/boussinesq/main01_solve.py)]  
+**Reusable PDEs**: [[Navier-Stokes](extrafeathers/pdes/navier_stokes.py)] [[heat equation](extrafeathers/pdes/advection_diffusion.py)]
 
 The model is based on the [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)). It uses the same Navier-Stokes solver as the forced convection demo, but now we add buoyancy via a Boussinesq source term for the velocity.
 
