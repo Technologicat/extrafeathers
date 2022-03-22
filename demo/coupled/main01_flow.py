@@ -209,6 +209,10 @@ if V.ufl_element().degree() > 1:
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
+# Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
+prep_Vcomp = plotmagic.mpiplot_prepare(Function(V.sub(0).collapse()))
+prep_Q = plotmagic.mpiplot_prepare(solver.p_)
+
 # Enable stabilizers for the Galerkin formulation
 solver.stabilizers.SUPG = True  # stabilizer for advection-dominant flows
 solver.stabilizers.LSIC = True  # additional stabilizer for high Re
@@ -276,20 +280,20 @@ for n in range(nt):
     #         plt.figure(1)
     #         plt.clf()
     #         plt.subplot(3, 1, 1)
-    #     theplot = plotmagic.mpiplot(solver.p_)
+    #     theplot = plotmagic.mpiplot(solver.p_, prep=prep_Q)
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
     #         plt.ylabel(r"$p$")
     #         plt.title(msg)
     #         plt.subplot(3, 1, 2)
-    #     theplot = plotmagic.mpiplot(solver.u_.sub(0))
+    #     theplot = plotmagic.mpiplot(solver.u_.sub(0), prep=prep_Vcomp)
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
     #         plt.ylabel(r"$u_x$")
     #         plt.subplot(3, 1, 3)
-    #     theplot = plotmagic.mpiplot(solver.u_.sub(1))
+    #     theplot = plotmagic.mpiplot(solver.u_.sub(1), prep=prep_Vcomp)
     #     if my_rank == 0:
     #         plt.axis("equal")
     #         plt.colorbar(theplot)
@@ -321,7 +325,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotmagic.mpiplot(solver.p_, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
+            theplot = plotmagic.mpiplot(solver.p_, prep=prep_Q, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -331,7 +335,7 @@ for n in range(nt):
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
                                    u0=solver.u_.sub(0), u1=solver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
-            theplot = plotmagic.mpiplot(magu, cmap="viridis")
+            theplot = plotmagic.mpiplot(magu, prep=prep_Vcomp, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)

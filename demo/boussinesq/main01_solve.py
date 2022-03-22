@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
-                    Expression, Constant,
+                    Expression, Constant, Function,
                     interpolate, project, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -115,6 +115,11 @@ if V.ufl_element().degree() > 1 or W.ufl_element().degree() > 1:
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
+# Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
+prep_Vcomp = plotmagic.mpiplot_prepare(Function(V.sub(0).collapse()))
+prep_Q = plotmagic.mpiplot_prepare(flowsolver.p_)
+prep_W = plotmagic.mpiplot_prepare(heatsolver.u_)
+
 # Enable stabilizers for the Galerkin formulation
 flowsolver.stabilizers.SUPG = True  # stabilizer for advection-dominant flows
 flowsolver.stabilizers.LSIC = True  # additional stabilizer for high Re
@@ -202,7 +207,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(1, 3, 1)
-            theplot = plotmagic.mpiplot(flowsolver.p_, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
+            theplot = plotmagic.mpiplot(flowsolver.p_, prep=prep_Q, cmap="RdBu_r", vmin=-absmaxp, vmax=+absmaxp)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -212,13 +217,13 @@ for n in range(nt):
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
                                    u0=flowsolver.u_.sub(0), u1=flowsolver.u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
-            theplot = plotmagic.mpiplot(magu, cmap="viridis")
+            theplot = plotmagic.mpiplot(magu, prep=prep_Vcomp, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.ylabel(r"$|u|$")
                 plt.subplot(1, 3, 3)
-            theplot = plotmagic.mpiplot(heatsolver.u_, cmap="coolwarm")
+            theplot = plotmagic.mpiplot(heatsolver.u_, prep=prep_W, cmap="coolwarm")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)

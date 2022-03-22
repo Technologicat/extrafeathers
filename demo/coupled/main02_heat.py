@@ -41,22 +41,6 @@ V = FunctionSpace(mesh, 'P', 2)  # can use 1 or 2
 if my_rank == 0:
     print(f"Number of DOFs: temperature {V.dim()}")
 
-# HACK: Arrange things to allow visualizing the temperature field at full nodal resolution.
-if V.ufl_element().degree() > 1:
-    if my_rank == 0:
-        print("Preparing export of higher-degree data as refined P1...")
-    with timer() as tim:
-        export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
-        W = FunctionSpace(export_mesh, 'P', 1)
-        w = Function(W)
-        VtoW, WtoV = meshmagic.map_refined_P1(V, W)
-        all_V_dofs = np.array(range(V.dim()), "intc")
-        u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-        my_W_dofs = W.dofmap().dofs()  # MPI-local
-        my_V_dofs = WtoV[my_W_dofs]  # MPI-local
-    if my_rank == 0:
-        print(f"Preparation complete in {tim.dt:0.6g} seconds.")
-
 # Define boundary conditions
 bc_inflow = DirichletBC(V, Constant(0), boundary_parts, Boundaries.INFLOW.value)
 bc_cylinder = DirichletBC(V, Constant(1), boundary_parts, Boundaries.OBSTACLE.value)
@@ -104,6 +88,25 @@ solver = HeatEquation(V, rho, c, k, bc, dt,
 # Heat source
 # h: Function = interpolate(Constant(1.0), V)
 # solver.f.assign(f)
+
+# HACK: Arrange things to allow visualizing the temperature field at full nodal resolution.
+if V.ufl_element().degree() > 1:
+    if my_rank == 0:
+        print("Preparing export of higher-degree data as refined P1...")
+    with timer() as tim:
+        export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
+        W = FunctionSpace(export_mesh, 'P', 1)
+        w = Function(W)
+        VtoW, WtoV = meshmagic.map_refined_P1(V, W)
+        all_V_dofs = np.array(range(V.dim()), "intc")
+        u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+        my_W_dofs = W.dofmap().dofs()  # MPI-local
+        my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+    if my_rank == 0:
+        print(f"Preparation complete in {tim.dt:0.6g} seconds.")
+
+# Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
+prep_V = plotmagic.mpiplot_prepare(solver.u_)
 
 # Enable stabilizers for the Galerkin formulation
 #
@@ -171,7 +174,7 @@ for n in range(nt):
                 plt.figure(1)
                 plt.clf()
                 plt.subplot(2, 1, 1)
-            theplot = plotmagic.mpiplot(solver.u_, cmap="coolwarm")
+            theplot = plotmagic.mpiplot(solver.u_, prep=prep_V, cmap="coolwarm")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
@@ -181,7 +184,7 @@ for n in range(nt):
             maga_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=velocity_degree,
                                    u0=solver.a.sub(0), u1=solver.a.sub(1))
             maga = interpolate(maga_expr, V)
-            theplot = plotmagic.mpiplot(maga, cmap="viridis")
+            theplot = plotmagic.mpiplot(maga, prep=prep_V, cmap="viridis")
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)

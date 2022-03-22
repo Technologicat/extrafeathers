@@ -16,7 +16,7 @@ for some common plotting tasks in 2D solvers:
 
 __all__ = ["pause",
            "as_mpl_triangulation",
-           "mpiplot", "mpiplot_mesh",
+           "mpiplot_prepare", "mpiplot", "mpiplot_mesh",
            "plot_facet_meshfunction"]
 
 from collections import defaultdict
@@ -136,21 +136,83 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     return None
 
 
+def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Tuple[dolfin.FunctionSpace,
+                                                                                         mtri.Triangulation,
+                                                                                         np.array]:
+    """Optional performance optimization for `mpiplot`.
+
+    Allows re-using the mesh and dofmap analysis across several plots.
+
+    This converts the function space `V = u.function_space()` (which must be scalar;
+    `.sub(j)` of a vector/tensor space is ok) to a Matplotlib triangulation for plotting.
+    Also, if `V` is a subspace (vector/tensor field component), determines which global
+    DOFs belong to `V`.
+
+    The return value is the tuple `prep = (vis_space, triangulation, subspace_dofs)`.
+
+      - This tuple can be passed into `mpiplot` as the `prep` argument.
+
+      - The `triangulation` item can also be passed into `mpiplot_mesh` as the
+        `_triangulation` argument.
+
+    The returned `prep` remains valid for any function on the same space `V` and the
+    same mesh. (Moving the mesh nodes invalidates the `prep`, but this is not checked.)
+    """
+    V = u.function_space()
+    mesh = V.mesh()
+
+    if mesh.topology().dim() != 2:
+        raise NotImplementedError(f"mpiplot_prepare currently only supports meshes of topological dimension 2, got {mesh.topology().dim()}")
+
+    # Convert unsupported function spaces into P1.
+    if not (str(V.ufl_element().cell()) == "triangle" and
+            V.ufl_element().degree() in (1, 2, 3)):
+        V_vis = dolfin.FunctionSpace(mesh, "P", 1)
+    else:
+        V_vis = V
+
+    # The global DOF vector always refers to the complete function space.
+    # If `V` is a subspace (vector/tensor field component), the DOF vector
+    # will include also those DOFs that are not part of `V`. Determine the
+    # DOFs that belong to `V`.
+    dofmaps = dolfin.MPI.comm_world.allgather(V_vis.dofmap().dofs())
+
+    # CAUTION: `all_cells`, used by `as_mpl_triangulation`,
+    # sorts the nodes by global DOF number; match the ordering.
+    subspace_dofs = np.sort(np.concatenate(dofmaps))
+
+    tri = as_mpl_triangulation(V_vis, refine=True)  # this converts P2/P3 -> P1
+
+    return V_vis, tri, subspace_dofs
+
+
 # TODO: not sure what exactly `matplotlib.pyplot.tricontourf` returns or what the type spec for it should be.
 # The point of the Optional return value is to make it explicit it's something-or-None.
 def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
             show_mesh: bool = False,
             show_partitioning: bool = False,
+            prep: typing.Optional[typing.Tuple[dolfin.FunctionSpace,
+                                               mtri.Triangulation,
+                                               np.array]] = None,
             **kwargs: typing.Any) -> typing.Optional[typing.Any]:
     """Like `dolfin.plot`, but plots the whole field in the root process (MPI rank 0).
 
     `u`: `dolfin.Function`; a 2D scalar FEM field
          (`.sub(j)` of a vector or tensor field is fine)
+
     `show_mesh`: if `True`, show the element edges (and P1 vis edges too,
                  if `u` is a `P2` or `P3` function).
+
     `show_partitioning`: Used only if `show_mesh=True`.
                      If `True`, color-code the mesh parts for different MPI ranks.
                      You can use `matplotlib.pyplot.legend` to show which is which.
+
+    `prep`: optional performance optimization, see `mpiplot_prepare` to generate this.
+
+            This is useful if you intend to plot many functions that live on the same
+            function space (or the same function at many timesteps), because a static
+            mesh and the DOF mapping only need to be analyzed once.
+
     `kwargs`: passed through to `matplotlib.pyplot.tricontourf`
 
     If `u` lives on P2 or P3 elements, each element will be internally split into
@@ -174,14 +236,17 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     # d = V.dofmap().dofs()  # local, each process gets its own values
     # print(my_rank, min(d), max(d))
 
+    if prep:
+        V_vis, tri, subspace_dofs = prep
+    else:
+        V_vis, tri, subspace_dofs = mpiplot_prepare(u)
+
     # If not a supported element type, project to P1 elements
     # for easy reconstruction for visualization.
     if not (str(V.ufl_element().cell()) == "triangle" and
             V.ufl_element().degree() in (1, 2, 3)):
-        V_vis = dolfin.FunctionSpace(mesh, "P", 1)
         u_vis = dolfin.project(u, V_vis)
     else:
-        V_vis = V
         u_vis = u
 
     # Make a complete copy of the DOF vector onto the root process.
@@ -200,26 +265,20 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     # v_vec = dolfin.Vector(dolfin.MPI.comm_self, u_vec.local_size())
     # u_vec.gather(v_vec, V.dofmap().dofs())  # in_vec.gather(out_vec, indices)
 
-    # The global DOF vector always refers to the complete function space.
-    # If `V` is a subspace (vector/tensor field component), the DOF vector
-    # will include also those DOFs that are not part of `V`. Extract the
-    # V DOFs.
-    dofmaps = dolfin.MPI.comm_world.gather(V_vis.dofmap().dofs(), root=0)
+    theplot = None
     if my_rank == 0:
-        # CAUTION: `all_cells`, used by `as_mpl_triangulation`,
-        # sorts the nodes by global DOF number; match the ordering.
-        subspace_dofs = np.sort(np.concatenate(dofmaps))
+        # The global DOF vector always refers to the complete function space.
+        # If `V` is a subspace (vector/tensor field component), take only the
+        # DOFs that belong to `V`. (For a true scalar space `V`, this is a no-op.)
         v_vec = v_vec[subspace_dofs]
 
-    theplot = None
-    tri = as_mpl_triangulation(V_vis, refine=True)  # this converts P2/P3 -> P1
-    if my_rank == 0:
         assert len(tri.x) == n_global_dofs  # each global DOF has coordinates
         assert len(v_vec) == n_global_dofs  # we have a data value at each DOF
         theplot = plt.tricontourf(tri, v_vec, levels=32, **kwargs)
 
         # # Alternative visualization style.
         # theplot = plt.tripcolor(tri, v_vec, shading="gouraud", **kwargs)
+        # theplot = plt.tripcolor(tri, v_vec, shading="flat", **kwargs)
 
         # # Another alternative visualization style.
         # # https://matplotlib.org/stable/gallery/mplot3d/trisurf3d.html
