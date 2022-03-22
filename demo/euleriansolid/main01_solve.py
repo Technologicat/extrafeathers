@@ -8,7 +8,7 @@ from unpythonic import ETAEstimator, timer
 
 from fenics import (VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
                     Expression, Constant,
-                    interpolate, Vector,
+                    interpolate, project, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -46,17 +46,40 @@ solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcσ, dt)
 
 # Define boundary conditions
 #
-bcu_left = DirichletBC(solver.S.sub(0), Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-bcu_right = DirichletBC(solver.S.sub(0), Constant((1, 0)), boundary_parts, Boundaries.RIGHT.value)
-bcv_left = DirichletBC(solver.S.sub(1), Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-bcv_right = DirichletBC(solver.S.sub(1), Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)
-# bcσ_right = DirichletBC(solver.S.sub(2), Constant(((1, 0),
-#                                                    (0, 0))),
-#                         boundary_parts, Boundaries.RIGHT.value)
+# These need to be applied on the correct `.sub(j)` of the full `FunctionSpace`.
+# https://fenicsproject.org/qa/13269/scalar-mixed-function-space-problem/
+#
+bcu_left = DirichletBC(solver.S.sub(0), Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+# bcv_left = DirichletBC(solver.S.sub(1), Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+bcu_right = DirichletBC(solver.S.sub(0), Constant((1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
+# bcv_right = DirichletBC(solver.S.sub(1), Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+#bcu_right = DirichletBC(solver.S.sub(0).sub(0), Constant(1e-3), boundary_parts, Boundaries.RIGHT.value)
+#bcv_right = DirichletBC(solver.S.sub(1).sub(0), Constant(0), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+bcσ_top1 = DirichletBC(solver.S.sub(2).sub(1), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ12 (symm.)
+bcσ_top2 = DirichletBC(solver.S.sub(2).sub(2), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ21
+bcσ_top3 = DirichletBC(solver.S.sub(2).sub(3), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ22
+bcσ_bottom1 = DirichletBC(solver.S.sub(2).sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ12
+bcσ_bottom2 = DirichletBC(solver.S.sub(2).sub(2), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ21
+bcσ_bottom3 = DirichletBC(solver.S.sub(2).sub(3), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ22
 bcu.append(bcu_left)
 bcu.append(bcu_right)
-bcu.append(bcv_left)
-bcu.append(bcv_right)
+# bcu.append(bcv_left)
+# bcu.append(bcv_right)
+bcσ.append(bcσ_top1)
+bcσ.append(bcσ_top2)
+bcσ.append(bcσ_top3)
+bcσ.append(bcσ_bottom1)
+bcσ.append(bcσ_bottom2)
+bcσ.append(bcσ_bottom3)
+
+# Initial condition (displacement)
+#
+u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)
+solver.s_.sub(0).assign(u0)
+
+# bcσ_left = DirichletBC(solver.S.sub(2), Constant(((1, 0), (0, 0))), boundary_parts, Boundaries.LEFT.value)
+# bcσ_right = DirichletBC(solver.S.sub(2), Constant(((1, 0), (0, 0))), boundary_parts, Boundaries.RIGHT.value)
+# bcσ.append(bcσ_left)
 # bcσ.append(bcσ_right)
 
 # Create XDMF files (for visualization in ParaView)
@@ -116,23 +139,25 @@ for n in range(nt):
 
     begin("Saving")
 
-    if V.ufl_element().degree() > 1:
-        # Save the velocity visualization at full nodal resolution.
-        solver.u_.vector().gather(vec_copy, all_V_dofs)  # allgather `u_` to `vec_copy`
-        func_P1.vector()[:] = vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_u.write(func_P1, t)
-
-        # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
-        solver.v_.vector().gather(vec_copy, all_V_dofs)  # allgather `v_` to `vec_copy`
-        func_P1.vector()[:] = vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_v.write(func_P1, t)
-    else:  # save at P1 resolution
-        xdmffile_u.write(solver.u_, t)
-        xdmffile_v.write(solver.v_, t)
-    xdmffile_σ.write(solver.p_, t)
-    timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original data
-    timeseries_v.store(solver.v_.vector(), t)
-    timeseries_σ.store(solver.σ_.vector(), t)
+    # if V.ufl_element().degree() > 1:
+    #     # Save the velocity visualization at full nodal resolution.
+    #     solver.u_.vector().gather(vec_copy, all_V_dofs)  # allgather `u_` to `vec_copy`
+    #     func_P1.vector()[:] = vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+    #     xdmffile_u.write(func_P1, t)
+    #
+    #     # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
+    #     solver.v_.vector().gather(vec_copy, all_V_dofs)  # allgather `v_` to `vec_copy`
+    #     func_P1.vector()[:] = vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+    #     xdmffile_v.write(func_P1, t)
+    # else:  # save at P1 resolution
+    #     xdmffile_u.write(solver.u_, t)
+    #     xdmffile_v.write(solver.v_, t)
+    xdmffile_u.write(solver.s_.sub(0), t)
+    xdmffile_v.write(solver.s_.sub(1), t)
+    xdmffile_σ.write(solver.s_.sub(2), t)
+    timeseries_u.store(solver.s_.sub(0).vector(), t)  # the timeseries saves the original data
+    timeseries_v.store(solver.s_.sub(1).vector(), t)
+    timeseries_σ.store(solver.s_.sub(2).vector(), t)
     end()
 
     # Accept the timestep, updating the "old" solution
@@ -146,23 +171,62 @@ for n in range(nt):
             if my_rank == 0:
                 plt.figure(1)
                 plt.clf()
-                plt.subplot(2, 1, 1)
-            theplot = plotmagic.mpiplot(solver.u_.sub(0))
+                plt.subplot(2, 4, 1)
+            u_ = solver.s_.sub(0)  # s = u, v, σ
+            v_ = solver.s_.sub(1)  # s = u, v, σ
+            σ_ = solver.s_.sub(2)  # s = u, v, σ
+            theplot = plotmagic.mpiplot(u_.sub(0), show_mesh=True)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
-                plt.ylabel(r"$u_{1}$")
-                plt.title(msg)
-                plt.subplot(2, 1, 2)
-            theplot = plotmagic.mpiplot(solver.u_.sub(1))
+                plt.title(r"$u_{1}$")
+                plt.subplot(2, 4, 5)
+            theplot = plotmagic.mpiplot(u_.sub(1), show_mesh=True)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
-                plt.ylabel(r"$u_{2}$")
+                plt.title(r"$u_{2}$")
+                plt.subplot(2, 4, 2)
+            theplot = plotmagic.mpiplot(v_.sub(0), show_mesh=True)
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.title(r"$v_{1}$")
+                plt.subplot(2, 4, 6)
+            theplot = plotmagic.mpiplot(v_.sub(1), show_mesh=True)
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.title(r"$v_{2}$")
+                plt.subplot(2, 4, 3)
+            theplot = plotmagic.mpiplot(σ_.sub(0), show_mesh=True)
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.title(r"$σ_{11}$")
+                plt.subplot(2, 4, 4)
+            theplot = plotmagic.mpiplot(σ_.sub(1), show_mesh=True)
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.title(r"$σ_{12}$")
+                plt.subplot(2, 4, 7)
+            theplot = plotmagic.mpiplot(σ_.sub(2), show_mesh=True)
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.title(r"$σ_{21}$")
+                plt.subplot(2, 4, 8)
+            theplot = plotmagic.mpiplot(σ_.sub(3), show_mesh=True)
+            if my_rank == 0:
+                plt.axis("equal")
+                plt.colorbar(theplot)
+                plt.title(r"$σ_{22}$")
+            plt.suptitle(msg)
 
             # info for msg (expensive; only update these once per vis step)
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
-                                   u0=solver.u_.sub(0), u1=solver.u_.sub(1))
+                                   u0=u_.sub(0), u1=u_.sub(1))
             magu = interpolate(magu_expr, V.sub(0).collapse())
             uvec = np.array(magu.vector())
 
@@ -204,7 +268,7 @@ for n in range(nt):
     max_vis_step_walltime = item_with_max_vis_step_walltime[0]
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{SUPG_str}; t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; vis every {max_vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
+    msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; vis every {max_vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
 
 # Hold plot
 if my_rank == 0:

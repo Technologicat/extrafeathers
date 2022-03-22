@@ -17,7 +17,7 @@ E = 1.66133e+11    # Young's modulus [Pa]
 lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
 mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 
-V0 = 1.0           # velocity of co-moving frame in +x direction (constant) [m/s]
+V0 = 0.0           # velocity of co-moving frame in +x direction (constant) [m/s]
 
 # --------------------------------------------------------------------------------
 # Numerical

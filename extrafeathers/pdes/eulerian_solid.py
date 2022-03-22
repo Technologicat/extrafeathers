@@ -33,7 +33,7 @@ from fenics import (VectorFunctionSpace, TensorFunctionSpace, MixedElement, Func
                     nabla_grad, div, dx, ds,
                     Identity,
                     lhs, rhs, assemble, solve, normalize,
-                    interpolate, VectorSpaceBasis, as_backend_type,
+                    interpolate, project, VectorSpaceBasis, as_backend_type,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
@@ -141,6 +141,17 @@ class EulerianSolid:
         u_, v_, σ_ = split(s_)
         u_n, v_n, σ_n = split(s_n)
 
+        self.S = S
+        self.s_, self.s_n = s_, s_n
+
+        self.V = V
+        self.Q = Q
+
+        self.u, self.v, self.σ = u, v, σ  # trials
+        self.ψ, self.w, self.φ = ψ, w, φ  # tests
+        self.u_, self.v_, self.σ_ = u_, v_, σ_  # latest computed approximation
+        self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
+
         # Set up the null space. We'll remove it in the Krylov solver.
         #
         # https://fenicsproject.discourse.group/t/rotation-in-null-space-for-elasticity/4083
@@ -177,31 +188,28 @@ class EulerianSolid:
         zeroV.vector()[:] = 0.0
         zeroQ = Function(Q)
         zeroQ.vector()[:] = 0.0
-        assigner = FunctionAssigner([V, V, Q], S)
+        # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
+        assigner = FunctionAssigner(S, [V, V, Q])  # receiving space, assigning space
         fss = [Function(S) for _ in range(len(fus))]
-        for fu, fs in zip(fus, fss):
-            assigner.assign([interpolate(fu, V), zeroV, zeroQ], fs)
+        for fs, fu in zip(fss, fus):
+            assigner.assign(fs, [project(fu, V), zeroV, zeroQ])
         null_space_basis = [fs.vector() for fs in fss]
-        [normalize(vec, 'l2') for vec in null_space_basis]  # TODO: normalize full vector or sub only?
+
+        # same null space basis for velocity?
+        fss = [Function(S) for _ in range(len(fus))]
+        for fs, fu in zip(fss, fus):
+            assigner.assign(fs, [zeroV, project(fu, V), zeroQ])
+        null_space_basis += [fs.vector() for fs in fss]
+
+        # [normalize(vec, 'l2') for vec in null_space_basis]  # TODO: normalize full vector or sub only?
 
         # # May be needed in some FEniCS versions to avoid PETSc error in `VecCopy`
         # for vec in null_space_basis:
         #     vec.apply("insert")
 
         basis = VectorSpaceBasis(null_space_basis)
-        # basis.orthonormalize()  # TODO: for some reason this says there is a linear dependence in the basis?
+        basis.orthonormalize()
         self.null_space = basis
-
-        self.S = S
-        self.s_, self.s_n = s_, s_n
-
-        self.V = V
-        self.Q = Q
-
-        self.u, self.v, self.σ = u, v, σ  # trials
-        self.ψ, self.w, self.φ = ψ, w, φ  # tests
-        self.u_, self.v_, self.σ_ = u_, v_, σ_  # last computed approximation
-        self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # previous value
 
         # Dirichlet boundary conditions
         self.bcu = bcu
@@ -308,6 +316,13 @@ class EulerianSolid:
             """
             return dot(a, nabla_grad(u)) + (1 / 2) * div(a) * u
 
+        # TODO: debugging:
+        #  - Try steady-state version (no `v` field needed)
+        #  - Try discretizing ∂²/∂t² directly (also no `v` field needed;
+        #    need to keep two old values, timestep needs to be uniform)
+        #  - Splitting: compute `v` and `σ` explicitly in a separate step,
+        #    solve only for `u`; then maybe iterate this?
+
         # Define variational problem
         #
         # - Valid boundary conditions:
@@ -326,7 +341,7 @@ class EulerianSolid:
                dot(n, dot(Σ, ψ)) * ds +
                ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds -  # +∫ ρ ([a⊗a]·∇u)·ψ dx
                ρ * dot(b, ψ) * dx)
-        F_v = dot(V - dudt, w) * dx  # v = ∂u/∂t
+        F_v = ρ * dot(v - dudt, w) * dx  # v = ∂u/∂t   # TODO: use v (new) or V (theta-weighted)?
 
         # TODO:
         #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
@@ -347,7 +362,7 @@ class EulerianSolid:
         #   σ = 2 μ symm(ε) + 3 λ vol(ε)
         #     = 2 μ ε + 3 λ vol(ε)
         # where on the last line we have used the symmetry of ε.
-        # σ = 2 μ ε(u) + 3 λ vol(u) = 2 μ ε(u) + λ I tr(u)
+        # σ = 2 μ ε(u) + 3 λ vol(ε(u)) = 2 μ ε(u) + λ I tr(ε(u))
         εu = ε(U)
         stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)
         F_σ = inner(Σ - stress_expr, φ) * dx
@@ -374,18 +389,29 @@ class EulerianSolid:
 
         Updates the latest computed solution.
         """
+        # begin("Solve timestep")
+        # solve(self.a == self.L, self.s_, self.bcu + self.bcσ)
+        # end()
+        # return 0
+
         begin("Solve timestep")
         A = assemble(self.a)
         b = assemble(self.L)
-        # When Neumann BCs only, eliminate rigid-body motions
-        if not self.bcu:
-            as_backend_type(A).set_nullspace(self.null_space)
-            self.null_space.orthogonalize(b)
+
+        # Eliminate rigid-body motions
+        as_backend_type(A).set_nullspace(self.null_space)
+        self.null_space.orthogonalize(b)
+
+        # Apply Dirichlet boundary conditions
         [bc.apply(A) for bc in chain(self.bcu, self.bcσ)]
         [bc.apply(b) for bc in chain(self.bcu, self.bcσ)]
-        import numpy as np
-        print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
+
+        # import numpy as np
+        # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
+        # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))
+
         it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
+        # it = solve(A, self.s_.vector(), b, 'gmres', 'hypre_amg')
         end()
 
         return it
