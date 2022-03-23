@@ -322,8 +322,8 @@ class EulerianSolid:
 
         # Step 1: ∂u/∂t = v -> obtain `u` (explicit in `v`)
         dudt = (u - u_n) / dt
-        V = v_n
-        # V = (1 - θ) * v_n + θ * v_  # known; initially `v_ = v_n` so just `v_n`, but this works iteratively too
+        # V = v_n
+        V = (1 - θ) * v_n + θ * v_  # known; initially `v_ = v_n` so just `v_n`, but this works iteratively too
         F_u = dot(dudt - V, w) * dx
 
         # Step 2: σ (using `u` from step 1)
@@ -349,14 +349,14 @@ class EulerianSolid:
         # where on the last line we have used the symmetry of ε.
         # σ = 2 μ ε(u) + 3 λ vol(ε(u)) = 2 μ ε(u) + λ I tr(ε(u))
 
-        U = u_
-        V = v_
-        # U = (1 - θ) * u_n + θ * u_  # known
-        # V = (1 - θ) * v_n + θ * v_  # known
+        # U = u_
+        # V = v_
+        U = (1 - θ) * u_n + θ * u_  # known
+        V = (1 - θ) * v_n + θ * v_  # known
         εu = ε(U)
         εv = ε(V)
-        Σ = σ
-        # Σ = (1 - θ) * σ_n + θ * σ   # unknown
+        # Σ = σ
+        Σ = (1 - θ) * σ_n + θ * σ   # unknown
         # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)  # LE
         τ_ret = 0.1  # TODO: parameterize
         stress_expr = (2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu) +
@@ -384,8 +384,8 @@ class EulerianSolid:
         dvdt = (v - v_n) / dt
         # U = (1 - θ) * u_n + θ * u_  # known
         # V = (1 - θ) * v_n + θ * v   # unknown!
-        # Σ = (1 - θ) * σ_n + θ * σ_  # known
-        Σ = σ_
+        Σ = (1 - θ) * σ_n + θ * σ_  # known
+        # Σ = σ_
         F_v = (ρ * dot(dvdt, ψ) * dx +
                2 * ρ * advw(a, V, ψ) -
                ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +
