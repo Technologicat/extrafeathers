@@ -26,7 +26,7 @@ import typing
 
 from fenics import (VectorFunctionSpace, TensorFunctionSpace, MixedElement, FunctionSpace,
                     split, FunctionAssigner,
-                    TrialFunctions, TestFunctions,
+                    TrialFunctions, TestFunctions, TrialFunction, TestFunction,
                     Constant, Expression, Function,
                     FacetNormal, DirichletBC,
                     dot, inner, outer, sym, tr,
@@ -110,6 +110,7 @@ class EulerianSolid:
                  ρ: float, λ: float, μ: float,
                  V0: float,
                  bcu: typing.List[DirichletBC],
+                 bcv: typing.List[DirichletBC],
                  bcσ: typing.List[DirichletBC],
                  dt: float, θ: float = 0.5):
         self.mesh = V.mesh()
@@ -132,23 +133,30 @@ class EulerianSolid:
         #  - `σ` is based on `ε`, which is essentially the gradient of `u`.
         #    Therefore, for consistency, the polynomial order of the space `Q`
         #    should be one lower than that of `V`.
-        e = MixedElement(V.ufl_element(), V.ufl_element(), Q.ufl_element())
-        S = FunctionSpace(self.mesh, e)
-        u, v, σ = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
-        ψ, w, φ = TestFunctions(S)
-        s_ = Function(S)  # suffix _: latest computed approximation
-        s_n = Function(S)  # suffix _n: old value (end of previous timestep)
-        u_, v_, σ_ = split(s_)
-        u_n, v_n, σ_n = split(s_n)
+        # # e = MixedElement(V.ufl_element(), Q.ufl_element())
+        # # S = FunctionSpace(self.mesh, e)
+        u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
+        w = TestFunction(V)
+        v = TrialFunction(V)
+        ψ = TestFunction(V)
+        σ = TrialFunction(Q)
+        φ = TestFunction(Q)
 
-        self.S = S
-        self.s_, self.s_n = s_, s_n
+        u_ = Function(V)  # suffix _: latest computed approximation
+        u_n = Function(V)  # suffix _n: old value (end of previous timestep)
+        v_ = Function(V)
+        v_n = Function(V)
+        σ_ = Function(Q)
+        σ_n = Function(Q)
 
         self.V = V
         self.Q = Q
+        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)
+        self.VP1 = VectorFunctionSpace(self.mesh, "P", 1)
+        self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
 
         self.u, self.v, self.σ = u, v, σ  # trials
-        self.ψ, self.w, self.φ = ψ, w, φ  # tests
+        self.w, self.ψ, self.φ = w, ψ, φ  # tests
         self.u_, self.v_, self.σ_ = u_, v_, σ_  # latest computed approximation
         self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
 
@@ -158,9 +166,12 @@ class EulerianSolid:
         # https://bitbucket.org/fenics-project/dolfin/src/946dbd3e268dc20c64778eb5b734941ca5c343e5/python/demo/undocumented/elasticity/demo_elasticity.py#lines-35:52
         # https://bitbucket.org/fenics-project/dolfin/issues/587/functionassigner-does-not-always-call
         #
-        # `u`: null space of the linear momentum balance is {u: ε(u) = 0 and ∇·u = 0}
+        # Null space of the linear momentum balance is {u: ε(u) = 0 and ∇·u = 0}
         # This consists of rigid-body translations and infinitesimal rigid-body rotations.
         #
+        # The other equations have no space derivatives, just a projection of known data,
+        # so no null space for them.
+
         # Strictly, this is the null space of linear elasticity, but the physics shouldn't
         # be that much different for the other linear models.
         dim = self.mesh.topology().dim()
@@ -177,35 +188,20 @@ class EulerianSolid:
                    Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis
         else:
             raise NotImplementedError(f"dim = {dim}")
-        # `v`, `σ`:
-        #   - No null space; in each equation, there is a reaction term.
 
-        # If our function space was just `V`, we could just:
-        #     null_space_basis = [interpolate(fu, V).vector() for fu in fus]
-        # But we have a mixed formulation, so we must insert zero functions
-        # for the other fields:
-        zeroV = Function(V)
-        zeroV.vector()[:] = 0.0
-        zeroQ = Function(Q)
-        zeroQ.vector()[:] = 0.0
-        # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
-        assigner = FunctionAssigner(S, [V, V, Q])  # receiving space, assigning space
-        fss = [Function(S) for _ in range(len(fus))]
-        for fs, fu in zip(fss, fus):
-            assigner.assign(fs, [project(fu, V), zeroV, zeroQ])
-        null_space_basis = [fs.vector() for fs in fss]
+        null_space_basis = [interpolate(fu, V).vector() for fu in fus]
 
-        # same null space basis for velocity?
-        fss = [Function(S) for _ in range(len(fus))]
-        for fs, fu in zip(fss, fus):
-            assigner.assign(fs, [zeroV, project(fu, V), zeroQ])
-        null_space_basis += [fs.vector() for fs in fss]
-
-        # [normalize(vec, 'l2') for vec in null_space_basis]  # TODO: normalize full vector or sub only?
-
-        # # May be needed in some FEniCS versions to avoid PETSc error in `VecCopy`
-        # for vec in null_space_basis:
-        #     vec.apply("insert")
+        # # In a mixed formulation, we must insert zero functions for the other fields:
+        # zeroV = Function(V)
+        # zeroV.vector()[:] = 0.0
+        # zeroQ = Function(Q)
+        # zeroQ.vector()[:] = 0.0
+        # # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
+        # assigner = FunctionAssigner(S, [V, Q])  # receiving space, assigning space
+        # fss = [Function(S) for _ in range(len(fus))]
+        # for fs, fu in zip(fss, fus):
+        #     assigner.assign(fs, [project(fu, V), zeroQ])
+        # null_space_basis = [fs.vector() for fs in fss]
 
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
@@ -213,6 +209,7 @@ class EulerianSolid:
 
         # Dirichlet boundary conditions
         self.bcu = bcu
+        self.bcv = bcv
         self.bcσ = bcσ
 
         # Local mesh size (for stabilization terms)
@@ -256,20 +253,20 @@ class EulerianSolid:
 
         # Displacement
         u = self.u      # new (unknown)
-        ψ = self.ψ      # test
-        # u_ = self.u_    # latest available approximation
+        w = self.w
+        u_ = self.u_    # latest available approximation
         u_n = self.u_n  # old (end of previous timestep)
 
         # Eulerian time rate of displacement,  v = ∂u/∂t
         v = self.v
-        w = self.w
-        # v_ = self.v_
+        ψ = self.ψ      # test
+        v_ = self.v_
         v_n = self.v_n
 
         # Stress
         σ = self.σ
         φ = self.φ
-        # σ_ = self.σ_
+        σ_ = self.σ_
         σ_n = self.σ_n
 
         # Specific body force
@@ -289,32 +286,30 @@ class EulerianSolid:
         enable_SUPG_flag = self.stabilizers._SUPG
 
         # We will time-integrate using the θ method.
-        U = (1 - θ) * u_n + θ * u
-        V = (1 - θ) * v_n + θ * v
-        Σ = (1 - θ) * σ_n + θ * σ
-        dudt = (u - u_n) / dt
-        dvdt = (v - v_n) / dt
+        # U = (1 - θ) * u_n + θ * u
+        # V = (1 - θ) * v_n + θ * v
+        # Σ = (1 - θ) * σ_n + θ * σ
         # dσdt = (σ - σ_n) / dt  # Kelvin-Voigt, SLS
 
         a = self.a  # convection velocity
 
-        def advw(a, u, ψ):
+        def advw(a, p, q):
             """Advection operator, weak form.
 
             `a`: advection velocity (assumed divergence-free)
-            `u`: quantity being advected
-            `ψ`: test function of `u`
+            `p`: quantity being advected
+            `q`: test function of `p`
             """
-            return ((1 / 2) * (dot(dot(a, nabla_grad(u)), ψ) -
-                               dot(dot(a, nabla_grad(ψ)), u)) * dx +
-                               (1 / 2) * dot(n, a) * dot(u, ψ) * ds)
-        def advs(a, u):
+            return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
+                               dot(dot(a, nabla_grad(q)), p)) * dx +
+                               (1 / 2) * dot(n, a) * dot(p, q) * ds)
+        def advs(a, p):
             """Advection operator, strong form (for SUPG residual).
 
             `a`: advection velocity (assumed divergence-free)
-            `u`: quantity being advected
+            `p`: quantity being advected
             """
-            return dot(a, nabla_grad(u)) + (1 / 2) * div(a) * u
+            return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
 
         # TODO: debugging:
         #  - Try steady-state version (no `v` field needed)
@@ -324,25 +319,15 @@ class EulerianSolid:
         #    solve only for `u`; then maybe iterate this?
 
         # Define variational problem
-        #
-        # - Valid boundary conditions:
-        #   - Displacement boundary: `u` given, no condition on `σ`
-        #     - Dirichlet boundary for `u`; those rows of `F_u` removed, ∫ ds terms don't matter.
-        #     - Affects `σ` automatically, via the stress expression.
-        #   - Stress (traction) boundary: `σ` given, no condition on `u`
-        #     - Dirichlet boundary for `σ`; those rows of `F_σ` removed.
-        #     - Need to include the -∫ n·[σ·ψ] ds term in `F_u`.
-        #   - No boundary conditions on `v` in any case (auxiliary variable, no spatial derivatives).
-        # - `F_v` and `F_σ` have no boundary integrals.
-        F_u = (ρ * dot(dvdt, ψ) * dx +
-               2 * ρ * advw(a, V, ψ) -
-               ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +
-               inner(Σ, ε(ψ)) * dx -
-               dot(n, dot(Σ, ψ)) * ds +
-               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds -  # +∫ ρ ([a⊗a]·∇u)·ψ dx
-               ρ * dot(b, ψ) * dx)
-        F_v = ρ * dot(v - dudt, w) * dx  # v = ∂u/∂t   # TODO: use v (new) or V (theta-weighted)?
 
+        # Step 1: ∂u/∂t = v -> obtain `u` (explicit in `v`)
+        dudt = (u - u_n) / dt
+        V = v_n
+        # V = (1 - θ) * v_n + θ * v_  # known; initially `v_ = v_n` so just `v_n`, but this works iteratively too
+        F_u = dot(dudt - V, w) * dx
+
+        # Step 2: σ (using `u` from step 1)
+        #
         # TODO:
         #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
         #    - Need a FEM field for temperature T, and parameters α and T0
@@ -363,26 +348,73 @@ class EulerianSolid:
         #     = 2 μ ε + 3 λ vol(ε)
         # where on the last line we have used the symmetry of ε.
         # σ = 2 μ ε(u) + 3 λ vol(ε(u)) = 2 μ ε(u) + λ I tr(ε(u))
+
+        U = u_
+        V = v_
+        # U = (1 - θ) * u_n + θ * u_  # known
+        # V = (1 - θ) * v_n + θ * v_  # known
         εu = ε(U)
-        stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)
+        εv = ε(V)
+        Σ = σ
+        # Σ = (1 - θ) * σ_n + θ * σ   # unknown
+        # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)  # LE
+        τ_ret = 0.1  # TODO: parameterize
+        stress_expr = (2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu) +
+                       2 * τ_ret * μ * εv + τ_ret * λ * Identity(εu.geometric_dimension()) * tr(εv))  # KV
         F_σ = inner(Σ - stress_expr, φ) * dx
 
-        F = F_u + F_v + F_σ
+        # # alternative: delta formulation (but needs some care when applying BCs)
+        # Δu = u_ - u_n  # known
+        # εΔu = ε(Δu)
+        # Δσ = σ - σ_n  # unknown
+        # Δstress_expr = 2 * μ * εΔu + λ * Identity(εΔu.geometric_dimension()) * tr(εΔu)
+        # F_σ = inner(Δσ - Δstress_expr, φ) * dx
 
-        # SUPG: streamline upwinding Petrov-Galerkin.
+        # Step 3: v (momentum equation)
         #
-        def mag(vec):
-            return dot(vec, vec)**(1 / 2)
-        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (μ / ρ) / he**2)**-1  # [τ] = s  # TODO: tune value
-        # The residual is evaluated elementwise in strong form,
-        # at the end of the timestep.
-        R = (ρ * ((v - v_n) / dt + 2 * advs(a, v) + advs(a, advs(a, u))) -
-             div(σ) - ρ * b)
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
-        F += F_SUPG
+        # - Valid boundary conditions:
+        #   - Displacement boundary: `u` given, no condition on `σ`
+        #     - Dirichlet boundary for `u`; those rows of `F_u` removed, ∫ ds terms don't matter.
+        #     - Affects `σ` automatically, via the stress expression.
+        #   - Stress (traction) boundary: `σ` given, no condition on `u`
+        #     - Dirichlet boundary for `σ`; those rows of `F_σ` removed.
+        #     - Need to include the -∫ n·[σ·ψ] ds term in `F_u`.
+        #   - No boundary conditions on `v` in any case (auxiliary variable, no spatial derivatives).
+        # - `F_v` and `F_σ` have no boundary integrals.
+        dvdt = (v - v_n) / dt
+        # U = (1 - θ) * u_n + θ * u_  # known
+        # V = (1 - θ) * v_n + θ * v   # unknown!
+        # Σ = (1 - θ) * σ_n + θ * σ_  # known
+        Σ = σ_
+        F_v = (ρ * dot(dvdt, ψ) * dx +
+               2 * ρ * advw(a, V, ψ) -
+               ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +
+               inner(Σ.T, ε(ψ)) * dx -
+               dot(dot(n, Σ.T), ψ) * ds +
+               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds -  # +∫ ρ ([a⊗a]·∇u)·ψ dx
+               ρ * dot(b, ψ) * dx)
+        # F_v = (ρ * dot(dvdt, ψ) * dx +
+        #        inner(Σ.T, ε(ψ)) * dx -
+        #        dot(dot(n, Σ.T), ψ) * ds -
+        #        ρ * dot(b, ψ) * dx)
 
-        self.a = lhs(F)
-        self.L = rhs(F)
+        # # SUPG: streamline upwinding Petrov-Galerkin.
+        # def mag(vec):
+        #     return dot(vec, vec)**(1 / 2)
+        # τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (μ / ρ) / he**2)**-1  # [τ] = s  # TODO: tune value
+        # # The residual is evaluated elementwise in strong form,
+        # # at the end of the timestep.
+        # R = (ρ * ((v - v_n) / dt + 2 * advs(a, v) + advs(a, advs(a, u_))) -
+        #      div(σ_) - ρ * b)
+        # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
+        # F_v += F_SUPG
+
+        self.a_u = lhs(F_u)
+        self.L_u = rhs(F_u)
+        self.a_σ = lhs(F_σ)
+        self.L_σ = rhs(F_σ)
+        self.a_v = lhs(F_v)
+        self.L_v = rhs(F_v)
 
     def step(self) -> typing.Tuple[int, int, int]:
         """Take a timestep of length `self.dt`.
@@ -395,26 +427,53 @@ class EulerianSolid:
         # return 0
 
         begin("Solve timestep")
-        A = assemble(self.a)
-        b = assemble(self.L)
+        A1 = assemble(self.a_u)
+        b1 = assemble(self.L_u)
+        [bc.apply(A1) for bc in self.bcu]
+        [bc.apply(b1) for bc in self.bcu]
+        it1 = solve(A1, self.u_.vector(), b1, 'cg', 'sor')
+        # it1 = solve(A1, self.u_.vector(), b1, 'petsc')  # PETSc built in LU solver (for debugging small systems)
 
-        # Eliminate rigid-body motions
-        as_backend_type(A).set_nullspace(self.null_space)
-        self.null_space.orthogonalize(b)
+        self.u_.assign(project(interpolate(self.u_, self.VP1), self.V))
 
-        # Apply Dirichlet boundary conditions
-        [bc.apply(A) for bc in chain(self.bcu, self.bcσ)]
-        [bc.apply(b) for bc in chain(self.bcu, self.bcσ)]
+        A2 = assemble(self.a_σ)
+        b2 = assemble(self.L_σ)
+        [bc.apply(A2) for bc in self.bcσ]
+        [bc.apply(b2) for bc in self.bcσ]
+        tmp = Function(self.Q)
+        it2 = solve(A2, tmp.vector(), b2, 'cg', 'sor')  # TODO: Kelvin-Voigt needs a non-symmetric solver here
+        # it2 = solve(A2, tmp.vector(), b2, 'bicgstab', 'hypre_amg')
+        # it2 = solve(A2, tmp.vector(), b2, 'petsc')
+        self.σ_.vector()[:] = tmp.vector()[:]
+        self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))
+
+        A3 = assemble(self.a_v)
+        b3 = assemble(self.L_v)
+        [bc.apply(A3) for bc in self.bcv]
+        [bc.apply(b3) for bc in self.bcv]
+
+        # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
+        # as_backend_type(A3).set_nullspace(self.null_space)
+        # self.null_space.orthogonalize(b3)
+
+        it3 = solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg')
+        # it3 = solve(A3, self.v_.vector(), b3, 'gmres', 'hypre_amg')
+
+        # it3 = solve(A3, self.v_.vector(), b3, 'petsc')
+        # self.null_space.orthogonalize(self.v_.vector())  # if that worked, I suppose we can try this...
+
+        self.v_.assign(project(interpolate(self.v_, self.VP1), self.V))
+
+        # # try to dampen numerical oscillations
+        # self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))
 
         # import numpy as np
         # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
         # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))
 
-        it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
-        # it = solve(A, self.s_.vector(), b, 'gmres', 'hypre_amg')
         end()
 
-        return it
+        return it1, it2, it3
 
     def commit(self) -> None:
         """Commit the latest computed timestep, preparing for the next one.
@@ -422,4 +481,6 @@ class EulerianSolid:
         This makes the latest computed solution the "old" solution for
         the next timestep. The old "old" solution is discarded.
         """
-        self.s_n.assign(self.s_)
+        self.u_n.assign(self.u_)
+        self.v_n.assign(self.v_)
+        self.σ_n.assign(self.σ_)
