@@ -10,8 +10,10 @@ from enum import IntEnum
 # Physical
 
 # 316L steel
-rho = 7581.62      # density [kg/m³]
-E = 1.66133e+11    # Young's modulus [Pa]
+#rho = 7581.62      # density [kg/m³]
+#E = 1.66133e+11    # Young's modulus [Pa]
+rho = 1
+E = 10
 ν = 0.3            # Poisson ratio [nondimensional]  # TODO: check exact value for 316L
 
 lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
@@ -22,7 +24,7 @@ V0 = 0.0           # velocity of co-moving frame in +x direction (constant) [m/s
 # --------------------------------------------------------------------------------
 # Numerical
 
-T = 5.0            # final time [s]
+T = 5e-1           # final time [s]
 nt = 2500          # number of timesteps
 dt = T / nt        # timestep size [s]
 
