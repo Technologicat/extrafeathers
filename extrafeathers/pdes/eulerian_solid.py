@@ -429,42 +429,45 @@ class EulerianSolid:
         # return 0
 
         begin("Solve timestep")
-        A1 = assemble(self.a_u)
-        b1 = assemble(self.L_u)
-        [bc.apply(A1) for bc in self.bcu]
-        [bc.apply(b1) for bc in self.bcu]
-        it1 = solve(A1, self.u_.vector(), b1, 'cg', 'sor')
-        # it1 = solve(A1, self.u_.vector(), b1, 'petsc')  # PETSc built in LU solver (for debugging small systems)
+        for _ in range(3):
+            A1 = assemble(self.a_u)
+            b1 = assemble(self.L_u)
+            [bc.apply(A1) for bc in self.bcu]
+            [bc.apply(b1) for bc in self.bcu]
+            it1 = solve(A1, self.u_.vector(), b1, 'cg', 'sor')
+            # it1 = solve(A1, self.u_.vector(), b1, 'petsc')  # PETSc built in LU solver (for debugging small systems)
 
-        self.u_.assign(project(interpolate(self.u_, self.VP1), self.V))
+            # self.u_.assign(project(interpolate(self.u_, self.VP1), self.V))  # dampen u
 
-        A2 = assemble(self.a_σ)
-        b2 = assemble(self.L_σ)
-        [bc.apply(A2) for bc in self.bcσ]
-        [bc.apply(b2) for bc in self.bcσ]
-        tmp = Function(self.Q)
-        it2 = solve(A2, tmp.vector(), b2, 'cg', 'sor')  # TODO: Kelvin-Voigt needs a non-symmetric solver here
-        # it2 = solve(A2, tmp.vector(), b2, 'bicgstab', 'hypre_amg')
-        # it2 = solve(A2, tmp.vector(), b2, 'petsc')
-        self.σ_.vector()[:] = tmp.vector()[:]
-        self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))
+            A2 = assemble(self.a_σ)
+            b2 = assemble(self.L_σ)
+            [bc.apply(A2) for bc in self.bcσ]
+            [bc.apply(b2) for bc in self.bcσ]
+            tmp = Function(self.Q)
+            it2 = solve(A2, tmp.vector(), b2, 'cg', 'sor')  # TODO: Kelvin-Voigt needs a non-symmetric solver here
+            # it2 = solve(A2, tmp.vector(), b2, 'bicgstab', 'hypre_amg')
+            # it2 = solve(A2, tmp.vector(), b2, 'petsc')
+            self.σ_.vector()[:] = tmp.vector()[:]
+            self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))  # dampen σ
 
-        A3 = assemble(self.a_v)
-        b3 = assemble(self.L_v)
-        [bc.apply(A3) for bc in self.bcv]
-        [bc.apply(b3) for bc in self.bcv]
+            A3 = assemble(self.a_v)
+            b3 = assemble(self.L_v)
 
-        # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
-        # as_backend_type(A3).set_nullspace(self.null_space)
-        # self.null_space.orthogonalize(b3)
+            # TODO: what goes wrong here?
+            # # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
+            # as_backend_type(A3).set_nullspace(self.null_space)
+            # self.null_space.orthogonalize(b3)
 
-        it3 = solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg')
-        # it3 = solve(A3, self.v_.vector(), b3, 'gmres', 'hypre_amg')
+            [bc.apply(A3) for bc in self.bcv]
+            [bc.apply(b3) for bc in self.bcv]
 
-        # it3 = solve(A3, self.v_.vector(), b3, 'petsc')
-        # self.null_space.orthogonalize(self.v_.vector())  # if that worked, I suppose we can try this...
+            it3 = solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg')
+            # it3 = solve(A3, self.v_.vector(), b3, 'gmres', 'hypre_amg')
 
-        self.v_.assign(project(interpolate(self.v_, self.VP1), self.V))
+            # it3 = solve(A3, self.v_.vector(), b3, 'petsc')
+            # self.null_space.orthogonalize(self.v_.vector())  # if that worked, I suppose we can try this...
+
+            # self.v_.assign(project(interpolate(self.v_, self.VP1), self.V))  # dampen v
 
         # # try to dampen numerical oscillations
         # self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))
