@@ -34,7 +34,7 @@ my_rank = MPI.comm_world.rank
 mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_filename)
 
 # Define function spaces
-V = VectorFunctionSpace(mesh, 'P', 3)
+V = VectorFunctionSpace(mesh, 'P', 1)
 Q = TensorFunctionSpace(mesh, 'P', 1)  # stress, must be one degree lower than `V`
 
 if my_rank == 0:
@@ -76,8 +76,8 @@ solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcv, bcσ, dt)
 # bcσ.append(bcσ_bottom1)
 # bcσ.append(bcσ_bottom2)
 # bcσ.append(bcσ_bottom3)
-bcu_left = DirichletBC(V, Constant((-1e-6, 0)), boundary_parts, Boundaries.LEFT.value)
-bcu_right = DirichletBC(V, Constant((1e-6, 0)), boundary_parts, Boundaries.RIGHT.value)
+bcu_left = DirichletBC(V, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+bcu_right = DirichletBC(V, Constant((1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
 bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
 bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
 bcσ_top1 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ12 (symm.)
@@ -207,49 +207,67 @@ for n in range(nt):
             u_ = solver.u_
             v_ = solver.v_
             σ_ = solver.σ_
-            theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=True)
+
+            def get_symmetric_vrange(p):
+                pvec = np.array(p.vector())
+
+                minp_local = pvec.min()
+                minp_global = MPI.comm_world.allgather(minp_local)
+                minp = min(minp_global)
+
+                maxp_local = pvec.max()
+                maxp_global = MPI.comm_world.allgather(maxp_local)
+                maxp = max(maxp_global)
+
+                absmaxp = max(abs(minp), abs(maxp))
+                return absmaxp
+
+            m = get_symmetric_vrange(u_)
+            theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$u_{1}$")
                 plt.subplot(2, 4, 5)
-            theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=True)
+            theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$u_{2}$")
                 plt.subplot(2, 4, 2)
-            theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=True)
+            m = get_symmetric_vrange(v_)
+            theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$v_{1}$")
                 plt.subplot(2, 4, 6)
-            theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=True)
+            theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$v_{2}$")
                 plt.subplot(2, 4, 3)
-            theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=True)
+            m = get_symmetric_vrange(σ_)
+            theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$σ_{11}$")
                 plt.subplot(2, 4, 4)
-            theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=True)
+            theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$σ_{12}$")
                 plt.subplot(2, 4, 7)
-            theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=True)
+            theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$σ_{21}$")
                 plt.subplot(2, 4, 8)
-            theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=True)
+            theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
