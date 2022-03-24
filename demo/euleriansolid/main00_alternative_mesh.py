@@ -6,6 +6,8 @@ import typing
 import numpy as np
 import matplotlib.pyplot as plt
 
+from unpythonic import window
+
 from dolfin import UnitSquareMesh, MeshFunction, Facet, near, MPI
 
 from extrafeathers import autoboundary
@@ -14,11 +16,125 @@ from extrafeathers import meshmagic, plotmagic
 
 from .config import mesh_filename, Boundaries
 
+def trimesh(nx, ny, align="x"):
+    r"""Make this mesh for the unit square (shown here with nx = 3, ny = 2):
+
+    +------------+
+    |\  /\  /\  /| \
+    | \/  \/  \/ | |
+    +------------+ | ny = 2 rows of triangles
+    | /\  /\  /\ | |
+    |/  \/  \/  \| /
+    +------------+
+     \__________/
+     nx = 3 bases at bottom
+
+    If `nx = ny`, the triangles are equilateral (except the halves at the ends
+    of each row).
+    """
+    hx = 1 / nx
+    hy = 1 / ny
+    def make_row(j):
+        if j % 2 == 0:
+            # even row of vertices: nx triangle bases
+            xs = np.arange(nx + 1) / nx
+        else:
+            # odd row of vertices: half-triangle at ends, plus nx - 1 triangle bases.
+            xs = np.concatenate(([0.0],
+                                 np.arange(hx / 2, 1 - hx / 2 + 1e-8, hx),
+                                 [1.0]))
+        ys = np.ones_like(xs) * (j * hy)
+        if align == "x":
+            return list(zip(xs, ys))
+        else:
+            return list(zip(ys, xs))
+
+    vtxs = make_row(0)
+    triangles = []
+    kbot = 0  # global DOF at the beginning of the bottom of this triangle row
+    ktop = len(vtxs)  # global DOF at the beginning of the top of this triangle row
+    for j in range(ny):
+        more_vtxs = make_row(j + 1)
+        klast = ktop + len(more_vtxs) - 1
+        vtxs.extend(more_vtxs)  # upper row of vertices for this row of triangles
+        if j % 2 == 0:  # even row of triangles
+            # +------------+
+            # | /\  /\  /\ |
+            # |/  \/  \/  \|
+            # +------------+
+
+            #  /\
+            # /__\ x nx
+            row = []
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(kbot, ktop)),
+                                                     start=ktop + 1):
+                row.append([kbase1, kbase2, kvert])
+            assert len(row) == nx
+            triangles.extend(row)
+
+            # ____
+            # \  /
+            #  \/ x (nx - 1), plus the halves at the ends
+            row = []
+            row.append([kbot, ktop + 1, ktop])  # left end
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(ktop + 1, klast)),
+                                                     start=kbot + 1):
+                row.append([kvert, kbase2, kbase1])
+
+            row.append([ktop - 1, klast, klast - 1])  # right end
+            assert len(row) == nx + 1
+            triangles.extend(row)
+        else:  # odd row of triangles
+            # +------------+
+            # |\  /\  /\  /|
+            # | \/  \/  \/ |
+            # +------------+
+
+            #  /\
+            # /__\ x (nx - 1), plus the halves at the ends
+            row = []
+            row.append([kbot, kbot + 1, ktop])  # left end
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(kbot + 1, ktop - 1)),
+                                                     start=ktop + 1):
+                row.append([kbase1, kbase2, kvert])
+            row.append([ktop - 2, ktop - 1, klast])  # right end
+            assert len(row) == nx + 1
+            triangles.extend(row)
+
+            # ____
+            # \  /
+            #  \/ x nx
+            row = []
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(ktop, klast + 1)),
+                                                     start=kbot + 1):
+                row.append([kvert, kbase2, kbase1])
+
+            assert len(row) == nx
+            triangles.extend(row)
+        kbot = ktop
+        ktop = ktop + len(more_vtxs)
+
+    # # DEBUG
+    # vtxs = np.array(vtxs)
+    # print(vtxs)
+    # print(triangles)
+    # import matplotlib.tri as mtri
+    # tri = mtri.Triangulation(vtxs[:, 0], vtxs[:, 1], triangles=triangles)
+    # plt.triplot(tri)
+    # plt.axis("equal")
+    # plt.show()
+
+    return meshmagic.make_mesh(cells=triangles, dofs=range(len(vtxs)), vertices=vtxs)
+
+
 def main():
     assert MPI.comm_world.size == 1, "Mesh can only be generated in serial mode, please run without mpirun."
 
     N = 32
-    mesh = UnitSquareMesh(N, N)
+
+    # mesh = UnitSquareMesh(N, N)
+    mesh = trimesh(N, N)
+
     from dolfin import ALE, Constant, FunctionSpace
     ALE.move(mesh, Constant((-0.5, -0.5)))
 
