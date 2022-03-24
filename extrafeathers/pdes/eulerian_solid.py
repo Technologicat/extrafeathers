@@ -434,7 +434,7 @@ class EulerianSolid:
             # it1 = solve(A1, self.u_.vector(), b1, 'petsc')  # PETSc built in LU solver (for debugging small systems)
 
             # self.u_.assign(project(interpolate(self.u_, self.VP1), self.V))  # dampen u
-            # self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))  # dampen u
+            self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))  # dampen u
 
             A2 = assemble(self.a_σ)
             b2 = assemble(self.L_σ)
@@ -463,7 +463,7 @@ class EulerianSolid:
             # self.null_space.orthogonalize(self.v_.vector())  # if that worked, I suppose we can try this...
 
             # self.v_.assign(project(interpolate(self.v_, self.VP1), self.V))  # dampen v
-            # self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))  # dampen v
+            self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))  # dampen v
 
         # import numpy as np
         # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
