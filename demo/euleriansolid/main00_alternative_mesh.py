@@ -31,6 +31,9 @@ def trimesh(nx, ny, align="x"):
 
     If `nx = ny`, the triangles are equilateral (except the halves at the ends
     of each row).
+
+    If `align="y"`, flip the roles of x and y when generating the mesh, so that
+    instead of rows, the triangles will be arranged in columns.
     """
     hx = 1 / nx
     hy = 1 / ny
