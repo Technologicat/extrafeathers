@@ -355,9 +355,9 @@ class EulerianSolid:
         Σ = (1 - θ) * σ_n + θ * σ   # unknown
         # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)  # LE
         τ_ret = 0.1  # TODO: parameterize
-        # TODO: add axial motion: ∂/∂t -> d/dt = ∂/∂t + a·∇
         stress_expr = (2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu) +
-                       2 * τ_ret * μ * εv + τ_ret * λ * Identity(εu.geometric_dimension()) * tr(εv))  # KV
+                       2 * τ_ret * μ * (εv + advs(a, εu)) +
+                       τ_ret * λ * Identity(εu.geometric_dimension()) * (tr(εv) + advs(a, tr(εu))))  # KV
         F_σ = inner(Σ - stress_expr, φ) * dx
 
         # # alternative: delta formulation (but needs some care when applying BCs)
