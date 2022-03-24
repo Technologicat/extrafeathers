@@ -59,6 +59,7 @@ mesh_filename = "demo/meshes/box.h5"  # for input and output
 vis_u_filename = "demo/output/euleriansolid/displacement.xdmf"
 vis_v_filename = "demo/output/euleriansolid/velocity.xdmf"
 vis_σ_filename = "demo/output/euleriansolid/stress.xdmf"
+vis_vonMises_filename = "demo/output/euleriansolid/vonMises.xdmf"
 
 # For loading into other solvers written using FEniCS. The file extension `.h5` is added automatically.
 sol_u_filename = "demo/output/euleriansolid/displacement_series"

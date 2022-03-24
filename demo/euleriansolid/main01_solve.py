@@ -9,6 +9,7 @@ from unpythonic import ETAEstimator, timer
 from fenics import (VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
                     Expression, Constant, Function,
                     interpolate, project, Vector,
+                    tr, Identity, sqrt, inner,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -26,7 +27,8 @@ from .config import (rho, lamda, mu, V0, dt, nt,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
                      vis_v_filename, sol_v_filename,
-                     vis_σ_filename, sol_σ_filename)
+                     vis_σ_filename, sol_σ_filename,
+                     vis_vonMises_filename)
 
 my_rank = MPI.comm_world.rank
 
@@ -121,6 +123,12 @@ xdmffile_σ = XDMFFile(MPI.comm_world, vis_σ_filename)
 xdmffile_σ.parameters["flush_output"] = True
 xdmffile_σ.parameters["rewrite_function_mesh"] = False
 
+# ParaView doesn't have a filter for this, so we compute it ourselves.
+xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
+xdmffile_vonMises.parameters["flush_output"] = True
+xdmffile_vonMises.parameters["rewrite_function_mesh"] = False
+vonMises = Function(Q.sub(0).collapse())
+
 # Create time series (for use in other FEniCS solvers)
 #
 timeseries_u = TimeSeries(sol_u_filename)
@@ -157,6 +165,10 @@ prep_Q3 = plotmagic.mpiplot_prepare(solver.σ_.sub(3))
 # Enable stabilizers for the Galerkin formulation
 solver.stabilizers.SUPG = False  # stabilizer for advection-dominant problems
 
+def dev(T):
+    """Deviatoric part of rank-2 tensor `T`."""
+    return T - (1 / 3) * tr(T) * Identity(T.geometric_dimension())
+
 # Time-stepping
 t = 0
 est = ETAEstimator(nt)
@@ -188,6 +200,13 @@ for n in range(nt):
         xdmffile_u.write(solver.u_, t)
         xdmffile_v.write(solver.v_, t)
     xdmffile_σ.write(solver.σ_, t)
+
+    # compute von Mises stress for visualization in ParaView
+    s = dev(solver.σ_)
+    vonMises_expr = sqrt(3 / 2 * inner(s, s))
+    vonMises.assign(project(vonMises_expr, Q.sub(0).collapse()))
+    xdmffile_vonMises.write(vonMises, t)
+
     timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original data
     timeseries_v.store(solver.v_.vector(), t)
     timeseries_σ.store(solver.σ_.vector(), t)
