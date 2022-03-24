@@ -311,12 +311,8 @@ class EulerianSolid:
             """
             return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
 
-        # TODO: debugging:
-        #  - Try steady-state version (no `v` field needed)
-        #  - Try discretizing ∂²/∂t² directly (also no `v` field needed;
-        #    need to keep two old values, timestep needs to be uniform)
-        #  - Splitting: compute `v` and `σ` explicitly in a separate step,
-        #    solve only for `u`; then maybe iterate this?
+        # TODO:
+        #  - Implement steady-state version (no `v` field needed)
 
         # Define variational problem
 
