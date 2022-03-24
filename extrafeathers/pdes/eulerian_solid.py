@@ -443,11 +443,9 @@ class EulerianSolid:
             b2 = assemble(self.L_σ)
             [bc.apply(A2) for bc in self.bcσ]
             [bc.apply(b2) for bc in self.bcσ]
-            tmp = Function(self.Q)
-            it2 = solve(A2, tmp.vector(), b2, 'cg', 'sor')  # TODO: Kelvin-Voigt needs a non-symmetric solver here
-            # it2 = solve(A2, tmp.vector(), b2, 'bicgstab', 'hypre_amg')
-            # it2 = solve(A2, tmp.vector(), b2, 'petsc')
-            self.σ_.vector()[:] = tmp.vector()[:]
+            it2 = solve(A2, self.σ_.vector(), b2, 'cg', 'sor')  # TODO: Kelvin-Voigt needs a non-symmetric solver here
+            # it2 = solve(A2, σ_.vector(), b2, 'bicgstab', 'hypre_amg')
+            # it2 = solve(A2, σ_.vector(), b2, 'petsc')
             self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))  # dampen σ
 
             A3 = assemble(self.a_v)
@@ -468,9 +466,6 @@ class EulerianSolid:
             # self.null_space.orthogonalize(self.v_.vector())  # if that worked, I suppose we can try this...
 
             # self.v_.assign(project(interpolate(self.v_, self.VP1), self.V))  # dampen v
-
-        # # try to dampen numerical oscillations
-        # self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))
 
         # import numpy as np
         # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
