@@ -16,6 +16,7 @@ from extrafeathers import meshmagic, plotmagic
 
 from .config import mesh_filename, Boundaries
 
+# TODO: move this to meshmagic
 def trimesh(nx, ny, align="x"):
     r"""Make this mesh for the unit square (shown here with nx = 3, ny = 2):
 
