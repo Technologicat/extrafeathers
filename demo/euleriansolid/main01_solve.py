@@ -38,6 +38,8 @@ mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_f
 # Define function spaces
 V = VectorFunctionSpace(mesh, 'P', 1)
 Q = TensorFunctionSpace(mesh, 'P', 1)  # stress, must be one degree lower than `V`
+Vscalar = V.sub(0).collapse()
+Qscalar = Q.sub(0).collapse()
 
 if my_rank == 0:
     print(f"Number of DOFs: displacement {V.dim()}, velocity {V.dim()}, stress {Q.dim()}, total {2 * V.dim() + Q.dim()}")
@@ -127,7 +129,7 @@ xdmffile_σ.parameters["rewrite_function_mesh"] = False
 xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
 xdmffile_vonMises.parameters["flush_output"] = True
 xdmffile_vonMises.parameters["rewrite_function_mesh"] = False
-vonMises = Function(Q.sub(0).collapse())
+vonMises = Function(Qscalar)
 
 # Create time series (for use in other FEniCS solvers)
 #
@@ -204,7 +206,7 @@ for n in range(nt):
     # compute von Mises stress for visualization in ParaView
     s = dev(solver.σ_)
     vonMises_expr = sqrt(3 / 2 * inner(s, s))
-    vonMises.assign(project(vonMises_expr, Q.sub(0).collapse()))
+    vonMises.assign(project(vonMises_expr, Qscalar))
     xdmffile_vonMises.write(vonMises, t)
 
     timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original data
@@ -297,7 +299,7 @@ for n in range(nt):
             # info for msg (expensive; only update these once per vis step)
             magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
                                    u0=u_.sub(0), u1=u_.sub(1))
-            magu = interpolate(magu_expr, V.sub(0).collapse())
+            magu = interpolate(magu_expr, Vscalar)
             uvec = np.array(magu.vector())
 
             minu_local = uvec.min()
