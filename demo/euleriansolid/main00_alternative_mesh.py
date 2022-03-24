@@ -134,7 +134,7 @@ def trimesh(nx, ny, align="x"):
 def main():
     assert MPI.comm_world.size == 1, "Mesh can only be generated in serial mode, please run without mpirun."
 
-    N = 32
+    N = 16
 
     # mesh = UnitSquareMesh(N, N)
     mesh = trimesh(N, N)
