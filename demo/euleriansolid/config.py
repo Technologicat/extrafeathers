@@ -25,6 +25,8 @@ V0 = 0.0           # velocity of co-moving frame in +x direction (constant) [m/s
 # Numerical
 
 T = 5e-1           # final time [s]
+
+# On uniform mesh: at N=16, nt=500 works, but at N=32, nt=2500 is needed.
 nt = 2500          # number of timesteps
 dt = T / nt        # timestep size [s]
 
