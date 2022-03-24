@@ -19,7 +19,8 @@ E = 10
 lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
 mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 
-V0 = 1.0           # velocity of co-moving frame in +x direction (constant) [m/s]
+# To remain subcritical:  V0 < √(E / rho)  (longitudinal elastic wave speed)
+V0 = 3.0           # velocity of co-moving frame in +x direction (constant) [m/s]
 
 # --------------------------------------------------------------------------------
 # Numerical
