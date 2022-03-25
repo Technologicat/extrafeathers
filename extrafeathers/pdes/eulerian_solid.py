@@ -322,8 +322,8 @@ class EulerianSolid:
 
         # Step 1: ∂u/∂t = v -> obtain `u` (explicit in `v`)
         dudt = (u - u_n) / dt
-        # V = v_n
-        V = (1 - θ) * v_n + θ * v_  # known; initially `v_ = v_n` so just `v_n`, but this works iteratively too
+        V = (1 - θ) * v_n + θ * v_  # known; initially `v_ = v_n`, but this variant can be iterated.
+        # V = v_n  # forward Euler
         F_u = dot(dudt - V, w) * dx
 
         # Step 2: σ (using `u` from step 1)
@@ -349,14 +349,14 @@ class EulerianSolid:
         #     = 2 μ ε + λ I tr(ε)
         # where on the second line we have used the symmetry of ε.
 
-        # U = u_
-        # V = v_
         U = (1 - θ) * u_n + θ * u_  # known
         V = (1 - θ) * v_n + θ * v_  # known
+        Σ = (1 - θ) * σ_n + θ * σ   # unknown!
+        # U = u_
+        # V = v_
+        # Σ = σ
         εu = ε(U)
         εv = ε(V)
-        # Σ = σ
-        Σ = (1 - θ) * σ_n + θ * σ   # unknown
 
         # Linear elastic
         # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)
@@ -370,28 +370,21 @@ class EulerianSolid:
                        λ * Identity(εu.geometric_dimension()) * (tr(εu) + τ_ret * (tr(εv) + advs(a, tr(εu)))))
         F_σ = inner(Σ - stress_expr, φ) * dx
 
-        # # alternative: delta formulation (but needs some care when applying BCs)
-        # Δu = u_ - u_n  # known
-        # εΔu = ε(Δu)
-        # Δσ = σ - σ_n  # unknown
-        # Δstress_expr = 2 * μ * εΔu + λ * Identity(εΔu.geometric_dimension()) * tr(εΔu)
-        # F_σ = inner(Δσ - Δstress_expr, φ) * dx
-
         # Step 3: v (momentum equation)
         #
         # - Valid boundary conditions:
-        #   - Displacement boundary: `u` given, no condition on `σ`
-        #     - Dirichlet boundary for `u`; those rows of `F_u` removed, ∫ ds terms don't matter.
-        #     - Affects `σ` automatically, via the stress expression.
-        #   - Stress (traction) boundary: `σ` given, no condition on `u`
+        #   - Displacement boundary: `u` and `v` given, no condition on `σ`
+        #     - Dirichlet boundary for `u` and `v`; those rows of `F_v` removed, ∫ ds terms don't matter.
+        #     - Affects `σ` automatically, via the step 1 and step 2 updates.
+        #   - Stress (traction) boundary: `n·σ` given, no condition on `u` or `v`
         #     - Dirichlet boundary for `σ`; those rows of `F_σ` removed.
-        #     - Need to include the -∫ n·[σ·ψ] ds term in `F_u`.
-        #   - No boundary conditions on `v` in any case (auxiliary variable, no spatial derivatives).
-        # - `F_v` and `F_σ` have no boundary integrals.
+        #     - Need to include the -∫ [n·transpose(σ)]·ψ ds term in `F_v`.
         dvdt = (v - v_n) / dt
-        # U = (1 - θ) * u_n + θ * u_  # known
-        # V = (1 - θ) * v_n + θ * v   # unknown!
+        U = (1 - θ) * u_n + θ * u_  # known
+        V = (1 - θ) * v_n + θ * v   # unknown!
         Σ = (1 - θ) * σ_n + θ * σ_  # known
+        # U = u_
+        # V = v
         # Σ = σ_
         F_v = (ρ * dot(dvdt, ψ) * dx +
                2 * ρ * advw(a, V, ψ) -
@@ -400,11 +393,6 @@ class EulerianSolid:
                dot(dot(n, Σ.T), ψ) * ds +
                ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds -  # +∫ ρ ([a⊗a]·∇u)·ψ dx
                ρ * dot(b, ψ) * dx)
-        # # DEBUG
-        # F_v = (ρ * dot(dvdt, ψ) * dx +
-        #        inner(Σ.T, ε(ψ)) * dx -
-        #        dot(dot(n, Σ.T), ψ) * ds -
-        #        ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
         def mag(vec):
