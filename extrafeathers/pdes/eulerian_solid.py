@@ -353,11 +353,17 @@ class EulerianSolid:
         εv = ε(V)
         # Σ = σ
         Σ = (1 - θ) * σ_n + θ * σ   # unknown
-        # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)  # LE
-        τ_ret = 0.1  # TODO: parameterize
-        stress_expr = (2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu) +
-                       2 * τ_ret * μ * (εv + advs(a, εu)) +
-                       τ_ret * λ * Identity(εu.geometric_dimension()) * (tr(εv) + advs(a, tr(εu))))  # KV
+
+        # Linear elastic
+        # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)
+
+        # Axially moving Kelvin-Voigt
+        τ_ret = 0.1  # Kelvin-Voigt retardation time (τ_ret := η/E)  TODO: parameterize
+        # σ = 2 [μ + μ_visc d/dt] ε + I tr([λ + λ_visc d/dt] ε)
+        #   = 2 μ [1 + τ_ret d/dt] ε + λ I tr([1 + τ_ret d/dt] ε)
+        #   = 2 μ [1 + τ_ret (∂/∂t + a·∇)] ε + λ I tr([1 + τ_ret (∂/∂t + a·∇)] ε)
+        stress_expr = (2 * μ * (εu + τ_ret * (εv + advs(a, εu))) +
+                       λ * Identity(εu.geometric_dimension()) * (tr(εu) + τ_ret * (tr(εv) + advs(a, tr(εu)))))
         F_σ = inner(Σ - stress_expr, φ) * dx
 
         # # alternative: delta formulation (but needs some care when applying BCs)
