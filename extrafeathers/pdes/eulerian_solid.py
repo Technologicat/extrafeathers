@@ -485,7 +485,11 @@ class EulerianSolid:
                 A3_PETSc = as_backend_type(A3)
                 A3_PETSc.set_near_nullspace(self.null_space)
                 A3_PETSc.set_nullspace(self.null_space)
-                # self.null_space.orthogonalize(b3)  # TODO: what goes wrong here?
+                # # TODO: What goes wrong here? Is it that the null space of the other linear models
+                # # is subtly different from the null space of the linear elastic model? So telling
+                # # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
+                # # the load function against the wrong null space corrupts the loading?
+                # self.null_space.orthogonalize(b3)
 
             it3 = solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg')
 
