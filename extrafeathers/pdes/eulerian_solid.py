@@ -278,6 +278,9 @@ class EulerianSolid:
         σ_ = self.σ_
         σ_n = self.σ_n
 
+        # Velocity field for axial motion
+        a = self.a
+
         # Specific body force
         b = self.b
 
@@ -293,14 +296,6 @@ class EulerianSolid:
         α0 = self._α0
 
         enable_SUPG_flag = self.stabilizers._SUPG
-
-        # We will time-integrate using the θ method.
-        # U = (1 - θ) * u_n + θ * u
-        # V = (1 - θ) * v_n + θ * v
-        # Σ = (1 - θ) * σ_n + θ * σ
-        # dσdt = (σ - σ_n) / dt  # Kelvin-Voigt, SLS
-
-        a = self.a  # convection velocity
 
         def advw(a, p, q):
             """Advection operator, weak form.
