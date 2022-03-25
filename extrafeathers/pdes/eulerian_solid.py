@@ -187,14 +187,14 @@ class EulerianSolid:
         if dim == 2:
             fus = [Constant((1, 0)),
                    Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]
+                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
         elif dim == 3:
             fus = [Constant((1, 0, 0)),
                    Constant((0, 1, 0)),
                    Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis
+                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
+                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
+                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
         else:
             raise NotImplementedError(f"dim = {dim}")
 
