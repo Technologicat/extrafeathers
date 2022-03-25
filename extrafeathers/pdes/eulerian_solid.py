@@ -448,13 +448,20 @@ class EulerianSolid:
             self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))
 
             # Step 2: update `σ`
+            #
+            # For a linear elastic material, the equation for the stress is symmetric.
+            #
+            # For axially moving Kelvin-Voigt, the LHS is symmetric; the operator a·∇ appears
+            # only in the a·∇ε term on the RHS.
+            #
+            # For axially moving SLS, there is a a·∇σ term on the LHS, so the equation is non-symmetric.
+            #
+            # So let's use bicgstab to be safe.
+            #
             A2 = assemble(self.a_σ)
             b2 = assemble(self.L_σ)
             [bc.apply(A2) for bc in self.bcσ]
             [bc.apply(b2) for bc in self.bcσ]
-            # Axially moving Kelvin-Voigt needs a non-symmetric solver here due to the a·∇ε term.
-            # (We use the skew-symmetric discretization, which is often better than the naive one,
-            #  but it's still non-symmetric.)
             it2 = solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor')
 
             # Postprocess `σ` to eliminate numerical oscillations
