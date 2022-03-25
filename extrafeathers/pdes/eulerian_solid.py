@@ -327,13 +327,13 @@ class EulerianSolid:
         # TODO:
         #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
         #    - Need a FEM field for temperature T, and parameters α and T0
+        #  - Add viscothermal effects, see eq. (768) in report
         #  - Orthotropic linear elastic
-        #  - Isotropic Kelvin-Voigt, includes dε/dt = ∂ε/∂t + (a·∇)ε
-        #    - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic Kelvin-Voigt, includes dε/dt = ∂ε/∂t + (a·∇)ε
+        #  - Orthotropic Kelvin-Voigt
         #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
         #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
         #
+        # Linear elastic:
         #   σ = K : ε
         #   K = 2 μ ES + 3 λ EV
         # Because for any rank-2 tensor T,
@@ -342,8 +342,8 @@ class EulerianSolid:
         # we have
         #   σ = 2 μ symm(ε) + 3 λ vol(ε)
         #     = 2 μ ε + 3 λ vol(ε)
-        # where on the last line we have used the symmetry of ε.
-        # σ = 2 μ ε(u) + 3 λ vol(ε(u)) = 2 μ ε(u) + λ I tr(ε(u))
+        #     = 2 μ ε + λ I tr(ε)
+        # where on the second line we have used the symmetry of ε.
 
         # U = u_
         # V = v_
