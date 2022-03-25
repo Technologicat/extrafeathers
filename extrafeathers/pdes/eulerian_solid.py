@@ -432,6 +432,7 @@ class EulerianSolid:
         for _ in range(maxit):
             v_prev.assign(self.v_)
 
+            # Step 1: update `u`
             A1 = assemble(self.a_u)
             b1 = assemble(self.L_u)
             [bc.apply(A1) for bc in self.bcu]
@@ -441,6 +442,7 @@ class EulerianSolid:
             # Postprocess `u` to eliminate numerical oscillations
             self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))
 
+            # Step 2: update `σ`
             A2 = assemble(self.a_σ)
             b2 = assemble(self.L_σ)
             [bc.apply(A2) for bc in self.bcσ]
@@ -453,6 +455,7 @@ class EulerianSolid:
             # Postprocess `σ` to eliminate numerical oscillations
             self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))
 
+            # Step 3: tonight's main event (solve momentum equation for `v`)
             A3 = assemble(self.a_v)
             b3 = assemble(self.L_v)
 
