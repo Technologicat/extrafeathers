@@ -426,11 +426,6 @@ class EulerianSolid:
 
         Updates the latest computed solution.
         """
-        # begin("Solve timestep")
-        # solve(self.a == self.L, self.s_, self.bcu + self.bcσ)
-        # end()
-        # return 0
-
         begin("Solve timestep")
 
         v_prev = Function(self.V)
@@ -444,19 +439,18 @@ class EulerianSolid:
             [bc.apply(A1) for bc in self.bcu]
             [bc.apply(b1) for bc in self.bcu]
             it1 = solve(A1, self.u_.vector(), b1, 'cg', 'sor')
-            # it1 = solve(A1, self.u_.vector(), b1, 'petsc')  # PETSc built in LU solver (for debugging small systems)
 
-            # self.u_.assign(project(interpolate(self.u_, self.VP1), self.V))  # dampen u
-            self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))  # dampen u
+            # Postprocess `u` to eliminate numerical oscillations
+            self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))
 
             A2 = assemble(self.a_σ)
             b2 = assemble(self.L_σ)
             [bc.apply(A2) for bc in self.bcσ]
             [bc.apply(b2) for bc in self.bcσ]
             it2 = solve(A2, self.σ_.vector(), b2, 'cg', 'sor')  # TODO: Kelvin-Voigt needs a non-symmetric solver here
-            # it2 = solve(A2, σ_.vector(), b2, 'bicgstab', 'hypre_amg')
-            # it2 = solve(A2, σ_.vector(), b2, 'petsc')
-            self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))  # dampen σ
+
+            # Postprocess `σ` to eliminate numerical oscillations
+            self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))
 
             A3 = assemble(self.a_v)
             b3 = assemble(self.L_v)
@@ -465,7 +459,7 @@ class EulerianSolid:
             # # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
             # #
             # # `set_near_nullspace`: "Attach near nullspace to matrix (used by preconditioners,
-            # #                        such as smoothed aggregation algerbraic multigrid)"
+            # #                        such as smoothed aggregation algebraic multigrid)"
             # # `set_nullspace`:      "Attach nullspace to matrix (typically used by Krylov solvers
             # #                        when solving singular systems)"
             # #
@@ -479,18 +473,15 @@ class EulerianSolid:
             [bc.apply(b3) for bc in self.bcv]
 
             it3 = solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg')
-            # it3 = solve(A3, self.v_.vector(), b3, 'gmres', 'hypre_amg')
 
-            # it3 = solve(A3, self.v_.vector(), b3, 'petsc')
-            # self.null_space.orthogonalize(self.v_.vector())  # if that worked, I suppose we can try this...
-
-            # self.v_.assign(project(interpolate(self.v_, self.VP1), self.V))  # dampen v
-            self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))  # dampen v
+            # Postprocess `v` to eliminate numerical oscillations
+            self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))
 
             e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)
             if e < tol:
                 break
 
+        # # DEBUG
         # import numpy as np
         # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
         # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))
