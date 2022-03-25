@@ -455,20 +455,19 @@ class EulerianSolid:
             A3 = assemble(self.a_v)
             b3 = assemble(self.L_v)
 
-            # TODO: what goes wrong here?
-            # # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
-            # #
-            # # `set_near_nullspace`: "Attach near nullspace to matrix (used by preconditioners,
-            # #                        such as smoothed aggregation algebraic multigrid)"
-            # # `set_nullspace`:      "Attach nullspace to matrix (typically used by Krylov solvers
-            # #                        when solving singular systems)"
-            # #
-            # # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d4/db0/classdolfin_1_1PETScMatrix.html#aeb0152c4382d473ae6a93841f721260c
-            # #
-            # A3_PETSc = as_backend_type(A3)
-            # A3_PETSc.set_near_nullspace(self.null_space)
-            # A3_PETSc.set_nullspace(self.null_space)
-            # self.null_space.orthogonalize(b3)
+            # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
+            #
+            # `set_near_nullspace`: "Attach near nullspace to matrix (used by preconditioners,
+            #                        such as smoothed aggregation algebraic multigrid)"
+            # `set_nullspace`:      "Attach nullspace to matrix (typically used by Krylov solvers
+            #                        when solving singular systems)"
+            #
+            # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d4/db0/classdolfin_1_1PETScMatrix.html#aeb0152c4382d473ae6a93841f721260c
+            #
+            A3_PETSc = as_backend_type(A3)
+            A3_PETSc.set_near_nullspace(self.null_space)
+            A3_PETSc.set_nullspace(self.null_space)
+            # self.null_space.orthogonalize(b3)  # TODO: what goes wrong here?
 
             [bc.apply(A3) for bc in self.bcv]
             [bc.apply(b3) for bc in self.bcv]
