@@ -93,7 +93,6 @@ bcσ.append(bcσ_right2)
 bcσ.append(bcσ_right3)
 
 # # Left at right edges: constant pull at both ends
-# # (TODO: does not work yet, need to fix bugs in rigid-body mode removal)
 # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value)  # σ11
 # bcσ_left2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.LEFT.value)  # σ12
 # bcσ_left3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.LEFT.value)  # σ21 (symm.)
