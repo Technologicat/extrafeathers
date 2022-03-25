@@ -137,7 +137,8 @@ def main():
     N = 16
 
     # mesh = UnitSquareMesh(N, N)
-    mesh = trimesh(N, N)
+    mesh = trimesh(N, N)  # rows of equilateral triangles
+    # mesh = trimesh(N, N, align="y")  # columns of equilateral triangles
 
     from dolfin import ALE, Constant, FunctionSpace
     ALE.move(mesh, Constant((-0.5, -0.5)))
