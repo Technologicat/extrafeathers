@@ -434,8 +434,8 @@ class EulerianSolid:
         begin("Solve timestep")
 
         v_prev = Function(self.V)
-        maxit = 100
-        tol = 1e-8
+        maxit = 100  # TODO: parameterize
+        tol = 1e-8  # TODO: parameterize
         for _ in range(maxit):
             v_prev.assign(self.v_)
 
