@@ -184,6 +184,8 @@ for n in range(nt):
 
     # Solve one timestep
     krylov_it1, krylov_it2, krylov_it3, (v_it, e) = solver.step()
+    if my_rank == 0:  # DEBUG
+        print(f"Timestep {n + 1}/{nt}: {krylov_it1} {krylov_it2} {krylov_it3} {v_it} {e}")
 
     begin("Saving")
 
