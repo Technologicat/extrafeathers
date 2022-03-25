@@ -120,18 +120,13 @@ class EulerianSolid:
         #
         # `u`: displacement
         # `v`: Eulerian time rate of displacement (reduction to 1st order system)
-        #  - `v` is based on ∂u/∂t, so the polynomial order of the space
-        #    used for approximating `v` should be the same as that for `u`.
-        #    We can just use another copy of the space `V`.
         # `σ`: stress
         #  - Mixed formulation; stress has its own equation to allow easily
-        #   changing the constitutive model.
+        #    changing the constitutive model.
         #  - Also, need to treat it this way for an Eulerian description of
-        #    viscoelastic models (the material derivative introduces a term
-        #    that is one order of ∇ higher).
-        #  - `σ` is based on `ε`, which is essentially the gradient of `u`.
-        #    Therefore, for consistency, the polynomial order of the space `Q`
-        #    should be one lower than that of `V`.
+        #    viscoelastic models, because the material derivative introduces
+        #    a term that is one order of ∇ higher. In the primal formulation,
+        #    in the weak form, this requires taking second derivatives of `u`.
         # # e = MixedElement(V.ufl_element(), Q.ufl_element())
         # # S = FunctionSpace(self.mesh, e)
         u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
@@ -151,7 +146,6 @@ class EulerianSolid:
         self.V = V
         self.Q = Q
         self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)
-        self.VP1 = VectorFunctionSpace(self.mesh, "P", 1)
         self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
 
         self.u, self.v, self.σ = u, v, σ  # trials
