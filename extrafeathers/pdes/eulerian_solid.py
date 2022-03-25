@@ -127,8 +127,23 @@ class EulerianSolid:
         #    viscoelastic models, because the material derivative introduces
         #    a term that is one order of ∇ higher. In the primal formulation,
         #    in the weak form, this requires taking second derivatives of `u`.
-        # # e = MixedElement(V.ufl_element(), Q.ufl_element())
-        # # S = FunctionSpace(self.mesh, e)
+
+        # # We won't use it, but this is how to set up the quantities for a monolithic
+        # # mixed problem (in this example, for `u` and `σ`).
+        # #
+        # # Using a `MixedFunctionSpace` fails for some reason; instead, the way
+        # # to do this is to set up a `MixedElement` and a garden-variety `FunctionSpace`
+        # # on that, and then split as needed. Then set Dirichlet BCs on the appropriate
+        # # `S.sub(j)` (those may also have their own second-level `.sub(k)` if they are
+        # # vector/tensor fields).
+        # #
+        # e = MixedElement(V.ufl_element(), Q.ufl_element())
+        # S = FunctionSpace(self.mesh, e)
+        # u, σ = TrialFunctions(S)
+        # w, φ = TestFunctions(S)
+        # s_ = Function(S)
+        # u_, σ_ = split(s_)
+
         u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
         w = TestFunction(V)
         v = TrialFunction(V)
