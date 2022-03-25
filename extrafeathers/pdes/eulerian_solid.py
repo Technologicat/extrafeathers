@@ -21,18 +21,16 @@ appearing as a spatial derivative of ε in the constitutive equation for σ).
 
 __all__ = ["EulerianSolid"]
 
-from itertools import chain
 import typing
 
-from fenics import (VectorFunctionSpace, TensorFunctionSpace, MixedElement, FunctionSpace,
-                    split, FunctionAssigner,
-                    TrialFunctions, TestFunctions, TrialFunction, TestFunction,
+from fenics import (VectorFunctionSpace, TensorFunctionSpace,
+                    TrialFunction, TestFunction,
                     Constant, Expression, Function,
                     FacetNormal, DirichletBC,
                     dot, inner, outer, sym, tr,
                     nabla_grad, div, dx, ds,
                     Identity,
-                    lhs, rhs, assemble, solve, normalize,
+                    lhs, rhs, assemble, solve,
                     interpolate, project, VectorSpaceBasis, as_backend_type,
                     errornorm,
                     begin, end)
