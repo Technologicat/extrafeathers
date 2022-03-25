@@ -47,7 +47,7 @@ if my_rank == 0:
 bcu = []
 bcv = []
 bcσ = []
-solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcv, bcσ, dt)
+solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
 # solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
 
 # Define boundary conditions
