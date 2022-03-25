@@ -421,7 +421,7 @@ class EulerianSolid:
         self.a_v = lhs(F_v)
         self.L_v = rhs(F_v)
 
-    def step(self) -> typing.Tuple[int, int, int]:
+    def step(self) -> typing.Tuple[int, int, int, typing.Tuple[int, float]]:
         """Take a timestep of length `self.dt`.
 
         Updates the latest computed solution.
