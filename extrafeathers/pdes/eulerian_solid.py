@@ -34,6 +34,7 @@ from fenics import (VectorFunctionSpace, TensorFunctionSpace, MixedElement, Func
                     Identity,
                     lhs, rhs, assemble, solve, normalize,
                     interpolate, project, VectorSpaceBasis, as_backend_type,
+                    errornorm,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
@@ -431,7 +432,13 @@ class EulerianSolid:
         # return 0
 
         begin("Solve timestep")
-        for _ in range(3):
+
+        v_prev = Function(self.V)
+        maxit = 100
+        tol = 1e-8
+        for _ in range(maxit):
+            v_prev.assign(self.v_)
+
             A1 = assemble(self.a_u)
             b1 = assemble(self.L_u)
             [bc.apply(A1) for bc in self.bcu]
@@ -471,13 +478,17 @@ class EulerianSolid:
             # self.v_.assign(project(interpolate(self.v_, self.VP1), self.V))  # dampen v
             self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))  # dampen v
 
+            e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)
+            if e < tol:
+                break
+
         # import numpy as np
         # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
         # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))
 
         end()
 
-        return it1, it2, it3
+        return it1, it2, it3, ((_ + 1), e)
 
     def commit(self) -> None:
         """Commit the latest computed timestep, preparing for the next one.

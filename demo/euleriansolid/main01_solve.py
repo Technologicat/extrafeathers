@@ -184,7 +184,7 @@ for n in range(nt):
     t += dt
 
     # Solve one timestep
-    solver.step()
+    krylov_it1, krylov_it2, krylov_it3, (v_it, e) = solver.step()
 
     begin("Saving")
 
@@ -340,7 +340,7 @@ for n in range(nt):
     max_vis_step_walltime = item_with_max_vis_step_walltime[0]
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; vis every {max_vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
+    msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {v_it} iterations; vis every {max_vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
 
 # Hold plot
 if my_rank == 0:
