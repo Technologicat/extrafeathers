@@ -75,26 +75,27 @@ class EulerianSolidStabilizerFlags(StabilizerFlags):
     SUPG = property(fget=_get_SUPG, fset=_set_SUPG, doc="Streamline upwinding Petrov-Galerkin, for advection-dominant problems.")
 
 
-# TODO: set initial condition?
 # TODO: use nondimensional form
 class EulerianSolid:
-    """TODO: document this
+    """Axially moving linear solid, small-displacement Eulerian formulation.
+
+    For now this is linear elastic or Kelvin-Voigt (chosen by hard-coding),
+    but the plan is to extend this to SLS (the standard linear solid),
+    and to make the constitutive law choosable.
 
     Time integration is performed using the θ method; Crank-Nicolson by default.
 
     `V`: function space for displacement
     `Q`: function space for stress
-
-         Note `σ` is based on `ε`, which is essentially the gradient of `u`.
-         Therefore, for consistency, the polynomial order of the space `Q`
-         should be one lower than that of `V`.
-
     `ρ`: density [kg / m³]
     `λ`: Lamé's first parameter [Pa]
     `μ`: shear modulus [Pa]
     `V0`: velocity of co-moving frame in +x direction (constant) [m/s]
     `bcu`: Dirichlet boundary conditions for displacement
-    `bcσ`: Dirichlet boundary conditions for stress
+    `bcv`: Dirichlet boundary conditions for Eulerian displacement rate ∂u/∂t
+           (set these consistently with `u`)
+    `bcσ`: Dirichlet boundary conditions for stress (set only n·σ).
+           Alternative for setting `u` and `v`.
     `dt`: timestep [s]
     `θ`: theta-parameter for the time integrator, θ ∈ [0, 1].
          Default 0.5 is Crank-Nicolson; 0 is forward Euler, 1 is backward Euler.
