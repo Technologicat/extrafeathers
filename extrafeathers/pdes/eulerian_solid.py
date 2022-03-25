@@ -445,7 +445,10 @@ class EulerianSolid:
             b2 = assemble(self.L_σ)
             [bc.apply(A2) for bc in self.bcσ]
             [bc.apply(b2) for bc in self.bcσ]
-            it2 = solve(A2, self.σ_.vector(), b2, 'cg', 'sor')  # TODO: axially moving Kelvin-Voigt needs a non-symmetric solver here due to the a·∇ε term. (We use the skew-symmetric discretization, which is often better than the naive one, but it's still non-symmetric.)
+            # Axially moving Kelvin-Voigt needs a non-symmetric solver here due to the a·∇ε term.
+            # (We use the skew-symmetric discretization, which is often better than the naive one,
+            #  but it's still non-symmetric.)
+            it2 = solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor')
 
             # Postprocess `σ` to eliminate numerical oscillations
             self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))
