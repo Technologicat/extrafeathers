@@ -37,7 +37,7 @@ mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_f
 
 # Define function spaces
 V = VectorFunctionSpace(mesh, 'P', 1)
-Q = TensorFunctionSpace(mesh, 'P', 1)  # stress, must be one degree lower than `V`
+Q = TensorFunctionSpace(mesh, 'P', 1)
 Vscalar = V.sub(0).collapse()
 Qscalar = Q.sub(0).collapse()
 
