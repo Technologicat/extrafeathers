@@ -463,6 +463,15 @@ class EulerianSolid:
 
             # TODO: what goes wrong here?
             # # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
+            # #
+            # # `set_near_nullspace`: "Attach near nullspace to matrix (used by preconditioners,
+            # #                        such as smoothed aggregation algerbraic multigrid)"
+            # # `set_nullspace`:      "Attach nullspace to matrix (typically used by Krylov solvers
+            # #                        when solving singular systems)"
+            # #
+            # # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d4/db0/classdolfin_1_1PETScMatrix.html#aeb0152c4382d473ae6a93841f721260c
+            # #
+            # as_backend_type(A3).set_near_nullspace(self.null_space)
             # as_backend_type(A3).set_nullspace(self.null_space)
             # self.null_space.orthogonalize(b3)
 
