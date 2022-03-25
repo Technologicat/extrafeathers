@@ -54,47 +54,15 @@ solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcv, bcσ, dt)
 #
 # - on each boundary, set either `u` or `n·σ`
 #   (the latter needs some trickery on boundaries not aligned with axes)
-# - `v` needs BCs on the inflow part of the boundary
-#
-# These need to be applied on the correct `.sub(j)` of the full `FunctionSpace`.
-# https://fenicsproject.org/qa/13269/scalar-mixed-function-space-problem/
-#
-# bcu_left = DirichletBC(solver.S.sub(0), Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
-# # bcv_left = DirichletBC(solver.S.sub(1), Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-# bcu_right = DirichletBC(solver.S.sub(0), Constant((1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
-# # bcv_right = DirichletBC(solver.S.sub(1), Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
-# #bcu_right = DirichletBC(solver.S.sub(0).sub(0), Constant(1e-3), boundary_parts, Boundaries.RIGHT.value)
-# #bcv_right = DirichletBC(solver.S.sub(1).sub(0), Constant(0), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
-# bcσ_top1 = DirichletBC(solver.S.sub(2).sub(1), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ12 (symm.)
-# bcσ_top2 = DirichletBC(solver.S.sub(2).sub(2), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ21
-# bcσ_top3 = DirichletBC(solver.S.sub(2).sub(3), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ22
-# bcσ_bottom1 = DirichletBC(solver.S.sub(2).sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ12
-# bcσ_bottom2 = DirichletBC(solver.S.sub(2).sub(2), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ21
-# bcσ_bottom3 = DirichletBC(solver.S.sub(2).sub(3), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ22
-# bcu.append(bcu_left)
-# bcu.append(bcu_right)
-# # bcu.append(bcv_left)
-# # bcu.append(bcv_right)
-# bcσ.append(bcσ_top1)
-# bcσ.append(bcσ_top2)
-# bcσ.append(bcσ_top3)
-# bcσ.append(bcσ_bottom1)
-# bcσ.append(bcσ_bottom2)
-# bcσ.append(bcσ_bottom3)
-bcu_left = DirichletBC(V, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
-bcu_right = DirichletBC(V, Constant((1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
-bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+# - if you set `u`, set also `v` consistently
+
+# Top and bottom edges: zero normal stress
 bcσ_top1 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ12 (symm.)
 bcσ_top2 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ21
 bcσ_top3 = DirichletBC(Q.sub(3), Constant(0), boundary_parts, Boundaries.TOP.value)  # σ22
 bcσ_bottom1 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ12
 bcσ_bottom2 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ21
 bcσ_bottom3 = DirichletBC(Q.sub(3), Constant(0), boundary_parts, Boundaries.BOTTOM.value)  # σ22
-bcu.append(bcu_left)
-bcu.append(bcu_right)
-bcv.append(bcv_left)
-bcv.append(bcv_right)
 bcσ.append(bcσ_top1)
 bcσ.append(bcσ_top2)
 bcσ.append(bcσ_top3)
@@ -102,15 +70,47 @@ bcσ.append(bcσ_bottom1)
 bcσ.append(bcσ_bottom2)
 bcσ.append(bcσ_bottom3)
 
-# # Initial condition (displacement)
+# # Left and right edges: fixed displacement at both ends
+# bcu_left = DirichletBC(V, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+# bcu_right = DirichletBC(V, Constant((1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
+# bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+# bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+# bcu.append(bcu_left)
+# bcu.append(bcu_right)
+# bcv.append(bcv_left)
+# bcv.append(bcv_right)
+
+# Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016)
+bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value)  # σ11
+bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value)  # σ12
+bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value)  # σ21 (symm.)
+bcu.append(bcu_left)
+bcv.append(bcv_left)
+bcσ.append(bcσ_right1)
+bcσ.append(bcσ_right2)
+bcσ.append(bcσ_right3)
+
+# # Left at right edges: constant pull at both ends
+# # (TODO: does not work yet, need to fix bugs in rigid-body mode removal)
+# bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value)  # σ11
+# bcσ_left2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.LEFT.value)  # σ12
+# bcσ_left3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.LEFT.value)  # σ21 (symm.)
+# bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value)  # σ11
+# bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value)  # σ12
+# bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value)  # σ21 (symm.)
+# bcσ.append(bcσ_left1)
+# bcσ.append(bcσ_left2)
+# bcσ.append(bcσ_left3)
+# bcσ.append(bcσ_right1)
+# bcσ.append(bcσ_right2)
+# bcσ.append(bcσ_right3)
+
+# # Optional: nonzero initial condition for displacement
 # # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
 # u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
 # solver.u_n.assign(u0)
-
-# bcσ_left = DirichletBC(solver.S.sub(2), Constant(((1, 0), (0, 0))), boundary_parts, Boundaries.LEFT.value)
-# bcσ_right = DirichletBC(solver.S.sub(2), Constant(((1, 0), (0, 0))), boundary_parts, Boundaries.RIGHT.value)
-# bcσ.append(bcσ_left)
-# bcσ.append(bcσ_right)
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)
