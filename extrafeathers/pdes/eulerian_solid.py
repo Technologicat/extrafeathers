@@ -486,7 +486,7 @@ class EulerianSolid:
             # Postprocess `v` to eliminate numerical oscillations
             self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))
 
-            e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)
+            e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
             if e < tol:
                 break
 
