@@ -136,8 +136,12 @@ def main():
 
     N = 16
 
+    # https://fenicsproject.org/olddocs/dolfin/latest/cpp/de/dac/classdolfin_1_1UnitSquareMesh.html#a0cff260683cd6632fa569ddda6529a0d
+    # 'std::string diagonal ("left", "right", "right/left", "left/right", or "crossed")
+    #  indicates the direction of the diagonals.'
     # mesh = UnitSquareMesh(N, N)
-    mesh = trimesh(N, N)  # rows of equilateral triangles
+    mesh = UnitSquareMesh(N, N, "crossed")
+    # mesh = trimesh(N, N)  # rows of equilateral triangles
     # mesh = trimesh(N, N, align="y")  # columns of equilateral triangles
 
     from dolfin import ALE, Constant, FunctionSpace
