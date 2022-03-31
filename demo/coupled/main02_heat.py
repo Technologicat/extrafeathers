@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from unpythonic import ETAEstimator, timer
 
 from fenics import (FunctionSpace, DirichletBC,
-                    Expression, Function, Constant,
+                    Expression, Constant,
                     interpolate, project, Vector,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -94,14 +94,9 @@ if V.ufl_element().degree() > 1:
     if my_rank == 0:
         print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
-        export_mesh = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
-        W = FunctionSpace(export_mesh, 'P', 1)
-        w = Function(W)
-        VtoW, WtoV = meshmagic.map_refined_P1(V, W)
+        u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-        my_W_dofs = W.dofmap().dofs()  # MPI-local
-        my_V_dofs = WtoV[my_W_dofs]  # MPI-local
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
@@ -154,9 +149,9 @@ for n in range(nt):
         #   w.assign(interpolate(solver.u_, W))
         # How we do it in MPI mode (see main01_flow.py for full explanation):
         solver.u_.vector().gather(u_copy, all_V_dofs)
-        w.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        u_P1.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
 
-        xdmffile_T.write(w, t)
+        xdmffile_T.write(u_P1, t)
     else:  # save at P1 resolution
         xdmffile_T.write(solver.u_, t)
     timeseries_T.store(solver.u_.vector(), t)  # the timeseries saves the original data
