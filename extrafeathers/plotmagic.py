@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 
 import dolfin
 
-from .meshmagic import all_cells, my_cells, nodes_to_array, quad_to_tri, compact_node_numbering
+from .meshmagic import all_cells, my_cells, nodes_to_array, quad_to_tri, collapse_node_numbering
 
 
 # Use `matplotlib`'s default color sequence.
@@ -206,9 +206,9 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     #    This splits the range of DOFs in each process into two subranges (original
     #    and added), each of which is consecutive, but with a gap between them.
     #
-    # The triangulation needs a zero-based consecutive range, so we compact now.
+    # The triangulation needs a zero-based consecutive range, so we collapse now.
     dofs, nodes = nodes_to_array(nodes)
-    triangles = compact_node_numbering(triangles, dofs)
+    triangles = collapse_node_numbering(triangles, dofs)
 
     # For p > 1, in FEniCS the vertices are the first DOFs in each cell,
     # hence the cat smiley.
