@@ -426,11 +426,27 @@ class EulerianSolid:
             v_prev.assign(self.v_)
 
             # Step 1: update `u`
-            A1 = assemble(self.a_u)
-            b1 = assemble(self.L_u)
-            [bc.apply(A1) for bc in self.bcu]
-            [bc.apply(b1) for bc in self.bcu]
-            it1 = solve(A1, self.u_.vector(), b1, 'cg', 'sor')
+            # A1 = assemble(self.a_u)
+            # b1 = assemble(self.L_u)
+            # [bc.apply(A1) for bc in self.bcu]
+            # [bc.apply(b1) for bc in self.bcu]
+            # it1 = solve(A1, self.u_.vector(), b1, 'cg', 'sor')
+
+            # Direct algebraic update, no FEM (results in mass lumping,
+            # since the spatial connections between the DOFs are ignored):
+            #   ∂u/∂t = v
+            # =>
+            #   (u_ - u_n) / Δt = v
+            #   u_ - u_n = Δt v
+            #   u_ = u_n + Δt v
+            # where
+            #   v = (1 - θ) v_n + θ v_
+            # is the approximation of `v` consistent with the time integration scheme.
+            θ = self.θ
+            dt = self.dt
+            V = (1 - θ) * self.v_n.vector()[:] + θ * self.v_.vector()[:]
+            self.u_.vector()[:] = self.u_n.vector()[:] + dt * V
+            it1 = 1
 
             # Postprocess `u` to eliminate numerical oscillations
             self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))
@@ -489,6 +505,14 @@ class EulerianSolid:
             e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
             if e < tol:
                 break
+
+            # # relaxation / over-relaxation
+            # import dolfin
+            # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
+            #     print(f"After iteration {(_ + 1)}: ‖v - v_prev‖_H1 = {e}")
+            # if e < 1e-3:
+            #     γ = 1.05
+            #     self.v_.vector()[:] = (1 - γ) * v_prev.vector()[:] + γ * self.v_.vector()[:]
 
         # # DEBUG
         # import numpy as np
