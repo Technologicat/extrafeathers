@@ -9,14 +9,16 @@ Can be run serially or in parallel:
     mpirun -n 2 python -m demo.refelement
     mpirun python -m demo.refelement
 
-You can give an element type (Px or DPx) as argument:
+You can give an element type (Px, Qx, DPx, DQx) as argument:
 
     python -m demo.refelement P2
+    python -m demo.refelement Q2
     python -m demo.refelement DP3
+    python -m demo.refelement DQ3
 
-Node and text color codes cells. Labels are "reference_dof (global_dof)".
+Node and text color color-codes cells. Labels are "reference_dof (global_dof)".
 
-When running in parallel, line color codes MPI partitioning.
+When running in parallel, line color color-codes MPI partitioning.
 """
 
 from collections import defaultdict
@@ -72,7 +74,8 @@ def mpl_scalefont(factor: float = 2.0):
 arg = sys.argv[1] if len(sys.argv) > 1 else "P3"
 family, degree = arg[:-1], int(arg[-1])
 
-mesh = dolfin.UnitSquareMesh(2, 2)
+celltype = dolfin.CellType.Type.quadrilateral if "Q" in family else dolfin.CellType.Type.triangle
+mesh = dolfin.UnitSquareMesh.create(2, 2, celltype)
 V = dolfin.FunctionSpace(mesh, family, degree)
 
 dofmap = V.dofmap()
@@ -83,6 +86,20 @@ if dolfin.MPI.comm_world.rank == 0:
     fig, ax = plt.subplots(1, 1, constrained_layout=True, figsize=(8, 8))
 show_partitioning = dolfin.MPI.comm_world.size > 1
 plotmagic.mpiplot_mesh(V, linewidth=3.0, show_partitioning=show_partitioning)
+
+# # DEBUG
+# from extrafeathers import meshmagic
+# cells, nodes = meshmagic.all_cells(V)
+# cells, nodes = meshmagic.quad_to_tri(cells, nodes, mpi_global=True)
+# dofs, nodes_array = meshmagic.nodes_to_array(nodes)
+# P1_mesh = meshmagic.make_mesh(cells, dofs, nodes_array)
+# W = dolfin.FunctionSpace(P1_mesh, "P", 1)
+# w = dolfin.Function(W)
+# w.vector()[:] = range(W.dim())
+# theplot = plotmagic.mpiplot(w)
+# plt.colorbar(theplot)
+# plotmagic.mpiplot_mesh(W)
+# plt.axis("equal")
 
 data = []
 for cell in dolfin.cells(V.mesh()):
