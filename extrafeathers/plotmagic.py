@@ -470,8 +470,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
         all_polys = dolfin.MPI.comm_world.gather(my_polys, root=0)
         if show_aux or V.ufl_element().degree() <= 1:
             if dolfin.MPI.comm_world.rank == 0:
-                all_edges_colors = colors20 if V.ufl_element().degree() > 1 else colors40
                 all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
+                all_edges_colors = colors20 if V.ufl_element().degree() > 1 else colors40
                 for k, polys in enumerate(all_polys):
                     if not polys:
                         continue
@@ -506,8 +506,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     main_plot = None
     if show_aux or V.ufl_element().degree() <= 1:
         if dolfin.MPI.comm_world.rank == 0:
-            all_edges_color = aux_color if V.ufl_element().degree() > 1 else main_color
             all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
+            all_edges_color = aux_color if V.ufl_element().degree() > 1 else main_color
             polys.set_linewidth(all_edges_width)
             polys.set_edgecolor(all_edges_color)
             polys.set_facecolor('none')
