@@ -883,6 +883,7 @@ def refine_for_export(mesh: dolfin.Mesh,
     return make_mesh(cells, dofs, nodes_array, distributed=True)
 
 
+# TODO: add `partial_ok` mode to help filling `quad_to_tri` added DOFs from dG0 space
 def map_refined(V: typing.Union[dolfin.FunctionSpace,
                                 dolfin.VectorFunctionSpace,
                                 dolfin.TensorFunctionSpace],
