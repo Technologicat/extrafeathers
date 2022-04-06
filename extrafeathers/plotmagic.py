@@ -121,6 +121,8 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         and `tripcolor`. If needed, the triangulation itself can be visualized using
         `triplot`.
 
+        **Quadrilateral meshes**:
+
         Because Matplotlib does not support unstructured quadrilateral meshes,
         we convert any quadrilateral mesh into a crossed-diagonal triangulation.
         This has 4× as many cells and asymptotically 2× as many DOFs as the original,
@@ -130,22 +132,22 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         DOF numbering, one per cell, in the same order as `all_cells` or `my_cells`
         extracts the cells.
 
-        Note that if `refine=True`, the conversion is applied to the refined mesh.
-        Hence e.g. a Q3 mesh will produce a triangulation with 36× as many cells
-        as the original (9× from Q3->Q1 and then 4× that from Q1->P1).
-        Each linear visualization cell will get its own additional DOF at the
-        center of the *visualization cell*.
+        If `refine=True`, the conversion is applied to the refined mesh. Hence e.g.
+        a Q3 mesh will produce a triangulation with 36× as many triangles as the
+        original quads (9× from Q3->Q1 and then a further 4× from Q1->P1). In the
+        conversion, each linear visualization quad will get its own additional DOF
+        at the center of the *visualization quad*.
 
         If `refine=False`, the conversion is applied to the original mesh.
-        Each original cell will get just one additional DOF at the cell center.
+        Each original quad will get just one additional DOF at the cell center.
 
         Note that when using the triangulation to interpolate a FEM function on
         quadrilaterals, you will need to produce the additional DOF values and
         then concatenate those to the (subspace-relevant part of the) original
         DOF vector.
 
-        For Q2 and Q3 this can be tricky and/or slow; but for Q1 there is a
-        native-speed shortcut. Project or interpolate your function into a
+        For degrees 2 and 3 this can be tricky and/or slow; but for degree 1 there
+        is a native-speed shortcut. Project or interpolate your function into a
         dG0 space on your original mesh, thereby obtaining the cell center values.
 
         (There is a way, using `prepare_linear_export` and some manual DOF copying;
