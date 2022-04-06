@@ -385,6 +385,9 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     v_vec = u.vector().gather_on_zero()
     n_global_dofs = V.dim()
 
+    # TODO: Quadrilateral meshes: get values for the added DOFs
+    # TODO: to bring the function onto `tris` for plotting.
+
     # # make a complete copy of the DOF vector u_vec to all MPI processes
     # u_vec = u.vector()
     # v_vec = dolfin.Vector(dolfin.MPI.comm_self)  # local vector (local to each MPI process)
