@@ -471,6 +471,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
         my_polys, ignored_triangulation = as_mpl_triangulation(V, mpi_global=False, refine=True)
         all_polys = dolfin.MPI.comm_world.gather(my_polys, root=0)
         if show_aux or V.ufl_element().degree() <= 1:
+            # all edges
             if dolfin.MPI.comm_world.rank == 0:
                 all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
                 all_edges_colors = colors20 if V.ufl_element().degree() > 1 else colors40
@@ -509,6 +510,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
         polys, ignored_triangulation = as_mpl_triangulation(V, refine=True)
     main_plot = None
     if show_aux or V.ufl_element().degree() <= 1:
+        # all edges
         if dolfin.MPI.comm_world.rank == 0:
             all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
             all_edges_color = aux_color if V.ufl_element().degree() > 1 else main_color
