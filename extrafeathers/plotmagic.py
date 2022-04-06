@@ -503,7 +503,9 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
         return
 
     # single color for all MPI partitions
-    if not _polys:  # TODO: doesn't interact with `show_partitioning`
+    if _polys:  # TODO: doesn't interact with `show_partitioning`
+        polys = _polys
+    else:
         polys, ignored_triangulation = as_mpl_triangulation(V, refine=True)
     main_plot = None
     if show_aux or V.ufl_element().degree() <= 1:
