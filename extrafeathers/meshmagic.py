@@ -401,9 +401,9 @@ def quad_to_tri(cells: np.array,
                       If your data comes from a subspace, collapse before extracting
                       the cells.
 
-                      This is important, because this function needs zero-based consecutive
-                      global DOF numbers to be able to predictably add unique new DOFs
-                      across MPI processes.
+                      This is important, because this function needs zero-based
+                      consecutive global DOF numbers to be able to predictably add
+                      unique new DOFs across MPI processes.
 
                       The `nodes` dictionary should always be produced by `all_cells`,
                       because the MPI-local cells refer also to unowned nodes (which are
@@ -415,9 +415,11 @@ def quad_to_tri(cells: np.array,
 
     "Same format" implies that if `mpi_global=False`, the output will likewise be
     the MPI-local mesh part. However, `new_nodes` will contain also the unowned nodes
-    referred to by `cells`, because we need this information anyway to create the new nodes.
+    referred to by `cells`, because we need this information anyway to create the new
+    nodes.
 
-    If `mpi_global=True`, the output will likewise be MPI-global (each process gets a full copy).
+    If `mpi_global=True`, the output will likewise be MPI-global (each process gets
+    a full copy).
 
     **CAUTION**:
 
@@ -427,17 +429,18 @@ def quad_to_tri(cells: np.array,
     Renumbering the nodes by proximity (before sending them to `make_mesh`; see
     `renumber_nodes_by_distance`) does not help.
 
-    This appears to be a bug in SCOTCH. In serial mode, the mesh can be created just fine.
+    This appears to be a bug in SCOTCH. In serial mode, the mesh can be created
+    just fine.
 
     As a workaround: this splitter itself works fine. So don't create a `dolfin.Mesh`
     out of the result, but a `matplotlib.tri.Triangulation`, and use it with the
     Matplotlib plotting functions (e.g. `triplot`, `tricontourf`, `tripcolor`).
 
-    This approach requires some more work in getting a DOF vector to use in visualization.
-    The original DOF vector data contains the quad vertex values. The quad midpoint values
-    can be extracted by a projection (or interpolation) onto a dG0 space on the original
-    quad mesh. Then, using the fact that this function places the added DOFs at the end,
-    just concatenate the two DOF vectors.
+    This approach requires some more work in getting a DOF vector to use in
+    visualization. The original DOF vector data contains the quad vertex values.
+    The quad midpoint values can be extracted by a projection (or interpolation) onto
+    a dG0 space on the original quad mesh. Then, using the fact that this function
+    places the added DOFs at the end, just concatenate the two DOF vectors.
     """
     if len(cells[0]) not in (4, 9, 16):  # Q1/DQ1, Q2/DQ2, Q3/DQ3
         raise ValueError(f"Expected a quadrilateral mesh; got cells with {len(cells[0])} nodes")
