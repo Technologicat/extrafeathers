@@ -87,11 +87,14 @@ if dolfin.MPI.comm_world.rank == 0:
 show_partitioning = dolfin.MPI.comm_world.size > 1
 plotmagic.mpiplot_mesh(V, show_partitioning=show_partitioning)
 
-# # DEBUG
+# # DEBUG - SCOTCH crash in MPI mode upon `make_mesh` on results of `quad_to_tri`
+# import numpy as np
 # from extrafeathers import meshmagic
 # cells, nodes = meshmagic.all_cells(V)
 # cells, nodes = meshmagic.quad_to_tri(cells, nodes, mpi_global=True)
 # dofs, nodes_array = meshmagic.nodes_to_array(nodes)
+# cells = meshmagic.collapse_node_numbering(cells, dofs)
+# dofs = np.arange(len(dofs), dtype=np.int64)
 # P1_mesh = meshmagic.make_mesh(cells, dofs, nodes_array)
 # W = dolfin.FunctionSpace(P1_mesh, "P", 1)
 # w = dolfin.Function(W)
