@@ -190,17 +190,44 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         return None, None
 
     # Element edges and dG0 function visualization - triangles/quadrilaterals both ok.
-    # For p > 1, in FEniCS the vertices are the first DOFs in each cell.
-    n = 4 if cell_kind == "quadrilateral" else 3
-    vertices = [[our_nodes[dof] for dof in cell[:n]] for cell in cells]
-    if cell_kind == "quadrilateral":
-        # Matplotlib expects a walk around the perimeter,
-        # but FEniCS numbers the Q1 DOFs as:
-        #   2-3
-        #   | |
-        #   0-1
-        # so we must flip the last two.
-        vertices = [[v[0], v[1], v[3], v[2]] for v in vertices]
+    if cell_kind == "triangle":
+        # For p > 1 triangles in FEniCS, the vertices are the first DOFs in each cell,
+        # hence the cat smiley.
+        vertices = [[our_nodes[dof] for dof in cell[:3]] for cell in cells]
+    else:  # cell_kind == "quadrilateral":
+        # For quads, Matplotlib expects a walk around the perimeter.
+        vertices = [[our_nodes[dof] for dof in cell] for cell in cells]
+        if refine:
+            # Cells have been refined to degree 1 vis cells, so treat them as Q1.
+            vertices = [[v[0], v[1], v[3], v[2]] for v in vertices]
+        else:
+            degree = V.ufl_element().degree()
+            if degree == 1:
+                # 2-3
+                # | |
+                # 0-1
+                # Q1
+                vertices = [[v[0], v[1], v[3], v[2]] for v in vertices]
+            elif degree == 2:
+                # 3-5-4
+                # |   |
+                # 6 8 7
+                # |   |
+                # 0-2-1
+                #  Q2
+                vertices = [[v[0], v[1], v[4], v[3]] for v in vertices]
+            elif degree == 3:
+                #  4--6--7--5
+                #  |        |
+                # 12 14 15 13
+                #  |        |
+                #  8 10 11  9
+                #  |        |
+                #  0--2--3--1
+                #      Q3
+                vertices = [[v[0], v[1], v[5], v[4]] for v in vertices]
+            else:
+                raise NotImplementedError(f"Expected degree 1, 2 or 3; got {degree}")
     polys = mcoll.PolyCollection(vertices)
 
     # Degree 1 or higher function visualization needs a triangulation for
@@ -224,8 +251,6 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     dofs, nodes = nodes_to_array(nodes)
     triangles = collapse_node_numbering(triangles, dofs)
 
-    # For p > 1, in FEniCS the vertices are the first DOFs in each cell,
-    # hence the cat smiley.
     tris = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=triangles[:, :3])
 
     return polys, tris
