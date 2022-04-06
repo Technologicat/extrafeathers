@@ -442,7 +442,7 @@ def quad_to_tri(cells: np.array,
     if len(cells[0]) not in (4, 9, 16):  # Q1/DQ1, Q2/DQ2, Q3/DQ3
         raise ValueError(f"Expected a quadrilateral mesh; got cells with {len(cells[0])} nodes")
 
-    first_node = next(nodes.values())
+    first_node = next(iter(nodes.values()))
     geom_dim = len(first_node)
     if geom_dim != 2:
         raise NotImplementedError(f"This function supports only 2D meshes in 2D space; got geometric dimension {geom_dim}.")
@@ -501,16 +501,6 @@ def quad_to_tri(cells: np.array,
         midy = sum(nodes[dof][1] for dof in cell) / len(cell)
         new_node = [midx, midy]
         my_nodes[new_dof] = new_node
-
-    # Make sure each triangle is defined counterclockwise (needed for Matplotlib)
-    new_triangles = []
-    for triangle in my_triangles:
-        x1, x2, x3 = [nodes[dof] for dof in triangle]
-        if is_anticlockwise((x1, x2, x3)):
-            new_triangles.append(triangle)
-        else:
-            new_triangles.append(triangle[::-1])
-    my_triangles = new_triangles
 
     # Postconditions
     if mpi_global:
