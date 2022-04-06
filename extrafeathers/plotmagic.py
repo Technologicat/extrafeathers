@@ -318,6 +318,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
             show_mesh: bool = False,
             show_partitioning: bool = False,
             prep: typing.Optional[typing.Tuple[dolfin.FunctionSpace,
+                                               mcoll.PolyCollection,
                                                mtri.Triangulation,
                                                np.array]] = None,
             **kwargs: typing.Any) -> typing.Optional[typing.Any]:
