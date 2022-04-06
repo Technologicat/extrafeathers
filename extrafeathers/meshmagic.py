@@ -470,7 +470,12 @@ def quad_to_tri(cells: np.array,
 
     # Take only the Q1/DQ1 part (vertices) if the cells are degree 2 or higher.
     if len(cells[0]) > 4:
-        cells = [cell[:4] for cell in cells]
+        # Convert FEniCS Q2/DQ2/Q3/DQ3 into FEniCS Q1/DQ1.
+        # See `plotmagic.as_mpl_triangulation` for pictures.
+        if len(cells[0]) == 9:
+            cells = [[cell[0], cell[1], cell[3], cell[4]] for cell in cells]
+        else:  # 16
+            cells = [[cell[0], cell[1], cell[4], cell[5]] for cell in cells]
 
     # "my" = local to this MPI process.
     num_dofs = len(nodes.keys())
