@@ -5,12 +5,13 @@ Currently, some of these are useful for MPI parallel solvers, and some for
 full nodal resolution export of data on P2 or P3 triangle meshes.
 """
 
-__all__ = ["my_cells", "all_cells", "nodes_to_array",
+__all__ = ["my_cells", "all_cells", "nodes_to_array", "compact_node_numbering",
+           "quad_to_tri", "renumber_nodes_by_distance",
            "make_mesh",
-           "prepare_export_as_P1", "midpoint_refine", "map_refined_P1",
+           "prepare_linear_export", "refine_for_export", "map_refined",
            "my_patches", "all_patches", "map_dG0", "patch_average"]
 
-from collections import defaultdict
+from collections import defaultdict, Counter
 import typing
 
 import numpy as np
@@ -22,16 +23,16 @@ from .common import is_anticlockwise
 from .meshfunction import cellvolume
 
 
-# TODO: Does the refine belong here, or in `midpoint_refine` itself?
 def my_cells(V: dolfin.FunctionSpace, *,
              matplotlibize: bool = False,
              refine: bool = False) -> typing.Tuple[np.array,
                                                    typing.Dict[int, typing.List[float]]]:
     """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {0: [x1, y1], ...}
 
-    Nodal (Lagrange) elements only. Note this returns all nodes, not just the
-    mesh vertices. For example, for P2 triangles, you'll get also the nodes at
-    the midpoints of the edges.
+    Nodal (Lagrange) elements only: P, Q, DP and DQ families are ok.
+
+    Note this returns all nodes, not just the mesh vertices. For example,
+    for P2 triangles, you'll get also the nodes at the midpoints of the edges.
 
     This only sees the cells assigned to the current MPI process; the complete
     function space is the union of these cell sets from all processes. See
@@ -46,21 +47,26 @@ def my_cells(V: dolfin.FunctionSpace, *,
                      be useful for extracting mesh data for e.g. `matplotlib`.
                      (For that, see `as_mpl_triangulation`.)
 
-    `matplotlibize`: If `True`, and `V` is a 2D triangulation, ensure that the
-                     cells in the output list their vertices in an
-                     anticlockwise order, as required when the data is used to
-                     construct a `matplotlib.tri.Triangulation`.
+    `matplotlibize`: If `True`, and `V` is 2D, ensure that the cells in the
+                     output list their vertices in an anticlockwise order,
+                     as required when the data is used to construct a
+                     `matplotlib.tri.Triangulation`.
 
-                     Only makes sense when the output is P1.
+                     For quads, orientation is determined by majority voting
+                     to account for the nonconvex case.
 
-    `refine`:        If `True`, and `V` is a 2D P2 or P3 triangulation, split each
-                     original triangle into P1 triangles (four for P2, nine for P3).
+                     Note building a triangulation only makes sense for P1 output,
+                     or Q1 output, which can then be converted to P1. See `quad_to_tri`.
 
-                     The subtriangles are arranged in an aesthetically pleasing
-                     pattern, intended for visualizing P2 or P3 data, when
-                     interpolating that data as P1 on the once-refined mesh. It is
-                     particularly useful for export into a vertex-based format, for
-                     visualization.
+    `refine`:        If `True`, and `V` is a 2D P2/DP2, P3/DP3, Q2/DQ2 or Q3/DQ3
+                     triangulation, split each original cell into degree-1 cells
+                     (four for degree 2, nine for degree 3).
+
+                     For triangle meshes, the subtriangles are arranged in an
+                     aesthetically pleasing pattern, intended for visualizing P2 or P3
+                     data, when interpolating that data as P1 on the once-refined mesh.
+                     It is particularly useful for full nodal resolution export into a
+                     vertex-based format, for visualization.
 
     Returns `(cells, nodes)`, where:
         - `cells` is a rank-2 `np.array`, with the entries global DOF numbers,
@@ -75,22 +81,23 @@ def my_cells(V: dolfin.FunctionSpace, *,
           `TensorFunctionSpace`, the DOF numbers use the *global* DOF numbering
           also in the sense that each vector/tensor component of the field maps
           to its own set of global DOF numbers.
+
+          If you instead want the DOF numbers relative to the subspace, collapse
+          the subspace first before calling `my_cells` on it.
     """
     if V.ufl_element().num_sub_elements() > 1:
         raise ValueError(f"Expected a scalar `FunctionSpace`, got a function space on {V.ufl_element()}")
 
     input_degree = V.ufl_element().degree()
-    if not (V.mesh().topology().dim() == 2 and
-            str(V.ufl_element().cell()) == "triangle"):
+    cell_kind = str(V.ufl_element().cell())
+    if not (V.mesh().topology().dim() == 2 and cell_kind == "triangle"):
         matplotlibize = False
     if input_degree > 1 and not refine:
         matplotlibize = False  # only P1 output can be matplotlibized
 
-    # TODO: refine also P2/P3 tetras in 3D? (would allow `midpoint_refine`, `prepare_export_as_P1` for 3D)
-    if not (V.mesh().topology().dim() == 2 and
-            str(V.ufl_element().cell()) == "triangle" and
-            input_degree > 1):
-        refine = False  # only P2 and P3 triangles can be refined by this function
+    # TODO: refine also P2/P3 tetras and hexas in 3D? (allow 3D `refine_for_export`, `prepare_linear_export`)
+    if not (V.mesh().topology().dim() == 2 and input_degree > 1):
+        refine = False  # only P2, P3, Q2, Q3 can be refined by this function
 
     # "my" = local to this MPI process
     all_my_cells = []  # e.g. [[i1, i2, i3], ...] in global DOF numbering
@@ -104,7 +111,7 @@ def my_cells(V: dolfin.FunctionSpace, *,
         if not refine:  # general case
             local_dofss = [local_dofs]
             nodess = [nodes]
-        elif input_degree == 2:  # 2D P2 -> once-refined 2D P1
+        elif input_degree == 2 and cell_kind == "triangle":  # 2D P2 -> once-refined 2D P1
             # Split into four P1 triangles.
             #
             # - DOFs 0, 1, 2 are at the vertices
@@ -112,12 +119,12 @@ def my_cells(V: dolfin.FunctionSpace, *,
             # - DOF 4 is on the side opposite to 1
             # - DOF 5 is on the side opposite to 2
             #
-            # ASCII diagram (numbering on the reference element):
+            # ASCII diagram (showing the DOF numbering on the reference element):
             #
-            # 2          2
-            # |\         |\
-            # 4 3   -->  4-3
-            # |  \       |\|\
+            #     2          2
+            #    /|         /|  (1 triangle)
+            #   4 3  -->   4-3
+            #  /  |       /|/|  (3 triangles)
             # 0-5-1      0-5-1
             #  P2         4×P1
             #
@@ -126,13 +133,31 @@ def my_cells(V: dolfin.FunctionSpace, *,
             assert len(local_dofs) == 6, len(local_dofs)
             local_dofss = []
             nodess = []
-            for i, j, k in ((0, 5, 4),
-                            (5, 3, 4),
-                            (5, 1, 3),
+            for i, j, k in ((0, 5, 4), (5, 3, 4), (5, 1, 3),
                             (4, 3, 2)):
                 local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k]])
                 nodess.append([nodes[i], nodes[j], nodes[k]])
-        elif input_degree == 3:  # 2D P3 -> once-refined 2D P1
+        elif input_degree == 2 and cell_kind == "quadrilateral":  # 2D Q2 -> once-refined 2D Q1
+            # Split into four Q1 quadrilaterals.
+            #
+            # ASCII diagram:
+            #
+            # 3-5-4       3-5-4
+            # |   |       | | |
+            # 6 8 7  -->  6-8-7
+            # |   |       | | |
+            # 0-2-1       0-2-1
+            #  Q2          4×Q1
+            #
+            # See `demo.refelement`.
+            assert len(local_dofs) == 9, len(local_dofs)
+            local_dofss = []
+            nodess = []
+            for i, j, k, ell in ((0, 2, 8, 6), (2, 1, 7, 8),
+                                 (6, 8, 5, 3), (8, 7, 4, 5)):
+                local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k], local_dofs[ell]])
+                nodess.append([nodes[i], nodes[j], nodes[k], nodes[ell]])
+        elif input_degree == 3 and cell_kind == "triangle":  # 2D P3 -> once-refined 2D P1
             # Split into nine P1 triangles.
             #
             # - DOFs 0, 1, 2 are at the vertices
@@ -141,15 +166,15 @@ def my_cells(V: dolfin.FunctionSpace, *,
             # - DOFs 7, 8 are on the side opposite to 2
             # - DOF 8 is at the center of the triangle
             #
-            # ASCII diagram (numbering on the reference element):
+            # ASCII diagram:
             #
-            #       2
-            #      /|
-            #     6 4
-            #    /  |
-            #   5 9 3
-            #  /    |
-            # 0-7-8-1
+            #       2           2
+            #      /|          /|  (1 triangle)
+            #     6 4         6-4
+            #    /  |  -->   /|/|  (3 triangles)
+            #   5 9 3       5-9-3
+            #  /    |      /|/|/|  (5 triangles)
+            # 0-7-8-1     0-7-8-1
             #
             # See `demo.refelement`.
             assert len(local_dofs) == 10, len(local_dofs)
@@ -160,17 +185,58 @@ def my_cells(V: dolfin.FunctionSpace, *,
                             (2, 4, 6)):
                 local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k]])
                 nodess.append([nodes[i], nodes[j], nodes[k]])
+        elif input_degree == 3 and cell_kind == "quadrilateral":  # 2D Q3 -> once-refined 2D Q1
+            # Split into nine Q1 quadrilaterals.
+            #
+            # ASCII diagram:
+            #
+            #  4--6--7--5        4--6--7--5
+            #  |        |        |  |  |  |
+            # 12 14 15 13       12-14-15-13
+            #  |        |  -->   |  |  |  |
+            #  8 10 11  9        8-10-11--9
+            #  |        |        |  |  |  |
+            #  0--2--3--1        0--2--3--1
+            #
+            # See `demo.refelement`.
+            assert len(local_dofs) == 16, len(local_dofs)
+            local_dofss = []
+            nodess = []
+            for i, j, k, ell in ((0, 2, 10, 8), (2, 3, 11, 10), (3, 1, 9, 11),
+                                 (8, 10, 14, 12), (10, 11, 15, 14), (11, 9, 13, 15),
+                                 (12, 14, 6, 4), (14, 15, 7, 6), (15, 13, 5, 7)):
+                local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k], local_dofs[ell]])
+                nodess.append([nodes[i], nodes[j], nodes[k], nodes[ell]])
 
         # Convert the constituent cells to global DOF numbering
         for local_dofs, nodes in zip(local_dofss, nodess):
-            # Matplotlib wants anticlockwise ordering when building a Triangulation
-            if matplotlibize and not is_anticlockwise(nodes):
-                local_dofs = local_dofs[::-1]
-                nodes = nodes[::-1]
-                assert is_anticlockwise(nodes)
+            # Matplotlib wants anticlockwise ordering when building a Triangulation.
+            if matplotlibize:
+                if cell_kind == "triangle":
+                    if not is_anticlockwise(nodes[:3]):  # use only vertices to check
+                        local_dofs = local_dofs[::-1]
+                        nodes = nodes[::-1]
+                        assert is_anticlockwise(nodes[:3])
+                else:  # cell_kind == "quadrilateral":
+                    # Note that for a **convex** quad, it is sufficient to check
+                    # any three consecutive nodes to determine the orientation.
+                    #
+                    # In the nonconvex case, one of the consecutive node triples
+                    # will seem to have the opposite orientation. We orient by
+                    # majority, which should always do the right thing (allowing
+                    # the user to split these quads to triangles later, without
+                    # re-orienting).
+                    parities = Counter()
+                    for subset in ((0, 1, 2), (1, 2, 3), (2, 3, 0), (3, 0, 1)):
+                        subset_nodes = [nodes[j] for j in subset]
+                        parities[is_anticlockwise(subset_nodes)] += 1
+                    assert None not in parities  # no degenerate node triples
+                    if parities[False] > parities[True]:  # clockwise majority
+                        local_dofs = local_dofs[::-1]
+                        nodes = nodes[::-1]
 
-            global_dofs = l2g[local_dofs]  # [i1, i2, i3] in global numbering
-            global_nodes = {ix: vtx for ix, vtx in zip(global_dofs, nodes)}  # global dof -> coordinates
+            global_dofs = l2g[local_dofs]  # [i1, i2, i3] in MPI-global numbering
+            global_nodes = {dof: node for dof, node in zip(global_dofs, nodes)}  # global dof -> coordinates
 
             all_my_cells.append(global_dofs)
             all_my_nodes.update(global_nodes)
@@ -190,15 +256,15 @@ def all_cells(V: dolfin.FunctionSpace, *,
     # domain shapes correctly. We get the list of triangles from each MPI process
     # and then combine the lists in the root process.
     cells, nodes = my_cells(V, matplotlibize=matplotlibize, refine=refine)
-    cells = dolfin.MPI.comm_world.allgather(cells)
-    nodes = dolfin.MPI.comm_world.allgather(nodes)
+    cellss = dolfin.MPI.comm_world.allgather(cells)
+    nodess = dolfin.MPI.comm_world.allgather(nodes)
 
     # Combine the cell connectivity lists from all MPI processes.
     # The result is a single rank-2 array, with each row the global DOF numbers for a cell, e.g.:
     #   in:  [[i1, i2, i3], ...], [[j1, j2, j3], ...], ...
     #   out: [[i1, i2, i3], ..., [j1, j2, j3], ...]
     # Drop empty lists when combining (in case some MPI process doesn't have any cells)
-    cells = np.concatenate([c for c in cells if c])
+    our_cells = np.concatenate([lst for lst in cellss if lst])
 
     # Combine the global DOF index to DOF coordinates mappings from all MPI processes.
     # After this step, each global DOF should have a corresponding vertex.
@@ -207,10 +273,10 @@ def all_cells(V: dolfin.FunctionSpace, *,
         while mappings:
             merged.update(mappings.pop())
         return merged
-    nodes = merge(nodes)
-    assert len(nodes) == V.dim()  # each DOF of V has coordinates
+    our_nodes = merge(nodess)
+    assert len(our_nodes) == V.dim()  # each DOF of V has coordinates
 
-    return cells, nodes
+    return our_cells, our_nodes
 
 
 def nodes_to_array(nodes: typing.Dict[int, typing.List[float]]) -> typing.Tuple[np.array, np.array]:
@@ -231,6 +297,319 @@ def nodes_to_array(nodes: typing.Dict[int, typing.List[float]]) -> typing.Tuple[
     node_arrays = [node for ignored_dof, node in nodes_sorted]  # list of len-2 arrays [x1, y1], [x2, y2], ...
     nodes_array = np.stack(node_arrays)  # rank-2 array [[x1, y1], [x2, y2], ...]
     return global_dofs, nodes_array
+
+
+def compact_node_numbering(cells: np.array, dofs: np.array) -> np.array:
+    """In `cells`, map `dofs[k]` into `k`. Return the remapped cell array.
+
+    The parameters `cells` and `dofs` are as defined in the code snippet below.
+
+    **NOTE**:
+
+    When you have a true scalar function space, this is not needed, because then
+    DOFs will be the identity mapping.
+
+    If you have a subspace, consider its `collapse` method (before extracting
+    any cells); that also renumbers the DOFs so that `dofs` becomes the identity
+    mapping.
+
+    **Motivation**:
+
+    Consider this::
+
+        cells, nodes_dict = meshmagic.all_cells(V)
+        dofs, nodes_array = meshmagic.nodes_to_array(nodes_dict)
+
+    The array `cells` refers to the nodes using the global DOF numbers `dofs[k]`.
+    This is fine as long as we use `nodes_dict`, which maps DOF number to node
+    coordinates.
+
+    However, `nodes_array` is just an array, so it uses a zero-based integer index.
+    Also, it may be shorter than `max(dofs) - 1`, if there are gaps in the numbering.
+
+    This function converts `cells` from the `dofs[k]` format to the `k` format,
+    so that the resulting new `cells` array can be used to index into `nodes_array`.
+
+    **Notes**:
+
+    The cells for each MPI-local mesh part use the global DOF numbers, but refer
+    also to unowned nodes, which will not be in the MPI-local `nodes_dict` (as returned
+    by `meshmagic.my_cells`). Thus one needs a full (MPI-global) copy of `nodes_dict`
+    (as returned by `meshmagic.all_cells`) to interpret even an MPI-local `cells`.
+
+    If `V` is a true scalar `FunctionSpace`, then `dofs` is just the identity mapping,
+    and there is no need to compact the DOFs. But in general:
+
+      - When `V` is a subspace (without collapsing), only a (possibly non-contiguous)
+        subset of the global DOFs belongs to the subspace.
+
+        The fully general case is when `V` is on a `MixedElement` with several
+        vector/tensor field, and the quantity of interest lives on `V.sub(j).sub(k)`
+        (field `j`, component `k`).
+
+      - If you use `quad_to_tri` in MPI-local mode, there will be a gap in the node
+        numbering even for true scalar `V`, because the numbers of the added DOFs
+        are (as usual for any global DOFs) unique across MPI processes.
+
+        (I.e. the DOF numbers in the MPI-local parts match those of the full mesh.)
+
+    The array `dofs` is already sorted by global DOF number, by `nodes_to_array`.
+    Therefore, in the compacted numbering, the row number `k` of `nodes_array`
+    corresponds also to the index of the subspace-relevant slice of the DOF vector.
+    This makes plotting easier.
+
+    The subspace-relevant slice is essentially the concatenation of the dofmaps of `V`
+    across the MPI processes; see `subspace_dofs` in `mpiplot_prepare`.
+    """
+    dof_to_row = {dof: k for k, dof in enumerate(dofs)}
+    new_cells = [[dof_to_row[dof] for dof in cell] for cell in cells]
+    new_cells = np.array(new_cells, dtype=np.int64)
+    return new_cells
+
+
+def quad_to_tri(cells: np.array,
+                nodes: typing.Dict[int, typing.List[float]],
+                mpi_global: bool) -> typing.Tuple[np.array,
+                                                  typing.Dict[int,
+                                                              typing.List[float]]]:
+    r"""Split quadrilaterals into triangles.
+
+    2D only.
+
+    This function splits each Q1 quadrilateral cell into four P1 triangle cells with a
+    cross-diagonal pattern::
+
+        +---+       +---+
+        |   |       |\ /|
+        |   |  -->  | X |
+        |   |       |/ \|
+        +---+       +---+
+
+    where the `X` denotes the added node.
+
+    If the input is Q2 or Q3, it is stripped to Q1 before processing; i.e. we consider
+    only the vertices.
+
+    This is useful for accurate visualization of FEM functions on quadrilateral meshes
+    (when using tooling that only accepts triangle meshes), because the cross-diagonal
+    mesh has no preferred diagonal. It needs four times as many cells, and asymptotically
+    twice as many DOFs as the original, but that doesn't matter, since it won't be used
+    for computation.
+
+    `cells`, `nodes`: As returned by `all_cells` or `my_cells`. Must be quadrilateral.
+
+                      If your data comes from a subspace, collapse before extracting
+                      the cells.
+
+                      This is important, because this function needs zero-based consecutive
+                      global DOF numbers to be able to predictably add unique new DOFs
+                      across MPI processes.
+
+                      The `nodes` dictionary should always be produced by `all_cells`,
+                      because the MPI-local cells refer also to unowned nodes (which are
+                      not in the MPI-local `nodes` dictionary).
+
+    `mpi_global`: Whether the input is MPI-global (`all_cells`) or MPI-local (`my_cells`).
+
+    The return value is `(new_cells, new_nodes)`, in the same format as the input.
+
+    "Same format" implies that if `mpi_global=False`, the output will likewise be
+    the MPI-local mesh part. However, `new_nodes` will contain also the unowned nodes
+    referred to by `cells`, because we need this information anyway to create the new nodes.
+
+    If `mpi_global=True`, the output will likewise be MPI-global (each process gets a full copy).
+
+    **CAUTION**:
+
+    In MPI mode, in some versions of FEniCS, trying to `make_mesh` from the data returned
+    by this function may crash SCOTCH with an "error in parallel mapping strategy"
+    followed by a segfault when FEniCS tries to MPI-distribute the created mesh.
+    Renumbering the nodes by proximity (before sending them to `make_mesh`; see
+    `renumber_nodes_by_distance`) does not help.
+
+    This appears to be a bug in SCOTCH. In serial mode, the mesh can be created just fine.
+
+    As a workaround: this splitter itself works fine. So don't create a `dolfin.Mesh`
+    out of the result, but a `matplotlib.tri.Triangulation`, and use it with the
+    Matplotlib plotting functions (e.g. `triplot`, `tricontourf`, `tripcolor`).
+
+    This approach requires some more work in getting a DOF vector to use in visualization.
+    The original DOF vector data contains the quad vertex values. The quad midpoint values
+    can be extracted by a projection (or interpolation) onto a dG0 space on the original
+    quad mesh. Then, using the fact that this function places the added DOFs at the end,
+    just concatenate the two DOF vectors.
+    """
+    if len(cells[0]) not in (4, 9, 16):  # Q1/DQ1, Q2/DQ2, Q3/DQ3
+        raise ValueError(f"Expected a quadrilateral mesh; got cells with {len(cells[0])} nodes")
+
+    first_node = next(nodes.values())
+    geom_dim = len(first_node)
+    if geom_dim != 2:
+        raise NotImplementedError(f"This function supports only 2D meshes in 2D space; got geometric dimension {geom_dim}.")
+
+    if set(nodes.keys()) != set(range(len(nodes))):
+        raise ValueError("Expected zero-based consecutive node numbers; if you have a subspace, collapse it before extracting its cells. Also make sure to provide the full node dictionary, not just an MPI-local part.")
+
+    # Take only the Q1/DQ1 part (vertices) if the cells are degree 2 or higher.
+    if len(cells[0]) > 4:
+        cells = [cell[:4] for cell in cells]
+
+    # "my" = local to this MPI process.
+    num_dofs = len(nodes.keys())
+    if mpi_global:
+        # Each process processes the full data identically.
+        num_quads = len(cells)
+        my_first_new_dof = num_dofs
+    else:
+        # Each process processes its MPI-local part.
+        num_my_quads = len(cells)
+        num_my_quadss = dolfin.MPI.comm_world.allgather(num_my_quads)
+        num_quads = sum(num_my_quadss)
+
+        # The generated DOF numbers will be unique across processes
+        # when the original DOFs are in a zero-based consecutive range.
+        new_dof_start_offsets = np.concatenate([[0], np.cumsum(num_my_quadss)])
+        my_first_new_dof = num_dofs + new_dof_start_offsets[dolfin.MPI.comm_world.rank]
+
+    my_triangles = []  # e.g. [[i1, i2, i3], ...] in global DOF numbering
+    my_nodes = {}  # dict to auto-eliminate duplicates (same global DOF)
+    for new_dof, cell in enumerate(cells, start=my_first_new_dof):  # MPI-local part
+        assert len(cell) == 4  # quadrilateral cells in input
+
+        # Split each Q1 quadrilateral into four P1 triangles.
+        #
+        # ASCII diagram:
+        #
+        #   2---3       2---3
+        #   |   |       |\ /|
+        #   |   |  -->  | X |
+        #   |   |       |/ \|
+        #   0---1       0---1
+        #     Q1         4×P1
+        #
+        triangles = [[cell[0], cell[1], new_dof],  # bottom
+                     [cell[1], cell[3], new_dof],  # right
+                     [cell[3], cell[2], new_dof],  # top
+                     [cell[2], cell[0], new_dof]]  # left
+        my_triangles.extend(triangles)
+
+        # Copy existing nodes
+        my_nodes.update({dof: nodes[dof] for dof in cell})  # global dof -> coordinates
+
+        # Add cell midpoint node
+        midx = sum(nodes[dof][0] for dof in cell) / len(cell)
+        midy = sum(nodes[dof][1] for dof in cell) / len(cell)
+        new_node = [midx, midy]
+        my_nodes[new_dof] = new_node
+
+    # Make sure each triangle is defined counterclockwise (needed for Matplotlib)
+    new_triangles = []
+    for triangle in my_triangles:
+        x1, x2, x3 = [nodes[dof] for dof in triangle]
+        if is_anticlockwise((x1, x2, x3)):
+            new_triangles.append(triangle)
+        else:
+            new_triangles.append(triangle[::-1])
+    my_triangles = new_triangles
+
+    # Postconditions
+    if mpi_global:
+        assert len(my_nodes) == num_dofs + num_quads  # each input quad has added one DOF
+        assert len(my_triangles) == 4 * num_quads  # each input quad has become four triangles
+    else:
+        # We don't know how many unique global DOFs each part is supposed to have, so let's not check that.
+        assert len(my_triangles) == 4 * num_my_quads  # each input quad has become four triangles
+
+    return my_triangles, my_nodes
+
+
+def renumber_nodes_by_distance(cells, nodes, *, origin=None):
+    """Renumber nodes by distance from a point.
+
+    2D meshes only.
+
+    `cells`, `nodes`: as returned by `all_cells`.
+    `origin`: The reference point.
+              Can be a length-2 iterable, e.g. `(0.0, 0.0)`.
+              If `None`, will autodetect `min(x[0])` and `min(x[1])` and use that.
+
+    For now, triangle meshes only (the triangle orientation checker assumes this).
+    """
+    dofs, nodes_array = nodes_to_array(nodes)
+
+    # On a subspace without collapsing, we'd need to perform the mapping from `dofs[k]`
+    # to `k` now (see `compact_node_numbering`), but we assume a collapsed
+    # formulation, so we can skip that step.
+
+    # Rank the nodes by (squared) distance from [x0, y0],
+    # producing a permutation of the node indices:
+    if origin:
+        x0, y0 = origin
+    else:
+        x0 = np.min(nodes_array[:, 0])
+        y0 = np.min(nodes_array[:, 1])
+    d = nodes_array - np.array([x0, y0])
+    dsq = np.sum(d**2, axis=1)
+    perm = np.argsort(dsq)
+
+    # Then produce the inverse permutation by the classic O(n) indexing trick:
+    #     https://arogozhnikov.github.io/2015/09/29/NumpyTipsAndTricks1.html
+    #     https://discuss.codechef.com/t/ambiguous-permutations-explain-the-statement/2430/2
+    invperm = np.empty(len(perm), dtype=np.int64)
+    invperm[perm] = np.arange(len(perm), dtype=np.int64)
+
+    # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
+    #     print(f"d²:      {dsq}")
+    #     print(f"perm:    {perm}")
+    #     print(f"node:    {np.array(range(len(perm)))}")
+    #     print(f"invperm: {invperm}")
+
+    # Now we can use permutation to renumber the nodes by distance from [x0, y0].
+    #
+    # For example, consider this data:
+    #   d²:      [1.    0.25  0.    0.5   1.    0.25  1.25  1.25  2.    0.625 0.125 0.625 1.125]
+    #
+    #   perm:    [ 2 10  1  5  3  9 11  0  4 12  6  7  8]   (rank by distance from [x0, y0])
+    #   node:    [ 0  1  2  3  4  5  6  7  8  9 10 11 12]   (original indexing)
+    #   invperm: [ 7  2  0  4  8  3 10 11 12  5  1  6  9]
+    #
+    # In the example data, the node closest to `[x0, y0]` is the original node `2`.
+    #
+    # So any cell that referred to node `2`, should be changed to refer to node `0`
+    # in the new numbering. This is `invperm[2]`, or in general, `invperm[original_node_number]`.
+    #
+    # In the node array, on the other hand, row `0` of the new array should get its data from
+    # row `2` of the original array. This is `perm[0]`, or in general, `perm[row_number]`.
+    #
+    # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
+    #     print(f"Triangles before renumber: {our_triangles}")
+
+    cells = [[invperm[dof] for dof in triangle] for triangle in cells]
+    nodes_array[:] = nodes_array[perm, :]
+    dofs = np.arange(len(nodes_array), dtype=np.int64)  # reordering applied, no mapping needed now
+
+    # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
+    #     print(f"Triangles after renumber:  {our_triangles}")
+
+    d = nodes_array - np.array([x0, y0])
+    dsq = np.sum(d**2, axis=1)
+    assert ((dsq[1:] - dsq[:-1]) >= 0).all()  # dsq is now non-decreasing
+    # print(f"d² after renumber: {dsq}")
+
+    # Make sure each triangle is defined counterclockwise
+    new_triangles = []
+    for triangle in cells:
+        x1, x2, x3 = nodes_array[triangle, :]
+        if is_anticlockwise((x1, x2, x3)):
+            new_triangles.append(triangle)
+        else:
+            new_triangles.append(triangle[::-1])
+    cells = new_triangles
+
+    # Pack the node data into the same dict format as the input
+    nodes = {dof: node for dof, node in zip(dofs, nodes_array)}
+
+    return cells, nodes
 
 
 def make_mesh(cells: typing.List[typing.List[int]],
@@ -282,21 +661,45 @@ def make_mesh(cells: typing.List[typing.List[int]],
     if not distributed or dolfin.MPI.comm_world.rank == 0:
         editor = dolfin.MeshEditor()
         geometric_dim = np.shape(vertices)[1]
-        topological_dim = geometric_dim  # TODO: get topological dimension from cell type.
-        # TODO: support creating 3D meshes
-        editor.open(mesh, "triangle", topological_dim, geometric_dim)  # TODO: support other cell types; look them up in the FEniCS C++ API docs.
+
+        vertices_per_cell = len(cells[0])
+        if vertices_per_cell == 3:
+            topological_dim = 2
+            cell_kind = "triangle"
+        elif geometric_dim == 2 and vertices_per_cell == 4:
+            # TODO: Fix conflict with tetras.
+            #
+            # If `geometric_dim == 2`, then a cell with 4 vertices is guaranteed to be a quadrilateral,
+            # but if `3`, then we can't know, because it is possible to have a topologically-2D mesh
+            # embedded in 3D space. Maybe add a parameter?
+            topological_dim = 2
+            cell_kind = "quadrilateral"
+        elif geometric_dim == 3 and vertices_per_cell == 4:
+            topological_dim = 3
+            cell_kind = "tetrahedron"
+        elif vertices_per_cell == 6:
+            topological_dim = 3
+            cell_kind = "hexahedron"
+        else:
+            raise NotImplementedError(f"Expected triangles or quadrilaterals, but first cell has {len(cells[0])} vertices")
+
+        # See `dolfin.CellType.Type` for cell kinds.
+        editor.open(mesh, cell_kind, topological_dim, geometric_dim)
+
         # Probably, one of the args is the MPI-local count and the other is the global
         # count, but this is not documented, and there is no implementation on the
         # Python level; need to look at the C++ sources of FEniCS to be sure.
         editor.init_vertices_global(len(vertices), len(vertices))
         editor.init_cells_global(len(cells), len(cells))
-        for dof, vtx in zip(dofs, vertices):
-            editor.add_vertex_global(dof, dof, vtx)  # local_index, global_index, coordinates
-        for cell_index, triangle in enumerate(cells):
-            editor.add_cell(cell_index, triangle)  # curiously, there is no add_cell_global.
+        for dof, node in zip(dofs, vertices):
+            editor.add_vertex_global(dof, dof, node)  # local_index, global_index, coordinates
+        for cell_index, cell in enumerate(cells):
+            editor.add_cell(cell_index, cell)  # curiously, there is no add_cell_global.
         editor.close()
         mesh.init()
-        mesh.order()
+        # print(f"Cells before mesh.order(): {[[vtx.index() for vtx in dolfin.vertices(cell)] for cell in dolfin.cells(mesh)]}")  # DEBUG
+        mesh.order()  # TODO: WTF, the goggles do nothing?
+        # print(f"Cells after mesh.order():  {[[vtx.index() for vtx in dolfin.vertices(cell)] for cell in dolfin.cells(mesh)]}")  # DEBUG
         # dolfin.info(mesh)  # DEBUG: distributed mode should have all mesh data on root process at this point
 
     if distributed:
@@ -306,27 +709,28 @@ def make_mesh(cells: typing.List[typing.List[int]],
     return mesh
 
 
-# If you need the refined mesh, get it as `u_P1.function_space().mesh()`
-def prepare_export_as_P1(V: typing.Union[dolfin.FunctionSpace,
-                                         dolfin.VectorFunctionSpace,
-                                         dolfin.TensorFunctionSpace]) -> typing.Tuple[dolfin.Function,
-                                                                                      np.array]:
-    """Allow exporting P2/P3 data at full nodal resolution in a vertex-based format.
+def prepare_linear_export(V: typing.Union[dolfin.FunctionSpace,
+                                          dolfin.VectorFunctionSpace,
+                                          dolfin.TensorFunctionSpace]) -> typing.Tuple[dolfin.Function,
+                                                                                       np.array]:
+    """Prepare export at full nodal resolution for a vertex-based format.
 
-    2D triangle meshes only.
+    2D meshes only.
 
-    See also `midpoint_refine` and `map_refined_P1`, both of which are used by this function.
+    See also `refine_for_export` and `map_refined`, both of which are used by
+    this function.
 
-    `V`: P2 or P3 space. Scalar/vector/tensor ok.
+    `V`: P2, P3, DP2, DP3, Q2, Q3, DQ2, or DQ3 space. Scalar/vector/tensor ok.
 
-    Returns the tuple `(u_P1, my_V_dofs)`, where:
-        - `u_P1` is a `Function` on the once-refined P1 space based on `V`.
-        - `my_V_dofs` is an `np.array` of DOFs of `V` that correspond to the MPI-local part of `u_P1`.
+    Returns the tuple `(u_export, my_V_dofs)`, where:
+        - `u_export` is a `Function` on the once-refined degree-1 space based on `V`.
+        - `my_V_dofs` is an `np.array` of DOFs of `V` that correspond to the MPI-local
+          part of `u_export`.
 
 
     **Usage notes**:
 
-    Given something like::
+    Given something like this typical snippet::
 
         import dolfin
         from extrafeathers import meshmagic
@@ -342,109 +746,153 @@ def prepare_export_as_P1(V: typing.Union[dolfin.FunctionSpace,
 
     we would like to set up a P1 space with nodes coincident with those of `V`::
 
-        mesh_P1 = meshmagic.midpoint_refine(mesh, p=V.ufl_element().degree())
-        V_P1 = FunctionSpace(mesh_P1, "P", 1)
-        u_P1 = Function(V_P1)
+        aux_mesh = meshmagic.refine_for_export(mesh, p=V.ufl_element().degree())
+        V_export = FunctionSpace(aux_mesh, "P", 1)
+        u_export = Function(V_export)
 
     and then in the timestep loop, export `u` on this P1 space::
 
-        u_P1.assign(dolfin.interpolate(u, V_P1))
-        xdmffile_u.write(u_P1, t)
+        u_export.assign(dolfin.interpolate(u, V_export))
+        xdmffile_u.write(u_export, t)
 
     which does work in serial mode.
 
-    In MPI mode, the problem is that the DOFs of `V` and `V_P1` partition differently
-    (essentially because `mesh_P1` is independent of the original `mesh`), so each
+    In MPI mode, the problem is that the DOFs of `V` and `V_export` partition differently
+    (essentially because `aux_mesh` is independent of the original `mesh`), so each
     MPI process has no access to some of the `u` data it needs to construct its part
-    of `u_P1`.
+    of `u_export`.
 
-    This is where this function comes in. Set up the P1 representation like this::
+    This is where this function comes in. Set up the linear representation like this::
 
-        u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
+        u_export, my_V_dofs = meshmagic.prepare_linear_export(V)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = dolfin.Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
 
-    Then in the timestep loop, to export `u` on the P1 space::
+    Then in the timestep loop, to export `u` on the linear space::
 
         u.vector().gather(u_copy, all_V_dofs)  # allgather to `u_copy`
-        u_P1.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_u.write(u_P1, t)
+        u_export.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        xdmffile_u.write(u_export, t)
 
-    Note that if you need them for other purposes, the P1 function space and mesh are
-    available as::
+    Note that if you need them for other purposes, the linear function space and
+    its mesh are available as::
 
-        V_P1 = u_P1.function_space()
-        mesh_P1 = V_P1.mesh()
+        V_export = u_export.function_space()
+        aux_mesh = V_export.mesh()
     """
+    cell_kind = V.mesh().cell_name()
+    if cell_kind not in ("triangle", "quadrilateral"):
+        raise NotImplementedError(f"Expected 'triangle' or 'quadrilateral' cells in mesh, got '{cell_kind}'")
+
     element = V.ufl_element()
-    if element.degree() < 2 or str(element.family()) != "Lagrange":
-        raise ValueError(f"Expected `V` to use a P2 or P3 element, got {element.family()} with degree {element.degree()}")
-    if str(element.cell()) != "triangle":
-        raise ValueError(f"Expected `V` to use a triangle mesh, got {element.cell()}")
-    # TODO: support `prepare_export_as_P1` for 3D meshes (needs 3D refine support in `my_cells`)
-    mesh_for_P1 = midpoint_refine(V.mesh(), p=element.degree())
+    family = str(element.family())
+    degree = element.degree()
     tensor_rank = len(element.value_shape())
+    if degree < 2 or family not in ("Lagrange",
+                                    "Discontinuous Lagrange",
+                                    "Q",
+                                    "DQ"):
+        raise ValueError(f"Expected `V` to use a P2, P3, DP2, DP3, Q2, Q3, DQ2, or DQ3 element, got '{element.family()}' with degree {element.degree()}")
+
+    # TODO: support `prepare_linear_export` for 3D meshes (needs 3D refine support in `my_cells`)
+    aux_mesh = refine_for_export(V.mesh(), p=degree)
     constructors = {0: dolfin.FunctionSpace,
                     1: dolfin.VectorFunctionSpace,
                     2: dolfin.TensorFunctionSpace}
     try:
-        V_P1 = (constructors[tensor_rank])(mesh_for_P1, 'P', 1)
+        # Create the corresponding piecewise linear function space
+        V_export = (constructors[tensor_rank])(aux_mesh, family, 1)
     except KeyError as err:
         raise ValueError(f"Don't know what to do with tensors of rank > 2, got {tensor_rank}") from err
-    u_P1 = dolfin.Function(V_P1)
-    VtoVexport, VexporttoV = map_refined_P1(V, V_P1)
-    my_Vexport_dofs = V_P1.dofmap().dofs()  # MPI-local
+    u_export = dolfin.Function(V_export)
+    VtoVexport, VexporttoV = map_refined(V, V_export)
+    my_Vexport_dofs = V_export.dofmap().dofs()  # MPI-local
     my_V_dofs = VexporttoV[my_Vexport_dofs]  # MPI-local
-    return u_P1, my_V_dofs
+    return u_export, my_V_dofs
 
 
-def midpoint_refine(mesh: dolfin.Mesh, p: int = 2) -> dolfin.Mesh:
-    """Given a `mesh`, return a new mesh for exporting P2 or P3 data as P1.
+def refine_for_export(mesh: dolfin.Mesh,
+                      p: int = 2,
+                      continuous: bool = True) -> dolfin.Mesh:
+    r"""Given `mesh`, return a new mesh for exporting data as linear.
 
-    2D triangle meshes only.
+    2D meshes only (triangle or quadrilateral ok).
 
-    Like `dolfin.refine(mesh)` without further options; but we guarantee an aesthetically optimal fill,
-    designed for visualizing P2/P3 data, when interpolating that data as P1 on the once-refined mesh.
+    Like `dolfin.refine(mesh)` without further options; but on triangles,
+    we guarantee an aesthetically optimal fill, designed for visualizing
+    higher-degree data, when interpolating that data as linear on the
+    once-refined mesh.
 
-    See also `prepare_export_as_P1` for an all-in-one solution.
+    For example, we always refine each P2 triangle using this subtriangle
+    configuration::
 
-    `p`: The original degree of the elements your data lives on.
-       `p=2` will generate a P1 mesh for P2 data, with an additional vertex placed at each edge midpoint.
-       `p=3` will generate a P1 mesh for P3 data, with two additional vertices placed per edge, and one
-             additional vertex placed in the interior of each triangle.
+          +               +
+         / \             / \
+        /   \    -->    +---+
+       /     \         / \ / \
+      +-------+       +---+---+
+
+    avoiding configurations such as this:
+
+          +               +
+         / \       /     /|\
+        /   \    -/>    + | +
+       /     \   /     / \|/ \
+      +-------+       +---+---+
+
+    See also `prepare_linear_export` for an all-in-one solution.
+
+    `p`: The original polynomial degree of the elements your data lives on.
+       `p=2` will generate a degree-1 mesh (P1, Q1, DP1, or DQ1) for exporting
+             degree-2 data (P2, Q2, DP2, or DQ2).
+       `p=3` will generate a degree-1 mesh (P1, Q1, DP1, or DQ1) for exporting
+             degree-3 data (P3, Q3, DP3, or DQ3).
+    `continuous`: Whether your original elements are C0 continuous:
+                  If `True`, generate mesh for exporting `P` or `Q` data.
+                  If `False`, generate mesh for exporting `DP` or `DQ` data.
     """
     if p not in (2, 3):
         raise ValueError(f"Expected p = 2 or 3, got {p}.")
-    V = dolfin.FunctionSpace(mesh, 'P', p)         # define a scalar P2/P3 space...
-    # TODO: support refining 3D meshes in `my_cells` to allow `midpoint_refine` to work on 3D meshes
-    cells, nodes_dict = all_cells(V, refine=True)  # ...so that `all_cells` can do our dirty work
+
+    cell_kind = mesh.cell_name()
+    if cell_kind == "triangle":
+        family = "P" if continuous else "DP"
+    elif cell_kind == "quadrilateral":
+        family = "Q" if continuous else "DQ"
+    else:
+        raise NotImplementedError(f"Expected 'triangle' or 'quadrilateral' cells in mesh, got '{cell_kind}'")
+
+    # Define an appropriate scalar function space...
+    V = dolfin.FunctionSpace(mesh, family, p)
+    # TODO: support refining 3D meshes in `my_cells` to allow `refine_for_export` to work on 3D meshes
+    cells, nodes_dict = all_cells(V, refine=True)  # ...so that `all_cells` can do our dirty work.
     dofs, nodes_array = nodes_to_array(nodes_dict)
     return make_mesh(cells, dofs, nodes_array, distributed=True)
 
 
-def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
-                                   dolfin.VectorFunctionSpace,
-                                   dolfin.TensorFunctionSpace],
-                   W: typing.Union[dolfin.FunctionSpace,
-                                   dolfin.VectorFunctionSpace,
-                                   dolfin.TensorFunctionSpace]) -> typing.Tuple[np.array, np.array]:
-    """Build a global DOF map between a P2 or P3 space `V` and a once-refined P1 space `W`.
+def map_refined(V: typing.Union[dolfin.FunctionSpace,
+                                dolfin.VectorFunctionSpace,
+                                dolfin.TensorFunctionSpace],
+                W: typing.Union[dolfin.FunctionSpace,
+                                dolfin.VectorFunctionSpace,
+                                dolfin.TensorFunctionSpace]) -> typing.Tuple[np.array, np.array]:
+    """Build global DOF map between degree-2 or 3 space `V` and once-refined degree-1 space `W`.
 
     The purpose is to be able to map a nodal values vector from `V` to `W` and
     vice versa, for interpolation.
 
-    One particular use case is to export P2/P3 data in MPI mode at full nodal resolution,
-    as once-refined P1 data. In general, the MPI partitionings of `V` and `W` will
-    not match, and thus `interpolate(..., W)` will not work, because each process is
-    missing some of the input data needed to construct its part of the P1
-    representation. This can be worked around by hacking the DOF vectors directly.
-    See example below.
+    One particular use case is to export degree-2 or degree-3 data in MPI mode at
+    full nodal resolution, as once-refined degree-1 data. In general, the MPI
+    partitionings of `V` and `W` will not match, and thus `interpolate(..., W)`
+    will not work, because each process is missing some of the input data needed
+    to construct its part of the degree-1 representation. This can be worked around
+    by hacking the DOF vectors directly. See example below.
 
-    See also `prepare_export_as_P1` for an all-in-one solution.
+    See also `prepare_linear_export` for an all-in-one solution.
 
-    `V`: P2 or P3 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace`
+    `V`: P2, Q2, P3, or Q3 `FunctionSpace`, `VectorFunctionSpace`, or `TensorFunctionSpace`
          on some `mesh`.
-    `W`: The corresponding P1 space on `midpoint_refine(mesh)`.
+    `W`: The corresponding P1 or Q1 space on `refine_for_export(mesh)`.
 
     This function is actually slightly more general than that; that is just the simple
     way to explain it. The real restriction is that `V` and `W` must have the same number
@@ -462,7 +910,7 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
 
         import numpy as np
         import dolfin
-        from extrafeathers import midpoint_refine, map_refined_P1
+        from extrafeathers import refine_for_export, map_refined
 
         mesh = ...
 
@@ -473,11 +921,11 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
         V = dolfin.FunctionSpace(mesh, 'P', 2)
         u = dolfin.Function(V)
 
-        mesh_for_P1 = midpoint_refine(mesh)
+        mesh_for_P1 = refine_for_export(mesh)
         W = dolfin.FunctionSpace(mesh_for_P1, 'P', 1)
         w = dolfin.Function(W)
 
-        VtoW, WtoV = map_refined_P1(V, W)
+        VtoW, WtoV = map_refined(V, W)
 
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = dolfin.Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
@@ -514,7 +962,8 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
 
     # In a vector/tensor function space, each geometric node (global DOF
     # coordinates) has an independent instance for each field component,
-    # so we must work one component at a time.
+    # so by working one component at a time, we make the DOF/node mapping
+    # one-to-one.
     if V.num_sub_spaces() > 1:
         spaces = [(V.sub(j), W.sub(j)) for j in range(V.num_sub_spaces())]
     else:
@@ -526,33 +975,139 @@ def map_refined_P1(V: typing.Union[dolfin.FunctionSpace,
     seenV = set()
     seenW = set()
     for subV, subW in spaces:
+        familyV = str(subV.ufl_element().family())
+        familyW = str(subW.ufl_element().family())
+        if familyW != familyV:
+            raise ValueError(f"Expected same element family on V and W; got V with '{familyV}', W with '{familyW}'")
+        if familyV in ("Lagrange", "Q"):
+            continuous = True
+        elif familyV in ("Discontinuous Lagrange", "DQ"):
+            continuous = False
+        else:
+            raise ValueError(f"Unsupported element family '{familyV}'")
+
         # The MPI partitionings of V and W are in general different, so to be
         # able to do the matching, we must gather the data for the whole mesh.
-        ignored_cellsW, nodesW_dict = all_cells(subW)
-        ignored_cellsV, nodesV_dict = all_cells(subV)
+        cellsW, nodesW_dict = all_cells(subW)
+        cellsV, nodesV_dict = all_cells(subV)
         dofsW, nodesW = nodes_to_array(nodesW_dict)
         dofsV, nodesV = nodes_to_array(nodesV_dict)
 
-        # O(n log(n)) global geometric search, similar to what could be done
-        # in serial mode using `dolfin.Mesh.bounding_box_tree`. (That function
-        # itself works just fine in MPI mode; the problem are the different
-        # partitionings.)
-        treeV = scipy.spatial.cKDTree(data=nodesV)
-        def find_nodeV_index(nodeW):
-            distance, k = treeV.query(nodeW)
-            if distance > 0.0:  # node dofsV[k] of V should exactly correspond to node dofW of W
-                raise ValueError(f"Node {nodeW} on W and its closest neighbor {nodesV[k]} on V are not coincident.")
-            return k
+        if continuous:
+            # On a continuous nodal discretization, each global DOF in the same
+            # subspace has a unique geometric location.
+            #
+            # We can use a simple O(n log(n)) global geometric search, similar to what
+            # could be done in serial mode using `dolfin.Mesh.bounding_box_tree`.
+            #
+            # (That function itself works just fine in MPI mode; the problem are the
+            #  different MPI partitionings, so each process is missing some of the
+            #  data it needs to find the match.)
+            treeV = scipy.spatial.cKDTree(data=nodesV)
+            def find_nodeV_index(nodeW):
+                distance, k = treeV.query(nodeW)
+                if distance > 0.0:  # node dofsV[k] of V should exactly correspond to node dofW of W
+                    raise ValueError(f"Node {nodeW} on W and its closest neighbor {nodesV[k]} on V are not coincident.")
+                return k
 
-        for dofW, nodeW in zip(dofsW, nodesW):
-            k = find_nodeV_index(nodeW)
-            dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
-            WtoV[dofW] = dofV
-            VtoW[dofV] = dofW
-            seenV.add(dofV)
-            seenW.add(dofW)
+            for dofW, nodeW in zip(dofsW, nodesW):
+                k = find_nodeV_index(nodeW)
+                dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
+                WtoV[dofW] = dofV
+                VtoW[dofV] = dofW
+                seenV.add(dofV)
+                seenW.add(dofW)
 
-    # # contract: postconditions
+        else:  # discontinuous case
+            # On a discontinuous nodal discretization, distinct global DOFs on the
+            # element boundaries share the same geometric location.
+            #
+            # Thus we need to identify the corresponding cells to filter candidates.
+
+            # First some preparation:
+            #
+            # Map DOF number to V cell, and to row of `nodes` array on both spaces.
+            #   - Cells are always numbered contiguously from zero.
+            #   - `nodes[k]` is the node for DOF `dofs[k]`.
+            dof_to_cell_V = {}
+            for cellV_idx, cellV in enumerate(cellsV):
+                for dofV in cellV:
+                    assert dofV not in dof_to_cell_V  # in dG space each cell has unique DOFs
+                    dof_to_cell_V[dofV] = cellV_idx
+            dof_to_row_V = {dof: k for k, dof in enumerate(dofsV)}
+            dof_to_row_W = {dof: k for k, dof in enumerate(dofsW)}
+
+            # Match one W cell at a time. By our problem specification,
+            # it will be contained in exactly one V cell.
+            treeV = scipy.spatial.cKDTree(data=nodesV)
+            for cellW in cellsW:
+                # Vote for the correct V cell.
+                #
+                #  - Distance-search for coincident DOFs on V for **all** DOFs
+                #    on the W cell. Count how many matches each candidate V cell gets.
+                #  - All DOFs of the W cell should be in one cell on V.
+                #  - Any cell that matches only some of the DOFs is a neighbor.
+                #
+                # See `img/triangles.svg`; consider the DOFs of the shaded triangle.
+                #
+                # The figure also shows why cell midpoints are useless in finding
+                # the corresponding V cell; the midpoint of a neighboring V cell
+                # may be closer (to the midpoint of the W cell) than the correct one.
+                ballot = Counter()
+                for dofW in cellW:
+                    nodeW = nodesW[dof_to_row_W[dofW]]
+                    # Theoretically, the correct maximum number of neighbors to look
+                    # for is infinity, since any number of triangles may meet at
+                    # a vertex, and each of them will have one unique DOF there.
+                    #
+                    # However, for practical FEM meshes, only a few triangles will
+                    # meet at a vertex. We also use the `distance_upper_bound` option
+                    # to prune the search, since we look for coincident nodes only.
+                    distances, ks = treeV.query(nodeW, k=10,
+                                                distance_upper_bound=1e-8)
+                    for distance, k in zip(distances, ks):
+                        if distance > 0.0:
+                            break
+                        dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
+                        cellV_idx = dof_to_cell_V[dofV]
+                        ballot[cellV_idx] += 1
+                assert len(ballot) > 0  # at least one V cell had coincident nodes
+                [[cellV_idx, votes]] = ballot.most_common(1)
+                assert ballot[cellV_idx] == len(cellW)  # all dofs of W cell in same V cell
+
+                # Now walk again the DOFs on the W cell, but match only against
+                # nodes on the correct V cell. There are just a few, and we need
+                # to repeat this for each W cell, so `np.argmin` is fine.
+                #
+                # Note that because we know the correct V cell, each W DOF will have
+                # exactly one matching V DOF.
+                for dofW in cellW:
+                    nodeW = nodesW[dof_to_row_W[dofW]]
+
+                    # Next comes some indexing... take a deep breath:
+                    #
+                    # Find the rows of the `nodesV` array for the V DOFs of the
+                    # vote-winning cell.
+                    rowsV = np.array([dof_to_row_V[dof] for dof in cellsV[cellV_idx]],
+                                     dtype=np.int64)
+                    relevant_nodesV = nodesV[rowsV]
+
+                    d = relevant_nodesV - nodeW
+                    dsq = np.sum(d**2, axis=1)
+                    r = np.argmin(dsq)  # row of relevant nodes array
+                    assert dsq[r] == 0.0  # coincident node
+                    k = rowsV[r]  # row of complete `nodesV` array
+
+                    # ...which gives us the V DOF number:
+                    dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
+
+                    # ...which finally gets us what we want:
+                    WtoV[dofW] = dofV
+                    VtoW[dofV] = dofW
+                    seenV.add(dofV)
+                    seenW.add(dofW)
+
+    # contract: postconditions
     assert len(set(range(V.dim())) - seenV) == 0  # all dofs of V were seen
     assert len(set(range(W.dim())) - seenW) == 0  # all dofs of W were seen
     assert all(dofW != -1 for dofW in VtoW)  # each dof of V was mapped to *some* dof of W
@@ -635,7 +1190,8 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
 
     # In a vector/tensor function space, each geometric node (global DOF
     # coordinates) has an independent instance for each field component,
-    # so we must work one component at a time.
+    # so by working one component at a time, we make the DOF/node mapping
+    # one-to-one.
     if V.num_sub_spaces() > 1:
         spaces = [(V.sub(j), W.sub(j)) for j in range(V.num_sub_spaces())]
     else:

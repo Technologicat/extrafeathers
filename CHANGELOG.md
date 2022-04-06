@@ -1,10 +1,15 @@
 # Changelog
 
-**0.4.0** (in progress, last updated 16 March 2022):
+**0.4.0** (in progress, last updated 31 March 2022):
 
 **Added**:
 
-- Add `prepare_export_as_P1`. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
+- Quadrilateral elements are now supported.
+- Add `prepare_linear_export`. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
+
+**Changed**:
+
+- Rename `midpoint_refine` to `refine_for_export`, since that's the use, and it handles P2/P3/Q2/Q3.
 
 
 ---

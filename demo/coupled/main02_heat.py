@@ -94,7 +94,7 @@ if V.ufl_element().degree() > 1:
     if my_rank == 0:
         print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
-        u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
+        u_P1, my_V_dofs = meshmagic.prepare_linear_export(V)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
     if my_rank == 0:

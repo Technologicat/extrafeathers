@@ -144,6 +144,7 @@ def import_gmsh(src: typing.Union[pathlib.Path, str],
         # Force geometric dimension of mesh to 2D by deleting z coordinate
         msh.points = msh.points[:, :2]
 
+    # TODO: add support for quadrilateral/hexahedral meshes
     cell_kind = "triangle" if dim == 2 else "tetra"
     facet_kind = "line" if dim == 2 else "triangle"
 

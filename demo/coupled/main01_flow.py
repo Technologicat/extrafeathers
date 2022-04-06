@@ -197,13 +197,13 @@ solver = NavierStokes(V, Q, rho, mu, bcu, bcp, dt)
 # has P1 Lagrange elements, we can interpolate by simply copying the DOF values
 # at the coincident nodes. So we just need a mapping for the global DOF vector
 # that takes the data from the P2 function space DOFs to the corresponding P1
-# function space DOFs. This is what `prepare_export_as_P1` does.
+# function space DOFs. This is what `prepare_linear_export` does.
 #
 if V.ufl_element().degree() > 1:
     if my_rank == 0:
         print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
-        u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
+        u_P1, my_V_dofs = meshmagic.prepare_linear_export(V)
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
     if my_rank == 0:
@@ -253,7 +253,7 @@ for n in range(nt):
         # now not partitioned because serial mode), performs this interpolation,
         # and generates the visualization file.
         #
-        # But with the help of `meshmagic.prepare_export_as_P1`, we allgather the
+        # But with the help of `meshmagic.prepare_linear_export`, we allgather the
         # DOFs of the solution on V, and then remap them onto the corresponding
         # DOFs on W:
         solver.u_.vector().gather(u_copy, all_V_dofs)  # allgather to `u_copy`

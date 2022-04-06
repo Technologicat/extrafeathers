@@ -103,13 +103,13 @@ if V.ufl_element().degree() > 1 or W.ufl_element().degree() > 1:
         if V.ufl_element().degree() > 1:
             if my_rank == 0:
                 print("    Velocity...")
-            u_P1, my_V_dofs = meshmagic.prepare_export_as_P1(V)
+            u_P1, my_V_dofs = meshmagic.prepare_linear_export(V)
             all_V_dofs = np.array(range(V.dim()), "intc")
             u_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
         if W.ufl_element().degree() > 1:
             if my_rank == 0:
                 print("    Temperature...")
-            T_P1, my_W_dofs = meshmagic.prepare_export_as_P1(W)
+            T_P1, my_W_dofs = meshmagic.prepare_linear_export(W)
             all_W_dofs = np.array(range(W.dim()), "intc")
             T_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on W
     if my_rank == 0:

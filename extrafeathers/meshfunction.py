@@ -27,11 +27,10 @@ def specialize(f: dolfin.MeshFunction,
                submesh: dolfin.SubMesh) -> dolfin.MeshFunction:
     """Convert `MeshFunction` `f` on a full mesh to a corresponding `MeshFunction` on `submesh`.
 
-    `submesh` must be a `SubMesh` of `f.mesh()`.
+    `f`: a mesh function on cells or facets.
+    `submesh`: must be a `SubMesh` of `f.mesh()`.
 
-    Supports cell and facet meshfunctions.
-
-    Serial mode only.
+    Serial mode only (because `SubMesh` is not supported in MPI mode).
     """
     fullmesh = f.mesh()
     dim = fullmesh.topology().dim()
@@ -44,7 +43,7 @@ def specialize(f: dolfin.MeshFunction,
     mf_objtype_to_name = {type: name for name, type in dolfin.mesh.meshfunction._meshfunction_types.items()}
     if type(f) not in mf_objtype_to_name:
         # see dolfin/mesh/meshfunction.py
-        raise KeyError("MeshFunction type not recognised")
+        raise KeyError(f"MeshFunction type {type(f)} not recognised")
 
     # Create a new MeshFunction, of the same dimension and type, but on `submesh`.
     g = dolfin.MeshFunction(mf_objtype_to_name[type(f)], submesh, f.dim())  # value_type, mesh, dimension, [default_value]
@@ -162,6 +161,8 @@ def cell_mf_to_expression(f: dolfin.MeshFunction):
     """Convert a scalar double `MeshFunction` on cells to a `CompiledExpression` for use in UFL forms.
 
     This convenience function mainly exists to document how it's done in FEniCS 2019.
+    The API has changed once or twice, necessitating changes in the small C++ class
+    that implements the cell mesh function expression and interfaces it with Python.
     """
     return dolfin.CompiledExpression(_compiled_cpp_code.CellMeshFunctionExpression(),
                                      meshfunction=f,
