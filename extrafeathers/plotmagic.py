@@ -203,10 +203,12 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         else:
             degree = V.ufl_element().degree()
             if degree == 1:
-                # 2-3
-                # | |
-                # 0-1
-                # Q1
+                # 2---3
+                # |   |
+                # |   |
+                # |   |
+                # 0---1
+                #  Q1
                 vertices = [[v[0], v[1], v[3], v[2]] for v in vertices]
             elif degree == 2:
                 # 3-5-4
