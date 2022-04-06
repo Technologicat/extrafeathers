@@ -34,6 +34,8 @@ def my_cells(V: dolfin.FunctionSpace, *,
     Note this returns all nodes, not just the mesh vertices. For example,
     for P2 triangles, you'll get also the nodes at the midpoints of the edges.
 
+    The node numbering follows the FEniCS convention (see `demo/refelement.py`).
+
     This only sees the cells assigned to the current MPI process; the complete
     function space is the union of these cell sets from all processes. See
     `all_cells`, which automatically combines the data from all MPI processes.
@@ -156,8 +158,8 @@ def my_cells(V: dolfin.FunctionSpace, *,
             assert len(local_dofs) == 9, len(local_dofs)
             local_dofss = []
             nodess = []
-            for i, j, k, ell in ((0, 2, 8, 6), (2, 1, 7, 8),
-                                 (6, 8, 5, 3), (8, 7, 4, 5)):
+            for i, j, k, ell in ((0, 2, 6, 8), (2, 1, 8, 7),
+                                 (6, 8, 3, 5), (8, 7, 5, 4)):
                 local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k], local_dofs[ell]])
                 nodess.append([nodes[i], nodes[j], nodes[k], nodes[ell]])
         elif input_degree == 3 and cell_kind == "triangle":  # 2D P3 -> once-refined 2D P1
@@ -205,9 +207,9 @@ def my_cells(V: dolfin.FunctionSpace, *,
             assert len(local_dofs) == 16, len(local_dofs)
             local_dofss = []
             nodess = []
-            for i, j, k, ell in ((0, 2, 10, 8), (2, 3, 11, 10), (3, 1, 9, 11),
-                                 (8, 10, 14, 12), (10, 11, 15, 14), (11, 9, 13, 15),
-                                 (12, 14, 6, 4), (14, 15, 7, 6), (15, 13, 5, 7)):
+            for i, j, k, ell in ((0, 2, 8, 10), (2, 3, 10, 11), (3, 1, 11, 9),
+                                 (8, 10, 12, 14), (10, 11, 14, 15), (11, 9, 15, 13),
+                                 (12, 14, 4, 6), (14, 15, 6, 7), (15, 13, 7, 5)):
                 local_dofss.append([local_dofs[i], local_dofs[j], local_dofs[k], local_dofs[ell]])
                 nodess.append([nodes[i], nodes[j], nodes[k], nodes[ell]])
 
@@ -229,14 +231,23 @@ def my_cells(V: dolfin.FunctionSpace, *,
                     # majority, which should always do the right thing (allowing
                     # the user to split these quads to triangles later, without
                     # re-orienting).
+                    #
+                    # Note "consecutive" means walking around the perimeter,
+                    # whereas in FEniCS we have:
+                    #
+                    #   2-3
+                    #   | |
+                    #   0-1
+                    #   Q1
                     parities = Counter()
-                    for subset in ((0, 1, 2), (1, 2, 3), (2, 3, 0), (3, 0, 1)):
+                    for subset in ((0, 1, 3), (1, 3, 2), (3, 2, 0), (2, 0, 1)):
                         subset_nodes = [nodes[j] for j in subset]
                         parities[is_anticlockwise(subset_nodes)] += 1
                     assert None not in parities  # no degenerate node triples
                     if parities[False] > parities[True]:  # clockwise majority
-                        local_dofs = local_dofs[::-1]
-                        nodes = nodes[::-1]
+                        flipper = [0, 2, 3, 1]
+                        local_dofs = [local_dofs[k] for k in flipper]
+                        nodes = [nodes[k] for k in flipper]
 
             global_dofs = l2g[local_dofs]  # [i1, i2, i3] in MPI-global numbering
             global_nodes = {dof: node for dof, node in zip(global_dofs, nodes)}  # global dof -> coordinates
