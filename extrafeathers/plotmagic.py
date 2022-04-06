@@ -476,8 +476,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                     if not polys:
                         continue
                     polys.set_linewidth(all_edges_width)
-                    polys.set_facecolor('none')
                     polys.set_edgecolor(all_edges_colors[k % len(all_edges_colors)])
+                    polys.set_facecolor('none')
                     ax.add_collection(polys)
         if V.ufl_element().degree() > 1:
             # element edges for higher degrees
@@ -488,8 +488,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                     if not polys:
                         continue
                     polys.set_linewidth(2.0)
-                    polys.set_facecolor('none')
                     polys.set_edgecolor(all_edges_colors[k % len(colors40)])
+                    polys.set_facecolor('none')
                     ax.add_collection(polys)
         # Each legend entry from `triplot` is doubled for some reason,
         # so plot a dummy point (at NaN so it won't be drawn) with
@@ -509,17 +509,17 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             all_edges_color = aux_color if V.ufl_element().degree() > 1 else main_color
             all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
             polys.set_linewidth(all_edges_width)
-            polys.set_facecolor('none')
             polys.set_edgecolor(all_edges_color)
+            polys.set_facecolor('none')
             ax.add_collection(polys)
             main_plot = polys
     if V.ufl_element().degree() > 1:
         # element edges for higher degrees
         polys, ignored_triangulation = as_mpl_triangulation(V, refine=False)
         if dolfin.MPI.comm_world.rank == 0:
-            polys.set_facecolor('none')
-            polys.set_edgecolor(main_color)
             polys.set_linewidth(2.0)
+            polys.set_edgecolor(main_color)
+            polys.set_facecolor('none')
             ax.add_collection(polys)
             main_plot = polys
     return main_plot
