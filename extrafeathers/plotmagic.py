@@ -170,6 +170,9 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     except RuntimeError:  # not a subspace
         pass
 
+    # TODO: Support dG0 spaces properly. We need to construct a degree-1 space
+    # TODO: to get the element edges, and then we can ignore the triangulation.
+
     # The cells for the MPI-local mesh part use the global DOF numbers, but refer
     # also to unowned nodes. Thus we must get a copy of the full global DOF and
     # coordinate data even if we want to construct just an MPI-local mesh part.
