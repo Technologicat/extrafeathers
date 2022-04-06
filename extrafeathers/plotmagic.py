@@ -385,8 +385,12 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     v_vec = u.vector().gather_on_zero()
     n_global_dofs = V.dim()
 
-    # TODO: Quadrilateral meshes: get values for the added DOFs
-    # TODO: to bring the function onto `tris` for plotting.
+    # TODO: Support plotting functions on quadrilateral meshes
+    #  - Get values for the added DOFs to bring the function onto `tris` for plotting.
+
+    # TODO: Support plotting dG0 functions
+    #  - Use facecolor (may need another copy of `polys`, to keep it independent
+    #    of what `mpiplot_mesh` does with the other one)
 
     # # make a complete copy of the DOF vector u_vec to all MPI processes
     # u_vec = u.vector()
