@@ -523,11 +523,8 @@ def quad_to_tri(cells: np.array,
 
     # Postconditions
     if mpi_global:
-        assert len(my_nodes) == num_dofs + num_quads  # each input quad has added one DOF
         assert len(my_triangles) == 4 * num_quads  # each input quad has become four triangles
     else:
-        # We don't know how many unique global DOFs each MPI-local part
-        # is supposed to have, so let's not check that.
         assert len(my_triangles) == 4 * num_my_quads  # each input quad has become four triangles
 
     return my_triangles, my_nodes
