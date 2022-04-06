@@ -85,7 +85,7 @@ l2g = dofmap.tabulate_local_to_global_dofs()  # MPI-local to global
 if dolfin.MPI.comm_world.rank == 0:
     fig, ax = plt.subplots(1, 1, constrained_layout=True, figsize=(8, 8))
 show_partitioning = dolfin.MPI.comm_world.size > 1
-plotmagic.mpiplot_mesh(V, linewidth=3.0, show_partitioning=show_partitioning)
+plotmagic.mpiplot_mesh(V, show_partitioning=show_partitioning)
 
 # # DEBUG
 # from extrafeathers import meshmagic
