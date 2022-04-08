@@ -57,14 +57,14 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Can compute both cell and facet meshfunctions.
      - Useful for stabilization methods in advection-dominated problems, where `h` typically appears in the stabilization terms.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
-   - `refine_for_export` [**2D**], `map_refined` [**2D**, **3D**]
+   - `refine_for_export` [**2D**], `map_coincident` [**2D**, **3D**]
      - These are the low-level functions that power `prepare_linear_export`.
      - Prepare Lagrange P2 (quadratic) or P3 (cubic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization even when the file format is vertex-based.
        - Essentially, in a solver that does this, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
        - However, in parallel, the P2/P3 and P1 meshes will have different MPI partitioning (due to mesh editing), so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2/P3 DOF vector, and then assign the data to the corresponding DOFs of `w`.
      - `refine_for_export` differs from `dolfin.refine` in that we guarantee an aesthetically pleasing fill, which looks best for visualizing P2/P3 data, when interpolating that data as P1 on the refined mesh. Also, `refine_for_export` always produces a global refinement; every triangle is refined.
        - If you don't care about the aesthetics, for P2 data, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.refine_for_export(mesh)` works just as well.
-     - `map_refined` supports both scalar and vector function spaces. Not tested on tensor fields yet.
+     - `map_coincident` supports both scalar and vector function spaces. Not tested on tensor fields yet.
      - For full usage examples, see [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) (vector), [`demo.coupled.main02_heat`](demo/coupled/main02_heat.py) (scalar), and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) (both).
    - `patch_average`, `map_dG0`
      - `map_dG0` [**2D**, **3D**]:
@@ -92,7 +92,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
          postprocessing method.
    - `prepare_linear_export` [**2D**]
      - Exactly as it says on the tin, for P2 and P3 input data. Allows full nodal resolution export of P2 and P3 data into a vertex-based format (represented as refined P1).
-     - High-level function built on `refine_for_export` and `map_refined`.
+     - High-level function built on `refine_for_export` and `map_coincident`.
      - That is, given a P2 or P3 function space, prepare a P1 `dolfin.Function` on an appropriately refined mesh, and a DOF mapping that can be used to interpolate DOFs from the original space onto the DOFs of the P1 space.
      - See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
    - `specialize` a meshfunction [**2D**, **3D**] [**serial only**]

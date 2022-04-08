@@ -8,7 +8,7 @@ full nodal resolution export of data on P2 or P3 triangle meshes.
 __all__ = ["my_cells", "all_cells", "nodes_to_array", "collapse_node_numbering",
            "quad_to_tri", "renumber_nodes_by_distance",
            "make_mesh",
-           "prepare_linear_export", "refine_for_export", "map_refined",
+           "prepare_linear_export", "refine_for_export", "map_coincident",
            "my_patches", "all_patches", "map_dG0", "patch_average"]
 
 from collections import defaultdict, Counter
@@ -743,15 +743,15 @@ def prepare_linear_export(V: typing.Union[dolfin.FunctionSpace,
 
     2D meshes only.
 
-    See also `refine_for_export` and `map_refined`, both of which are used by
+    See also `refine_for_export` and `map_coincident`, both of which are used by
     this function.
 
     `V`: P2, P3, DP2, DP3, Q2, Q3, DQ2, or DQ3 space. Scalar/vector/tensor ok.
 
     Returns the tuple `(u_export, my_V_dofs)`, where:
         - `u_export` is a `Function` on the once-refined degree-1 space based on `V`.
-        - `my_V_dofs` is an `np.array` of DOFs of `V` that correspond to the MPI-local
-          part of `u_export`.
+        - `my_V_dofs` is an `np.array` of global DOF numbers of `V` that correspond
+          to the MPI-local part of `u_export`.
 
 
     **Usage notes**:
@@ -832,8 +832,8 @@ def prepare_linear_export(V: typing.Union[dolfin.FunctionSpace,
     except KeyError as err:
         raise ValueError(f"Don't know what to do with tensors of rank > 2, got {tensor_rank}") from err
 
-    # Map the coincident DOFs between the spaces
-    WtoV, VtoW = map_refined(V, W, validate="invertible")
+    # Map the DOFs between the spaces
+    WtoV, VtoW = map_coincident(V, W, validate="invertible")
 
     assert set(WtoV.keys()) == set(range(len(WtoV)))  # whole space, should have zero-based consecutive DOFs
     sorted_WtoV = sorted(WtoV.items(), key=lambda item: item[0])  # sort by global DOF
@@ -904,17 +904,17 @@ def refine_for_export(mesh: dolfin.Mesh,
     return make_mesh(cells, dofs, nodes_array, distributed=True)
 
 
-def map_refined(V: typing.Union[dolfin.FunctionSpace,
-                                dolfin.VectorFunctionSpace,
-                                dolfin.TensorFunctionSpace],
-                W: typing.Union[dolfin.FunctionSpace,
-                                dolfin.VectorFunctionSpace,
-                                dolfin.TensorFunctionSpace],
-                validate: typing.Optional[str] = None) -> typing.Tuple[typing.Dict[int, typing.Union[int,
-                                                                                                     typing.FrozenSet]],
-                                                                       typing.Dict[int,
-                                                                                   typing.Union[int,
-                                                                                                typing.FrozenSet]]]:
+def map_coincident(V: typing.Union[dolfin.FunctionSpace,
+                                   dolfin.VectorFunctionSpace,
+                                   dolfin.TensorFunctionSpace],
+                   W: typing.Union[dolfin.FunctionSpace,
+                                   dolfin.VectorFunctionSpace,
+                                   dolfin.TensorFunctionSpace],
+                   validate: typing.Optional[str] = None) -> typing.Tuple[typing.Dict[int, typing.Union[int,
+                                                                                                        typing.FrozenSet]],
+                                                                          typing.Dict[int,
+                                                                                      typing.Union[int,
+                                                                                                   typing.FrozenSet]]]:
     r"""Build global DOF map of coincident nodes between spaces `V` and `W`.
 
     The main use case is to export degree-2 or degree-3 data (`V`) in MPI mode at
@@ -1074,7 +1074,7 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
 
         import numpy as np
         import dolfin
-        from extrafeathers import refine_for_export, map_refined
+        from extrafeathers import refine_for_export, map_coincident
 
         mesh = ...
 
@@ -1089,7 +1089,7 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
         W = dolfin.FunctionSpace(aux_mesh, 'P', 1)
         w = dolfin.Function(W)
 
-        WtoV, VtoW = map_refined(V, W, validate="invertible")
+        WtoV, VtoW = map_coincident(V, W, validate="invertible")
 
         assert set(WtoV.keys()) == set(range(len(WtoV)))  # whole space, should have zero-based consecutive DOFs
         sorted_WtoV = sorted(WtoV.items(), key=lambda item: item[0])  # sort by global DOF
