@@ -1309,9 +1309,9 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
                         dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
                         cellV_idx = dof_to_cell_V[dofV]
                         ballot[cellV_idx] += 1
-                assert len(ballot) > 0  # at least one V cell had coincident nodes
+                if len(ballot) == 0:  # no cell on `V` had nodes coincident with those of this `W` cell
+                    continue
                 [[cellV_idx, votes]] = ballot.most_common(1)
-                assert ballot[cellV_idx] == len(cellW)  # all dofs of W cell in same V cell
 
                 # Now walk again the DOFs on the W cell, but match only against
                 # nodes on the correct V cell. There are just a few, and we need
