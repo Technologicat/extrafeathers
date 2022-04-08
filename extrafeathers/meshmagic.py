@@ -1312,7 +1312,7 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
                 if len(ballot) == 0:  # no cell on `V` had nodes coincident with those of this `W` cell
                     continue
                 [[cellV_idx, votes]] = ballot.most_common(1)
-                # Often, `votes == len(cellW)`, but not always, if not all DOFs have a counterpart.
+                # Often, `votes == len(cellW)`, but not always, if not all `W` DOFs have a counterpart on `V`.
 
                 # Now walk again the DOFs on the W cell, but match only against
                 # nodes on the correct V cell. There are just a few, and we need
