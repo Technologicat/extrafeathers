@@ -1343,7 +1343,6 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
                     maps(VtoW, dofV, dofW)
 
     # Done, let's make the values immutable (to make them hashable).
-    # TODO: convert single-valued dict with full key range to np.array where needed
     WtoV = freeze(WtoV)
     VtoW = freeze(VtoW)
 
