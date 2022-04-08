@@ -827,14 +827,22 @@ def prepare_linear_export(V: typing.Union[dolfin.FunctionSpace,
                     2: dolfin.TensorFunctionSpace}
     try:
         # Create the corresponding piecewise linear function space
-        V_export = (constructors[tensor_rank])(aux_mesh, family, 1)
+        W = (constructors[tensor_rank])(aux_mesh, family, 1)
+        w = dolfin.Function(W)
     except KeyError as err:
         raise ValueError(f"Don't know what to do with tensors of rank > 2, got {tensor_rank}") from err
-    u_export = dolfin.Function(V_export)
-    VtoVexport, VexporttoV = map_refined(V, V_export)
-    my_Vexport_dofs = V_export.dofmap().dofs()  # MPI-local
-    my_V_dofs = VexporttoV[my_Vexport_dofs]  # MPI-local
-    return u_export, my_V_dofs
+
+    # Map the coincident DOFs between the spaces
+    WtoV, VtoW = map_refined(V, W, validate="invertible")
+
+    assert set(WtoV.keys()) == set(range(len(WtoV)))  # whole space, should have zero-based consecutive DOFs
+    sorted_WtoV = sorted(WtoV.items(), key=lambda item: item[0])  # sort by global DOF
+    vs = [v for k, v in sorted_WtoV]  # get the V DOF numbers only (W DOFs are now 0, 1, 2, ...)
+    WtoV = np.array(vs, dtype=np.int64)  # vs are int, because invertible mapping is single-valued
+
+    my_W_dofs = W.dofmap().dofs()  # MPI-local
+    my_V_dofs = WtoV[my_W_dofs]  # MPI-local
+    return w, my_V_dofs
 
 
 def refine_for_export(mesh: dolfin.Mesh,
@@ -896,42 +904,171 @@ def refine_for_export(mesh: dolfin.Mesh,
     return make_mesh(cells, dofs, nodes_array, distributed=True)
 
 
-# TODO: add `partial_ok` mode to help filling `quad_to_tri` added DOFs from dG0 space
 def map_refined(V: typing.Union[dolfin.FunctionSpace,
                                 dolfin.VectorFunctionSpace,
                                 dolfin.TensorFunctionSpace],
                 W: typing.Union[dolfin.FunctionSpace,
                                 dolfin.VectorFunctionSpace,
-                                dolfin.TensorFunctionSpace]) -> typing.Tuple[np.array, np.array]:
-    """Build global DOF map between degree-2 or 3 space `V` and once-refined degree-1 space `W`.
+                                dolfin.TensorFunctionSpace],
+                validate: typing.Optional[str] = None) -> typing.Tuple[typing.Dict[int, typing.Union[int,
+                                                                                                     typing.FrozenSet]],
+                                                                       typing.Dict[int,
+                                                                                   typing.Union[int,
+                                                                                                typing.FrozenSet]]]:
+    r"""Build global DOF map of coincident nodes between spaces `V` and `W`.
 
-    The purpose is to be able to map a nodal values vector from `V` to `W` and
-    vice versa, for interpolation.
-
-    One particular use case is to export degree-2 or degree-3 data in MPI mode at
-    full nodal resolution, as once-refined degree-1 data. In general, the MPI
+    The main use case is to export degree-2 or degree-3 data (`V`) in MPI mode at
+    full nodal resolution, as once-refined degree-1 data (`W`). In general, the MPI
     partitionings of `V` and `W` will not match, and thus `interpolate(..., W)`
     will not work, because each process is missing some of the input data needed
     to construct its part of the degree-1 representation. This can be worked around
-    by hacking the DOF vectors directly. See example below.
+    by hacking the DOF vectors directly. See example below; see also
+    `prepare_linear_export` for an all-in-one solution for this use case.
 
-    See also `prepare_linear_export` for an all-in-one solution.
+    `V`, `W`: P, DP, Q, or DQ `FunctionSpace`, `VectorFunctionSpace`,
+              or `TensorFunctionSpace` on some mesh.
 
-    `V`: P2, P3, DP2, DP3, Q2, Q3, DQ2, or DQ3 `FunctionSpace`, `VectorFunctionSpace`,
-         or `TensorFunctionSpace` on some `mesh`.
-    `W`: The corresponding P1, DP1, Q1, or DQ1 space on `refine_for_export(mesh)`.
-         The element family must be the same as for `V` (e.g. P1 if `V` is P2 or P3).
+              `V` and `W` must have the same number of subspaces (vector/tensor
+              components), if any.
 
-    `V` and `W` must have the same number of subspaces (vector/tensor components),
-    if any, and they must have the same number of global DOFs. Also, the
-    corresponding nodes on `V` and `W` must be exactly geometrically coincident
-    (up to machine precision).
+              **NOTE**:
 
-    Returns `(VtoW, WtoV)`, where:
-      - `VtoW` is a rank-1 `np.array`. Global DOF `k` of `V` matches the global DOF
-        `VtoW[k]` of space `W`.
-      - `WtoV` is a rank-1 `np.array`. Global DOF `k` of `W` matches the global DOF
-        `WtoV[k]` of space `V`.
+              If both `V` and `W` are discontinuous spaces, then we assume that each
+              cell in the mesh of `W` is contained in exactly one cell of the mesh
+              of `V`. The assumption is satisfied if the meshes are the same, or
+              if the mesh of `W` was produced by refining the mesh of `V`.
+
+              The assumption makes it possible to uniquely identify, in a practically
+              useful sense, "the same" DOF in the two spaces, when the DOF is on an
+              element edge or at a vertex (where several global DOFs of the same
+              subspace share the same geometric location, due to the discontinuous
+              nature of the space).
+
+              The identification problem does not arise when at least one of the
+              spaces `V` or `W` is continuous:
+
+                - If both are spaces are continuous, then both mappings will be
+                  single-valued and injective. If every node has a counterpart
+                  in the other space, both mappings will be invertible.
+
+                - If one of the spaces is discontinuous and one is continuous,
+                  with DOFs at vertices or edges, then one of the mappings
+                  will be multi-valued (the same continuous DOF maps to multiple
+                  discontinuous DOFs), and the other one will be non-injective
+                  (multiple discontinuous DOFs map to the same continuous DOF).
+
+    `validate`: How to validate the resulting mapping W->V (note direction).
+
+        Main use case is programming by contract; if you know that your
+        resulting mapping should satisfy one of the following properties,
+        declare it to fail-fast when violated.
+
+        If W->V fails the chosen validation, `RuntimeError` is raised.
+
+        Available validation modes:
+
+        `None`:
+            No validation.
+
+        "invertible":
+            Every DOF of `W` maps to a distinct DOF of `V`, and vice versa,
+            so that a single-valued inverse mapping exists.
+
+                W     V
+                0 <-> 0
+                1 <-> 1
+                2 <-> 2
+
+            Example: `V` is P2, and `W` is once-refined P1.
+
+            **NOTE**:
+
+            If W->V is known to be single-valued, "invertible" is equivalent
+            with "injective and onto". If it is not known /a priori/ that W->V
+            is single-valued, the "invertible" check is stronger, and equivalent
+            with "injective and injective-inverse".
+
+            This example passes both the "injective" and "onto" checks, but
+            is not invertible:
+
+                W     V
+                0 --> 0
+                1 --> 1
+                   \> 2
+                2 --> 3
+
+            Passing the "invertible" check implies that both W->V and V->W
+            are single-valued.
+
+        "injective":
+            Every DOF of `W` maps to a distinct DOF (or distinct multiple DOFs)
+            of `V`, but there may exist DOFs in `V` that are not the image of
+            any DOF in `W`.
+
+                 W     V       W     V
+                       0             0
+                 0 --> 1       0 --> 1
+                       2          \> 2
+                 1 --> 3       1 --> 3
+                       4             4
+              single-valued  multi-valued
+              injective      injective
+
+            Example: `V` is the `quad_to_tri` of Q1, and `W` is DQ0 on the original mesh.
+                     The cell centers of `W` map to the added nodes of `V`, but the
+                     original quad vertices on `V` have no counterpart in `W`.
+
+        "injective-inverse":
+            Nonstandard counterpart of "injective", for symmetry.
+            The mapping V->W (note direction) is injective.
+
+        "onto":
+            Each DOF of `V` is the image of one or more DOFs in `W`.
+            There are no restrictions on the source DOFs in `W`.
+
+            Particularly, multiple DOFs on `W` may map to the same DOF on `V`,
+            and there may exist DOFs in `W` that do not map to any DOF in `V`:
+
+                W     V
+                0 --> 0
+                1 -/
+                2 --> 1
+                3
+
+            Example: `V` is P1, and `W` is DP1 on the same mesh.
+
+        "off-from":
+            Nonstandard counterpart of "onto", for symmetry.
+
+            Every DOF of `W` maps to one or more DOFs on `V`.
+            There are no restrictions on the destination DOFs in `V`.
+
+            In other words, W->V is a total function (as opposed to a partial function
+            in the mathematical sense); i.e. it is defined for all DOFs in `W`.
+
+            https://en.wikipedia.org/wiki/Partial_function
+
+                W     V
+                0 --> 0
+                   \> 1
+                1 --> 2
+                      3
+
+            Example: `V` is DP1, and `W` is P1 on the same mesh.
+
+    Returns the tuple `(WtoV, VtoW)`, where:
+        - The global W DOF `k` matches the global V DOF `j = WtoV[k]`, and
+        - The global V DOF `j` matches the global W DOF `k = VtoW[j]`.
+
+          If at least one entry in `WtoV` is multi-valued, then all entries are represented
+          in a multi-valued format, `j = frozenset(j0, ...)`. Similarly for `VtoW`.
+
+          If all entries are single-valued, the `frozenset` layer is dropped automatically
+          (separately for `WtoV` and `VtoW`).
+
+          To check multi-valuedness, you can
+          `is_multivalued = isinstance(next(iter(WtoV.values())), frozenset)`
+          (provided that `WtoV` is non-empty).
 
     Example::
 
@@ -948,11 +1085,16 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
         V = dolfin.FunctionSpace(mesh, 'P', 2)
         u = dolfin.Function(V)
 
-        mesh_for_P1 = refine_for_export(mesh, p=2)
-        W = dolfin.FunctionSpace(mesh_for_P1, 'P', 1)
+        aux_mesh = refine_for_export(mesh, p=2)
+        W = dolfin.FunctionSpace(aux_mesh, 'P', 1)
         w = dolfin.Function(W)
 
-        VtoW, WtoV = map_refined(V, W)
+        WtoV, VtoW = map_refined(V, W, validate="invertible")
+
+        assert set(WtoV.keys()) == set(range(len(WtoV)))  # whole space, should have zero-based consecutive DOFs
+        sorted_WtoV = sorted(WtoV.items(), key=lambda item: item[0])  # sort by global DOF
+        vs = [v for k, v in sorted_WtoV]  # get the V DOF numbers only (W DOFs are now 0, 1, 2, ...)
+        WtoV = np.array(vs, dtype=np.int64)  # vs are int, because invertible mapping is single-valued
 
         all_V_dofs = np.array(range(V.dim()), "intc")
         u_copy = dolfin.Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
@@ -996,31 +1138,83 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
     else:
         spaces = [(V, W)]
 
+    def maps(d, k, v):
+        """Helper for building multi-valued mappings.
+
+        Add `v` to the value set `d[k]`, creating the set if necessary.
+
+        Pronounced as "d maps k to v" [and possibly to other values, too].
+        """
+        if k not in d:
+            d[k] = set()
+        d[k].add(v)
+
+    def freeze(d):
+        """Convert the value sets of a multi-valued mapping into frozensets.
+
+        The use case is to make the value sets hashable once they no longer need to be edited.
+        """
+        return {k: frozenset(v) for k, v in d.items()}
+
+    def prune(d):
+        """If possible, make the multi-valued mapping `d` single-valued.
+
+        If all value sets of `d` have exactly one member, remove the set layer,
+        and return the single-valued dictionary.
+
+        Else return `d` as-is.
+        """
+        if all(len(v) == 1 for v in d.values()):
+            return {k: next(iter(v)) for k, v in d.items()}
+        return d
+
+    def all_values_unique(d):
+        """Return whether no value appears more than once across all value sets of multi-valued mapping `d`."""
+        seen = set()
+        for multivalue in d.values():
+            if any(v in seen for v in multivalue):
+                return False
+            seen.update(multivalue)
+        return True
+
+    def all_valuesets_unique(d):
+        """Return whether no two value sets are the same in multi-valued mapping `d`."""
+        d = freeze(d)
+        seen = set()
+        for multivalue in d.values():
+            if multivalue in seen:
+                return False
+            seen.add(multivalue)
+        return True
+
     # Note that in MPI mode each process constructs its own full copy independently.
-    VtoW = np.zeros(V.dim(), dtype=int) - 1
-    WtoV = np.zeros(W.dim(), dtype=int) - 1
-    seenV = set()
-    seenW = set()
+    WtoV = {}
+    VtoW = {}
     for subV, subW in spaces:
         familyV = str(subV.ufl_element().family())
-        familyW = str(subW.ufl_element().family())
-        if familyW != familyV:
-            raise ValueError(f"Expected same element family on V and W; got V with '{familyV}', W with '{familyW}'")
         if familyV in ("Lagrange", "Q"):
-            continuous = True
+            continuousV = True
         elif familyV in ("Discontinuous Lagrange", "DQ"):
-            continuous = False
+            continuousV = False
         else:
             raise ValueError(f"Unsupported element family '{familyV}'")
 
-        # The MPI partitionings of V and W are in general different, so to be
-        # able to do the matching, we must gather the data for the whole mesh.
+        familyW = str(subW.ufl_element().family())
+        if familyW in ("Lagrange", "Q"):
+            continuousW = True
+        elif familyW in ("Discontinuous Lagrange", "DQ"):
+            continuousW = False
+        else:
+            raise ValueError(f"Unsupported element family '{familyW}'")
+
+        # The MPI partitionings of V and W are in general different (independent meshes),
+        # so to be able to do the matching, we must gather the data for the whole meshes.
         cellsW, nodesW_dict = all_cells(subW)
         cellsV, nodesV_dict = all_cells(subV)
         dofsW, nodesW = nodes_to_array(nodesW_dict)
         dofsV, nodesV = nodes_to_array(nodesV_dict)
 
-        if continuous:
+        if continuousV:  # `W` can be continuous or discontinuous
             # On a continuous nodal discretization, each global DOF in the same
             # subspace has a unique geometric location.
             #
@@ -1030,26 +1224,43 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
             # (That function itself works just fine in MPI mode; the problem are the
             #  different MPI partitionings, so each process is missing some of the
             #  data it needs to find the match.)
+            #
+            # It doesn't matter whether `W` is continuous or not; if not, multiple
+            # DOFs of `W` may map to the same DOF of `V`, but the same algorithm works.
             treeV = scipy.spatial.cKDTree(data=nodesV)
-            def find_nodeV_index(nodeW):
-                distance, k = treeV.query(nodeW)
-                if distance > 0.0:  # node dofsV[k] of V should exactly correspond to node dofW of W
-                    raise ValueError(f"Node {nodeW} on W and its closest neighbor {nodesV[k]} on V are not coincident.")
-                return k
-
             for dofW, nodeW in zip(dofsW, nodesW):
-                k = find_nodeV_index(nodeW)
+                distance, k = treeV.query(nodeW)
+                if distance > 0.0:  # no exactly coincident node on `V`
+                    continue
                 dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
-                WtoV[dofW] = dofV
-                VtoW[dofV] = dofW
-                seenV.add(dofV)
-                seenW.add(dofW)
+                maps(WtoV, dofW, dofV)
+                maps(VtoW, dofV, dofW)
 
-        else:
+        elif continuousW:  # but discontinuous `V`
+            # Each DOF on `W` may map to multiple DOFs on `V`.
+            #
+            # The reliable thing to do here is to run the above algorithm
+            # with the roles of `V` and `W` swapped.
+            treeW = scipy.spatial.cKDTree(data=nodesW)
+            for dofV, nodeV in zip(dofsV, nodesV):
+                distance, k = treeW.query(nodeV)
+                if distance > 0.0:  # no exactly coincident node on `W`
+                    continue
+                dofW, nodeW = dofsW[k], nodesW[k]  # noqa: F841, don't need nodeW; just for documentation
+                maps(VtoW, dofV, dofW)
+                maps(WtoV, dofW, dofV)
+
+        else:  # both `W` and `V` discontinuous
             # On a discontinuous nodal discretization, distinct global DOFs on the
             # element boundaries (and at vertices) share the same geometric location.
             #
-            # Thus we need to match the cells.
+            # Mapping all of these DOFs to all of the coincident DOFs on the other
+            # space is useless in practice. Instead, we assume that each cell of `W`
+            # is contained in a single cell of `V` (such as if `W` was produced by
+            # refining the mesh of `V`; or if the meshes are the same). This uniquely
+            # identifies "the same" DOF in both spaces.
+            #
+            # TODO: find a suitable generalization when the element boundaries don't agree.
 
             # First some preparation:
             #
@@ -1064,8 +1275,7 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
             dof_to_row_V = {dof: k for k, dof in enumerate(dofsV)}
             dof_to_row_W = {dof: k for k, dof in enumerate(dofsW)}
 
-            # Match one W cell at a time. By our problem specification,
-            # it will be contained in exactly one V cell.
+            # Match one W cell at a time. By assumption, it will be contained in exactly one V cell.
             treeV = scipy.spatial.cKDTree(data=nodesV)
             for cellW in cellsW:
                 # Vote for the correct V cell.
@@ -1129,20 +1339,43 @@ def map_refined(V: typing.Union[dolfin.FunctionSpace,
                     dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
 
                     # ...which finally gets us what we want:
-                    WtoV[dofW] = dofV
-                    VtoW[dofV] = dofW
-                    seenV.add(dofV)
-                    seenW.add(dofW)
+                    maps(WtoV, dofW, dofV)
+                    maps(VtoW, dofV, dofW)
+
+    # Done, let's make the values immutable (to make them hashable).
+    # TODO: convert single-valued dict with full key range to np.array where needed
+    WtoV = freeze(WtoV)
+    VtoW = freeze(VtoW)
 
     # contract: postconditions
-    assert len(set(range(V.dim())) - seenV) == 0  # all dofs of V were seen
-    assert len(set(range(W.dim())) - seenW) == 0  # all dofs of W were seen
-    assert all(dofW != -1 for dofW in VtoW)  # each dof of V was mapped to *some* dof of W
-    assert all(dofV != -1 for dofV in WtoV)  # each dof of W was mapped to *some* dof of V
-    assert len(set(VtoW)) == len(VtoW)  # each dof of V was mapped to a *different* dof of W
-    assert len(set(WtoV)) == len(WtoV)  # each dof of W was mapped to a *different* dof of V
+    if validate == "invertible":
+        if not (len(WtoV.keys()) == W.dim()):
+            raise RuntimeError("At least one DOF of `W` does not map to any DOF on `V`.")
+        if not (len(VtoW.keys()) == V.dim()):
+            raise RuntimeError("At least one DOF of `V` does not map to any DOF on `W`.")
+        if not (all_values_unique(WtoV)):
+            raise RuntimeError("At least two DOFs in `W` map to the same DOF in `V`.")
+        # This symmetric additional condition catches the multi-valued pathological case (see docstring).
+        if not (all_values_unique(VtoW)):
+            raise RuntimeError("At least two DOFs in `V` map to the same DOF in `W`.")
+    elif validate == "injective":
+        if not (len(WtoV.keys()) == W.dim()):
+            raise RuntimeError("At least one DOF of `W` does not map to any DOF on `V`.")
+        if not (all_values_unique(WtoV)):
+            raise RuntimeError("At least two DOFs in `W` map to the same DOF in `V`.")
+    elif validate == "injective-inverse":
+        if not (len(VtoW.keys()) == V.dim()):
+            raise RuntimeError("At least one DOF of `V` does not map to any DOF on `W`.")
+        if not (all_values_unique(VtoW)):
+            raise RuntimeError("At least two DOFs in `V` map to the same DOF in `W`.")
+    elif validate == "onto":
+        if not (len(VtoW.keys()) == V.dim()):
+            raise RuntimeError("At least one DOF of `V` does not map to any DOF on `W`.")
+    elif validate == "off-from":
+        if not (len(WtoV.keys()) == W.dim()):
+            raise RuntimeError("At least one DOF of `W` does not map to any DOF on `V`.")
 
-    return VtoW, WtoV
+    return prune(VtoW), prune(WtoV)
 
 
 def my_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:
