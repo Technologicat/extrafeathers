@@ -1316,9 +1316,6 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
                 # Now walk again the DOFs on the W cell, but match only against
                 # nodes on the correct V cell. There are just a few, and we need
                 # to repeat this for each W cell, so `np.argmin` is fine.
-                #
-                # Note that because we know the correct V cell, each W DOF will have
-                # exactly one matching V DOF.
                 for dofW in cellW:
                     nodeW = nodesW[dof_to_row_W[dofW]]
 
@@ -1333,7 +1330,8 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
                     d = relevant_nodesV - nodeW
                     dsq = np.sum(d**2, axis=1)
                     r = np.argmin(dsq)  # row of relevant nodes array
-                    assert dsq[r] == 0.0  # coincident node
+                    if dsq[r] > 0.0:  # no exactly coincident node on `V`
+                        continue
                     k = rowsV[r]  # row of complete `nodesV` array
 
                     # ...which gives us the V DOF number:
