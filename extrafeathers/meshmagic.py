@@ -1295,7 +1295,8 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
                     nodeW = nodesW[dof_to_row_W[dofW]]
                     # Theoretically, the correct maximum number of neighbors to look
                     # for is infinity, since any number of triangles may meet at
-                    # a vertex, and each of them will have one unique DOF there.
+                    # a vertex, and in a discontinuous space, each of them will have
+                    # one unique DOF there.
                     #
                     # However, for practical FEM meshes, only a few triangles will
                     # meet at a vertex. We also use the `distance_upper_bound` option
