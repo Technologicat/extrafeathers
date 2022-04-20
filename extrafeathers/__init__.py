@@ -17,7 +17,6 @@ __version__ = "0.4.0"
 
 # export the public API
 from .autoboundary import *  # noqa: F401, F403
-from .common import *  # noqa: F401, F403
 from .meshfunction import *  # noqa: F401, F403
 from .meshiowrapper import *  # noqa: F401, F403
 from .meshmagic import *  # noqa: F401, F403
