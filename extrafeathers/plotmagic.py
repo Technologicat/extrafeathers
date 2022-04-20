@@ -421,10 +421,7 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     return prep
 
 
-def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Tuple[dolfin.FunctionSpace,
-                                                                                         mcoll.PolyCollection,
-                                                                                         mtri.Triangulation,
-                                                                                         np.array]:
+def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
     """Optional performance optimization for `mpiplot`.
 
     Allows re-using the mesh and dofmap analysis across several plots.
@@ -485,10 +482,7 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typi
 def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
             show_mesh: bool = False,
             show_partitioning: bool = False,
-            prep: typing.Optional[typing.Tuple[dolfin.FunctionSpace,
-                                               mcoll.PolyCollection,
-                                               mtri.Triangulation,
-                                               np.array]] = None,
+            prep: typing.Optional[env] = None,
             **kwargs: typing.Any) -> typing.Optional[typing.Any]:
     """Like `dolfin.plot`, but plots the whole field in the root process (MPI rank 0).
 
