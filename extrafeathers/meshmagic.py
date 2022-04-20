@@ -149,11 +149,11 @@ def my_cells(V: dolfin.FunctionSpace, *,
                         local_dofss = [local_dofs]
                         nodess = [nodes]
                     elif input_degree == 2:  # FEniCS Q2/DQ2 -> FEniCS Q1/DQ1
-                        local_dofss = [local_dofs[0], local_dofs[1], local_dofs[3], local_dofs[4]]
-                        nodess = [nodes[0], nodes[1], nodes[3], nodes[4]]
+                        local_dofss = [[local_dofs[0], local_dofs[1], local_dofs[3], local_dofs[4]]]
+                        nodess = [[nodes[0], nodes[1], nodes[3], nodes[4]]]
                     elif input_degree == 3:  # FEniCS Q3/DQ3 -> FEniCS Q1/DQ1
-                        local_dofss = [local_dofs[0], local_dofs[1], local_dofs[4], local_dofs[5]]
-                        nodess = [nodes[0], nodes[1], nodes[4], nodes[5]]
+                        local_dofss = [[local_dofs[0], local_dofs[1], local_dofs[4], local_dofs[5]]]
+                        nodess = [[nodes[0], nodes[1], nodes[4], nodes[5]]]
                     else:
                         raise NotImplementedError(f"{cell_kind} {input_degree}")
                 else:
