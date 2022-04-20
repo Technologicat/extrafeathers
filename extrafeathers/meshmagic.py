@@ -19,22 +19,29 @@ import scipy.spatial.ckdtree
 
 import dolfin
 
-from .common import is_anticlockwise
+from .common import is_anticlockwise, maps, multiupdate, freeze, prune, all_values_unique
 from .meshfunction import cellvolume
 
 
 def my_cells(V: dolfin.FunctionSpace, *,
              matplotlibize: bool = False,
-             refine: bool = False) -> typing.Tuple[np.array,
-                                                   typing.Dict[int, typing.List[float]]]:
-    """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {0: [x1, y1], ...}
+             refine: bool = False,
+             vertices_only: bool = False) -> typing.Tuple[np.array,
+                                                          typing.Dict[int, typing.List[float]]]:
+    """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {i1: [x1, y1], ...}
 
     Nodal (Lagrange) elements only: P, Q, DP and DQ families are ok.
 
-    Note this returns all nodes, not just the mesh vertices. For example,
-    for P2 triangles, you'll get also the nodes at the midpoints of the edges.
+    This can be useful for extracting mesh data for e.g. `matplotlib`. For that,
+    see also `as_mpl_triangulation`.
 
-    The node numbering follows the FEniCS convention (see `demo/refelement.py`).
+    Note that by default, this returns all nodes, not just the mesh vertices.
+    For example, for P2 triangles, you'll get also the nodes at the edge midpoints.
+    If that's not what you want, see the `refine` and `vertices_only` flags.
+
+    The original global DOF numbering is preserved.
+
+    The DOF ordering in cell data follows FEniCS conventions (see `demo/refelement.py`).
 
     This only sees the cells assigned to the current MPI process; the complete
     function space is the union of these cell sets from all processes. See
@@ -44,26 +51,31 @@ def my_cells(V: dolfin.FunctionSpace, *,
                        - 2D and 3D ok.
                        - `.sub(j)` of a vector/tensor function space ok.
 
-                     Note that if `V` uses degree 1 Lagrange elements, then the
-                     output `nodes` will be the vertices of the mesh. This can
-                     be useful for extracting mesh data for e.g. `matplotlib`.
-                     (For that, see `as_mpl_triangulation`.)
+    `matplotlibize`: 2D only; only used if the resulting output is vertex-only
+                     (either `V` is degree-1, `refine=True`, or `vertices_only=True`).
 
-    `matplotlibize`: If `True`, and `V` is 2D and degree 1, ensure that the cells
-                     in the output list their vertices in an anticlockwise order,
-                     as required when the data is used to construct a
-                     `matplotlib.tri.Triangulation`.
+                     If `True`, orient cells anticlockwise, as expected by Matplotlib.
 
-                     For quadrilaterals, orientation is determined by majority
-                     voting between all triplets of adjacent vertices, which
-                     works also in the case of nonconvex quads.
+                       - Triangles will list their vertices in an anticlockwise order,
+                         and can be used with `matplotlib.tri.Triangulation`.
 
-                     To construct a triangulation for quads, you can postprocess
-                     the extracted cells using the function `quad_to_tri`.
+                       - Quadrilaterals will be oriented anticlockwise, but will list
+                         their vertices following the FEniCS convention.
 
-    `refine`:        If `True`, and `V` is a 2D P2/DP2, P3/DP3, Q2/DQ2 or Q3/DQ3
-                     space, split each original cell into degree-1 cells (four for
-                     degree 2, nine for degree 3).
+                         Orientation is determined by majority voting between all triplets
+                         of adjacent vertices, which works also in the case of nonconvex quads.
+
+                         To construct a triangulation for quads, you can postprocess
+                         the extracted cells using the function `quad_to_tri`.
+
+                         To use the quads with `matplotlib.collections.PolyCollection`, you
+                         will need to manually change the vertex ordering to Matplotlib's.
+
+    `refine`:        2D only.
+
+                     If `True`, and `V` is degree-2 or degree-3, split each original
+                     cell into degree-1 cells (four for degree 2, nine for degree 3),
+                     thus producing a corresponding mesh with vertex DOFs only.
 
                      For triangle meshes, the subtriangles are arranged in an
                      aesthetically pleasing pattern, intended for visualizing P2 or P3
@@ -71,6 +83,12 @@ def my_cells(V: dolfin.FunctionSpace, *,
                      It is particularly useful for full nodal resolution export into a
                      vertex-based format. See `prepare_linear_export` for the high-level
                      function.
+
+    `vertices_only`: 2D only. Only used if `refine=False`.
+
+                     If `True`, extract only the vertex DOFs, ignoring edge and interior DOFs.
+
+                     Covers some niche use cases with degree-2 and higher function spaces.
 
     Returns `(cells, nodes)`, where:
         - `cells` is a rank-2 `np.array`, with the entries global DOF numbers,
@@ -81,10 +99,10 @@ def my_cells(V: dolfin.FunctionSpace, *,
           In serial mode for a scalar `FunctionSpace`, the keys are `range(V.dim())`.
           In MPI mode, each process gets a different subrange due to MPI partitioning.
 
-          Also, if `V` is a `.sub(j)` of a `VectorFunctionSpace` or
-          `TensorFunctionSpace`, the DOF numbers use the *global* DOF numbering
-          also in the sense that each vector/tensor component of the field maps
-          to its own set of global DOF numbers.
+          Also, if `V` is a `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`
+          (or part of a `MixedElement`), the DOF numbers use the *global* DOF numbering
+          also in the sense that each vector/tensor component (and `MixedElement` subfield)
+          maps to its own set of global DOF numbers.
 
           If you instead want the DOF numbers relative to the subspace, collapse
           the subspace first before calling `my_cells` on it.
@@ -96,7 +114,7 @@ def my_cells(V: dolfin.FunctionSpace, *,
     cell_kind = str(V.ufl_element().cell())
     if V.mesh().topology().dim() != 2:
         matplotlibize = False
-    if input_degree > 1 and not refine:
+    if input_degree > 1 and not refine and not vertices_only:
         matplotlibize = False  # TODO: higher-degree orientation flips
 
     # For now, we support refining in 2D, for P2, DP2, P3, DP3, Q2, DQ2, Q3, and DQ3.
@@ -113,9 +131,33 @@ def my_cells(V: dolfin.FunctionSpace, *,
     for cell in dolfin.cells(V.mesh()):
         local_dofs = dofmap.cell_dofs(cell.index())  # DOF numbers, local to this MPI process
         nodes = element.tabulate_dof_coordinates(cell)  # [[x1, y1], [x2, y2], [x3, y3]], global coordinates
-        if not refine:  # general case
-            local_dofss = [local_dofs]
-            nodess = [nodes]
+        if not refine:
+            if not vertices_only:  # general case: extract all DOFs as-is
+                local_dofss = [local_dofs]
+                nodess = [nodes]
+            else:  # extract vertex DOFs only (ignoring edge and interior DOFs)
+                if cell_kind == "triangle":
+                    if input_degree == 0:
+                        raise ValueError("A degree-0 space has no vertex DOFs")
+                    else:  # FEniCS P1/DP1/P2/DP2/P3/DP3 -> FEniCS P1/DP1
+                        local_dofss = [local_dofs[:3]]
+                        nodess = [nodes[:3]]
+                elif cell_kind == "quadrilateral":
+                    if input_degree == 0:
+                        raise ValueError("A degree-0 space has no vertex DOFs")
+                    elif input_degree == 1:  # FEniCS Q1/DQ1 as-is
+                        local_dofss = [local_dofs]
+                        nodess = [nodes]
+                    elif input_degree == 2:  # FEniCS Q2/DQ2 -> FEniCS Q1/DQ1
+                        local_dofss = [local_dofs[0], local_dofs[1], local_dofs[3], local_dofs[4]]
+                        nodess = [nodes[0], nodes[1], nodes[3], nodes[4]]
+                    elif input_degree == 3:  # FEniCS Q3/DQ3 -> FEniCS Q1/DQ1
+                        local_dofss = [local_dofs[0], local_dofs[1], local_dofs[4], local_dofs[5]]
+                        nodess = [nodes[0], nodes[1], nodes[4], nodes[5]]
+                    else:
+                        raise NotImplementedError(f"{cell_kind} {input_degree}")
+                else:
+                    raise NotImplementedError(f"{cell_kind} {input_degree}")
         elif input_degree == 2 and cell_kind == "triangle":  # 2D P2 -> once-refined 2D P1
             # Split into four P1 triangles.
             #
@@ -232,8 +274,8 @@ def my_cells(V: dolfin.FunctionSpace, *,
                     # the user to split these quads to triangles later, without
                     # re-orienting).
                     #
-                    # Note "consecutive" means walking around the perimeter,
-                    # whereas in FEniCS we have:
+                    # Note "consecutive" means walking around the perimeter.
+                    # In FEniCS, the numbering is:
                     #
                     #   2-3
                     #   | |
@@ -245,7 +287,7 @@ def my_cells(V: dolfin.FunctionSpace, *,
                         parities[is_anticlockwise(subset_nodes)] += 1
                     assert None not in parities  # no degenerate node triples
                     if parities[False] > parities[True]:  # clockwise majority
-                        flipper = [0, 2, 3, 1]
+                        flipper = [0, 2, 1, 3]  # change orientation, keep FEniCS numbering convention
                         local_dofs = [local_dofs[k] for k in flipper]
                         nodes = [nodes[k] for k in flipper]
 
@@ -259,9 +301,10 @@ def my_cells(V: dolfin.FunctionSpace, *,
 
 def all_cells(V: dolfin.FunctionSpace, *,
               matplotlibize: bool = False,
-              refine: bool = False) -> typing.Tuple[np.array,
-                                                    typing.Dict[int, typing.List[float]]]:
-    """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {0: [x1, y1], ...}
+              refine: bool = False,
+              vertices_only: bool = False) -> typing.Tuple[np.array,
+                                                           typing.Dict[int, typing.List[float]]]:
+    """FunctionSpace -> cell connectivity [[i1, i2, i3], ...], node coordinates {i1: [x1, y1], ...}
 
     Like `my_cells` (which see for details), but combining data from all MPI processes.
     Each process gets a full copy of all data.
@@ -269,7 +312,7 @@ def all_cells(V: dolfin.FunctionSpace, *,
     # Assemble the complete mesh from the partitioned pieces. This treats arbitrary
     # domain shapes correctly. We get the list of triangles from each MPI process
     # and then combine the lists in the root process.
-    cells, nodes = my_cells(V, matplotlibize=matplotlibize, refine=refine)
+    cells, nodes = my_cells(V, matplotlibize=matplotlibize, refine=refine, vertices_only=vertices_only)
     cellss = dolfin.MPI.comm_world.allgather(cells)
     nodess = dolfin.MPI.comm_world.allgather(nodes)
 
@@ -410,7 +453,8 @@ def quad_to_tri(cells: np.array,
     twice as many DOFs as the original, but that doesn't matter, since it won't be
     used for computation.
 
-    `cells`, `nodes`: As returned by `all_cells` or `my_cells`. Must be quadrilateral.
+    `cells`, `nodes`: As returned by `all_cells` or `my_cells`. Must be quadrilateral,
+                      and in FEniCS format (not matplotlib).
 
                       If your data comes from a subspace, collapse before extracting
                       the cells.
@@ -673,6 +717,9 @@ def make_mesh(cells: typing.List[typing.List[int]],
     """
     # dolfin.MeshEditor is the right tool for the job.
     #     https://fenicsproject.org/qa/12253/integration-on-predefined-grid/
+    #     https://fenicsproject.org/olddocs/dolfin/latest/python/_autogenerated/dolfin.cpp.mesh.html#dolfin.cpp.mesh.MeshEditor
+    #     https://fenicsproject.org/olddocs/dolfin/latest/cpp/d7/db9/classdolfin_1_1MeshEditor.html
+    #     https://bitbucket.org/fenics-project/dolfin/issues/997/quad-hex-meshes-need-ordering-check
     #
     # Using it in MPI mode needs some care. Build the mesh on the root process,
     # then MPI-partition it using `dolfin.MeshPartitioning`.
@@ -938,6 +985,9 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
               of `V`. The assumption is satisfied if the meshes are the same, or
               if the mesh of `W` was produced by refining the mesh of `V`.
 
+              If `V` is a Q or DQ space, it is allowed for `W` to be the `quad_to_tri`
+              of `V`.
+
               The assumption makes it possible to uniquely identify, in a practically
               useful sense, "the same" DOF in the two spaces, when the DOF is on an
               element edge or at a vertex (where several global DOFs of the same
@@ -1138,55 +1188,6 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
     else:
         spaces = [(V, W)]
 
-    def maps(d, k, v):
-        """Helper for building multi-valued mappings.
-
-        Add `v` to the value set `d[k]`, creating the set if necessary.
-
-        Pronounced as "d maps k to v" [and possibly to other values, too].
-        """
-        if k not in d:
-            d[k] = set()
-        d[k].add(v)
-
-    def freeze(d):
-        """Convert the value sets of a multi-valued mapping into frozensets.
-
-        The use case is to make the value sets hashable once they no longer need to be edited.
-        """
-        return {k: frozenset(v) for k, v in d.items()}
-
-    def prune(d):
-        """If possible, make the multi-valued mapping `d` single-valued.
-
-        If all value sets of `d` have exactly one member, remove the set layer,
-        and return the single-valued dictionary.
-
-        Else return `d` as-is.
-        """
-        if all(len(v) == 1 for v in d.values()):
-            return {k: next(iter(v)) for k, v in d.items()}
-        return d
-
-    def all_values_unique(d):
-        """Return whether no value appears more than once across all value sets of multi-valued mapping `d`."""
-        seen = set()
-        for multivalue in d.values():
-            if any(v in seen for v in multivalue):
-                return False
-            seen.update(multivalue)
-        return True
-
-    def all_valuesets_unique(d):
-        """Return whether no two value sets are the same in multi-valued mapping `d`."""
-        d = freeze(d)
-        seen = set()
-        for multivalue in d.values():
-            if multivalue in seen:
-                return False
-            seen.add(multivalue)
-        return True
-
     # Note that in MPI mode each process constructs its own full copy independently.
     WtoV = {}
     VtoW = {}
@@ -1209,138 +1210,13 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
 
         # The MPI partitionings of V and W are in general different (independent meshes),
         # so to be able to do the matching, we must gather the data for the whole meshes.
-        cellsW, nodesW_dict = all_cells(subW)
         cellsV, nodesV_dict = all_cells(subV)
-        dofsW, nodesW = nodes_to_array(nodesW_dict)
-        dofsV, nodesV = nodes_to_array(nodesV_dict)
+        cellsW, nodesW_dict = all_cells(subW)
 
-        if continuousV:  # `W` can be continuous or discontinuous
-            # On a continuous nodal discretization, each global DOF in the same
-            # subspace has a unique geometric location.
-            #
-            # We can use a simple O(n log(n)) global geometric search, similar to what
-            # could be done in serial mode using `dolfin.Mesh.bounding_box_tree`.
-            #
-            # (That function itself works just fine in MPI mode; the problem are the
-            #  different MPI partitionings, so each process is missing some of the
-            #  data it needs to find the match.)
-            #
-            # It doesn't matter whether `W` is continuous or not; if not, multiple
-            # DOFs of `W` may map to the same DOF of `V`, but the same algorithm works.
-            treeV = scipy.spatial.cKDTree(data=nodesV)
-            for dofW, nodeW in zip(dofsW, nodesW):
-                distance, k = treeV.query(nodeW)
-                if distance > 0.0:  # no exactly coincident node on `V`
-                    continue
-                dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
-                maps(WtoV, dofW, dofV)
-                maps(VtoW, dofV, dofW)
-
-        elif continuousW:  # but discontinuous `V`
-            # Each DOF on `W` may map to multiple DOFs on `V`.
-            #
-            # The reliable thing to do here is to run the above algorithm
-            # with the roles of `V` and `W` swapped.
-            treeW = scipy.spatial.cKDTree(data=nodesW)
-            for dofV, nodeV in zip(dofsV, nodesV):
-                distance, k = treeW.query(nodeV)
-                if distance > 0.0:  # no exactly coincident node on `W`
-                    continue
-                dofW, nodeW = dofsW[k], nodesW[k]  # noqa: F841, don't need nodeW; just for documentation
-                maps(VtoW, dofV, dofW)
-                maps(WtoV, dofW, dofV)
-
-        else:  # both `W` and `V` discontinuous
-            # On a discontinuous nodal discretization, distinct global DOFs on the
-            # element boundaries (and at vertices) share the same geometric location.
-            #
-            # Mapping all of these DOFs to all of the coincident DOFs on the other
-            # space is useless in practice. Instead, we assume that each cell of `W`
-            # is contained in a single cell of `V` (such as if `W` was produced by
-            # refining the mesh of `V`; or if the meshes are the same). This uniquely
-            # identifies "the same" DOF in both spaces.
-            #
-            # TODO: find a suitable generalization when the element boundaries don't agree.
-
-            # First some preparation:
-            #
-            # Map DOF number to V cell, and to row of `nodes` array on both spaces.
-            #   - Cells are always numbered contiguously from zero.
-            #   - `nodes[k]` is the node for DOF `dofs[k]`.
-            dof_to_cell_V = {}
-            for cellV_idx, cellV in enumerate(cellsV):
-                for dofV in cellV:
-                    assert dofV not in dof_to_cell_V  # in dG space each cell has unique DOFs
-                    dof_to_cell_V[dofV] = cellV_idx
-            dof_to_row_V = {dof: k for k, dof in enumerate(dofsV)}
-            dof_to_row_W = {dof: k for k, dof in enumerate(dofsW)}
-
-            # Match one W cell at a time. By assumption, it will be contained in exactly one V cell.
-            treeV = scipy.spatial.cKDTree(data=nodesV)
-            for cellW in cellsW:
-                # Vote for the correct V cell.
-                #
-                #  - Distance-search for coincident DOFs on V for **all** DOFs
-                #    on the W cell. Count how many matches each candidate V cell gets.
-                #  - All DOFs of the W cell should be in one cell on V.
-                #  - Any cell that matches only some of the DOFs is a neighbor.
-                #
-                # See `img/triangles.svg`; consider the DOFs of the shaded triangle.
-                #
-                # The figure also shows why cell midpoints are useless in finding
-                # the corresponding V cell; the midpoint of a neighboring V cell
-                # may be closer (to the midpoint of the W cell) than the correct one.
-                ballot = Counter()
-                for dofW in cellW:
-                    nodeW = nodesW[dof_to_row_W[dofW]]
-                    # Theoretically, the correct maximum number of neighbors to look
-                    # for is infinity, since any number of triangles may meet at
-                    # a vertex, and in a discontinuous space, each of them will have
-                    # one unique DOF there.
-                    #
-                    # However, for practical FEM meshes, only a few triangles will
-                    # meet at a vertex. We also use the `distance_upper_bound` option
-                    # to prune the search, since we look for coincident nodes only.
-                    distances, ks = treeV.query(nodeW, k=10,
-                                                distance_upper_bound=1e-8)
-                    for distance, k in zip(distances, ks):
-                        if distance > 0.0:
-                            break
-                        dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
-                        cellV_idx = dof_to_cell_V[dofV]
-                        ballot[cellV_idx] += 1
-                if len(ballot) == 0:  # no cell on `V` had nodes coincident with those of this `W` cell
-                    continue
-                [[cellV_idx, votes]] = ballot.most_common(1)
-                # Often, `votes == len(cellW)`, but not always, if not all `W` DOFs have a counterpart on `V`.
-
-                # Now walk again the DOFs on the W cell, but match only against
-                # nodes on the correct V cell. There are just a few, and we need
-                # to repeat this for each W cell, so `np.argmin` is fine.
-                for dofW in cellW:
-                    nodeW = nodesW[dof_to_row_W[dofW]]
-
-                    # Next comes some indexing... take a deep breath:
-                    #
-                    # Find the rows of the `nodesV` array for the V DOFs of the
-                    # vote-winning cell.
-                    rowsV = np.array([dof_to_row_V[dofV] for dofV in cellsV[cellV_idx]],
-                                     dtype=np.int64)
-                    relevant_nodesV = nodesV[rowsV]
-
-                    d = relevant_nodesV - nodeW
-                    dsq = np.sum(d**2, axis=1)
-                    r = np.argmin(dsq)  # row of relevant nodes array
-                    if dsq[r] > 0.0:  # no exactly coincident node on `V`
-                        continue
-                    k = rowsV[r]  # row of complete `nodesV` array
-
-                    # ...which gives us the V DOF number:
-                    dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
-
-                    # ...which finally gets us what we want:
-                    maps(WtoV, dofW, dofV)
-                    maps(VtoW, dofV, dofW)
+        subWtosubV, subVtosubW = _map_coincident(cellsV, nodesV_dict, continuousV,
+                                                 cellsW, nodesW_dict, continuousW)
+        multiupdate(WtoV, subWtosubV)
+        multiupdate(VtoW, subVtosubW)
 
     # Done, let's make the values immutable (to make them hashable).
     WtoV = freeze(WtoV)
@@ -1374,7 +1250,203 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
         if not (len(WtoV.keys()) == W.dim()):
             raise RuntimeError("At least one DOF of `W` does not map to any DOF on `V`.")
 
-    return prune(VtoW), prune(WtoV)
+    return prune(WtoV), prune(VtoW)
+
+def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[float]], continuousV: bool,
+                    cellsW: np.array, nodesW_dict: typing.Dict[int, typing.List[float]], continuousW: bool):
+    """Low-level implementation for `map_coincident`, working with data in the `all_cells` format.
+
+    Must also know whether the spaces `W` and `V` are continuous,
+    to choose the correct matching algorithm.
+
+    Note if you use data from `my_cells`, the node dictionaries nevertheless need to
+    be complete (from `all_cells`), because in MPI mode, in each process, some cells
+    refer to unowned nodes, which are not in the nodes dictionary returned by `my_cells`.
+
+    In MPI mode, each process constructs its own copy.
+
+    Return value is `(WtoV, VtoW)`, where both items are multi-valued mappings.
+    """
+    match_tol = 1e-8
+    WtoV = {}
+    VtoW = {}
+
+    dofsW, nodesW = nodes_to_array(nodesW_dict)
+    dofsV, nodesV = nodes_to_array(nodesV_dict)
+
+    if continuousV:  # `W` can be continuous or discontinuous
+        # On a continuous nodal discretization, each global DOF in the same
+        # subspace has a unique geometric location.
+        #
+        # We can use a simple O(n log(n)) global geometric search, similar to what
+        # could be done in serial mode using `dolfin.Mesh.bounding_box_tree`.
+        #
+        # (That function itself works just fine in MPI mode; the problem are the
+        #  different MPI partitionings, so each process is missing some of the
+        #  data it needs to find the match.)
+        #
+        # It doesn't matter whether `W` is continuous or not; if not, multiple
+        # DOFs of `W` may map to the same DOF of `V`, but the same algorithm works.
+        treeV = scipy.spatial.cKDTree(data=nodesV)
+        for dofW, nodeW in zip(dofsW, nodesW):
+            distance, k = treeV.query(nodeW)
+            if distance > match_tol:  # no coincident node on `V`
+                continue
+            dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
+            maps(WtoV, dofW, dofV)
+            maps(VtoW, dofV, dofW)
+
+    elif continuousW:  # but discontinuous `V`
+        # Each DOF on `W` may map to multiple DOFs on `V`.
+        #
+        # The reliable thing to do here is to run the above algorithm
+        # with the roles of `V` and `W` swapped.
+        treeW = scipy.spatial.cKDTree(data=nodesW)
+        for dofV, nodeV in zip(dofsV, nodesV):
+            distance, k = treeW.query(nodeV)
+            if distance > match_tol:  # no coincident node on `W`
+                continue
+            dofW, nodeW = dofsW[k], nodesW[k]  # noqa: F841, don't need nodeW; just for documentation
+            maps(VtoW, dofV, dofW)
+            maps(WtoV, dofW, dofV)
+
+    else:  # both `W` and `V` discontinuous
+        # On a discontinuous nodal discretization, distinct global DOFs on the
+        # element boundaries (and at vertices) share the same geometric location.
+        #
+        # Mapping all of these DOFs to all of the coincident DOFs on the other
+        # space is useless in practice. Instead, we assume that each cell of `W`
+        # is contained in a single cell of `V` (such as if `W` was produced by
+        # refining the mesh of `V`; or if the meshes are the same). This uniquely
+        # identifies "the same" DOF in both spaces.
+        #
+        # TODO: find a suitable generalization when the element boundaries don't agree.
+
+        # First some preparation:
+        #
+        # Map V DOF number to V cell:
+        #   - Cells are always numbered contiguously from zero (row number of `cells` array).
+        #   - `nodes[k]` is the node for DOF `dofs[k]`.
+        #   - In a dG space proper, each cell has unique DOFs. But:
+        #     - If we are dealing with a `quad_to_tri` of, for example, DQ1, then the
+        #       triangles generated from the same original quad will share some original
+        #       DOFs, as well as the added DOF.
+        #       - NOTE: Due to the containment assumption, the `quad_to_tri` data should be
+        #         set as `W`, not as `V`. So this will not affect V cell lookup.
+        #     - If we are dealing with a DQ1 produced by vis-refining, for example, DQ3,
+        #       then some of the DQ1 quads (those generated from the same original DQ3 quad)
+        #       will share some DOFs. If `V` is the refined space, and `W` is `quad_to_tri`
+        #       of that, then some `V` DOFs belong to several cells.
+        # Thus, to cover the general case, the mapping from V DOF to V cell must be multivalued.
+        dof_to_cell_V = {}
+        for cellV_idx, cellV in enumerate(cellsV):
+            for dofV in cellV:
+                maps(dof_to_cell_V, dofV, cellV_idx)
+
+        # Map DOF to row of `nodes` array on both spaces.
+        # These mappings are always invertible, because they are just a renumbering of the DOFs.
+        dof_to_row_V = {dof: k for k, dof in enumerate(dofsV)}
+        dof_to_row_W = {dof: k for k, dof in enumerate(dofsW)}
+
+        # Match one W cell at a time. By assumption, it will be contained in exactly one V cell.
+        treeV = scipy.spatial.cKDTree(data=nodesV)
+        for cellW in cellsW:
+            # Find the correct V cell by voting.
+            #
+            #  - Distance-search for coincident DOFs on V for **all** DOFs
+            #    on the W cell. Count how many matches each candidate V cell gets.
+            #  - All DOFs of the W cell should be in one cell on V.
+            #  - Any cell that matches only some of the DOFs is a neighbor.
+            #
+            # See `img/triangles.svg`; consider the DOFs of the shaded triangle.
+            #
+            # The figure also shows why cell midpoints are useless in finding
+            # the corresponding V cell; the midpoint of a neighboring V cell
+            # may be closer (to the midpoint of the W cell) than the correct one.
+            ballot = Counter()
+            for dofW in cellW:
+                nodeW = nodesW[dof_to_row_W[dofW]]
+                # Theoretically, the correct maximum number of neighbors to look
+                # for is infinity, since any number of triangles may meet at
+                # a vertex, and in a discontinuous space, each of them will have
+                # one unique DOF there.
+                #
+                # However, for practical FEM meshes, only a few elements will
+                # meet at a vertex. We also use the `distance_upper_bound` option
+                # to prune the search, since we look for coincident nodes only.
+                distances, ks = treeV.query(nodeW, k=10,
+                                            distance_upper_bound=1e-8)
+                for distance, k in zip(distances, ks):
+                    if distance > match_tol:
+                        break
+                    dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
+                    # Vote for all V cells this V DOF belongs to.
+                    for cellV_idx in dof_to_cell_V[dofV]:
+                        ballot[cellV_idx] += 1
+
+                # Match the `W` DOF against `V` cell midpoints to handle `quad_to_tri` data correctly.
+                # Some adjacent cells may then have an equal number of votes; to decide, we need to
+                # check the midpoint.
+                for cellV_idx in ballot.keys():
+                    # Dirty HACK: to find midpoint, just average all node coordinates,
+                    # also for higher-degree cells, since we don't have the cell type info.
+                    #
+                    # As long as any edge and interior DOFs are placed symmetrically on the
+                    # reference element (as they are for P2/P3/Q2/Q3/DP2/DP3/DQ2/DQ3), this
+                    # will give the correct result.
+                    vtxs = [nodesV[dofV] for dofV in cellsV[cellV_idx]]
+                    xmid = sum([x for x, y in vtxs]) / len(vtxs)
+                    ymid = sum([y for x, y in vtxs]) / len(vtxs)
+                    midpointV = np.array([xmid, ymid])
+                    dsq = sum((nodeW - midpointV)**2)
+                    if dsq > match_tol:
+                        continue
+                    ballot[cellV_idx] += 1
+            if len(ballot) == 0:  # no cell on `V` had nodes coincident with those of this `W` cell
+                continue
+
+            # If at least one coincident node exists, then by the containment assumption,
+            # exactly one cell wins the vote.
+            # (A failure here has caused some silent bugs during development, so let's check it.)
+            two_most_common = ballot.most_common(2)
+            if len(two_most_common) == 2:
+                [[e1, votes_most_common], [e2, votes_second_most_common]] = two_most_common
+                assert votes_most_common > votes_second_most_common  # winner of the V cell vote is unique
+
+            [[cellV_idx, votes]] = ballot.most_common(1)
+            # Often, `votes == len(cellW)`, but not always, if not all `W` DOFs have a counterpart on `V`.
+            # (E.g. if `W` is the `quad_to_tri` of `V`, the added DOFs have no counterpart.)
+
+            # Now that we know the correct V cell, walk again the DOFs on the W cell,
+            # but match only against nodes of the correct cell . There are just a few,
+            # and we need to repeat this for each W cell (nothing useful to cache),
+            # so `np.argmin` is fine.
+            for dofW in cellW:
+                nodeW = nodesW[dof_to_row_W[dofW]]
+
+                # Next comes some indexing... take a deep breath:
+                #
+                # Find the rows of the `nodesV` array for the V DOFs of the
+                # vote-winning cell.
+                rowsV = np.array([dof_to_row_V[dofV] for dofV in cellsV[cellV_idx]],
+                                 dtype=np.int64)
+                relevant_nodesV = nodesV[rowsV]
+
+                d = relevant_nodesV - nodeW
+                dsq = np.sum(d**2, axis=1)
+                r = np.argmin(dsq)  # row of relevant nodes array
+                if dsq[r] > match_tol:  # no coincident node on `V`
+                    continue
+                k = rowsV[r]  # row of complete `nodesV` array
+
+                # ...which gives us the V DOF number:
+                dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
+
+                # ...which finally gets us what we want:
+                maps(WtoV, dofW, dofV)
+                maps(VtoW, dofV, dofW)
+
+    return WtoV, VtoW
 
 
 def my_patches(V: dolfin.FunctionSpace) -> typing.Dict[int, np.array]:

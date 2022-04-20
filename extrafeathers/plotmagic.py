@@ -21,6 +21,7 @@ __all__ = ["pause",
 
 from collections import defaultdict
 from enum import IntEnum
+from itertools import chain
 import typing
 
 import numpy as np
@@ -31,7 +32,8 @@ import matplotlib.pyplot as plt
 
 import dolfin
 
-from .meshmagic import all_cells, my_cells, nodes_to_array, quad_to_tri, collapse_node_numbering
+from . import common
+from . import meshmagic
 
 
 # Use `matplotlib`'s default color sequence.
@@ -145,25 +147,16 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         quadrilaterals, you will need to produce the additional DOF values and
         then concatenate those to the (subspace-relevant part of the) original
         DOF vector.
-
-        For degrees 2 and 3 this can be tricky and/or slow; but for degree 1 there
-        is a native-speed shortcut. Project or interpolate your function into a
-        dG0 space on your original mesh, thereby obtaining the cell center values.
-
-        (There is a way, using `prepare_linear_export` and some manual DOF copying;
-         then the function can be projected to dG0 on the Q1 "export" mesh to quickly
-         compute the vis cell center DOFs. Then map the cell center DOFs back to
-         the DOFs of the triangulation, using a geometric search like `map_refined`
-         does. This is however not implemented, at least yet.)
     """
     cell_kind = str(V.ufl_element().cell())
     if cell_kind not in ("triangle", "quadrilateral"):
         raise ValueError(f"Expected `V` to be defined on a triangle or quadrilateral mesh; got '{cell_kind}'.")
 
     # Before proceeding, renumber the DOFs into a contiguous zero-based range.
+    # This numbering will correspond to the subspace-relevant slice of the global DOF vector.
     #
     # The fully general case is when `V` is on a `MixedElement` with several
-    # vector/tensor field, and the quantity of interest lives on `V.sub(j).sub(k)`
+    # vector/tensor fields, and the quantity of interest lives on `V.sub(j).sub(k)`
     # (field `j`, component `k`).
     try:
         V = V.collapse()
@@ -176,15 +169,9 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     # The cells for the MPI-local mesh part use the global DOF numbers, but refer
     # also to unowned nodes. Thus we must get a copy of the full global DOF and
     # coordinate data even if we want to construct just an MPI-local mesh part.
-    our_cells, our_nodes = all_cells(V, matplotlibize=True, refine=refine)
-
-    # Now get the relevant mesh part. We actually only need the cells; we can
-    # ignore the DOF/coordinate data, since we already have a full copy (from the
-    # global scan).
-    if mpi_global:
-        cells, ignored_nodes_dict = our_cells, our_nodes
-    else:
-        cells, ignored_nodes_dict = my_cells(V, matplotlibize=True, refine=refine)
+    cells, all_nodes = meshmagic.all_cells(V, matplotlibize=True, refine=refine)
+    if not mpi_global:
+        cells, _ = meshmagic.my_cells(V, matplotlibize=True, refine=refine)
 
     if not len(cells):
         return None, None
@@ -193,10 +180,10 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     if cell_kind == "triangle":
         # For p > 1 triangles in FEniCS, the vertices are the first DOFs in each cell,
         # hence the cat smiley.
-        vertices = [[our_nodes[dof] for dof in cell[:3]] for cell in cells]
+        vertices = [[all_nodes[dof] for dof in cell[:3]] for cell in cells]
     else:  # cell_kind == "quadrilateral":
         # For quads, Matplotlib expects a walk around the perimeter.
-        vertices = [[our_nodes[dof] for dof in cell] for cell in cells]
+        vertices = [[all_nodes[dof] for dof in cell] for cell in cells]
         if refine:
             # Cells have been refined to degree 1 vis cells, so treat them as Q1.
             vertices = [[v[0], v[1], v[3], v[2]] for v in vertices]
@@ -234,26 +221,188 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
 
     # Degree 1 or higher function visualization needs a triangulation for
     # `tricontourf`, `tripcolor`.
-    if cell_kind == "quadrilateral":
-        triangles, nodes = quad_to_tri(cells, our_nodes, mpi_global)
-    else:  # cell_kind == "triangle":
-        triangles, nodes = cells, our_nodes
+    if cell_kind == "triangle":
+        triangles, nodes = cells, all_nodes
 
-    # Although we collapsed `V`, the DOFs we got are not necessarily in a
-    # zero-based consecutive range, because:
-    #
-    #  - If `mpi_global=False`, each process gets just some of the global DOFs of `V`.
-    #    Hence only one of the ranges (the one at MPI rank 0) begins at zero.
-    #
-    #  - `quad_to_tri` adds new DOFs that are globally unique across MPI processes.
-    #    This splits the range of DOFs in each process into two subranges (original
-    #    and added), each of which is consecutive, but with a gap between them.
-    #
-    # The triangulation needs a zero-based consecutive range, so we collapse now.
-    dofs, nodes = nodes_to_array(nodes)
-    triangles = collapse_node_numbering(triangles, dofs)
+        # Although we collapsed `V`, the DOFs we got are not necessarily in a
+        # zero-based consecutive range, because:
+        #
+        #  - If `mpi_global=False`, each process gets just some of the global DOFs of `V`.
+        #    Hence only one of the ranges (the one at MPI rank 0) begins at zero.
+        #
+        #  - `quad_to_tri` (in the quadrilateral case further below) adds new DOFs that are
+        #    globally unique across MPI processes. This splits the range of DOFs in each
+        #    process into two subranges (original and added), each of which is consecutive,
+        #    but with a gap between them.
+        #
+        # The triangulation needs a zero-based consecutive range, so we collapse now.
+        dofs, nodes = meshmagic.nodes_to_array(nodes)
+        triangles = meshmagic.collapse_node_numbering(triangles, dofs)
 
-    tris = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=triangles[:, :3])
+        tris = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=triangles[:, :3])
+    else:  # cell_kind == "quadrilateral":
+        # For plotting on quadrilateral meshes, we must bring the function onto `tris`.
+        #
+        # Quad mesh support is extremely incomplete and buggy in the original DOLFIN (even a single
+        # quad cell may be "not orderable"). DOLFINx should work, but we don't support that yet.
+        #
+        # So with the old DOLFIN, we must never attempt to mesh-edit a quad mesh. Instead, we do
+        # everything manually on the extrafeathers/Matplotlib side.
+        #   https://bitbucket.org/fenics-project/dolfin/issues/997/quad-hex-meshes-need-ordering-check
+        #   https://bitbucket.org/fenics-project/dolfin/issues/1089/quadrilateral-mesh-reordering-error
+
+        # To map the function values onto the triangulation, we need vertex and cell center DOFs
+        # for the **visualization** cells (see diagram below):
+        #
+        #   - If `refine=True`, the vis cells are the refined Q1 cells.
+        #   - If `refine=False`, the vis cells are the original cells; we need the Q1 part.
+        #
+        # We want to bilinearly interpolate the function on the triangulation. Thus the cell center
+        # DOF must be generated and filled in by `plotmagic`. Although in the case of Q2, the original
+        # cell does have a midpoint DOF, it is an independent DOF, in general not consistent with the
+        # bilinear interpolant of the vertex DOFs (which is what we need for the interpolation).
+        #
+        #   Original       Refine off     Refine on
+        #                  Polycollection
+        #
+        #   +---+---+      +-------+      +---+---+
+        #   |       |      |       |      |   |   |
+        #   |       |      |       |      |   |   |
+        #   |       |      |       |      |   |   |
+        #   +   +   + ---> |       |  OR  +---+---+
+        #   |       |      |       |      |   |   |
+        #   |       |      |       |      |   |   |
+        #   |       |      |       |      |   |   |
+        #   +---+---+      +-------+      +---+---+
+        #       Q2             Q1            4×Q1
+        #
+        #                      |             |
+        #                      V             V
+        #
+        #                  +-------+      +---+---+
+        #                  |\     /|      |\ /|\ /|
+        #                  | \   / |      | X | X |
+        #                  |  \ /  |      |/ \|/ \|
+        #                  |   X   |      +---+---+
+        #                  |  / \  |      |\ /|\ /|
+        #                  | /   \ |      | X | X |
+        #                  |/     \|      |/ \|/ \|
+        #                  +-------+      +---+---+
+        #                     4×P1          16×P1
+        #
+        #                  Triangulation
+        #
+        # In the diagram, `+` marks an original DOF, and `X` marks an extra DOF created by `quad_to_tri`,
+        # which we insert to emulate bilinear interpolation on visualization quads, while using triangles.
+
+        # Convert vis quads to triangles, collapse result, build triangulation.
+        cellstri, nodestri = meshmagic.quad_to_tri(cells, all_nodes, mpi_global)
+        dofs, nodes = meshmagic.nodes_to_array(nodestri)
+        cellstri = meshmagic.collapse_node_numbering(cellstri, dofs)
+        tris = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=cellstri[:, :3])
+
+        # Get vis cell vertices (ignoring edge and interior DOFs of the vis cells, if they have any)
+        # Enabling `refine` has higher priority than `vertices_only`, so we can always specify both.
+        cellsvtx, nodesvtx = meshmagic.all_cells(V, matplotlibize=True, refine=refine, vertices_only=True)
+        if not mpi_global:
+            cellsvtx, _ = meshmagic.my_cells(V, matplotlibize=True, refine=refine, vertices_only=True)
+
+        # Map vis quad vertices to the quad_to_tri representation
+        #
+        # Usage reminder:
+        #     WtoV, VtoW = _map_coincident(V, ..., W, ...)
+        # Due to the containment assumption in the algorithm, the output of `quad_to_tri` should be
+        # sent in as `W`.
+        #
+        # Here `W` is continuous across element edges iff `V` is (i.e. the conversion is Q->P, DQ->DP).
+        family = V.ufl_element().family()
+        iscontinuous = (family == "Q")
+        tritovtx, vtxtotri = meshmagic._map_coincident(cellsvtx, nodesvtx, iscontinuous,
+                                                       cellstri, nodestri, iscontinuous)
+        tritovtx = common.prune(tritovtx)
+        assert isinstance(next(iter(tritovtx.values())), (int, np.int64, np.uint64))  # should always be a single-valued mapping
+        vtxtotri = common.prune(vtxtotri)
+        assert isinstance(next(iter(vtxtotri.values())), (int, np.int64, np.uint64))  # should always be a single-valued mapping
+
+        # Get vis cell midpoints
+        def cell_midpoints(cells, nodes):  # NOTE: averages all DOF coordinates; ideal for degree-1 cells
+            midpoints = {}
+            for cell_idx, cell in enumerate(cells):
+                vtxs = [nodes[dof] for dof in cell]
+                xmid = sum([x for x, y in vtxs]) / len(vtxs)
+                ymid = sum([y for x, y in vtxs]) / len(vtxs)
+                midpoints[cell_idx] = np.array([xmid, ymid])
+            return midpoints
+        # Note we do not need the original cell numbers even in MPI mode (where we could be dealing with just
+        # an MPI-local mesh part), because we will generate the function values manually by averaging the
+        # vertex DOFs - which are listed *using 0-based contiguous cell numbering* in `cellsvtx` (row number
+        # of the array is the 0-based cell number).
+        #
+        # The vertex DOFs themselves are referred to using the original collapsed DOF numbering, so that the
+        # subspace-relevant slice of the global DOF vector (for function values) can be used as-is.
+        nodesmid = cell_midpoints(cellsvtx, nodesvtx)
+        cellsmid = [[k] for k in range(len(nodesmid))]
+
+        # Map vis quad centers (essentially, cell index) to the extra DOFs of the quad_to_tri representation
+        #
+        # We set `continuousV=True`, although this `V` is a discrete collection of cell midpoint values.
+        # The important point is that there is just one unique DOF at the cell center (instead of several
+        # DOFs belonging to different global elements), so we may treat it using the matching algorithm
+        # designed for continuous spaces (which have the same property; each DOF is at a unique location).
+        tritomid, midtotri = meshmagic._map_coincident(cellsmid, nodesmid, True,  # continuous
+                                                       cellstri, nodestri, iscontinuous)
+        tritomid = common.prune(tritomid)
+        assert isinstance(next(iter(tritomid.values())), (int, np.int64, np.uint64))  # should always be a single-valued mapping
+        midtotri = common.prune(midtotri)
+        assert isinstance(next(iter(midtotri.values())), (int, np.int64, np.uint64))  # should always be a single-valued mapping
+        assert set(chain(midtotri.values(), vtxtotri.values())) == set(range(len(nodestri)))  # all triangulation DOFs are mapped to, and have contiguous zero-based numbering
+
+        # # "original collapsed DOF numbering" = index in subspace-relevant slice of global DOF vector
+        # def s(d):
+        #     return dict(sorted(d.items(), key=lambda item: item[0]))
+        # print(s(nodesvtx))  # vis quad vertices in original collapsed DOF numbering
+        # print(cellsvtx)  # vis quads in original collapsed DOF numbering
+        # print(s(midtotri))  # vis quad cell index (row of `cellsvtx`) -> (added) DOF on triangulation
+        # print(s(tritovtx))  # (original) DOF on triangulation -> original collapsed DOF number
+        # print(len(nodestri))  # number of DOFs on triangulation
+
+        # TODO: Stuff all of this into `prep`.
+
+        # DEBUG vis -->
+        plt.figure(1)
+
+        # function value mapping
+        f = dolfin.Function(V)
+        f.vector()[:] = V.dofmap().dofs()  # MPI-local owned DOFs
+        def kvarrays(d):
+            karray = np.array(list(d.keys()), dtype=np.uint64)
+            varray = np.array(list(d.values()), dtype=np.uint64)
+            return karray, varray
+        # vertex values: take from original global DOF vector
+        visdata = np.empty(len(nodestri))
+        tridofs_vtx, qdofs_vtx = kvarrays(tritovtx)  # TODO: prep this
+        visdata[tridofs_vtx] = f.vector()[qdofs_vtx]
+        # cell midpoint values: emulate bilinear interpolation
+        for cell_idx, cell in enumerate(cellsvtx):
+            tridof_center = midtotri[cell_idx]
+            qdofs_vtx = np.array(cell, dtype=np.uint64)  # vertex DOFs only (for bilerp)
+            mean_value = np.sum(f.vector()[qdofs_vtx]) / len(qdofs_vtx)
+            visdata[tridof_center] = mean_value
+        theplot = plt.tricontourf(tris, visdata, levels=32)
+        # theplot = plt.tripcolor(tris, visdata, shading="gouraud")
+        # theplot = plt.tripcolor(tris, visdata, shading="flat")
+        plt.colorbar(theplot)
+
+        ax = plt.gca()
+        # plt.triplot(tris, color="#a0a0a0")  # vis triangles
+        polys.set_facecolor("none")
+        polys.set_edgecolor("#808080")
+        polys.set_linewidth(3.0)
+        ax.add_collection(polys)  # vis quads
+
+        plt.show()
+        crash
+        # <-- DEBUG vis
 
     return polys, tris
 
@@ -306,7 +455,9 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typi
     dofmaps = dolfin.MPI.comm_world.allgather(V.dofmap().dofs())
 
     # CAUTION: `all_cells`, used by `as_mpl_triangulation`,
-    # sorts the nodes by global DOF number; match the ordering.
+    # sorts the nodes by global DOF number; must match the ordering.
+    # FEniCS keeps a contiguous block for DOFs for each MPI process,
+    # and they are sorted by global DOF number, so this is satisfied.
     subspace_dofs = np.sort(np.concatenate(dofmaps))
 
     polys, tris = as_mpl_triangulation(V, refine=True)  # this converts to degree 1
@@ -386,11 +537,17 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     n_global_dofs = V.dim()
 
     # TODO: Support plotting functions on quadrilateral meshes
-    #  - Get values for the added DOFs to bring the function onto `tris` for plotting.
+    #  - Get values for the added DOFs to bring the function onto `tris` for plotting:
+    #    - Make a mesh from the `quad_to_tri` data, **in serial mode** (because otherwise SCOTCH crashes)
+    #    - Re-extract the cells and DOFs again, from this mesh, because FEniCS renumbers the DOFs
+    #    - `map_coincident` between dG0 on the original mesh and the quad_to_tri mesh
+    #    - Stuff all of this into `prep`.
 
     # TODO: Support plotting dG0 functions
     #  - Use facecolor (may need another copy of `polys`, to keep it independent
     #    of what `mpiplot_mesh` does with the other one)
+
+    # TODO: `as_mpl_triangulation`: Support dG0 spaces properly.
 
     # # make a complete copy of the DOF vector u_vec to all MPI processes
     # u_vec = u.vector()
