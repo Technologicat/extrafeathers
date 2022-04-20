@@ -24,6 +24,8 @@ from enum import IntEnum
 from itertools import chain
 import typing
 
+from unpythonic.env import env
+
 import numpy as np
 import matplotlib as mpl
 import matplotlib.tri as mtri
@@ -85,7 +87,7 @@ def pause(interval: float) -> None:
 
 def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
                          mpi_global: bool = True,
-                         refine: bool = False) -> typing.Optional[mtri.Triangulation]:
+                         refine: bool = False) -> env:
     """Represent the mesh of a `FunctionSpace` in Matplotlib format.
 
     2D meshes only.
@@ -104,7 +106,7 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
               If `False`, get the original cells. DOFs on the edges and interior
               will be ignored.
 
-    Return value is `(polys, tris)`, where:
+    Return value is an `unpythonic.env.env`, where the most important attributes are:
 
       - `polys` is a `matplotlib.collections.PolyCollection`.
 
@@ -217,7 +219,8 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
                 vertices = [[v[0], v[1], v[5], v[4]] for v in vertices]
             else:
                 raise NotImplementedError(f"Expected degree 1, 2 or 3; got {degree}")
-    polys = mcoll.PolyCollection(vertices)
+    prep = env()
+    prep.polys = mcoll.PolyCollection(vertices)
 
     # Degree 1 or higher function visualization needs a triangulation for
     # `tricontourf`, `tripcolor`.
@@ -235,11 +238,11 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         #    process into two subranges (original and added), each of which is consecutive,
         #    but with a gap between them.
         #
-        # The triangulation needs a zero-based consecutive range, so we collapse now.
-        dofs, nodes = meshmagic.nodes_to_array(nodes)
-        triangles = meshmagic.collapse_node_numbering(triangles, dofs)
-
-        tris = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=triangles[:, :3])
+        # The triangulation needs a zero-based consecutive range for plotting, so we collapse now.
+        triangles, nodes = meshmagic.collapse_node_numbering(triangles, nodes)
+        dofs, nodes_array = meshmagic.nodes_to_array(nodes)
+        prep.tris = mtri.Triangulation(nodes_array[:, 0], nodes_array[:, 1],
+                                       triangles=triangles[:, :3])  # not quite te.tris
     else:  # cell_kind == "quadrilateral":
         # For plotting on quadrilateral meshes, we must bring the function onto `tris`.
         #
@@ -297,15 +300,17 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
 
         # Convert vis quads to triangles, collapse result, build triangulation.
         cellstri, nodestri = meshmagic.quad_to_tri(cells, all_nodes, mpi_global)
-        dofs, nodes = meshmagic.nodes_to_array(nodestri)
-        cellstri = meshmagic.collapse_node_numbering(cellstri, dofs)
-        tris = mtri.Triangulation(nodes[:, 0], nodes[:, 1], triangles=cellstri[:, :3])
+        cellstri, nodestri = meshmagic.collapse_node_numbering(cellstri, nodestri)
+        dofstri, nodestri_array = meshmagic.nodes_to_array(nodestri)
+        prep.tris = mtri.Triangulation(nodestri_array[:, 0], nodestri_array[:, 1], triangles=cellstri[:, :3])
 
         # Get vis cell vertices (ignoring edge and interior DOFs of the vis cells, if they have any)
         # Enabling `refine` has higher priority than `vertices_only`, so we can always specify both.
         cellsvtx, nodesvtx = meshmagic.all_cells(V, matplotlibize=True, refine=refine, vertices_only=True)
         if not mpi_global:
             cellsvtx, _ = meshmagic.my_cells(V, matplotlibize=True, refine=refine, vertices_only=True)
+        prep.cellsvtx = cellsvtx
+        prep.nodesvtx = nodesvtx
 
         # Map vis quad vertices to the quad_to_tri representation
         #
@@ -323,6 +328,17 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         assert isinstance(next(iter(tritovtx.values())), (int, np.int64, np.uint64))  # should always be a single-valued mapping
         vtxtotri = common.prune(vtxtotri)
         assert isinstance(next(iter(vtxtotri.values())), (int, np.int64, np.uint64))  # should always be a single-valued mapping
+        prep.tritovtx = tritovtx
+        prep.vtxtotri = vtxtotri
+
+        # Convert to index arrays for fast (NumPy vectorized) assignments
+        def kvarrays(d):
+            karray = np.array(list(d.keys()), dtype=np.uint64)
+            varray = np.array(list(d.values()), dtype=np.uint64)
+            return karray, varray
+        tridofs_vtx, qdofs_vtx = kvarrays(tritovtx)
+        prep.tridofs_vtx = tridofs_vtx
+        prep.qdofs_vtx = qdofs_vtx
 
         # Get vis cell midpoints
         def cell_midpoints(cells, nodes):  # NOTE: averages all DOF coordinates; ideal for degree-1 cells
@@ -342,6 +358,8 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         # subspace-relevant slice of the global DOF vector (for function values) can be used as-is.
         nodesmid = cell_midpoints(cellsvtx, nodesvtx)
         cellsmid = [[k] for k in range(len(nodesmid))]
+        prep.nodesmid = nodesmid
+        prep.cellsmid = cellsmid
 
         # Map vis quad centers (essentially, cell index) to the extra DOFs of the quad_to_tri representation
         #
@@ -356,6 +374,8 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         midtotri = common.prune(midtotri)
         assert isinstance(next(iter(midtotri.values())), (int, np.int64, np.uint64))  # should always be a single-valued mapping
         assert set(chain(midtotri.values(), vtxtotri.values())) == set(range(len(nodestri)))  # all triangulation DOFs are mapped to, and have contiguous zero-based numbering
+        prep.tritomid = tritomid
+        prep.midtotri = midtotri
 
         # # "original collapsed DOF numbering" = index in subspace-relevant slice of global DOF vector
         # def s(d):
@@ -366,45 +386,39 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         # print(s(tritovtx))  # (original) DOF on triangulation -> original collapsed DOF number
         # print(len(nodestri))  # number of DOFs on triangulation
 
-        # TODO: Stuff all of this into `prep`.
+        # Pre-allocate global DOF vector for function values on the triangulation
+        prep.vec_vis = np.empty(len(nodestri))
 
-        # DEBUG vis -->
-        plt.figure(1)
+        # # DEBUG vis -->
+        # plt.figure(1)
+        #
+        # # function value mapping
+        # f = dolfin.Function(V)
+        # f.vector()[:] = V.dofmap().dofs()  # MPI-local owned DOFs
+        # # vertex values: take from original global DOF vector
+        # prep.vec_vis[tridofs_vtx] = f.vector()[qdofs_vtx]
+        # # cell midpoint values: emulate bilinear interpolation
+        # for cell_idx, cell in enumerate(cellsvtx):
+        #     tridof_center = midtotri[cell_idx]
+        #     qdofs_vtx = np.array(cell, dtype=np.uint64)  # vertex DOFs only (for bilerp)
+        #     mean_value = np.sum(f.vector()[qdofs_vtx]) / len(qdofs_vtx)
+        #     prep.vec_vis[tridof_center] = mean_value
+        # theplot = plt.tricontourf(prep.tris, prep.vec_vis, levels=32)
+        # # theplot = plt.tripcolor(prep.tris, vec_vis, shading="gouraud")
+        # # theplot = plt.tripcolor(prep.tris, vec_vis, shading="flat")
+        # plt.colorbar(theplot)
+        #
+        # ax = plt.gca()
+        # # plt.triplot(prep.tris, color="#a0a0a0")  # vis triangles
+        # prep.polys.set_facecolor("none")
+        # prep.polys.set_edgecolor("#808080")
+        # prep.polys.set_linewidth(3.0)
+        # ax.add_collection(prep.polys)  # vis quads
+        #
+        # plt.show()
+        # # <-- DEBUG vis
 
-        # function value mapping
-        f = dolfin.Function(V)
-        f.vector()[:] = V.dofmap().dofs()  # MPI-local owned DOFs
-        def kvarrays(d):
-            karray = np.array(list(d.keys()), dtype=np.uint64)
-            varray = np.array(list(d.values()), dtype=np.uint64)
-            return karray, varray
-        # vertex values: take from original global DOF vector
-        visdata = np.empty(len(nodestri))
-        tridofs_vtx, qdofs_vtx = kvarrays(tritovtx)  # TODO: prep this
-        visdata[tridofs_vtx] = f.vector()[qdofs_vtx]
-        # cell midpoint values: emulate bilinear interpolation
-        for cell_idx, cell in enumerate(cellsvtx):
-            tridof_center = midtotri[cell_idx]
-            qdofs_vtx = np.array(cell, dtype=np.uint64)  # vertex DOFs only (for bilerp)
-            mean_value = np.sum(f.vector()[qdofs_vtx]) / len(qdofs_vtx)
-            visdata[tridof_center] = mean_value
-        theplot = plt.tricontourf(tris, visdata, levels=32)
-        # theplot = plt.tripcolor(tris, visdata, shading="gouraud")
-        # theplot = plt.tripcolor(tris, visdata, shading="flat")
-        plt.colorbar(theplot)
-
-        ax = plt.gca()
-        # plt.triplot(tris, color="#a0a0a0")  # vis triangles
-        polys.set_facecolor("none")
-        polys.set_edgecolor("#808080")
-        polys.set_linewidth(3.0)
-        ax.add_collection(polys)  # vis quads
-
-        plt.show()
-        crash
-        # <-- DEBUG vis
-
-    return polys, tris
+    return prep
 
 
 def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typing.Tuple[dolfin.FunctionSpace,
@@ -460,9 +474,10 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> typi
     # and they are sorted by global DOF number, so this is satisfied.
     subspace_dofs = np.sort(np.concatenate(dofmaps))
 
-    polys, tris = as_mpl_triangulation(V, refine=True)  # this converts to degree 1
-
-    return V, polys, tris, subspace_dofs
+    prep = as_mpl_triangulation(V, refine=True)  # this converts to degree 1
+    prep.V = V
+    prep.subspace_dofs = subspace_dofs
+    return prep
 
 
 # TODO: not sure what exactly `matplotlib.pyplot.tricontourf` returns or what the type spec for it should be.
@@ -527,10 +542,8 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     # d = V.dofmap().dofs()  # local, each process gets its own values
     # print(my_rank, min(d), max(d))
 
-    if prep:
-        V, polys, tris, subspace_dofs = prep
-    else:
-        V, polys, tris, subspace_dofs = mpiplot_prepare(u)
+    if not prep:
+        prep = mpiplot_prepare(u)
 
     # Make a complete copy of the DOF vector onto the root process.
     v_vec = u.vector().gather_on_zero()
@@ -566,15 +579,15 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
         # The global DOF vector always refers to the complete function space.
         # If `V` is a subspace (vector/tensor field component), take only the
         # DOFs that belong to `V`. (For a true scalar space `V`, this is a no-op.)
-        v_vec = v_vec[subspace_dofs]
+        v_vec = v_vec[prep.subspace_dofs]
 
-        assert len(tris.x) == n_global_dofs  # each global DOF has coordinates
+        assert len(prep.tris.x) == n_global_dofs  # each global DOF has coordinates
         assert len(v_vec) == n_global_dofs  # we have a data value at each DOF
-        theplot = plt.tricontourf(tris, v_vec, levels=32, **kwargs)
+        theplot = plt.tricontourf(prep.tris, v_vec, levels=32, **kwargs)
 
         # # Alternative visualization style.
-        # theplot = plt.tripcolor(tris, v_vec, shading="gouraud", **kwargs)
-        # theplot = plt.tripcolor(tris, v_vec, shading="flat", **kwargs)
+        # theplot = plt.tripcolor(prep.tris, v_vec, shading="gouraud", **kwargs)
+        # theplot = plt.tripcolor(prep.tris, v_vec, shading="flat", **kwargs)
 
         # # Another alternative visualization style.
         # # https://matplotlib.org/stable/gallery/mplot3d/trisurf3d.html
@@ -584,7 +597,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     if show_mesh:
         mpiplot_mesh(V,
                      show_partitioning=show_partitioning,
-                     _polys=polys)
+                     _polys=prep.polys)
 
     return theplot
 
@@ -632,7 +645,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
 
     # TODO: eliminate the almost-identical code
     if show_partitioning:  # color-code MPI partitions
-        my_polys, ignored_triangulation = as_mpl_triangulation(V, mpi_global=False, refine=True)
+        prep = as_mpl_triangulation(V, mpi_global=False, refine=True)
+        my_polys = prep.polys
         all_polys = dolfin.MPI.comm_world.gather(my_polys, root=0)
         if show_aux or V.ufl_element().degree() <= 1:
             # all edges
@@ -648,7 +662,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                     ax.add_collection(polys)
         if V.ufl_element().degree() > 1:
             # element edges for higher degrees
-            my_polys, ignored_triangulation = as_mpl_triangulation(V, mpi_global=False, refine=False)
+            prep = as_mpl_triangulation(V, mpi_global=False, refine=False)
+            my_polys = prep.polys
             all_polys = dolfin.MPI.comm_world.gather(my_polys, root=0)
             if dolfin.MPI.comm_world.rank == 0:
                 for k, polys in enumerate(all_polys):
@@ -671,7 +686,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     if _polys:  # TODO: doesn't interact with `show_partitioning`
         polys = _polys
     else:
-        polys, ignored_triangulation = as_mpl_triangulation(V, refine=True)
+        prep = as_mpl_triangulation(V, refine=True)
+        polys = prep.polys
     main_plot = None
     if show_aux or V.ufl_element().degree() <= 1:
         # all edges
@@ -685,7 +701,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             main_plot = polys
     if V.ufl_element().degree() > 1:
         # element edges for higher degrees
-        polys, ignored_triangulation = as_mpl_triangulation(V, refine=False)
+        prep = as_mpl_triangulation(V, refine=False)
+        polys = prep.polys
         if dolfin.MPI.comm_world.rank == 0:
             polys.set_linewidth(2.0)
             polys.set_edgecolor(main_color)

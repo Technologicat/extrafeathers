@@ -357,10 +357,12 @@ def nodes_to_array(nodes: typing.Dict[int, typing.List[float]]) -> typing.Tuple[
     return global_dofs, nodes_array
 
 
-def collapse_node_numbering(cells: np.array, dofs: np.array) -> np.array:
+def collapse_node_numbering(cells: np.array,
+                            nodes: typing.Optional[typing.Dict[int, typing.List[float]]]) -> typing.Tuple[np.array,
+                                                                                                          typing.Dict[int, typing.List[float]]]:
     """In `cells`, map `dofs[k]` into `k`. Return the remapped cell array.
 
-    The parameters `cells` and `dofs` are as defined in the code snippet below.
+    The parameters `cells` and `dofs` are as returned by `all_cells`.
 
     **NOTE**:
 
@@ -419,10 +421,15 @@ def collapse_node_numbering(cells: np.array, dofs: np.array) -> np.array:
     The subspace-relevant slice is essentially the concatenation of the dofmaps of `V`
     across the MPI processes; see `subspace_dofs` in `mpiplot_prepare`.
     """
+    dofs, nodes_array = nodes_to_array(nodes)
     dof_to_row = {dof: k for k, dof in enumerate(dofs)}
+
     new_cells = [[dof_to_row[dof] for dof in cell] for cell in cells]
     new_cells = np.array(new_cells, dtype=np.int64)
-    return new_cells
+
+    new_nodes = {dof_to_row[dof]: node for dof, node in nodes.items()}
+
+    return new_cells, new_nodes
 
 
 def quad_to_tri(cells: np.array,
@@ -603,8 +610,8 @@ def renumber_nodes_by_distance(cells, nodes, *, origin=None):
     The old DOF numbers are the keys of the input `nodes` dictionary.
     """
     # Collapse the DOF numbers to remove one layer of indirection (`dofs[k]` vs. `k`).
+    cells, nodes = collapse_node_numbering(cells, nodes)
     dofs, nodes_array = nodes_to_array(nodes)
-    cells = collapse_node_numbering(cells, dofs)
 
     if origin is not None:
         x0, y0 = origin
