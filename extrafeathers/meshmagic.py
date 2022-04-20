@@ -1395,7 +1395,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                     # As long as any edge and interior DOFs are placed symmetrically on the
                     # reference element (as they are for P2/P3/Q2/Q3/DP2/DP3/DQ2/DQ3), this
                     # will give the correct result.
-                    vtxs = [nodesV[dofV] for dofV in cellsV[cellV_idx]]
+                    vtxs = [nodesV[dof_to_row_V[dofV]] for dofV in cellsV[cellV_idx]]
                     xmid = sum([x for x, y in vtxs]) / len(vtxs)
                     ymid = sum([y for x, y in vtxs]) / len(vtxs)
                     midpointV = np.array([xmid, ymid])
