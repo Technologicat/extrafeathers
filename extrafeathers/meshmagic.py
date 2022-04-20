@@ -1389,8 +1389,13 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                         break
                     dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
                     # Vote for all V cells this V DOF belongs to.
-                    for cellV_idx in dof_to_cell_V[dofV]:
-                        ballot[cellV_idx] += 1
+                    #
+                    # In MPI mode, when converting just the MPI-local a mesh part,
+                    # the DOFs will map to some unowned cells we don't have.
+                    # Let's ignore them and try to handle just the owned part.
+                    if dofV in dof_to_cell_V:
+                        for cellV_idx in dof_to_cell_V[dofV]:
+                            ballot[cellV_idx] += 1
 
                 # Match the `W` DOF against `V` cell midpoints to handle `quad_to_tri` data correctly.
                 # Some adjacent cells may then have an equal number of votes; to decide, we need to
