@@ -550,11 +550,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     n_global_dofs = V.dim()
 
     # TODO: Support plotting functions on quadrilateral meshes
-    #  - Get values for the added DOFs to bring the function onto `tris` for plotting:
-    #    - Make a mesh from the `quad_to_tri` data, **in serial mode** (because otherwise SCOTCH crashes)
-    #    - Re-extract the cells and DOFs again, from this mesh, because FEniCS renumbers the DOFs
-    #    - `map_coincident` between dG0 on the original mesh and the quad_to_tri mesh
-    #    - Stuff all of this into `prep`.
+    #  - The needed data is now in `prep`; see the debug example in `as_mpl_triangulation`.
 
     # TODO: Support plotting dG0 functions
     #  - Use facecolor (may need another copy of `polys`, to keep it independent
