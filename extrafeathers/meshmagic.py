@@ -1390,9 +1390,11 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                     dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
                     # Vote for all V cells this V DOF belongs to.
                     #
-                    # In MPI mode, when converting just the MPI-local a mesh part,
-                    # the DOFs will map to some unowned cells we don't have.
-                    # Let's ignore them and try to handle just the owned part.
+                    # In MPI mode, when converting just the MPI-local mesh part, some DOFs
+                    # will map to unowned cells, which we don't have in `cellsV`. Let's
+                    # ignore them, and handle just the owned part. (For a W cell we own,
+                    # the matching V cell should be in the owned part.)
+                    # TODO: What if V and W are partitioned differently?
                     if dofV in dof_to_cell_V:
                         for cellV_idx in dof_to_cell_V[dofV]:
                             ballot[cellV_idx] += 1
