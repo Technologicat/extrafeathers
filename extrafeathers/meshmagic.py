@@ -1412,7 +1412,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
             two_most_common = ballot.most_common(2)
             if len(two_most_common) == 2:
                 [[e1, votes_most_common], [e2, votes_second_most_common]] = two_most_common
-                assert votes_most_common > votes_second_most_common  # winner of the V cell vote is unique
+                assert votes_most_common > votes_second_most_common, ballot.most_common()  # winner of the V cell vote is unique
 
             [[cellV_idx, votes]] = ballot.most_common(1)
             # Often, `votes == len(cellW)`, but not always, if not all `W` DOFs have a counterpart on `V`.
