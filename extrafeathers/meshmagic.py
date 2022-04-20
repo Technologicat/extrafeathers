@@ -331,7 +331,8 @@ def all_cells(V: dolfin.FunctionSpace, *,
             merged.update(mappings.pop())
         return merged
     our_nodes = merge(nodess)
-    assert len(our_nodes) == V.dim()  # each DOF of V has coordinates
+    if not vertices_only:
+        assert len(our_nodes) == V.dim()  # each DOF of V has coordinates
 
     return our_cells, our_nodes
 
