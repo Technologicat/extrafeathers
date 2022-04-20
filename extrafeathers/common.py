@@ -1,8 +1,12 @@
 # -*- coding: utf-8; -*-
-"""Common meta-utilities used by `extrafeathers` itself."""
+"""Common meta-utilities used by `extrafeathers` itself.
+
+These are public, but not imported to the top-level namespace.
+"""
 
 __all__ = ["make_find_fullmesh_cell", "make_find_fullmesh_facet",
-           "is_anticlockwise"]
+           "is_anticlockwise",
+           "maps", "multiupdate", "freeze", "prune", "all_values_unique", "all_valuesets_unique"]
 
 import typing
 
@@ -84,3 +88,65 @@ def is_anticlockwise(ps: typing.List[typing.List[float]]) -> typing.Optional[boo
     elif s < 0:
         return False  # clockwise
     return None  # degenerate case; the points are on a line
+
+# --------------------------------------------------------------------------------
+
+def maps(d, k, v):
+    """Helper for building multi-valued mappings.
+
+    Add `v` to the value set `d[k]`, creating the set if necessary.
+
+    Pronounced as "d maps k to v" [and possibly to other values, too].
+    """
+    if k not in d:
+        d[k] = set()
+    d[k].add(v)
+
+def multiupdate(dst, src):
+    """Update a multi-valued mapping `dst` by a multi-valued mapping `src`.
+
+    Copy new keys as-is; for existing keys, merge into the existing valueset.
+    """
+    for k, v in src.items():
+        if k in dst:
+            dst[k].update(v)
+        else:
+            dst[k] = v
+
+def freeze(d):
+    """Convert the value sets of a multi-valued mapping into frozensets.
+
+    The use case is to make the value sets hashable once they no longer need to be edited.
+    """
+    return {k: frozenset(v) for k, v in d.items()}
+
+def prune(d):
+    """If possible, make the multi-valued mapping `d` single-valued.
+
+    If all value sets of `d` have exactly one member, remove the set layer,
+    and return the single-valued dictionary.
+
+    Else return `d` as-is.
+    """
+    if all(len(v) == 1 for v in d.values()):
+        return {k: next(iter(v)) for k, v in d.items()}
+    return d
+
+def all_values_unique(d):
+    """Return whether no value appears more than once across all value sets of multi-valued mapping `d`."""
+    seen = set()
+    for multivalue in d.values():
+        if any(v in seen for v in multivalue):
+            return False
+        seen.update(multivalue)
+    return True
+
+def all_valuesets_unique(d):
+    """Return whether no two value sets are the same in multi-valued mapping `d`."""
+    d = freeze(d)
+    seen = set()
+    for multivalue in d.values():
+        if multivalue in seen:
+            return False
+        seen.add(multivalue)
+    return True
