@@ -2,7 +2,7 @@
 <img src="img/extrafeathers-logo.png" alt="Extrafeathers"/>
 </p>
 
-**Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2** and **P3** meshes. Mesh import and closely related utilities run only serially. Most of our utilities do support 3D meshes, but this is currently not a priority.
+**Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2**, **P3**, **Q1**, **Q2**, **Q3**, **DP1**, **DP2**, **DP3**, **DQ1**, **DQ2**, and **DQ3** spaces. Mesh import and closely related utilities run only serially. Most of our utilities do support 3D meshes, but this is currently not a priority.
 
 Usage examples can be found in the [`demo/`](demo/) subfolder.
 
@@ -59,13 +59,25 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
    - `refine_for_export` [**2D**], `map_coincident` [**2D**, **3D**]
      - These are the low-level functions that power `prepare_linear_export`.
-     - Prepare Lagrange P2 (quadratic) or P3 (cubic) data for export on a once-refined P1 mesh, so that it can be exported at full nodal resolution for visualization even when the file format is vertex-based.
-       - Essentially, in a solver that does this, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined P1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
-       - However, in parallel, the P2/P3 and P1 meshes will have different MPI partitioning (due to mesh editing), so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole P2/P3 DOF vector, and then assign the data to the corresponding DOFs of `w`.
-     - `refine_for_export` differs from `dolfin.refine` in that we guarantee an aesthetically pleasing fill, which looks best for visualizing P2/P3 data, when interpolating that data as P1 on the refined mesh. Also, `refine_for_export` always produces a global refinement; every triangle is refined.
-       - If you don't care about the aesthetics, for P2 data, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.refine_for_export(mesh)` works just as well.
-     - `map_coincident` supports both scalar and vector function spaces. Not tested on tensor fields yet.
+     - Prepare P2, P3, Q2, Q3, DP2, DP3, DQ2, or DQ3 (i.e. quadratic or cubic) data for export on a once-refined degree-1 mesh, so that it can be exported at full nodal resolution for visualization even when the file format is vertex-based.
+       - Essentially, in a solver that does this, we want to `w.assign(dolfin.interpolate(u, W))`, where `W` (uppercase) is the once-refined degree-1 function space and `w` (lowercase) is a `Function` on it; this does work when running serially.
+       - However, in parallel, the original and refined meshes will have different MPI partitioning (due to mesh editing to produce the refined mesh), so each process is missing access to some of the data it needs to compute its part of the interpolant. Hence we must construct a mapping between the global DOFs, allgather the whole original DOF vector, and then assign the data to the corresponding DOFs of `w`.
+     - `refine_for_export` differs from `dolfin.refine` in that for triangle meshes, we guarantee an aesthetically pleasing fill, which looks best for visualizing P2/P3 data, when interpolating that data as P1 on the refined mesh. Also, `refine_for_export` always produces a global refinement; every element is refined.
+       - If you don't care about the aesthetics, for quadratic data, `export_mesh = dolfin.refine(mesh)` instead of `export_mesh = extrafeathers.refine_for_export(mesh)` works just as well.
+     - `map_coincident` is the low-level function that constructs a mapping between coincident DOFs on any two function spaces.
+       - Supports both scalar and vector function spaces. Not tested on tensor fields yet.
+       - Works with both continuous and discontinuous spaces. The practical difference is that for any scalar component of a continuous space, every DOF has a unique geometric location. In a discontinuous space, several distinct DOFs may share the same geometric location.
+       - When both spaces (denoted `V` and `W` in the API) are discontinuous, the matching algorithm assumes that each cell on the mesh of `W` is contained in exactly one cell on the mesh of `V`; this allows a natural definition for "the same" DOF in the discontinuous case. The assumption is satisfied when the meshes are the same, or when `W` was produced by refining `V`. As a practically useful special case, when `V` uses quadrilateral elements, `W` may be the `quad_to_tri` of `V`.
+       - The lower-level function `_map_coincident` does most of the work, and may be directly useful on special occasions. Differences to `map_coincident`:
+         - Scalar function spaces only; `.sub(j)` of vector or tensor function space is accepted.
+         - `_map_coincident` operates on the `extrafeathers` internal format: `cells` lists and `nodes` dictionaries, as produced by `all_cells`.
+         - `_map_coincident` always returns the mappings in a multi-valued format, `Dict[int, FrozenSet[int]]`. Use `extrafeathers.common.prune` to auto-convert to single-valued `Dict[int, int]` in case all entries are actually single-valued.
+         - `_map_coincident` performs no validation on its results.
      - For full usage examples, see [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) (vector), [`demo.coupled.main02_heat`](demo/coupled/main02_heat.py) (scalar), and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) (both).
+   - `quad_to_tri` [**2D**]
+     - Convert a quad mesh into a triangle mesh in crossed-diagonal format, by adding a node at each cell center and then replacing each quad by four triangles (that meet at the cell center node).
+     - This is used by `mpiplot` to make Matplotlib interpolate FEM functions on quadrilateral elements, by mapping the function onto an internal triangulation.
+     - Operates as a filter on the `extrafeathers` internal format. See the source code of [`plotmagic`](extrafeathers/plotmagic.py) for full usage example.
    - `patch_average`, `map_dG0`
      - `map_dG0` [**2D**, **3D**]:
        - Given a function space `V` and a dG0 function space `W` on the same mesh, determine the DOFs of `W`, and mesh cells, that form the support (mathematical sense) of each DOF of `V`.
@@ -102,34 +114,42 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - See [`demo.import_gmsh`](demo/import_gmsh.py) for an example.
    - Low-level utilities; for more information, see docstrings:
      - `all_cells`, `all_patches`, `my_cells`, `my_patches` [**2D**, **3D**]
-       - As of v0.3.0, the `refine` and `matplotlibize` options of `all_cells`/`my_cells` are only available for 2D triangle meshes.
+       - As of v0.4.0, the `refine`, `vertices_only`, and `matplotlibize` options of `all_cells`/`my_cells` are only available for 2D meshes.
      - `is_anticlockwise` [**2D**]
-     - `make_mesh` [**2D**]
+       - Check whether a triplet of points in the plane is given in an anticlockwise order.
+     - `make_mesh` [**2D**, **3D**]
        - Construct a `dolfin.Mesh` from arrays of cells and vertices, using `dolfin.MeshEditor`.
-       - As of v0.3.0, 2D triangle meshes only.
        - In MPI mode, can make a distributed mesh or an MPI-local mesh, as desired.
+         - In some versions of FEniCS, some inputs may cause SCOTCH to crash when it attempts to MPI-partition the created mesh. Particularly, in FEniCS 2019, this is the case when the input data is the output of `quad_to_tri`. (That data works just fine in serial mode, and renumbering the nodes does not help.)
+         - Constructing a quadrilateral mesh may fail with "cell is not orderable", even if there is just a single cell (even when extracted from a unit square quadrilateral mesh using `all_cells` and then fed back in to `make_mesh`). This is a known issue in DOLFIN [[1](https://bitbucket.org/fenics-project/dolfin/issues/997/quad-hex-meshes-need-ordering-check)] [[2](https://bitbucket.org/fenics-project/dolfin/issues/1089/quadrilateral-mesh-reordering-error)]; it should be fixed in DOLFINx, where the support for quadrilateral meshes has been improved significantly, but we do not support the next-gen FEniCS yet.
+     - `renumber_nodes_by_distance` [**2D**]
+       - As it says on the tin. May specify a custom origin; default is `(min(x), min(y))`.
+       - Operates on the `extrafeathers` internal format.
+
 
 ### Plotting
 
    - `mpiplot` [**2D**]
      - Plot the *whole* solution in the root process while running in parallel. For quick on-the-fly visualization.
-       - The full triangulation is automatically pieced together from all the MPI processes. For implementation simplicity, the visualization always uses linear triangle elements; other degrees are interpolated onto `P1`.
-       - P2/P3 data is automatically converted onto once-refined P1, to display it at full nodal resolution.
-     - As of v0.3.0, scalar field on a triangle mesh only.
+       - The full mesh and function value data is automatically pieced together from all the MPI processes.
+       - Degree-2 and degree-3 data is automatically converted onto a once-refined degree-1 mesh, to display it at full nodal resolution.
+     - P1, P2, P3, Q1, Q2, Q3, DP1, DP2, DP2, DQ1, DQ2 and DQ3 elements supported.
+     - As of v0.4.0, scalar field only.
        - Note you can take a component of a vector or tensor field (`.sub(j)`), or interpolate an expression onto your function space, as usual. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) for examples.
      - Meant for debugging and visualizing simulation progress, especially for a lightweight MPI job that runs locally on a laptop (but still much faster with 4 cores rather than 1). Allows near-realtime visual feedback, and avoids the need to start [ParaView](https://www.paraview.org/) midway through the computation just to quickly check if the solver is still computing and if the results look reasonable.
      - Can optionally display the mesh and its MPI partitioning on top of the function data. See also `mpiplot_mesh` to do that separately.
    - `mpiplot_mesh` [**2D**]
      - Plot the *whole* mesh in the root process while running in parallel.
+     - P1, P2, P3, Q1, Q2, Q3, DP1, DP2, DP2, DQ1, DQ2 and DQ3 elements supported.
      - Can optionally color-code the edges by MPI partitioning. Use `matplotlib.pyplot.legend` to see which is which.
-     - Can optionally display the P1 visualization edges (generated by `extrafeathers`) of a P2 or P3 `FunctionSpace` (in a fainter color, to distinguish them from element edges).
+     - Can optionally display the visualization edges (generated by `extrafeathers`) of a degree-2 or degree-3 `FunctionSpace` (in a fainter color, to distinguish them from element edges).
    - `plot_facet_meshfunction` [**2D**] [**serial only**]
      - Visualize whether the boundaries of a 2D mesh have been tagged as expected. Debug tool, for use when generating and importing meshes. This functionality is oddly missing from `dolfin.plot`.
      - See [`demo.import_gmsh`](demo/import_gmsh.py) for an example.
    - Low-level utilities:
      - `as_mpl_triangulation` [**2D**].
-       - Represent the mesh of a scalar `dolfin.FunctionSpace` (or a component `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`) as a `matplotlib.tri.Triangulation`.
-       - Has flags to refine P2/P3 onto P1, and to represent the whole mesh or just the MPI-local part.
+       - Represent the mesh of a scalar `dolfin.FunctionSpace` (or a component `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`) in Matplotlib format.
+       - Has flags to refine degree-2 and degree-3 onto degree-1, and to represent the whole mesh or just the MPI-local part.
      - `pause`
        - Non-focus-stealing pause helper for prodding Matplotlib into updating the figure window, courtesy of [this StackOverflow post](https://stackoverflow.com/a/45734500).
 
