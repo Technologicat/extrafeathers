@@ -1260,6 +1260,7 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
 
     return prune(WtoV), prune(VtoW)
 
+# TODO: Best format for algorithm toggles? The `continuous` flags are a bit confusing.
 def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[float]], continuousV: bool,
                     cellsW: np.array, nodesW_dict: typing.Dict[int, typing.List[float]], continuousW: bool):
     """Low-level implementation for `map_coincident`, working with data in the `all_cells` format.
