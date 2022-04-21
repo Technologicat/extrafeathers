@@ -36,7 +36,9 @@ N = 8
 arg = sys.argv[1] if len(sys.argv) > 1 else "P2"
 family, degree = arg[:-1], int(arg[-1])
 
-celltype = dolfin.CellType.Type.quadrilateral if "Q" in family else dolfin.CellType.Type.triangle
+# S elements are not supported by FFC (at least in FEniCS 2019), but let's be correct here.
+# Note that `extrafeathers.plotmagic` does not (yet) support S elements, either.
+celltype = dolfin.CellType.Type.quadrilateral if ("Q" in family or "S" in family) else dolfin.CellType.Type.triangle
 mesh = dolfin.UnitSquareMesh.create(N, N, celltype)
 V = dolfin.FunctionSpace(mesh, family, degree)
 

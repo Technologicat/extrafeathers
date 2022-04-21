@@ -74,7 +74,8 @@ def mpl_scalefont(factor: float = 2.0):
 arg = sys.argv[1] if len(sys.argv) > 1 else "P3"
 family, degree = arg[:-1], int(arg[-1])
 
-celltype = dolfin.CellType.Type.quadrilateral if "Q" in family else dolfin.CellType.Type.triangle
+# S elements are not supported by FFC (at least in FEniCS 2019), but let's be correct here.
+celltype = dolfin.CellType.Type.quadrilateral if ("Q" in family or "S" in family) else dolfin.CellType.Type.triangle
 mesh = dolfin.UnitSquareMesh.create(2, 2, celltype)
 V = dolfin.FunctionSpace(mesh, family, degree)
 
