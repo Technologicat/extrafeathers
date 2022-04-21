@@ -964,12 +964,13 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
                                    dolfin.TensorFunctionSpace],
                    W: typing.Union[dolfin.FunctionSpace,
                                    dolfin.VectorFunctionSpace,
-                                   dolfin.TensorFunctionSpace],
-                   validate: typing.Optional[str] = None) -> typing.Tuple[typing.Dict[int, typing.Union[int,
-                                                                                                        typing.FrozenSet]],
-                                                                          typing.Dict[int,
-                                                                                      typing.Union[int,
-                                                                                                   typing.FrozenSet]]]:
+                                   dolfin.TensorFunctionSpace], *,
+                   validate: typing.Optional[str] = None,
+                   tol: float = 1e-8) -> typing.Tuple[typing.Dict[int, typing.Union[int,
+                                                                                    typing.FrozenSet]],
+                                                      typing.Dict[int,
+                                                                  typing.Union[int,
+                                                                               typing.FrozenSet]]]:
     r"""Build global DOF map of coincident nodes between spaces `V` and `W`.
 
     The main use case is to export degree-2 or degree-3 data (`V`) in MPI mode at
@@ -1114,6 +1115,9 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
 
             Example: `V` is DP1, and `W` is P1 on the same mesh.
 
+   `tol`: Squared-distance tolerance to consider nodes coincident.
+          Can be set to zero to accept exact matches only.
+
     Returns the tuple `(WtoV, VtoW)`, where:
         - The global W DOF `k` matches the global V DOF `j = WtoV[k]`, and
         - The global V DOF `j` matches the global W DOF `k = VtoW[j]`.
@@ -1222,7 +1226,8 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
         cellsW, nodesW_dict = all_cells(subW)
 
         subWtosubV, subVtosubW = _map_coincident(cellsV, nodesV_dict, continuousV,
-                                                 cellsW, nodesW_dict, continuousW)
+                                                 cellsW, nodesW_dict, continuousW,
+                                                 tol=tol)
         multiupdate(WtoV, subWtosubV)
         multiupdate(VtoW, subVtosubW)
 
@@ -1262,7 +1267,8 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
 
 # TODO: Best format for algorithm toggles? The `continuous` flags are a bit confusing.
 def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[float]], continuousV: bool,
-                    cellsW: np.array, nodesW_dict: typing.Dict[int, typing.List[float]], continuousW: bool):
+                    cellsW: np.array, nodesW_dict: typing.Dict[int, typing.List[float]], continuousW: bool, *,
+                    tol: float = 1e-8):
     """Low-level implementation for `map_coincident`, working with data in the `all_cells` format.
 
     Must also know whether the spaces `W` and `V` are continuous,
@@ -1276,7 +1282,6 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
 
     Return value is `(WtoV, VtoW)`, where both items are multi-valued mappings.
     """
-    match_tol = 1e-8
     WtoV = {}
     VtoW = {}
 
@@ -1299,7 +1304,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
         treeV = scipy.spatial.cKDTree(data=nodesV)
         for dofW, nodeW in zip(dofsW, nodesW):
             distance, k = treeV.query(nodeW)
-            if distance > match_tol:  # no coincident node on `V`
+            if distance > tol:  # no coincident node on `V`
                 continue
             dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
             maps(WtoV, dofW, dofV)
@@ -1313,7 +1318,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
         treeW = scipy.spatial.cKDTree(data=nodesW)
         for dofV, nodeV in zip(dofsV, nodesV):
             distance, k = treeW.query(nodeV)
-            if distance > match_tol:  # no coincident node on `W`
+            if distance > tol:  # no coincident node on `W`
                 continue
             dofW, nodeW = dofsW[k], nodesW[k]  # noqa: F841, don't need nodeW; just for documentation
             maps(VtoW, dofV, dofW)
@@ -1387,7 +1392,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                 distances, ks = treeV.query(nodeW, k=10,
                                             distance_upper_bound=1e-8)
                 for distance, k in zip(distances, ks):
-                    if distance > match_tol:
+                    if distance > tol:
                         break
                     dofV, nodeV = dofsV[k], nodesV[k]  # noqa: F841, don't need nodeV; just for documentation
                     # Vote for all V cells this V DOF belongs to.
@@ -1418,7 +1423,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                         vtxs = np.array([nodesV[dof_to_row_V[dofV]] for dofV in cellsV[cellV_idx]])
                         midpointsV[cellV_idx] = np.sum(vtxs, axis=0) / len(vtxs)
                     dsq = np.sum((nodeW - midpointsV[cellV_idx])**2)
-                    if dsq > match_tol:
+                    if dsq > tol:
                         continue
                     ballot[cellV_idx] += 1
             if len(ballot) == 0:  # no cell on `V` had nodes coincident with those of this `W` cell
@@ -1454,7 +1459,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                 d = relevant_nodesV - nodeW
                 dsq = np.sum(d**2, axis=1)
                 r = np.argmin(dsq)  # row of relevant nodes array
-                if dsq[r] > match_tol:  # no coincident node on `V`
+                if dsq[r] > tol:  # no coincident node on `V`
                     continue
                 k = rowsV[r]  # row of complete `nodesV` array
 
