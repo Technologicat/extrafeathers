@@ -1409,11 +1409,9 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                     # As long as any edge and interior DOFs are placed symmetrically on the
                     # reference element (as they are for P2/P3/Q2/Q3/DP2/DP3/DQ2/DQ3), this
                     # will give the correct result.
-                    vtxs = [nodesV[dof_to_row_V[dofV]] for dofV in cellsV[cellV_idx]]
-                    xmid = sum([x for x, y in vtxs]) / len(vtxs)
-                    ymid = sum([y for x, y in vtxs]) / len(vtxs)
-                    midpointV = np.array([xmid, ymid])
-                    dsq = sum((nodeW - midpointV)**2)
+                    vtxs = np.array([nodesV[dof_to_row_V[dofV]] for dofV in cellsV[cellV_idx]])
+                    midpointV = np.sum(vtxs, axis=0) / len(vtxs)
+                    dsq = np.sum((nodeW - midpointV)**2)
                     if dsq > match_tol:
                         continue
                     ballot[cellV_idx] += 1

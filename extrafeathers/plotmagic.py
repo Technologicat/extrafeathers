@@ -357,10 +357,8 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         def cell_midpoints(cells, nodes):  # NOTE: averages all DOF coordinates; ideal for degree-1 cells
             midpoints = {}
             for cell_idx, cell in enumerate(cells):
-                vtxs = [nodes[dof] for dof in cell]
-                xmid = sum([x for x, y in vtxs]) / len(vtxs)
-                ymid = sum([y for x, y in vtxs]) / len(vtxs)
-                midpoints[cell_idx] = np.array([xmid, ymid])
+                vtxs = np.array([nodes[dof] for dof in cell])
+                midpoints[cell_idx] = np.sum(vtxs, axis=0) / len(vtxs)
             return midpoints
         # Note we do not need the original cell numbers even in MPI mode (where we could be dealing with just
         # an MPI-local mesh part), because we will generate the function values manually by averaging the
