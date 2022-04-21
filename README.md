@@ -393,7 +393,7 @@ To view **the public API of a given submodule**:
 
 ```python
 import sys
-print(sys.modules["extrafeathers.debug"].__all__)  # for example
+print(sys.modules["extrafeathers.meshmagic"].__all__)  # for example
 ```
 
 If the `__all__` attribute for some submodule is missing, that submodule has no public API.
