@@ -9,6 +9,12 @@ From the top-level directory of the project:
     mpirun -n 2 python -m demo.dofnumbering
     mpirun -n 4 python -m demo.dofnumbering
 
+Element type can also be given:
+
+    python -m demo.dofnumbering Q2
+    mpirun -n 2 python -m demo.dofnumbering Q2
+    mpirun -n 4 python -m demo.dofnumbering Q2
+
 The results present in a visual form how FEnICS aims to maximize
 data locality when numbering DOFs in MPI mode.
 """
@@ -25,12 +31,17 @@ from extrafeathers import plotmagic
 # Set up the mesh
 
 N = 8
-mesh = dolfin.UnitSquareMesh(N, N)
+
+# Take element type from command-line argument if given
+arg = sys.argv[1] if len(sys.argv) > 1 else "P2"
+family, degree = arg[:-1], int(arg[-1])
+
+celltype = dolfin.CellType.Type.quadrilateral if "Q" in family else dolfin.CellType.Type.triangle
+mesh = dolfin.UnitSquareMesh.create(N, N, celltype)
+V = dolfin.FunctionSpace(mesh, family, degree)
 
 # --------------------------------------------------------------------------------
 # Print some stats
-
-V = dolfin.FunctionSpace(mesh, "P", 2)  # try P1, P2 or P3 elements here
 
 # MPI-local, containing global DOF numbers
 # See also:
@@ -58,6 +69,9 @@ print(f"MPI rank {dolfin.MPI.comm_world.rank}: #local {my_total}, #owned {len(my
 # --------------------------------------------------------------------------------
 # Plot
 
+if dolfin.MPI.comm_world.rank == 0:
+    fig, ax = plt.subplots(1, 1, constrained_layout=True, figsize=(8, 8))
+
 # Plot a scalar function whose value is the global DOF number.
 f = dolfin.Function(V)
 f.vector()[:] = my_owned
@@ -69,6 +83,7 @@ if dolfin.MPI.comm_world.rank == 0:
 plotmagic.mpiplot_mesh(V, show_partitioning=True)
 
 if dolfin.MPI.comm_world.rank == 0:
-    plt.title(f"Global DOF number (P{V.ufl_element().degree()} elements)")
+    mpi_str = f"; {dolfin.MPI.comm_world.size} MPI processes" if dolfin.MPI.comm_world.size > 1 else ""
+    plt.title(f"{V.ufl_element().family()} {V.ufl_element().degree()}; {V.dim()} global DOFs on mesh{mpi_str}")
     plt.legend(loc="upper right")  # show the labels for the mesh parts
     plt.show()

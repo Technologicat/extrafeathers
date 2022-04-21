@@ -243,6 +243,7 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         dofs, nodes_array = meshmagic.nodes_to_array(nodes)
         prep.tris = mtri.Triangulation(nodes_array[:, 0], nodes_array[:, 1],
                                        triangles=triangles[:, :3])  # not quite te.tris
+        assert len(prep.tris.x) == V.dim()  # each global DOF has coordinates
     else:  # cell_kind == "quadrilateral":
         # For plotting on quadrilateral meshes, we must bring the function onto `tris`.
         #
@@ -467,8 +468,8 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
 
     # CAUTION: `all_cells`, used by `as_mpl_triangulation`,
     # sorts the nodes by global DOF number; must match the ordering.
-    # FEniCS keeps a contiguous block for DOFs for each MPI process,
-    # and they are sorted by global DOF number, so this is satisfied.
+    # FEniCS keeps a contiguous block of DOF numbers for each MPI process,
+    # and they are kept sorted, so this is satisfied.
     subspace_dofs = np.sort(np.concatenate(dofmaps))
 
     prep = as_mpl_triangulation(V, refine=True)  # this converts to degree 1
@@ -543,9 +544,6 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     v_vec = u.vector().gather_on_zero()
     n_global_dofs = V.dim()
 
-    # TODO: Support plotting functions on quadrilateral meshes
-    #  - The needed data is now in `prep`; see the debug example in `as_mpl_triangulation`.
-
     # TODO: Support plotting dG0 functions
     #  - Use facecolor (may need another copy of `polys`, to keep it independent
     #    of what `mpiplot_mesh` does with the other one)
@@ -570,19 +568,33 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
         # If `V` is a subspace (vector/tensor field component), take only the
         # DOFs that belong to `V`. (For a true scalar space `V`, this is a no-op.)
         v_vec = v_vec[prep.subspace_dofs]
+        assert len(v_vec) == n_global_dofs  # we have a data value at each DOF of the relevant subspace
 
-        assert len(prep.tris.x) == n_global_dofs  # each global DOF has coordinates
-        assert len(v_vec) == n_global_dofs  # we have a data value at each DOF
-        theplot = plt.tricontourf(prep.tris, v_vec, levels=32, **kwargs)
+        if cell_kind == "triangle":
+            vec_vis = v_vec
+        else:  # cell_kind == "quadrilateral":
+            vec_vis = prep.vec_vis
+
+            # vertex values: take from (subspace-relevant slice of) original global DOF vector
+            vec_vis[prep.tridofs_vtx] = v_vec[prep.qdofs_vtx]
+
+            # cell midpoint values: emulate bilinear interpolation
+            for cell_idx, cell in enumerate(prep.cellsvtx):
+                tridof_center = prep.midtotri[cell_idx]
+                qdofs_vtx = np.array(cell, dtype=np.uint64)  # vertex DOFs only (for bilerp)
+                mean_value = np.sum(v_vec[qdofs_vtx]) / len(qdofs_vtx)
+                vec_vis[tridof_center] = mean_value
+
+        theplot = plt.tricontourf(prep.tris, vec_vis, levels=32, **kwargs)
 
         # # Alternative visualization style.
-        # theplot = plt.tripcolor(prep.tris, v_vec, shading="gouraud", **kwargs)
-        # theplot = plt.tripcolor(prep.tris, v_vec, shading="flat", **kwargs)
+        # theplot = plt.tripcolor(prep.tris, vec_vis, shading="gouraud", **kwargs)
+        # theplot = plt.tripcolor(prep.tris, vec_vis, shading="flat", **kwargs)
 
         # # Another alternative visualization style.
         # # https://matplotlib.org/stable/gallery/mplot3d/trisurf3d.html
         # ax = plt.figure().add_subplot(projection="3d")
-        # theplot = ax.plot_trisurf(xs, ys, v_vec)
+        # theplot = ax.plot_trisurf(xs, ys, vec_vis)
 
     if show_mesh:
         mpiplot_mesh(V,
