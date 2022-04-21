@@ -1358,6 +1358,7 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
 
         # Match one W cell at a time. By assumption, it will be contained in exactly one V cell.
         treeV = scipy.spatial.cKDTree(data=nodesV)
+        midpointsV = {}
         for cellW in cellsW:
             # Find the correct V cell by voting.
             #
@@ -1409,9 +1410,13 @@ def _map_coincident(cellsV: np.array, nodesV_dict: typing.Dict[int, typing.List[
                     # As long as any edge and interior DOFs are placed symmetrically on the
                     # reference element (as they are for P2/P3/Q2/Q3/DP2/DP3/DQ2/DQ3), this
                     # will give the correct result.
-                    vtxs = np.array([nodesV[dof_to_row_V[dofV]] for dofV in cellsV[cellV_idx]])
-                    midpointV = np.sum(vtxs, axis=0) / len(vtxs)
-                    dsq = np.sum((nodeW - midpointV)**2)
+                    #
+                    # Use a cache for a reasonable speedup (typically, the same cell will be
+                    # looked up many times).
+                    if cellV_idx not in midpointsV:
+                        vtxs = np.array([nodesV[dof_to_row_V[dofV]] for dofV in cellsV[cellV_idx]])
+                        midpointsV[cellV_idx] = np.sum(vtxs, axis=0) / len(vtxs)
+                    dsq = np.sum((nodeW - midpointsV[cellV_idx])**2)
                     if dsq > match_tol:
                         continue
                     ballot[cellV_idx] += 1
