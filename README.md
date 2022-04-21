@@ -59,7 +59,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
    - `prepare_linear_export` [**2D**]
      - Exactly as it says on the tin, for P2 and P3 input data. Allows full nodal resolution export of P2 and P3 data into a vertex-based format (represented as refined P1).
-     - That is, given a P2 or P3 function space, prepare a P1 `dolfin.Function` on an appropriately refined mesh, and a DOF mapping that can be used to interpolate DOFs from the original space onto the DOFs of the P1 space.
+     - That is, given a P2, P3, Q2 or Q3 function space, prepare a degree-1 `dolfin.Function` on an appropriately refined mesh, and a DOF mapping that can be used to interpolate DOFs from the original space onto the DOFs of the degree-1 space.
      - High-level function built on `refine_for_export` and `map_coincident`.
      - See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
    - `refine_for_export` [**2D**], `map_coincident` [**2D**, **3D**]
