@@ -191,6 +191,23 @@ mpirun -n 2 python -m demo.dofnumbering
 mpirun python -m demo.dofnumbering
 ```
 
+Can also specify the element type:
+
+```bash
+python -m demo.dofnumbering P1
+python -m demo.dofnumbering P2
+python -m demo.dofnumbering P3
+python -m demo.dofnumbering Q1
+python -m demo.dofnumbering Q2
+python -m demo.dofnumbering Q3
+python -m demo.dofnumbering DP1
+python -m demo.dofnumbering DP2
+python -m demo.dofnumbering DP3
+python -m demo.dofnumbering DQ1
+python -m demo.dofnumbering DQ2
+python -m demo.dofnumbering DQ3
+```
+
 ![DOF numbering demo output](img/dofnumbering.png)
 
 *The strong lines are element edges; the faint lines indicate the automatically generated subdivisions for visualization of the P2 function as a once-refined P1 function. Each P2 triangle is split into four P1 triangles for visualization.*
@@ -207,9 +224,15 @@ Can also specify the element type:
 python -m demo.refelement P1
 python -m demo.refelement P2
 python -m demo.refelement P3
+python -m demo.refelement Q1
+python -m demo.refelement Q2
+python -m demo.refelement Q3
 python -m demo.refelement DP1
 python -m demo.refelement DP2
 python -m demo.refelement DP3
+python -m demo.refelement DQ1
+python -m demo.refelement DQ2
+python -m demo.refelement DQ3
 ```
 
 Any of these works also in MPI mode, then color-coding the MPI partitioning by edge color. MPI-local node numbers (for the global DOFs) are **not** shown.
@@ -253,7 +276,7 @@ mpirun python -m demo.poisson_dg
 
 ![Poisson dG demo output](img/poisson_dg.png)
 
-*Poisson equation with dG(2) elements. Note the visualization of the elements, and MPI mesh partitioning (4 processes: blue, orange, green, red, in that order).*
+*Poisson equation with dG(2) (a.k.a. DP2) elements. Note the visualization of the elements, and MPI mesh partitioning (4 processes: blue, orange, green, red, in that order).*
 
 
 ### Gmsh mesh import
@@ -459,13 +482,13 @@ On Ubuntu-based systems,
 sudo apt install libhdf5-dev libopenmpi-dev fenics
 ```
 
-should install them. This was developed using `libhdf5-103`, `openmpi 4.0.3`, and `fenics 2019.2.0.5`.
+should install them. `extrafeathers` was developed using `libhdf5-103`, `openmpi 4.0.3`, and `fenics 2019.2.0.5`.
 
 If `h5py` fails to install, or crashes when trying to read/write HDF5 files, try recompiling it against the `libhdf5` headers you have; see the [build instructions](https://docs.h5py.org/en/stable/build.html#source-installation).
 
-If you want to modify the `.geo` file and generate a new mesh for the Navier-Stokes demo, you'll need [Gmsh](https://gmsh.info/).
+If you want to modify the `.geo` files and generate new meshes for some of the demos, you'll need [Gmsh](https://gmsh.info/).
 
-Additionally, [ParaView](https://www.paraview.org/) may be nice for visualizing the XDMF output files from FEniCS.
+Additionally, [ParaView](https://www.paraview.org/) is useful for visualizing the XDMF output files from FEniCS.
 
 
 ## Install & uninstall
