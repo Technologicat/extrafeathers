@@ -440,8 +440,8 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
     element = V.ufl_element()
     family = str(element.family())
     degree = element.degree()
-    if degree not in (0, 1, 2, 3) or family not in ("Lagrange",
-                                                    "Discontinuous Lagrange",
+    if degree not in (0, 1, 2, 3) or family not in ("Lagrange", "P",
+                                                    "Discontinuous Lagrange", "DP",
                                                     "Q",
                                                     "DQ"):
         raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{element.family()}' with degree {element.degree()}")
@@ -516,8 +516,8 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     element = V.ufl_element()
     family = str(element.family())
     degree = element.degree()
-    if degree not in (0, 1, 2, 3) or family not in ("Lagrange",
-                                                    "Discontinuous Lagrange",
+    if degree not in (0, 1, 2, 3) or family not in ("Lagrange", "P",
+                                                    "Discontinuous Lagrange", "DP",
                                                     "Q",
                                                     "DQ"):
         raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{element.family()}' with degree {element.degree()}")

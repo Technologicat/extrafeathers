@@ -869,8 +869,8 @@ def prepare_linear_export(V: typing.Union[dolfin.FunctionSpace,
     family = str(element.family())
     degree = element.degree()
     tensor_rank = len(element.value_shape())
-    if degree < 2 or family not in ("Lagrange",
-                                    "Discontinuous Lagrange",
+    if degree < 2 or family not in ("Lagrange", "P",
+                                    "Discontinuous Lagrange", "DP",
                                     "Q",
                                     "DQ"):
         raise ValueError(f"Expected `V` to use a P2, P3, DP2, DP3, Q2, Q3, DQ2, or DQ3 element, got '{element.family()}' with degree {element.degree()}")
@@ -1205,17 +1205,17 @@ def map_coincident(V: typing.Union[dolfin.FunctionSpace,
     VtoW = {}
     for subV, subW in spaces:
         familyV = str(subV.ufl_element().family())
-        if familyV in ("Lagrange", "Q"):
+        if familyV in ("Lagrange", "P", "Q"):
             continuousV = True
-        elif familyV in ("Discontinuous Lagrange", "DQ"):
+        elif familyV in ("Discontinuous Lagrange", "DP", "DQ"):
             continuousV = False
         else:
             raise ValueError(f"Unsupported element family '{familyV}'")
 
         familyW = str(subW.ufl_element().family())
-        if familyW in ("Lagrange", "Q"):
+        if familyW in ("Lagrange", "P", "Q"):
             continuousW = True
-        elif familyW in ("Discontinuous Lagrange", "DQ"):
+        elif familyW in ("Discontinuous Lagrange", "DP", "DQ"):
             continuousW = False
         else:
             raise ValueError(f"Unsupported element family '{familyW}'")
@@ -1558,8 +1558,9 @@ def map_dG0(V: typing.Union[dolfin.FunctionSpace,
     seenV = set()
     seenW = set()
     for subV, subW in spaces:
-        if not (str(subW.ufl_element().family()) == "Discontinuous Lagrange" and
-                subW.ufl_element().degree() == 0):
+        if (subW.ufl_element().degree() != 0 or
+                str(subW.ufl_element().family()) not in ("Discontinuous Lagrange",
+                                                         "DP", "DQ")):
             raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {subW.ufl_element().family()} space with degree {subW.ufl_element().degree()}")
 
         # The MPI partitionings of V and W are in general different, so to be
@@ -1713,8 +1714,9 @@ def patch_average(f: dolfin.Function,
     if mode not in ("project", "interpolate"):
         raise ValueError(f"Expected `mode` to be one of 'project', 'interpolate'; got {mode}")
     if W:
-        if not (str(W.ufl_element().family()) == "Discontinuous Lagrange" and
-                W.ufl_element().degree() == 0):
+        if (W.ufl_element().degree() != 0 or
+             str(W.ufl_element().family()) not in ("Discontinuous Lagrange",
+                                                   "DP", "DQ")):
             raise ValueError(f"Expected `W` to be a discontinuous Lagrange space with degree 0; got a {W.ufl_element().family()} space with degree {W.ufl_element().degree()}")
     if any((W, VtoW, Wtocell, cell_volume)) and not all((W, VtoW, Wtocell, cell_volume)):
         raise ValueError(f"When the optional arguments are used, all of them must be provided. Got W = {W}, VtoW = {VtoW}, Wtocell = {Wtocell}, cell_volume = {cell_volume}.")
