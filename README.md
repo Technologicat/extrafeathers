@@ -150,6 +150,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - `as_mpl_triangulation` [**2D**].
        - Represent the mesh of a scalar `dolfin.FunctionSpace` (or a component `.sub(j)` of a `VectorFunctionSpace` or `TensorFunctionSpace`) in Matplotlib format.
        - Has flags to refine degree-2 and degree-3 onto degree-1, and to represent the whole mesh or just the MPI-local part.
+       - Produces both a `matplotlib.tri.Triangulation` (for function interpolation) as well as a `matplotlib.collections.PolyCollection` (element edges); and in the case of a quadrilateral mesh, some auxiliary data that can be used in mapping a function on the quads onto the triangulation (`mpiplot` uses this).
      - `pause`
        - Non-focus-stealing pause helper for prodding Matplotlib into updating the figure window, courtesy of [this StackOverflow post](https://stackoverflow.com/a/45734500).
 
