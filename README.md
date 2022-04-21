@@ -133,7 +133,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Plot the *whole* solution in the root process while running in parallel. For quick on-the-fly visualization.
        - The full mesh and function value data is automatically pieced together from all the MPI processes.
        - Degree-2 and degree-3 data is automatically converted onto a once-refined degree-1 mesh, to display it at full nodal resolution.
-     - P1, P2, P3, Q1, Q2, Q3, DP1, DP2, DP2, DQ1, DQ2 and DQ3 elements supported.
+     - P1, P2, P3, Q1, Q2, Q3, DP1, DP2, DP3, DQ1, DQ2 and DQ3 elements supported.
      - As of v0.4.0, scalar field only.
        - Note you can take a component of a vector or tensor field (`.sub(j)`), or interpolate an expression onto your function space, as usual. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) for examples.
      - Meant for debugging and visualizing simulation progress, especially for a lightweight MPI job that runs locally on a laptop (but still much faster with 4 cores rather than 1). Allows near-realtime visual feedback, and avoids the need to start [ParaView](https://www.paraview.org/) midway through the computation just to quickly check if the solver is still computing and if the results look reasonable.
