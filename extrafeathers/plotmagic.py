@@ -588,9 +588,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
         # theplot = ax.plot_trisurf(xs, ys, vec_vis)
 
     if show_mesh:
-        mpiplot_mesh(V,
-                     show_partitioning=show_partitioning,
-                     prep=prep)
+        mpiplot_mesh(V, show_partitioning=show_partitioning, prep=prep)
 
     return theplot
 
