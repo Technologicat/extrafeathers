@@ -651,16 +651,31 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
 
     def element_edges_color(mpi_rank):
         return main_color if not show_partitioning else colors40[mpi_rank % len(colors40)]
+    def vis_edges_color(mpi_rank):
+        return aux_color if not show_partitioning else colors20[mpi_rank % len(colors20)]
     def all_edges_color(mpi_rank):
         if V.ufl_element().degree() > 1:
             return aux_color if not show_partitioning else colors20[mpi_rank % len(colors20)]
         else:
             return main_color if not show_partitioning else colors40[mpi_rank % len(colors40)]
 
+    # TODO: The confusing structure here comes from us wanting to re-use the `prep` from `mpiplot`;
+    # TODO: this is why the case of degree-1 element edges is grouped with vis edges.
+    #
+    # Note the element edges of higher-degree elements must be drawn *after* the vis edges
+    # so that they appear on top in the visualization (this affects the color even if translucent).
+
     # vis cell edges; element edges for degree 1
     if show_aux or V.ufl_element().degree() <= 1:
         if dolfin.MPI.comm_world.rank == 0:
             all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
+            # vis triangulation edges
+            if prep.cell_kind == "quadrilateral":
+                for mpi_rank, tris in enumerate(all_tris):
+                    if not tris:
+                        continue
+                    plt.triplot(tris, linewidth=all_edges_width, color=vis_edges_color(mpi_rank))
+            # vis cell edges
             for mpi_rank, polys in enumerate(all_polys):
                 if not polys:
                     continue
@@ -668,16 +683,11 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 polys.set_edgecolor(all_edges_color(mpi_rank))
                 polys.set_facecolor('none')
                 ax.add_collection(polys)
-            # vis triangulation edges
-            if prep.cell_kind == "quadrilateral":
-                for mpi_rank, tris in enumerate(all_tris):
-                    if not tris:
-                        continue
-                    plt.triplot(tris, linewidth=all_edges_width, color=all_edges_color(mpi_rank))
 
     # element edges for higher degrees
     if V.ufl_element().degree() > 1:
         if show_partitioning:
+            # Here we always need our own `prep` because we don't want to refine.
             prep = as_mpl_triangulation(V, mpi_global=False, refine=False)
             my_polys = prep.polys
             all_polys = dolfin.MPI.comm_world.gather(my_polys, root=0)
@@ -692,6 +702,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 polys.set_edgecolor(element_edges_color(mpi_rank))
                 polys.set_facecolor('none')
                 ax.add_collection(polys)
+
     # Each legend entry from `triplot` is doubled for some reason,
     # so plot a dummy point (at NaN so it won't be drawn) with
     # each of the line colors and label them.
