@@ -703,7 +703,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             # vis triangulation edges
             if prep.cell_kind == "quadrilateral":
                 plt.triplot(prep.tris, linewidth=all_edges_width,
-                            color=all_edges_colors[k % len(all_edges_colors)])
+                            color=all_edges_color)
     if V.ufl_element().degree() > 1:
         # element edges for higher degrees
         prep = as_mpl_triangulation(V, refine=False)
