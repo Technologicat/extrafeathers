@@ -12,6 +12,7 @@
 - Add `quad_to_tri` to convert a quad mesh to a triangle mesh in a crossed-diagonal format, by adding a node at each cell center and then replacing each quad by four triangles. Used by `mpiplot` to make Matplotlib interpolate FEM functions on quadrilaterals.
 - Add `renumber_nodes_by_distance`.
 - Add `collapse_node_numbering`. Like `dolfin.FunctionSpace.collapse`, but for the `extrafeathers` internal format (`cells` list and `nodes` dict, as produced by `all_cells`).
+- Add [interptest demo](demo/interptest.py), to show interpolation of a bilinear function on the unit square on different element types.
 
 **Changed**:
 
