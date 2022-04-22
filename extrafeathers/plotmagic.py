@@ -673,7 +673,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                     if not polys:
                         continue
                     polys.set_linewidth(2.0)
-                    polys.set_edgecolor(all_edges_colors[k % len(colors40)])
+                    polys.set_edgecolor(all_edges_colors[k % len(all_edges_colors)])
                     polys.set_facecolor('none')
                     ax.add_collection(polys)
         # Each legend entry from `triplot` is doubled for some reason,
