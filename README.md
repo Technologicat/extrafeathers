@@ -2,7 +2,7 @@
 <img src="img/extrafeathers-logo.png" alt="Extrafeathers"/>
 </p>
 
-**Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2**, **P3**, **Q1**, **Q2**, **Q3**, **DP1**, **DP2**, **DP3**, **DQ1**, **DQ2**, and **DQ3** spaces. Mesh import and closely related utilities run only serially. Most of our utilities do support 3D meshes, but this is currently not a priority.
+**Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2**, **P3**, **Q1**, **Q2**, **Q3**, **DP1**, **DP2**, **DP3**, **DQ1**, **DQ2**, and **DQ3** spaces. Each routine aims to be as general as is reasonable, considering what it does. Most of our utilities do support 3D meshes, but this is currently not a priority. Mesh import and closely related utilities run only serially.
 
 Usage examples can be found in the [`demo/`](demo/) subfolder.
 
