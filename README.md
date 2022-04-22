@@ -2,7 +2,7 @@
 <img src="img/extrafeathers-logo.png" alt="Extrafeathers"/>
 </p>
 
-**Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2**, **P3**, **Q1**, **Q2**, **Q3**, **DP1**, **DP2**, **DP3**, **DQ1**, **DQ2**, and **DQ3** spaces. Each routine aims to be as general as is reasonable, considering what it does. Most of our utilities do support 3D meshes, but this is currently not a priority. Mesh import and closely related utilities run only serially.
+**Agility** and **ease-of-use** batteries for the Python layer of the [FEniCS](https://fenicsproject.org/) finite element framework. The focus is on **MPI-enabled 2D** on **P1**, **P2**, **P3**, **Q1**, **Q2**, **Q3**, **DP1**, **DP2**, **DP3**, **DQ1**, **DQ2**, and **DQ3** spaces. Each routine aims to be as general as is reasonable. Some of our utilities do support 3D meshes, but this is currently not a priority. Mesh import and closely related utilities run only serially.
 
 Usage examples can be found in the [`demo/`](demo/) subfolder.
 
@@ -58,7 +58,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
      - Useful for stabilization methods in advection-dominated problems, where `h` typically appears in the stabilization terms.
      - See the [`import_gmsh`](demo/import_gmsh.py) demo for an example.
    - `prepare_linear_export` [**2D**]
-     - Exactly as it says on the tin, for P2, P3, Q2, Q3, DP2, DP3, DQ2, DQ3 input data. Allows full nodal resolution export of degree-2 and degree-3 data into a vertex-based format (represented as refined degree-1 data).
+     - Exactly as it says on the tin, for P2, P3, Q2, Q3, DP2, DP3, DQ2, or DQ3 input data. Allows full nodal resolution export of degree-2 and degree-3 data into a vertex-based format (represented as refined degree-1 data).
      - That is, given a P2, P3, Q2, Q3, DP2, DP3, DQ2, or DQ3 function space, prepare a degree-1 `dolfin.Function` on an appropriately refined mesh, and a DOF mapping that can be used to interpolate DOFs from the original space onto the DOFs of the degree-1 space.
      - High-level function built on `refine_for_export` and `map_coincident`.
      - See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
