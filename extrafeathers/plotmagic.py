@@ -674,7 +674,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 for mpi_rank, tris in enumerate(all_tris):
                     if not tris:
                         continue
-                    plt.triplot(tris, linewidth=all_edges_width, color=vis_edges_color(mpi_rank))
+                    plt.triplot(tris, linewidth=1.0, color=vis_edges_color(mpi_rank))
             # vis cell edges
             for mpi_rank, polys in enumerate(all_polys):
                 if not polys:
