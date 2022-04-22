@@ -84,8 +84,12 @@ xdmffile_u.write(u, 0)  # (field, time)
 # Visualize
 if my_rank == 0:
     print("Plotting.")
-theplot = plotmagic.mpiplot(u)  # must run in all MPI processes to gather the data
-if my_rank == 0:
     import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(1, 1, constrained_layout=True, figsize=(8, 8))
+theplot = plotmagic.mpiplot(u, show_mesh=True, show_partitioning=True)  # must run in all MPI processes to gather the data
+if my_rank == 0:
     plt.colorbar(theplot)
+    plt.legend(loc="lower left")  # show the labels for the mesh parts
+    plt.axis("equal")
+    plt.title(f"Poisson with P{V.ufl_element().degree()} elements")
     plt.show()

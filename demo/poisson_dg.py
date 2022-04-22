@@ -197,8 +197,11 @@ xdmffile_u.write(u_, 0)  # (field, time)
 
 if MPI.comm_world.rank == 0:
     print("Plotting.")
+    fig, ax = plt.subplots(1, 1, constrained_layout=True, figsize=(8, 8))
 theplot = extrafeathers.mpiplot(u_, show_mesh=True, show_partitioning=True)
 if MPI.comm_world.rank == 0:
     plt.colorbar(theplot)
+    plt.legend(loc="upper right")  # show the labels for the mesh parts
+    plt.axis("equal")
     plt.title(f"Poisson with dG({V.ufl_element().degree()}) + SIPG")
     plt.show()
