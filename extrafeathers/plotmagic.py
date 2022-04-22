@@ -232,6 +232,7 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
             else:
                 raise NotImplementedError(f"Expected degree 1, 2 or 3; got {degree}")
     prep = env()
+    prep.cell_kind = cell_kind
     prep.polys = mcoll.PolyCollection(vertices)
 
     # Degree 1 or higher function visualization needs a triangulation for
@@ -420,10 +421,8 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
     The return value is an `unpythonic.env.env`. Basically, it is the return value
     from `as_mpl_triangulation`, with the dofmap analysis added.
 
-      - The return value can be passed into `mpiplot` as the `prep` argument.
-
-      - The `prep.polys` attribute can also be passed into `mpiplot_mesh` as the
-        `_polys` argument.
+    The return value can be passed into `mpiplot` or `mpiplot_mesh` as the
+    `prep` argument.
 
     The return value remains valid for any function on the same space `V` and the
     same mesh. (Moving the mesh nodes invalidates it. Not checked; be careful.)
@@ -587,7 +586,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     if show_mesh:
         mpiplot_mesh(V,
                      show_partitioning=show_partitioning,
-                     _polys=prep.polys)
+                     prep=prep)
 
     return theplot
 
@@ -597,7 +596,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                  aux_color: str = "#80808020",
                  show_aux: bool = True,
                  show_partitioning: bool = False,
-                 _polys=None) -> typing.Optional[typing.Any]:
+                 prep=None) -> typing.Optional[typing.Any]:
     """Plot the mesh of a `FunctionSpace`.
 
     2D meshes only.
@@ -615,11 +614,11 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                          to show which is which.
     `kwargs`: passed through to `matplotlib.pyplot.triplot`.
 
-    `_polys` allows skipping the expensive auto-generation of a
+    `prep` allows skipping the expensive auto-generation of a
     Matplotlib `PolyCollection` of the mesh edges, in case you already
      happen to have one. It is only used when `show_partitioning=False`.
     `mpiplot` uses this internally to share its `prep`. If you want to
-    generate a `polys` yourself, see `as_mpl_triangulation`.
+    generate a `prep` yourself, see `mpiplot_prepare`.
 
     If `show_partitioning=False`:
         In the root process (MPI rank 0), returns the `PolyCollection` object
@@ -638,6 +637,9 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
         prep = as_mpl_triangulation(V, mpi_global=False, refine=True)
         my_polys = prep.polys
         all_polys = dolfin.MPI.comm_world.gather(my_polys, root=0)
+        if prep.cell_kind == "quadrilateral":
+            my_tris = prep.tris
+            all_tris = dolfin.MPI.comm_world.gather(my_tris, root=0)
         if show_aux or V.ufl_element().degree() <= 1:
             # all edges
             if dolfin.MPI.comm_world.rank == 0:
@@ -650,6 +652,13 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                     polys.set_edgecolor(all_edges_colors[k % len(all_edges_colors)])
                     polys.set_facecolor('none')
                     ax.add_collection(polys)
+                # vis triangulation edges
+                if prep.cell_kind == "quadrilateral":
+                    for k, tris in enumerate(all_tris):
+                        if not tris:
+                            continue
+                        plt.triplot(tris, linewidth=all_edges_width,
+                                    color=all_edges_colors[k % len(all_edges_colors)])
         if V.ufl_element().degree() > 1:
             # element edges for higher degrees
             prep = as_mpl_triangulation(V, mpi_global=False, refine=False)
@@ -673,11 +682,9 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
         return
 
     # single color for all MPI partitions
-    if _polys:  # TODO: doesn't interact with `show_partitioning`
-        polys = _polys
-    else:
+    if not prep:  # TODO: doesn't interact with `show_partitioning`
         prep = as_mpl_triangulation(V, refine=True)
-        polys = prep.polys
+    polys = prep.polys
     main_plot = None
     if show_aux or V.ufl_element().degree() <= 1:
         # all edges
@@ -689,6 +696,10 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             polys.set_facecolor('none')
             ax.add_collection(polys)
             main_plot = polys
+            # vis triangulation edges
+            if prep.cell_kind == "quadrilateral":
+                plt.triplot(prep.tris, linewidth=all_edges_width,
+                            color=all_edges_colors[k % len(all_edges_colors)])
     if V.ufl_element().degree() > 1:
         # element edges for higher degrees
         prep = as_mpl_triangulation(V, refine=False)
