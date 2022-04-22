@@ -54,9 +54,12 @@ bilerp = dolfin.Expression("""(d0 * (1.0 - x[0]) * (1.0 - x[1]) +
                            d0=data[0], d1=data[1], d2=data[2], d3=data[3],
                            degree=2)
 
-cases = [("P", dolfin.UnitSquareMesh(N, N)),
-         ("P", dolfin.UnitSquareMesh(N, N, "crossed")),
-         ("Q", dolfin.UnitSquareMesh.create(N, N, dolfin.CellType.Type.quadrilateral))]
+cases = [(f"{N}×{N} P{degree} (right diagonals)", "P",
+          dolfin.UnitSquareMesh(N, N)),
+         (f"{N}×{N} P{degree} (crossed diagonals)", "P",
+          dolfin.UnitSquareMesh(N, N, "crossed")),
+         (f"{N}×{N} Q{degree} (plotted as tri)", "Q",
+          dolfin.UnitSquareMesh.create(N, N, dolfin.CellType.Type.quadrilateral))]
 
 if dolfin.MPI.comm_world.rank == 0:
     fig, ax = plt.subplots(2, 2, constrained_layout=True, figsize=(8, 8))
@@ -65,7 +68,7 @@ if dolfin.MPI.comm_world.rank == 0:
 else:
     ia = iter(range(4))
 
-for ((family, mesh), a) in zip(cases, ia):
+for ((title, family, mesh), a) in zip(cases, ia):
     if dolfin.MPI.comm_world.rank == 0:
         plt.sca(a)
     V = dolfin.FunctionSpace(mesh, family, degree)
@@ -75,11 +78,12 @@ for ((family, mesh), a) in zip(cases, ia):
     if dolfin.MPI.comm_world.rank == 0:
         plt.colorbar(theplot)
         plt.axis("equal")
-        if family == "Q":
-            plt.triplot(prep.tris, color="#80808040")
+        # if family == "Q":
+        #     plt.triplot(prep.tris, color="#80808040")
     plotmagic.mpiplot_mesh(V, show_partitioning=True)
     if dolfin.MPI.comm_world.rank == 0:
         plt.legend(loc="upper right")  # show the labels for the mesh parts
+        plt.title(title)
 
 # exact
 if dolfin.MPI.comm_world.rank == 0:
@@ -93,6 +97,8 @@ if dolfin.MPI.comm_world.rank == 0:
     theplot = plt.contourf(X, Y, Z, levels=32)
     plt.colorbar(theplot)
     plt.axis("equal")
+    plt.title("Exact")
 
 if dolfin.MPI.comm_world.rank == 0:
+    plt.suptitle("Interpolation using different elements")
     plt.show()
