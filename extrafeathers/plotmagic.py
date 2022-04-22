@@ -668,14 +668,14 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     # vis cell edges; element edges for degree 1
     if show_aux or V.ufl_element().degree() <= 1:
         if dolfin.MPI.comm_world.rank == 0:
-            all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
             # vis triangulation edges
             if prep.cell_kind == "quadrilateral":
                 for mpi_rank, tris in enumerate(all_tris):
                     if not tris:
                         continue
                     plt.triplot(tris, linewidth=1.0, color=vis_edges_color(mpi_rank))
-            # vis cell edges
+            # vis cell edges (or degree-1 element edges)
+            all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
             for mpi_rank, polys in enumerate(all_polys):
                 if not polys:
                     continue
