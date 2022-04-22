@@ -54,11 +54,11 @@ bilerp = dolfin.Expression("""(d0 * (1.0 - x[0]) * (1.0 - x[1]) +
                            d0=data[0], d1=data[1], d2=data[2], d3=data[3],
                            degree=2)
 
-cases = [(f"{N}×{N} P{degree} (right diagonals)", "P",
+cases = [(f"{N}×{N} grid, P{degree} (right diagonals)", "P",
           dolfin.UnitSquareMesh(N, N)),
-         (f"{N}×{N} P{degree} (crossed diagonals)", "P",
+         (f"{N}×{N} grid, P{degree} (crossed diagonals)", "P",
           dolfin.UnitSquareMesh(N, N, "crossed")),
-         (f"{N}×{N} Q{degree} (plotted as tri)", "Q",
+         (f"{N}×{N} grid, Q{degree} (plotted as tri)", "Q",
           dolfin.UnitSquareMesh.create(N, N, dolfin.CellType.Type.quadrilateral))]
 
 if dolfin.MPI.comm_world.rank == 0:
