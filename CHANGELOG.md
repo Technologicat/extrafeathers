@@ -1,15 +1,25 @@
 # Changelog
 
-**0.4.0** (in progress, last updated 31 March 2022):
+**0.4.0** (in progress, last updated 22 April 2022):
 
 **Added**:
 
-- Quadrilateral elements are now supported.
+- **Quadrilateral elements** are now supported.
+  - The support for quad elements in the legacy FEniCS itself is incomplete and buggy. It has been fixed in DOLFINx, but we do not support the next-gen FEniCS yet. So although `extrafeathers` already supports arbitrary quad meshes, this functionality is currently practically useful mostly for quad meshes on the unit square.
+  - Like in FEniCS itself, mixed meshes (having both quads and triangles) are **not** supported.
+- Improved support for **discontinuous spaces** (DP1, DP2, DP3, DQ1, DQ2, and DQ3).
 - Add `prepare_linear_export`. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
+- Add `quad_to_tri` to convert a quad mesh to a triangle mesh in a crossed-diagonal format, by adding a node at each cell center and then replacing each quad by four triangles. Used by `mpiplot` to make Matplotlib interpolate FEM functions on quadrilaterals.
+- Add `renumber_nodes_by_distance`.
+- Add `collapse_node_numbering`. Like `dolfin.FunctionSpace.collapse`, but for the `extrafeathers` internal format (`cells` list and `nodes` dict, as produced by `all_cells`).
 
 **Changed**:
 
-- Rename `midpoint_refine` to `refine_for_export`, since that's the use, and it handles P2/P3/Q2/Q3.
+- `mpiplot` now rejects input if the function space is not supported, instead of trying to project.
+  - This is to ensure a faithful representation. We plan to support more spaces in the future (particularly DP0 and DQ0 are not yet supported).
+- Plotting preparation changed; now both `mpiplot` and `mpiplot_mesh` can take the `prep` argument. Both `mpiplot_prepare` and `as_mpl_triangulation` generate a `prep`.
+- Rename `midpoint_refine` to `refine_for_export`, since that's the use, and it handles both degree-2 and degree-3 spaces.
+- Rename `map_refined_P1` to `map_coincident`, and generalize it.
 
 
 ---
