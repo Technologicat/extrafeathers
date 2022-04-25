@@ -164,6 +164,8 @@ def minmax(p: dolfin.Function, *,
                                                                 typing.List[float]]]:
     """Find min and max of a FEM function.
 
+    Supports any **nodal** element; operates on the DOF values directly.
+
     Supports MPI, vectors and tensors. Useful for determining a colormap range
     for plotting.
 
