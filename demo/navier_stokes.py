@@ -476,7 +476,7 @@ for n in range(nt):
     #         if n == 0:
     #             plt.show()
     #         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-    #         plotmagic.pause(0.2)
+    #         plotmagic.pause(0.001)
 
     # Plot p and the magnitude of u
     if n % 50 == 0 or n == nt - 1:
@@ -502,7 +502,7 @@ for n in range(nt):
             if n == 0:
                 plt.show()
             # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-            plotmagic.pause(0.2)
+            plotmagic.pause(0.001)
 
     # Update progress bar
     progress += 1

@@ -82,7 +82,7 @@ def pause(interval: float) -> None:
         if figManager is not None:
             canvas = figManager.canvas
             if canvas.figure.stale:
-                canvas.draw_idle()
+                canvas.draw()
             canvas.start_event_loop(interval)
 
 

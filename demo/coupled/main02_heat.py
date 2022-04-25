@@ -217,7 +217,7 @@ for n in range(nt):
                 if n == 0:
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-                plotmagic.pause(0.2)
+                plotmagic.pause(0.001)
         last_plot_walltime_local = tim.dt
         last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
         last_plot_walltime = max(last_plot_walltime_global)
