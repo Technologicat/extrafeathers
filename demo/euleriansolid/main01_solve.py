@@ -146,12 +146,26 @@ plt.ion()
 
 # HACK: Arrange things to allow exporting the velocity field at full nodal resolution.
 all_V_dofs = np.array(range(V.dim()), "intc")
-vec_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
-if V.ufl_element().degree() > 1:
+all_Q_dofs = np.array(range(Q.dim()), "intc")
+v_vec_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
+q_vec_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on Q
+
+# TODO: We cannot export quads at full nodal resolution in FEniCS 2019,
+# TODO: because the mesh editor fails with "cell is not orderable".
+highres_export_V = (V.ufl_element().degree() > 1 and V.ufl_element().family() == "Lagrange")
+if highres_export_V:
     if my_rank == 0:
-        print("Preparing export of higher-degree data as refined P1...")
+        print("Preparing export of higher-degree u/v data as refined P1...")
     with timer() as tim:
-        func_P1, my_V_dofs = meshmagic.prepare_linear_export(V)
+        v_P1, my_V_dofs = meshmagic.prepare_linear_export(V)
+    if my_rank == 0:
+        print(f"Preparation complete in {tim.dt:0.6g} seconds.")
+highres_export_Q = (Q.ufl_element().degree() > 1 and Q.ufl_element().family() == "Lagrange")
+if highres_export_Q:
+    if my_rank == 0:
+        print("Preparing export of higher-degree σ data as refined P1...")
+    with timer() as tim:
+        q_P1, my_Q_dofs = meshmagic.prepare_linear_export(Q)
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
@@ -190,22 +204,29 @@ for n in range(nt):
 
     begin("Saving")
 
-    if V.ufl_element().degree() > 1:
+    if highres_export_V:
         # Save the displacement visualization at full nodal resolution.
-        solver.u_.vector().gather(vec_copy, all_V_dofs)  # allgather `u_` to `vec_copy`
-        func_P1.vector()[:] = vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_u.write(func_P1, t)
+        solver.u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
+        v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        xdmffile_u.write(v_P1, t)
 
         # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
-        solver.v_.vector().gather(vec_copy, all_V_dofs)  # allgather `v_` to `vec_copy`
-        func_P1.vector()[:] = vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_v.write(func_P1, t)
+        solver.v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
+        v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        xdmffile_v.write(v_P1, t)
     else:  # save at P1 resolution
         xdmffile_u.write(solver.u_, t)
         xdmffile_v.write(solver.v_, t)
-    xdmffile_σ.write(solver.σ_, t)
+
+    if highres_export_Q:
+        solver.σ_.vector().gather(q_vec_copy, all_Q_dofs)
+        q_P1.vector()[:] = q_vec_copy[my_Q_dofs]
+        xdmffile_σ.write(q_P1, t)
+    else:  # save at P1 resolution
+        xdmffile_σ.write(solver.σ_, t)
 
     # compute von Mises stress for visualization in ParaView
+    # TODO: export von Mises stress at full nodal resolution, too
     s = dev(solver.σ_)
     vonMises_expr = sqrt(3 / 2 * inner(s, s))
     vonMises.assign(project(vonMises_expr, Qscalar))
