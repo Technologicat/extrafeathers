@@ -161,7 +161,7 @@ class EulerianSolid:
 
         self.V = V
         self.Q = Q
-        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)
+        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)  # "DG" is a handy alias for "DP or DQ dep. on mesh"
         self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
 
         self.u, self.v, self.σ = u, v, σ  # trials
