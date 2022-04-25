@@ -536,13 +536,16 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
         prep = mpiplot_prepare(u)
 
     # Make a complete copy of the DOF vector onto the root process.
+    # NOTE: This copies **ALL** DOFs, also those of other subspaces when `u` is a `.sub(j)`.
     v_vec = u.vector().gather_on_zero()
-    n_global_dofs = V.dim()
+    n_global_dofs = V.dim()  # number of DOFs in the relevant subspace
 
-    # # make a complete copy of the DOF vector u_vec to all MPI processes
-    # u_vec = u.vector()
-    # v_vec = dolfin.Vector(dolfin.MPI.comm_self)  # local vector (local to each MPI process)
-    # u_vec.gather(v_vec, np.array(range(V.dim()), "intc"))  # in_vec.gather(out_vec, indices); really "allgather"
+    # # Make a complete copy of the DOF vector u_vec to all MPI processes.
+    # # NOTE: This copies only the subspace-relevant DOFs when `u` is a `.sub(j)`.
+    # dofmaps = dolfin.MPI.comm_world.allgather(V.dofmap().dofs())
+    # subspace_dofs = np.sort(np.concatenate(dofmaps))
+    # v_vec = dolfin.Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on W
+    # u.vector().gather(v_vec, subspace_dofs)  # in_vec.gather(out_vec, indices); really "allgather"
     # dm = np.array(V.dofmap().dofs())
     # print(f"Process {my_rank}: local #DOFs {len(dm)} (min {min(dm)}, max {max(dm)}) out of global {V.dim()}")
 
@@ -553,7 +556,6 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
 
     theplot = None
     if dolfin.MPI.comm_world.rank == 0:
-        # The global DOF vector always refers to the complete function space.
         # If `V` is a subspace (vector/tensor field component), take only the
         # DOFs that belong to `V`. (For a true scalar space `V`, this is a no-op.)
         v_vec = v_vec[prep.subspace_dofs]
