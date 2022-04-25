@@ -20,6 +20,7 @@ __all__ = ["pause",
            "plot_facet_meshfunction"]
 
 from collections import defaultdict
+from copy import copy
 from enum import IntEnum
 from itertools import chain
 import typing
@@ -593,7 +594,6 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     return theplot
 
 
-_managed_artists = {}
 def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                  main_color: str = "#80808040",
                  aux_color: str = "#80808020",
@@ -635,6 +635,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     if dolfin.MPI.comm_world.rank == 0:
         ax = plt.gca()
 
+    # TODO: Silly interleaving of program logic here (each helper function switches on `show_partitioning`),
+    # TODO: but this is the shortest code. Is there a clearer way to present this?
     if show_partitioning:  # color-code MPI partitions
         prep = as_mpl_triangulation(V, mpi_global=False, refine=True)
         my_polys = prep.polys
@@ -647,7 +649,6 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             prep = as_mpl_triangulation(V, refine=True)
         all_polys = [prep.polys]
         all_tris = [prep.tris]
-
     def element_edges_color(mpi_rank):
         return main_color if not show_partitioning else colors40[mpi_rank % len(colors40)]
     def vis_edges_color(mpi_rank):
@@ -678,19 +679,13 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             for mpi_rank, polys in enumerate(all_polys):
                 if not polys:
                     continue
+                # Each Matplotlib artist object may only be added to one figure at a time,
+                # and each `PolyCollection` instance only creates one artist.
+                polys = copy(polys)
                 polys.set_linewidth(all_edges_width)
                 polys.set_edgecolor(all_edges_color(mpi_rank))
                 polys.set_facecolor('none')
-                # Each Matplotlib artist object may only be added to one figure at a time.
-                # To allow re-using `polys` in another plot later, we must remove its artist
-                # from the axes it is currently in before reusing it for plotting.
-                # TODO: This may cause it to magically vanish from another figure, and the effect
-                # TODO: is only seen after that figure next updates. Think of a better solution.
-                if id(polys) in _managed_artists:
-                    artist = _managed_artists[id(polys)]
-                    artist.remove()
-                artist = ax.add_collection(polys)
-                _managed_artists[id(polys)] = artist
+                ax.add_collection(polys)
 
     # element edges for higher degrees
     if V.ufl_element().degree() > 1:
@@ -706,14 +701,11 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             for mpi_rank, polys in enumerate(all_polys):
                 if not polys:
                     continue
+                polys = copy(polys)
                 polys.set_linewidth(2.0)
                 polys.set_edgecolor(element_edges_color(mpi_rank))
                 polys.set_facecolor('none')
-                if id(polys) in _managed_artists:
-                    artist = _managed_artists[id(polys)]
-                    artist.remove()
                 ax.add_collection(polys)
-                _managed_artists[id(polys)] = artist
 
     # Each legend entry from `triplot` is doubled for some reason,
     # so plot a dummy point (at NaN so it won't be drawn) with
@@ -724,6 +716,9 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                      label=f"MPI rank {mpi_rank}")
 
     if not show_partitioning:
+        # TODO: Should return the return value of `ax.add_collection` (the artist),
+        # TODO: not the original `PolyCollection`. (It can't be removed from the figure,
+        # TODO: since only the artist object actually supports `.remove()`.)
         return prep.polys  # element edges
     return None
 
