@@ -1852,7 +1852,10 @@ def patch_average(f: dolfin.Function,
     P = dolfin.interpolate if mode == "interpolate" else dolfin.project
     f_dG0: dolfin.Function = P(f, W)
 
-    # Make a local copy of the whole dG0 DOF vector in all processes.
+    # Make a local copy of the whole dG0 DOF vector (of this subspace) in all processes.
+    # TODO: Maybe gather the dofmaps; see comment in `plotmagic.mpiplot`.
+    # TODO: Should work correctly without it, because `W` is always a true scalar space,
+    # TODO: but it's not correct in principle without it.
     all_W_dofs = np.array(range(W.dim()), "intc")
     dG0_vec_copy = dolfin.Vector(dolfin.MPI.comm_self)
     f_dG0.vector().gather(dG0_vec_copy, all_W_dofs)
