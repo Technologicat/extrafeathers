@@ -615,22 +615,27 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     `show_partitioning`: If `True`, color-code the mesh parts for different
                          MPI ranks. You can use `matplotlib.pyplot.legend`
                          to show which is which.
-    `kwargs`: passed through to `matplotlib.pyplot.triplot`.
+    `kwargs`: Passed through to `matplotlib.pyplot.triplot`.
 
-    `prep` allows skipping the expensive auto-generation of a
-    Matplotlib `PolyCollection` of the mesh edges, in case you already
-     happen to have one. It is only used when `show_partitioning=False`.
-    `mpiplot` uses this internally to share its `prep`. If you want to
-    generate a `prep` yourself, see `as_mpl_triangulation`.
+    `prep`: Only used when `show_partitioning=False`.
+
+            Allows skipping the expensive auto-generation of a
+            Matplotlib `PolyCollection` of the mesh edges, in case
+            you already happen to have one.
+
+            `mpiplot` uses this internally to share its `prep`.
+            If you want to generate a `prep` yourself, see
+            `as_mpl_triangulation`.
 
     If `show_partitioning=False`:
-        In the root process (MPI rank 0), returns the `PolyCollection` object
+        In the root process (MPI rank 0), returns the plot object
         for the element edges.
 
-        In other processes, returns `None`.
-
     If `show_partitioning=True`:
-        Returns `None` in all processes.
+        In the root process (MPI rank 0), returns a `list` of the
+        plot objects for the element edges.
+
+    In other processes, always returns `None`.
     """
     if dolfin.MPI.comm_world.rank == 0:
         ax = plt.gca()
@@ -666,6 +671,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
     # so that they appear on top in the visualization (this affects the color even if translucent).
 
     # vis cell edges; element edges for degree 1
+    main_plots = []
     if show_aux or V.ufl_element().degree() <= 1:
         if dolfin.MPI.comm_world.rank == 0:
             # vis triangulation edges
@@ -673,6 +679,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 for mpi_rank, tris in enumerate(all_tris):
                     if not tris:
                         continue
+                    # TODO: do we want to return the vis triangulation artist, too?
                     plt.triplot(tris, linewidth=1.0, color=vis_edges_color(mpi_rank))
             # vis cell edges (or degree-1 element edges)
             all_edges_width = 1.0 if V.ufl_element().degree() > 1 else 2.0
@@ -685,10 +692,12 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 polys.set_linewidth(all_edges_width)
                 polys.set_edgecolor(all_edges_color(mpi_rank))
                 polys.set_facecolor('none')
-                ax.add_collection(polys)
+                artist = ax.add_collection(polys)
+                main_plots.append(artist)
 
     # element edges for higher degrees
     if V.ufl_element().degree() > 1:
+        main_plots.clear()  # TODO: do we want to return the vis edges artists, too?
         if show_partitioning:
             # Here we always need our own `prep` because we don't want to refine.
             prep = as_mpl_triangulation(V, mpi_global=False, refine=False)
@@ -705,7 +714,8 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 polys.set_linewidth(2.0)
                 polys.set_edgecolor(element_edges_color(mpi_rank))
                 polys.set_facecolor('none')
-                ax.add_collection(polys)
+                artist = ax.add_collection(polys)
+                main_plots.append(artist)
 
     # Each legend entry from `triplot` is doubled for some reason,
     # so plot a dummy point (at NaN so it won't be drawn) with
@@ -715,12 +725,13 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             plt.plot([np.nan], [np.nan], color=colors40[mpi_rank % len(colors40)],
                      label=f"MPI rank {mpi_rank}")
 
-    if not show_partitioning:
-        # TODO: Should return the return value of `ax.add_collection` (the artist),
-        # TODO: not the original `PolyCollection`. (It can't be removed from the figure,
-        # TODO: since only the artist object actually supports `.remove()`.)
-        return prep.polys  # element edges
-    return None
+    if dolfin.MPI.comm_world.rank != 0:
+        return None
+    if show_partitioning:
+        return main_plots  # element edges, one plot object for each MPI process
+    assert len(main_plots) == 1
+    main_plot = main_plots[0]  # clearer stack trace
+    return main_plot  # element edges
 
 
 def plot_facet_meshfunction(f: dolfin.MeshFunction,
