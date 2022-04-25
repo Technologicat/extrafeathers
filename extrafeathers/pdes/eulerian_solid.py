@@ -437,6 +437,14 @@ class EulerianSolid:
             q.assign(project(project(q, self.QdG0), self.Q))
             # q.assign(patch_average(q, self.QdG0, self.QtoQdG0, self.QdG0tocell, self.cell_volume_QdG0))
 
+        # `dolfin.errornorm` doesn't support quad elements, because it uses `dolfin.interpolate`.
+        # Do the same thing, but avoid interpolation.
+        def errnorm(u, u_prev, norm_type):
+            e = Function(self.V)
+            e.assign(u)
+            e.vector().axpy(-1.0, u_prev.vector())
+            return norm(e, norm_type=norm_type, mesh=self.mesh)
+
         begin("Solve timestep")
 
         v_prev = Function(self.V)
@@ -522,14 +530,7 @@ class EulerianSolid:
             # Postprocess `v` to eliminate numerical oscillations
             postprocessV(self.v_)
 
-            # `dolfin.errornorm` doesn't support quad elements, because it uses `dolfin.interpolate`.
-            # Do the same thing, but avoid interpolation.
             # e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
-            def errnorm(u, u_prev, norm_type):
-                e = Function(self.V)
-                e.assign(u)
-                e.vector().axpy(-1.0, u_prev.vector())
-                return norm(e, norm_type=norm_type, mesh=self.mesh)
             e = errnorm(self.v_, v_prev, "h1")
             if e < tol:
                 break
