@@ -4,11 +4,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from unpythonic import ETAEstimator, timer
+from unpythonic import ETAEstimator, timer, Popper
 
 from fenics import (VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
-                    Expression, Constant, Function,
-                    interpolate, project, Vector,
+                    Constant, Function,
+                    project, Vector,
                     tr, Identity, sqrt, inner,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -30,6 +30,7 @@ from .config import (rho, lamda, mu, V0, dt, nt,
                      vis_v_filename, sol_v_filename,
                      vis_σ_filename, sol_σ_filename,
                      vis_vonMises_filename)
+
 
 my_rank = MPI.comm_world.rank
 
@@ -191,6 +192,9 @@ est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
 SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
 vis_step_walltime_local = 0
+if my_rank == 0:
+    fig, ax = plt.subplots(2, 4, constrained_layout=True, figsize=(12, 6))
+    colorbars = []
 for n in range(nt):
     begin(msg)
 
@@ -245,73 +249,117 @@ for n in range(nt):
     # Plot the components of u
     if n % 50 == 0 or n == nt - 1:
         with timer() as tim:
-            if my_rank == 0:
-                plt.figure(1)
-                plt.clf()
-                plt.subplot(2, 4, 1)
             u_ = solver.u_
             v_ = solver.v_
             σ_ = solver.σ_
 
-            def get_symmetric_vrange(p):
-                minp, maxp = common.minmax(p, take_abs=True, mode="raw")
-                return maxp
+            def symmetric_vrange(p):
+                ignored_minp, maxp = common.minmax(p, take_abs=True, mode="raw")
+                return -maxp, maxp
 
-            m = get_symmetric_vrange(u_.sub(0))
-            theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
+            # remove old colorbars, since `plt.cla` doesn't
             if my_rank == 0:
-                plt.axis("equal")
-                plt.colorbar(theplot)
+                for cb in Popper(colorbars):
+                    cb.remove()
+
+            # u1
+            if my_rank == 0:
+                plt.sca(ax[0, 0])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(u_.sub(0))
+            theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$u_{1}$")
-                plt.subplot(2, 4, 5)
-            m = get_symmetric_vrange(u_.sub(1))
-            theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
-            if my_rank == 0:
                 plt.axis("equal")
-                plt.colorbar(theplot)
+
+            # u2
+            if my_rank == 0:
+                plt.sca(ax[0, 1])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(u_.sub(1))
+            theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$u_{2}$")
-                plt.subplot(2, 4, 2)
-            m = get_symmetric_vrange(v_.sub(0))
-            theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
-            if my_rank == 0:
                 plt.axis("equal")
-                plt.colorbar(theplot)
+
+            # v1
+            if my_rank == 0:
+                plt.sca(ax[1, 0])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(v_.sub(0))
+            theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$v_{1}$")
-                plt.subplot(2, 4, 6)
-            m = get_symmetric_vrange(v_.sub(1))
-            theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
-            if my_rank == 0:
                 plt.axis("equal")
-                plt.colorbar(theplot)
+
+            # v2
+            if my_rank == 0:
+                plt.sca(ax[1, 1])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(v_.sub(1))
+            theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$v_{2}$")
-                plt.subplot(2, 4, 3)
-            m = get_symmetric_vrange(σ_.sub(0))
-            theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
-            if my_rank == 0:
                 plt.axis("equal")
-                plt.colorbar(theplot)
+
+            # σ11
+            if my_rank == 0:
+                plt.sca(ax[0, 2])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(σ_.sub(0))
+            theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$σ_{11}$")
-                plt.subplot(2, 4, 4)
-            m = get_symmetric_vrange(σ_.sub(1))
-            theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
-            if my_rank == 0:
                 plt.axis("equal")
-                plt.colorbar(theplot)
+
+            # σ12
+            if my_rank == 0:
+                plt.sca(ax[0, 3])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(σ_.sub(1))
+            theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$σ_{12}$")
-                plt.subplot(2, 4, 7)
-            m = get_symmetric_vrange(σ_.sub(2))
-            theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
-            if my_rank == 0:
                 plt.axis("equal")
-                plt.colorbar(theplot)
+
+            # σ21
+            if my_rank == 0:
+                plt.sca(ax[1, 2])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(σ_.sub(2))
+            theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$σ_{21}$")
-                plt.subplot(2, 4, 8)
-            m = get_symmetric_vrange(σ_.sub(3))
-            theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
-            if my_rank == 0:
                 plt.axis("equal")
-                plt.colorbar(theplot)
+
+            # σ22
+            if my_rank == 0:
+                plt.sca(ax[1, 3])
+                plt.cla()
+            vmin, vmax = symmetric_vrange(σ_.sub(3))
+            theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=True,
+                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
+            if my_rank == 0:
+                colorbars.append(plt.colorbar(theplot))
                 plt.title(r"$σ_{22}$")
+                plt.axis("equal")
+
+            # figure title (progress message)
+            if my_rank == 0:
                 plt.suptitle(msg)
 
             # info for msg (expensive; only update these once per vis step)
