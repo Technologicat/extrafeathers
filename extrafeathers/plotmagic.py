@@ -593,6 +593,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     return theplot
 
 
+_managed_artists = {}
 def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                  main_color: str = "#80808040",
                  aux_color: str = "#80808020",
@@ -680,7 +681,16 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 polys.set_linewidth(all_edges_width)
                 polys.set_edgecolor(all_edges_color(mpi_rank))
                 polys.set_facecolor('none')
-                ax.add_collection(polys)
+                # Each Matplotlib artist object may only be added to one figure at a time.
+                # To allow re-using `polys` in another plot later, we must remove its artist
+                # from the axes it is currently in before reusing it for plotting.
+                # TODO: This may cause it to magically vanish from another figure, and the effect
+                # TODO: is only seen after that figure next updates. Think of a better solution.
+                if id(polys) in _managed_artists:
+                    artist = _managed_artists[id(polys)]
+                    artist.remove()
+                artist = ax.add_collection(polys)
+                _managed_artists[id(polys)] = artist
 
     # element edges for higher degrees
     if V.ufl_element().degree() > 1:
@@ -699,7 +709,11 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                 polys.set_linewidth(2.0)
                 polys.set_edgecolor(element_edges_color(mpi_rank))
                 polys.set_facecolor('none')
+                if id(polys) in _managed_artists:
+                    artist = _managed_artists[id(polys)]
+                    artist.remove()
                 ax.add_collection(polys)
+                _managed_artists[id(polys)] = artist
 
     # Each legend entry from `triplot` is doubled for some reason,
     # so plot a dummy point (at NaN so it won't be drawn) with
