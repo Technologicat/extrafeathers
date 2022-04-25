@@ -17,6 +17,7 @@ from fenics import (VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
                     begin, end)
 
 # custom utilities for FEniCS
+from extrafeathers import common
 from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
@@ -232,64 +233,59 @@ for n in range(nt):
             σ_ = solver.σ_
 
             def get_symmetric_vrange(p):
-                pvec = np.array(p.vector())
+                minp, maxp = common.minmax(p, take_abs=True, mode="raw")
+                return maxp
 
-                minp_local = pvec.min()
-                minp_global = MPI.comm_world.allgather(minp_local)
-                minp = min(minp_global)
-
-                maxp_local = pvec.max()
-                maxp_global = MPI.comm_world.allgather(maxp_local)
-                maxp = max(maxp_global)
-
-                absmaxp = max(abs(minp), abs(maxp))
-                return absmaxp
-
-            m = get_symmetric_vrange(u_)
+            m = get_symmetric_vrange(u_.sub(0))
             theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$u_{1}$")
                 plt.subplot(2, 4, 5)
+            m = get_symmetric_vrange(u_.sub(1))
             theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$u_{2}$")
                 plt.subplot(2, 4, 2)
-            m = get_symmetric_vrange(v_)
+            m = get_symmetric_vrange(v_.sub(0))
             theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$v_{1}$")
                 plt.subplot(2, 4, 6)
+            m = get_symmetric_vrange(v_.sub(1))
             theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$v_{2}$")
                 plt.subplot(2, 4, 3)
-            m = get_symmetric_vrange(σ_)
+            m = get_symmetric_vrange(σ_.sub(0))
             theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$σ_{11}$")
                 plt.subplot(2, 4, 4)
+            m = get_symmetric_vrange(σ_.sub(1))
             theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$σ_{12}$")
                 plt.subplot(2, 4, 7)
+            m = get_symmetric_vrange(σ_.sub(2))
             theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
                 plt.colorbar(theplot)
                 plt.title(r"$σ_{21}$")
                 plt.subplot(2, 4, 8)
+            m = get_symmetric_vrange(σ_.sub(3))
             theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=True, cmap="RdBu_r", vmin=-m, vmax=+m)
             if my_rank == 0:
                 plt.axis("equal")
@@ -316,16 +312,7 @@ for n in range(nt):
             # maxu = max(maxu_global)
 
             # So let's do this manually. We can operate on the nodal values directly.
-            u_.vector().gather(vec_copy, all_V_dofs)  # allgather
-            my_u1_dofs = V.sub(0).dofmap().dofs()  # MPI-local
-            my_u2_dofs = V.sub(1).dofmap().dofs()  # MPI-local
-            all_u1_dofs = np.concatenate(MPI.comm_world.allgather(my_u1_dofs))
-            all_u2_dofs = np.concatenate(MPI.comm_world.allgather(my_u2_dofs))
-            u1vec = np.array(vec_copy[all_u1_dofs])
-            u2vec = np.array(vec_copy[all_u2_dofs])
-            uvec = (u1vec**2 + u2vec**2)**0.5
-            minu = min(uvec)
-            maxu = max(uvec)
+            minu, maxu = common.minmax(u_, mode="l2")
 
             if my_rank == 0:
                 plt.draw()

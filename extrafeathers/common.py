@@ -6,11 +6,15 @@ These are public, but not imported to the top-level namespace.
 
 __all__ = ["make_find_fullmesh_cell", "make_find_fullmesh_facet",
            "is_anticlockwise",
-           "maps", "multiupdate", "freeze", "prune", "all_values_unique", "all_valuesets_unique"]
+           "maps", "multiupdate", "freeze", "prune", "all_values_unique", "all_valuesets_unique",
+           "minmax"]
 
 import typing
 
+import numpy as np
+
 import dolfin
+
 
 def make_find_fullmesh_cell(fullmesh: dolfin.Mesh,
                             submesh: typing.Union[dolfin.SubMesh, dolfin.Mesh]) -> typing.Callable:
@@ -150,3 +154,67 @@ def all_valuesets_unique(d):
             return False
         seen.add(multivalue)
     return True
+
+# --------------------------------------------------------------------------------
+
+def minmax(p: dolfin.Function, *,
+           mode: str = "raw",
+           take_abs: bool = False) -> typing.Union[typing.Tuple[float, float],
+                                                   typing.Tuple[typing.List[float],
+                                                                typing.List[float]]]:
+    """Find min and max of a FEM function.
+
+    Supports MPI, vectors and tensors. Useful for determining a colormap range
+    for plotting.
+
+    `p`: A FEM function on some function space or on a subspace.
+
+    `mode`: Minmax what. One of:
+
+            "raw": All DOFs of `p`. Valid for any `p`.
+
+                   (In case `p` is a vector or tensor field, do not care which
+                    component/subspace each DOF belongs to.)
+
+        When `p` is a vector or tensor field, additionally available modes:
+
+            "l2": Euclidean length of the vector made out of the components of `p`.
+                  `p` must be a vector or tensor field.
+
+            "components": All components (subspaces); return lists as results,
+                          one entry per subspace.
+
+    `take_abs`: If `True`, then compute `min(abs(...))` and `max(abs(...))`.
+                If `False`, then compute `min(...)` and `max(...)`.
+
+                Ignored when `mode="l2"`.
+    """
+    assert mode in ("raw", "l2", "components")
+
+    def getdofs(W):
+        """Get all DOF values of `p` in space `W`. Account for `W` possibly being a subspace."""
+        dofmaps = dolfin.MPI.comm_world.allgather(W.dofmap().dofs())
+        subspace_dofs = np.concatenate(dofmaps)
+        p_vec_copy = dolfin.Vector(dolfin.MPI.comm_self)  # MPI-local
+        p.vector().gather(p_vec_copy, subspace_dofs)  # allgather; takes global DOF indices
+        return np.array(p_vec_copy)
+
+    W = p.function_space()
+
+    if mode == "components":  # all components, separately; shorthand for:
+        minps, maxps = [], []
+        for j in range(W.num_sub_spaces()):
+            minp, maxp = minmax(p.sub(j), take_abs=take_abs, mode="raw")
+            minps.append(minp)
+            maxps.append(maxp)
+        return minps, maxps
+
+    if mode == "l2":  # euclidean length
+        vecs = [getdofs(W.sub(j)) for j in range(W.num_sub_spaces())]
+        vecs = [vec**2 for vec in vecs]  # squared nodal values for each component
+        pvec = sum(vecs)**0.5
+    else:  # mode == "raw":  all DOFs, don't care about which component
+        pvec = getdofs(W)
+        if take_abs:
+            pvec = np.abs(pvec)
+    return min(pvec), max(pvec)
