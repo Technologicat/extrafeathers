@@ -144,13 +144,13 @@ set_log_level(LogLevel.WARNING)
 plt.ion()
 
 # HACK: Arrange things to allow exporting the velocity field at full nodal resolution.
+all_V_dofs = np.array(range(V.dim()), "intc")
+vec_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
 if V.ufl_element().degree() > 1:
     if my_rank == 0:
         print("Preparing export of higher-degree data as refined P1...")
     with timer() as tim:
         func_P1, my_V_dofs = meshmagic.prepare_linear_export(V)
-        all_V_dofs = np.array(range(V.dim()), "intc")
-        vec_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
@@ -298,18 +298,34 @@ for n in range(nt):
                 plt.suptitle(msg)
 
             # info for msg (expensive; only update these once per vis step)
-            magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
-                                   u0=u_.sub(0), u1=u_.sub(1))
-            magu = interpolate(magu_expr, Vscalar)
-            uvec = np.array(magu.vector())
 
-            minu_local = uvec.min()
-            minu_global = MPI.comm_world.allgather(minu_local)
-            minu = min(minu_global)
+            # # On quad elements:
+            # #  - `dolfin.interpolate` doesn't work (point/cell intersection only implemented for simplices),
+            # #  - `dolfin.project` doesn't work for `dolfin.Expression`, either; same reason.
+            # magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
+            #                        u0=u_.sub(0), u1=u_.sub(1))
+            # magu = interpolate(magu_expr, Vscalar)
+            # uvec = np.array(magu.vector())
+            #
+            # minu_local = uvec.min()
+            # minu_global = MPI.comm_world.allgather(minu_local)
+            # minu = min(minu_global)
+            #
+            # maxu_local = uvec.max()
+            # maxu_global = MPI.comm_world.allgather(maxu_local)
+            # maxu = max(maxu_global)
 
-            maxu_local = uvec.max()
-            maxu_global = MPI.comm_world.allgather(maxu_local)
-            maxu = max(maxu_global)
+            # So let's do this manually. We can operate on the nodal values directly.
+            u_.vector().gather(vec_copy, all_V_dofs)  # allgather
+            my_u1_dofs = V.sub(0).dofmap().dofs()  # MPI-local
+            my_u2_dofs = V.sub(1).dofmap().dofs()  # MPI-local
+            all_u1_dofs = np.concatenate(MPI.comm_world.allgather(my_u1_dofs))
+            all_u2_dofs = np.concatenate(MPI.comm_world.allgather(my_u2_dofs))
+            u1vec = np.array(vec_copy[all_u1_dofs])
+            u2vec = np.array(vec_copy[all_u2_dofs])
+            uvec = (u1vec**2 + u2vec**2)**0.5
+            minu = min(uvec)
+            maxu = max(uvec)
 
             if my_rank == 0:
                 plt.draw()

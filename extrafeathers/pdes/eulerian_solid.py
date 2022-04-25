@@ -32,10 +32,11 @@ from fenics import (VectorFunctionSpace, TensorFunctionSpace,
                     Identity,
                     lhs, rhs, assemble, solve,
                     interpolate, project, VectorSpaceBasis, as_backend_type,
-                    errornorm,
+                    errornorm, norm,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
+from ..meshmagic import patch_average, map_dG0
 from .util import ufl_constant_property, StabilizerFlags
 
 
@@ -417,6 +418,25 @@ class EulerianSolid:
 
         Updates the latest computed solution.
         """
+        # # Set up manual patch-averaging
+        # if not hasattr(self, "stash_initialized"):
+        #     from ..meshfunction import cellvolume
+        #     self.VtoVdG0, self.VdG0tocell = map_dG0(self.V, self.VdG0)
+        #     self.cell_volume_VdG0 = cellvolume(self.VdG0.mesh())
+        #     self.QtoQdG0, self.QdG0tocell = map_dG0(self.Q, self.QdG0)
+        #     self.cell_volume_QdG0 = cellvolume(self.QdG0.mesh())
+        #     self.stash_initialized = True
+        def postprocessV(u: Function):
+            # `dolfin.interpolate` doesn't support quads, so we can either patch-average manually,
+            # or use `dolfin.project` both ways.
+            # u.assign(project(interpolate(u, self.VdG0), self.V))
+            u.assign(project(project(u, self.VdG0), self.V))
+            # u.assign(patch_average(u, self.VdG0, self.VtoVdG0, self.VdG0tocell, self.cell_volume_VdG0))
+        def postprocessQ(q: Function):
+            # q.assign(project(interpolate(q, self.QdG0), self.Q))
+            q.assign(project(project(q, self.QdG0), self.Q))
+            # q.assign(patch_average(q, self.QdG0, self.QtoQdG0, self.QdG0tocell, self.cell_volume_QdG0))
+
         begin("Solve timestep")
 
         v_prev = Function(self.V)
@@ -449,7 +469,7 @@ class EulerianSolid:
             it1 = 1
 
             # Postprocess `u` to eliminate numerical oscillations
-            self.u_.assign(project(interpolate(self.u_, self.VdG0), self.V))
+            postprocessV(self.u_)
 
             # Step 2: update `σ`
             #
@@ -469,7 +489,7 @@ class EulerianSolid:
             it2 = solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor')
 
             # Postprocess `σ` to eliminate numerical oscillations
-            self.σ_.assign(project(interpolate(self.σ_, self.QdG0), self.Q))
+            postprocessQ(self.σ_)
 
             # Step 3: tonight's main event (solve momentum equation for `v`)
             A3 = assemble(self.a_v)
@@ -500,9 +520,17 @@ class EulerianSolid:
             it3 = solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg')
 
             # Postprocess `v` to eliminate numerical oscillations
-            self.v_.assign(project(interpolate(self.v_, self.VdG0), self.V))
+            postprocessV(self.v_)
 
-            e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
+            # `dolfin.errornorm` doesn't support quad elements, because it uses `dolfin.interpolate`.
+            # Do the same thing, but avoid interpolation.
+            # e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
+            def errnorm(u, u_prev, norm_type):
+                e = Function(self.V)
+                e.assign(u)
+                e.vector().axpy(-1.0, u_prev.vector())
+                return norm(e, norm_type=norm_type, mesh=self.mesh)
+            e = errnorm(self.v_, v_prev, "h1")
             if e < tol:
                 break
 
