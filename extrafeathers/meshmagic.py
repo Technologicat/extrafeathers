@@ -7,12 +7,14 @@ full nodal resolution export of data on P2 or P3 triangle meshes.
 
 __all__ = ["my_cells", "all_cells", "nodes_to_array", "collapse_node_numbering",
            "quad_to_tri", "renumber_nodes_by_distance",
-           "make_mesh",
+           "make_mesh", "trimesh",
            "prepare_linear_export", "refine_for_export", "map_coincident",
            "my_patches", "all_patches", "map_dG0", "patch_average"]
 
 from collections import defaultdict, Counter
 import typing
+
+from unpythonic import window
 
 import numpy as np
 import scipy.spatial.ckdtree
@@ -788,6 +790,120 @@ def make_mesh(cells: typing.List[typing.List[int]],
         # dolfin.info(mesh)  # DEBUG: distributed mode should have distributed data to all processes now
 
     return mesh
+
+
+def trimesh(nx, ny, align="x"):
+    r"""Make this mesh for the unit square (shown here with nx = 3, ny = 2):
+
+    +------------+
+    |\  /\  /\  /| \
+    | \/  \/  \/ | |
+    +------------+ | ny = 2 rows of triangles
+    | /\  /\  /\ | |
+    |/  \/  \/  \| /
+    +------------+
+     \__________/
+     nx = 3 bases at bottom
+
+    If `nx = ny`, the triangles are equilateral (except the halves at the ends
+    of each row).
+
+    If `align="y"`, flip the roles of x and y when generating the mesh, so that
+    instead of rows, the triangles will be arranged in columns.
+    """
+    hx = 1 / nx
+    hy = 1 / ny
+    def make_row(j):
+        if j % 2 == 0:
+            # even row of vertices: nx triangle bases
+            xs = np.arange(nx + 1) / nx
+        else:
+            # odd row of vertices: half-triangle at ends, plus nx - 1 triangle bases.
+            xs = np.concatenate(([0.0],
+                                 np.arange(hx / 2, 1 - hx / 2 + 1e-8, hx),
+                                 [1.0]))
+        ys = np.ones_like(xs) * (j * hy)
+        if align == "x":
+            return list(zip(xs, ys))
+        else:
+            return list(zip(ys, xs))
+
+    vtxs = make_row(0)
+    triangles = []
+    kbot = 0  # global DOF at the beginning of the bottom of this triangle row
+    ktop = len(vtxs)  # global DOF at the beginning of the top of this triangle row
+    for j in range(ny):
+        more_vtxs = make_row(j + 1)
+        klast = ktop + len(more_vtxs) - 1
+        vtxs.extend(more_vtxs)  # upper row of vertices for this row of triangles
+        if j % 2 == 0:  # even row of triangles
+            # +------------+
+            # | /\  /\  /\ |
+            # |/  \/  \/  \|
+            # +------------+
+
+            #  /\
+            # /__\ x nx
+            row = []
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(kbot, ktop)),
+                                                     start=ktop + 1):
+                row.append([kbase1, kbase2, kvert])
+            assert len(row) == nx
+            triangles.extend(row)
+
+            # ____
+            # \  /
+            #  \/ x (nx - 1), plus the halves at the ends
+            row = []
+            row.append([kbot, ktop + 1, ktop])  # left end
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(ktop + 1, klast)),
+                                                     start=kbot + 1):
+                row.append([kvert, kbase2, kbase1])
+
+            row.append([ktop - 1, klast, klast - 1])  # right end
+            assert len(row) == nx + 1
+            triangles.extend(row)
+        else:  # odd row of triangles
+            # +------------+
+            # |\  /\  /\  /|
+            # | \/  \/  \/ |
+            # +------------+
+
+            #  /\
+            # /__\ x (nx - 1), plus the halves at the ends
+            row = []
+            row.append([kbot, kbot + 1, ktop])  # left end
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(kbot + 1, ktop - 1)),
+                                                     start=ktop + 1):
+                row.append([kbase1, kbase2, kvert])
+            row.append([ktop - 2, ktop - 1, klast])  # right end
+            assert len(row) == nx + 1
+            triangles.extend(row)
+
+            # ____
+            # \  /
+            #  \/ x nx
+            row = []
+            for kvert, (kbase1, kbase2) in enumerate(window(2, range(ktop, klast + 1)),
+                                                     start=kbot + 1):
+                row.append([kvert, kbase2, kbase1])
+
+            assert len(row) == nx
+            triangles.extend(row)
+        kbot = ktop
+        ktop = ktop + len(more_vtxs)
+
+    # # DEBUG
+    # vtxs = np.array(vtxs)
+    # print(vtxs)
+    # print(triangles)
+    # import matplotlib.tri as mtri
+    # tri = mtri.Triangulation(vtxs[:, 0], vtxs[:, 1], triangles=triangles)
+    # plt.triplot(tri)
+    # plt.axis("equal")
+    # plt.show()
+
+    return make_mesh(cells=triangles, dofs=range(len(vtxs)), vertices=vtxs)
 
 
 def prepare_linear_export(V: typing.Union[dolfin.FunctionSpace,
