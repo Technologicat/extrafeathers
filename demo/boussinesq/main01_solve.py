@@ -13,7 +13,8 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     LogLevel, set_log_level,
                     Progress,
                     MPI,
-                    begin, end)
+                    begin, end,
+                    parameters)
 
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
@@ -60,6 +61,9 @@ bcT_walls = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.WALLS.value
 bcT_bottom = DirichletBC(W, Constant(0.0), boundary_parts, Boundaries.BOTTOM.value)
 bcT_obstacle = DirichletBC(W, Constant(1.0), boundary_parts, Boundaries.OBSTACLE.value)
 bcT = [bcT_top, bcT_walls, bcT_bottom, bcT_obstacle]
+
+parameters['krylov_solver']['nonzero_initial_guess'] = True
+# parameters['krylov_solver']['monitor_convergence'] = True
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)

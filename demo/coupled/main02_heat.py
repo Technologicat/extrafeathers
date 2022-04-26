@@ -16,7 +16,8 @@ from fenics import (FunctionSpace, DirichletBC,
                     LogLevel, set_log_level,
                     Progress,
                     MPI,
-                    begin, end)
+                    begin, end,
+                    parameters)
 
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
@@ -45,6 +46,9 @@ if my_rank == 0:
 bc_inflow = DirichletBC(V, Constant(0), boundary_parts, Boundaries.INFLOW.value)
 bc_cylinder = DirichletBC(V, Constant(1), boundary_parts, Boundaries.OBSTACLE.value)
 bc = [bc_inflow, bc_cylinder]
+
+parameters['krylov_solver']['nonzero_initial_guess'] = True
+# parameters['krylov_solver']['monitor_convergence'] = True
 
 # Create XDMF file (for visualization in ParaView)
 xdmffile_T = XDMFFile(MPI.comm_world, vis_T_filename)

@@ -14,7 +14,8 @@ from fenics import (VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
                     LogLevel, set_log_level,
                     Progress,
                     MPI,
-                    begin, end)
+                    begin, end,
+                    parameters)
 
 # custom utilities for FEniCS
 from extrafeathers import common
@@ -112,6 +113,10 @@ bcσ.append(bcσ_right3)
 # # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
 # u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
 # solver.u_n.assign(u0)
+
+# https://fenicsproject.org/qa/1124/is-there-a-way-to-set-the-inital-guess-in-the-krylov-solver/
+parameters['krylov_solver']['nonzero_initial_guess'] = True
+# parameters['krylov_solver']['monitor_convergence'] = True
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)

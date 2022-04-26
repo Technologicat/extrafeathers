@@ -17,7 +17,8 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     LogLevel, set_log_level,
                     Progress,
                     MPI,
-                    begin, end)
+                    begin, end,
+                    parameters)
 
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
@@ -93,6 +94,9 @@ bcp = [bcp_outflow]
 # hydrostatic_pressure = Expression(f"rho * g * ({ymax} - x[1])", degree=2, rho=rho, g=g)  # p = ρ g h, where h = depth
 # bcp_outflow = DirichletBC(Q, hydrostatic_pressure, boundary_parts, Boundaries.OUTFLOW.value)
 # bcp = [bcp_outflow]
+
+parameters['krylov_solver']['nonzero_initial_guess'] = True
+# parameters['krylov_solver']['monitor_convergence'] = True
 
 # Create XDMF files (for visualization in ParaView)
 #

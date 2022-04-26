@@ -15,7 +15,8 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     LogLevel, set_log_level,
                     Progress,
                     MPI,
-                    begin, end)
+                    begin, end,
+                    parameters)
 
 # custom utilities for FEniCS
 from extrafeathers import meshiowrapper
@@ -96,6 +97,9 @@ bcu_walls = DirichletBC(V, Constant((0, 0)),
                         boundary_parts, Boundaries.WALLS.value)
 bcu = [bcu_inflow_r, bcu_inflow_l, bcu_walls]
 bcp = []  # no Dirichlet BCs on pressure; Krylov solvers can handle singular systems just fine.
+
+parameters['krylov_solver']['nonzero_initial_guess'] = True
+# parameters['krylov_solver']['monitor_convergence'] = True
 
 # Create XDMF files (for visualization in ParaView)
 xdmffile_u = XDMFFile(MPI.comm_world, vis_u_filename)

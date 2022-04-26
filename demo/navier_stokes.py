@@ -41,7 +41,8 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     LogLevel, set_log_level,
                     Progress,
                     MPI,
-                    begin, end)
+                    begin, end,
+                    parameters)
 from mshr import Rectangle, Circle, generate_mesh
 
 # custom utilities for FEniCS
@@ -359,6 +360,9 @@ A3 = assemble(a3)
 # Apply boundary conditions to matrices
 [bc.apply(A1) for bc in bcu]
 [bc.apply(A2) for bc in bcp]
+
+parameters['krylov_solver']['nonzero_initial_guess'] = True
+# parameters['krylov_solver']['monitor_convergence'] = True
 
 # Create XDMF files (for visualization in ParaView)
 #
