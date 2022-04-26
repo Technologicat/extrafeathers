@@ -14,7 +14,6 @@ from extrafeathers import meshmagic, plotmagic
 
 from .config import mesh_filename, Boundaries
 
-# TODO: move this to meshmagic
 def main():
     assert dolfin.MPI.comm_world.size == 1, "Mesh can only be generated in serial mode, please run without mpirun."
 
