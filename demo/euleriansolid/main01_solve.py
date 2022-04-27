@@ -1,5 +1,5 @@
 # -*- coding: utf-8; -*-
-"""TODO: document this"""
+"""Axially moving solid, Eulerian view, small-displacement regime (on top of axial motion)."""
 
 import numpy as np
 import matplotlib.pyplot as plt
