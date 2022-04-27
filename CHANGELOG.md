@@ -1,26 +1,35 @@
 # Changelog
 
-**0.4.0** (in progress, last updated 22 April 2022):
+**0.4.0** (in progress, last updated 27 April 2022):
 
 **Added**:
 
 - **Quadrilateral elements** are now supported.
   - The support for quad elements in the legacy FEniCS itself is incomplete and buggy. It has been fixed in DOLFINx, but we do not support the next-gen FEniCS yet. So although `extrafeathers` already supports arbitrary quad meshes, this functionality is currently practically useful mostly for quad meshes on the unit square.
   - Like in FEniCS itself, mixed meshes (having both quads and triangles) are **not** supported.
-- Improved support for **discontinuous spaces** (DP1, DP2, DP3, DQ1, DQ2, and DQ3).
 - Add `prepare_linear_export`. See [`demo.coupled.main01_flow`](demo/coupled/main01_flow.py) and [`demo.boussinesq.main01_solve`](demo/boussinesq/main01_solve.py) for usage examples.
-- Add `quad_to_tri` to convert a quad mesh to a triangle mesh in a crossed-diagonal format, by adding a node at each cell center and then replacing each quad by four triangles. Used by `mpiplot` to make Matplotlib interpolate FEM functions on quadrilaterals.
-- Add `renumber_nodes_by_distance`.
-- Add `collapse_node_numbering`. Like `dolfin.FunctionSpace.collapse`, but for the `extrafeathers` internal format (`cells` list and `nodes` dict, as produced by `all_cells`).
+- Add `quad_to_tri` to convert a quad mesh to a triangle mesh in a crossed-diagonal format, by adding a node at each cell center and then replacing each quad by four triangles.
+  - Note that emulating quad interpolation this way does not actually interpolate bilinearly; the interpolation remains linear on triangles. This produces minor visual artifacts when compared to actual bilinear interpolation. Still, the result looks ok-ish, and lets `mpiplot` (ab)use Matplotlib to plot FEM functions on quadrilaterals.
+- Add `trimesh` to triangulate the unit square using equilateral triangles (halves of them at two opposite edges).
+- Add `minmax` to extract the `min` and `max` of a FEM field on nodal elements. Modes available for raw, abs, l2 (euclidean length). When running in MPI mode, automatically gathers data from all processes. The data may live on an arbitrary subspace (e.g. a component of a vector field that itself lives on a `MixedElement`).
+- Add `renumber_nodes_by_distance`. Can set the origin point.
+- Add `collapse_node_numbering`. Like `dolfin.FunctionSpace.collapse`, but for the `extrafeathers` internal format (`cells` list and `nodes` dict, as produced by `all_cells`). This is sometimes needed; if curious, see the source code of the [`meshmagic`](extrafeathers/meshmagic.py) and [`plotmagic`](extrafeathers/plotmagic.py) modules for use cases.
 - Add [interptest demo](demo/interptest.py), to show interpolation of a bilinear function on the unit square on different element types.
+- Add [smoothing demo](demo/smoothingtest.py), to show the effects of P1->DP0->P1 (and Q1->DQ0->Q1) projection smoothing. This is a technique to eliminate a symmetric numerical checkerboard oscillation with only minor damage to the actual signal.
 
 **Changed**:
 
+- Improved support for **discontinuous spaces** (DP1, DP2, DP3, DQ1, DQ2, and DQ3) in various library functions.
+- `mpiplot` and `mpiplot_mesh` now support also piecewise constant spaces (`DP0` and `DQ0`).
 - `mpiplot` now rejects input if the function space is not supported, instead of trying to project.
-  - This is to ensure a faithful representation. We plan to support more spaces in the future (particularly DP0 and DQ0 are not yet supported).
-- Plotting preparation changed; now both `mpiplot` and `mpiplot_mesh` can take the `prep` argument. Both `mpiplot_prepare` and `as_mpl_triangulation` generate a `prep`.
+  - This is to ensure a faithful representation.
+- Plotting preparation changed; now both `mpiplot` and `mpiplot_mesh` can take the `prep` argument.
+  - Both `mpiplot_prepare` and `as_mpl_triangulation` generate a `prep`. These have slightly different options and different use cases.
+  - `mpiplot` takes the output of `mpiplot_prepare`, and `mpiplot_mesh` that of `as_mpl_triangulation`.
 - Rename `midpoint_refine` to `refine_for_export`, since that's the use, and it handles both degree-2 and degree-3 spaces.
 - Rename `map_refined_P1` to `map_coincident`, and generalize it.
+  - Now works at least with P1, P2, P3, Q1, Q2, Q3, DP0, DP1, DP2, DP3, DQ0, DQ1, DQ2, and DQ3 spaces.
+  - Also, add a squared-distance tolerance option for detecting coincident nodes.
 
 
 ---
