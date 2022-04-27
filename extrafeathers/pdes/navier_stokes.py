@@ -731,6 +731,11 @@ class NavierStokes:
         A2 = self.A2_constant + assemble(self.a2_varying)
         b2 = assemble(self.L2)
         if not self.bcp:  # pure Neumann pressure BCs
+            # `set_near_nullspace`: "Attach near nullspace to matrix (used by preconditioners,
+            #                        such as smoothed aggregation algebraic multigrid)"
+            # `set_nullspace`:      "Attach nullspace to matrix (typically used by Krylov solvers
+            #                        when solving singular systems)"
+            as_backend_type(A2).set_near_nullspace(self.pressure_null_space)
             as_backend_type(A2).set_nullspace(self.pressure_null_space)
             self.pressure_null_space.orthogonalize(b2)
         else:
