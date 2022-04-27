@@ -1,5 +1,11 @@
 # -*- coding: utf-8; -*-
-"""Demonstrate the effects of Q1->Q0->Q1 projection smoothing."""
+"""Demonstrate the effects of Q1->Q0->Q1 projection smoothing.
+
+Cell kind ("Q" or "P") can be specified on the command line:
+
+    python -m demo.smoothingtest Q
+    python -m demo.smoothingtest P
+"""
 
 import sys
 
@@ -34,9 +40,11 @@ f = dolfin.Expression("x[0] * x[1]", degree=3)
 fh = dolfin.interpolate(f, V1)
 
 # Stand-in for a checkerboard numerical oscillation we want to eliminate.
+#
 # # Checkerboard function (when sampled on DQ0)
 # g = dolfin.Expression("1e6 * sin(N * pi * x[0]) * sin(N * pi * x[1])", N=N, degree=3)
 # gh = dolfin.interpolate(g, V0)
+#
 # Checkerboard function at nodes of Q1
 g = dolfin.Expression("1e6 * cos(N * pi * x[0]) * cos(N * pi * x[1])", N=N, degree=3)
 gh = dolfin.interpolate(g, V1)
@@ -85,6 +93,7 @@ def doit(suptitle, error=None):
     if dolfin.MPI.comm_world.rank == 0:
         plt.sca(ax[1, 0])
     fP1 = dolfin.project(fdG0, V1)
+    # fP1 = meshmagic.patch_average(fh_distorted)  # alternatively, could use this
     vmin, vmax = symmetric_vrange(fP1)
     theplot = plotmagic.mpiplot(fP1, show_mesh=True, vmin=vmin, vmax=vmax, cmap="RdBu_r")
     if dolfin.MPI.comm_world.rank == 0:
@@ -94,7 +103,7 @@ def doit(suptitle, error=None):
 
     if dolfin.MPI.comm_world.rank == 0:
         plt.sca(ax[1, 1])
-    e = dolfin.project(fP1 - fh, V1)  # original fh, no error
+    e = dolfin.project(fP1 - fh, V1)  # compare to clean fh
     vmin, vmax = symmetric_vrange(e)
     theplot = plotmagic.mpiplot(e, show_mesh=True, vmin=vmin, vmax=vmax, cmap="RdBu_r")
     if dolfin.MPI.comm_world.rank == 0:
