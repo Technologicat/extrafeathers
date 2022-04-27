@@ -15,6 +15,8 @@ You can give an element type (Px, Qx, DPx, DQx) as argument:
     python -m demo.refelement Q2
     python -m demo.refelement DP3
     python -m demo.refelement DQ3
+    python -m demo.refelement DP0
+    python -m demo.refelement DQ0
 
 Node and text color color-codes cells. Labels are "reference_dof (global_dof)".
 
