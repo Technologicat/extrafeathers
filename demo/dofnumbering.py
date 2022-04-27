@@ -9,7 +9,7 @@ From the top-level directory of the project:
     mpirun -n 2 python -m demo.dofnumbering
     mpirun -n 4 python -m demo.dofnumbering
 
-Element type can also be given:
+Element type can also be given (Px, Qx, DPx, DQx):
 
     python -m demo.dofnumbering Q2
     mpirun -n 2 python -m demo.dofnumbering Q2
