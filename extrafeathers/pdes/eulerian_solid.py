@@ -450,6 +450,9 @@ class EulerianSolid:
         v_prev = Function(self.V)
         maxit = 100  # TODO: parameterize
         tol = 1e-8  # TODO: parameterize
+        it1s = []
+        it2s = []
+        it3s = []
         for _ in range(maxit):
             v_prev.assign(self.v_)
 
@@ -458,7 +461,7 @@ class EulerianSolid:
             b1 = assemble(self.L_u)
             [bc.apply(A1) for bc in self.bcu]
             [bc.apply(b1) for bc in self.bcu]
-            it1 = solve(A1, self.u_.vector(), b1, 'cg', 'sor')
+            it1s.append(solve(A1, self.u_.vector(), b1, 'cg', 'sor'))
 
             # # Direct algebraic update, no FEM (results in mass lumping,
             # # since the spatial connections between the DOFs are ignored):
@@ -474,7 +477,7 @@ class EulerianSolid:
             # dt = self.dt
             # V = (1 - θ) * self.v_n.vector()[:] + θ * self.v_.vector()[:]
             # self.u_.vector()[:] = self.u_n.vector()[:] + dt * V
-            # it1 = 1
+            # it1s.append(1)
 
             # Postprocess `u` to eliminate numerical oscillations
             postprocessV(self.u_)
@@ -494,38 +497,36 @@ class EulerianSolid:
             b2 = assemble(self.L_σ)
             [bc.apply(A2) for bc in self.bcσ]
             [bc.apply(b2) for bc in self.bcσ]
-            it2 = solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor')
+            it2s.append(solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor'))
 
             # Postprocess `σ` to eliminate numerical oscillations
-            postprocessQ(self.σ_)
+            # postprocessQ(self.σ_)
 
             # Step 3: tonight's main event (solve momentum equation for `v`)
             A3 = assemble(self.a_v)
             b3 = assemble(self.L_v)
-
-            if self.bcv:
-                [bc.apply(A3) for bc in self.bcv]
-                [bc.apply(b3) for bc in self.bcv]
-            else:
-                # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
-                #
-                # `set_near_nullspace`: "Attach near nullspace to matrix (used by preconditioners,
-                #                        such as smoothed aggregation algebraic multigrid)"
-                # `set_nullspace`:      "Attach nullspace to matrix (typically used by Krylov solvers
-                #                        when solving singular systems)"
-                #
-                # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d4/db0/classdolfin_1_1PETScMatrix.html#aeb0152c4382d473ae6a93841f721260c
-                #
+            [bc.apply(A3) for bc in self.bcv]
+            [bc.apply(b3) for bc in self.bcv]
+            # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
+            #
+            # `set_near_nullspace`: "Attach near nullspace to matrix (used by preconditioners,
+            #                        such as smoothed aggregation algebraic multigrid)"
+            # `set_nullspace`:      "Attach nullspace to matrix (typically used by Krylov solvers
+            #                        when solving singular systems)"
+            #
+            # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d4/db0/classdolfin_1_1PETScMatrix.html#aeb0152c4382d473ae6a93841f721260c
+            #
+            if not self.bcv:
                 A3_PETSc = as_backend_type(A3)
                 A3_PETSc.set_near_nullspace(self.null_space)
                 A3_PETSc.set_nullspace(self.null_space)
-                # # TODO: What goes wrong here? Is it that the null space of the other linear models
-                # # is subtly different from the null space of the linear elastic model? So telling
-                # # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
-                # # the load function against the wrong null space corrupts the loading?
-                # self.null_space.orthogonalize(b3)
-
-            it3 = solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg')
+            # # TODO: What goes wrong here? Is it that the null space of the other linear models
+            # # is subtly different from the null space of the linear elastic model? So telling
+            # # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
+            # # the load function against the wrong null space corrupts the loading?
+            # if not self.bcv:
+            #     self.null_space.orthogonalize(b3)
+            it3s.append(solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg'))
 
             # Postprocess `v` to eliminate numerical oscillations
             postprocessV(self.v_)
@@ -550,6 +551,9 @@ class EulerianSolid:
 
         end()
 
+        it1 = sum(it1s)
+        it2 = sum(it2s)
+        it3 = sum(it3s)
         return it1, it2, it3, ((_ + 1), e)
 
     def commit(self) -> None:
