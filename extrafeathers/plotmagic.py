@@ -154,8 +154,16 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     same mesh. (Moving the mesh nodes invalidates it. Not checked; be careful.)
     """
     cell_kind = str(V.ufl_element().cell())
+    element = V.ufl_element()
+    family = str(element.family())
+    degree = element.degree()
     if cell_kind not in ("triangle", "quadrilateral"):
         raise ValueError(f"Expected `V` to be defined on a triangle or quadrilateral mesh; got '{cell_kind}'.")
+    if degree not in (1, 2, 3) or family not in ("Lagrange", "P",
+                                                 "Discontinuous Lagrange", "DP",
+                                                 "Q",
+                                                 "DQ"):
+        raise ValueError(f"Expected `V` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
 
     # Before proceeding, renumber the DOFs into a contiguous zero-based range.
     # This numbering will correspond to the subspace-relevant slice of the global DOF vector.
@@ -209,7 +217,6 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
             # Cells have been refined to degree 1 vis cells, so treat them as Q1.
             vertices = [[v[0], v[1], v[3], v[2]] for v in vertices]
         else:
-            degree = V.ufl_element().degree()
             if degree == 1:  # FEniCS Q1 -> Matplotlib Q1
                 # 2---3
                 # |   |
@@ -339,7 +346,6 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
         # sent in as `W`.
         #
         # Here `W` is continuous across element edges iff `V` is (i.e. the conversion is Q->P, DQ->DP).
-        family = V.ufl_element().family()
         iscontinuous = (family == "Q")
         tritovtx, vtxtotri = meshmagic._map_coincident(cellsvtx, nodesvtx, iscontinuous,
                                                        cellstri, nodestri, iscontinuous)
@@ -444,11 +450,11 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
     element = V.ufl_element()
     family = str(element.family())
     degree = element.degree()
-    if degree not in (0, 1, 2, 3) or family not in ("Lagrange", "P",
-                                                    "Discontinuous Lagrange", "DP",
-                                                    "Q",
-                                                    "DQ"):
-        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{element.family()}' with degree {element.degree()}")
+    if degree not in (1, 2, 3) or family not in ("Lagrange", "P",
+                                                 "Discontinuous Lagrange", "DP",
+                                                 "Q",
+                                                 "DQ"):
+        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
 
     # The global DOF vector always refers to the complete function space.
     # If `V` is a subspace (vector/tensor field component), the DOF vector
@@ -520,11 +526,11 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     element = V.ufl_element()
     family = str(element.family())
     degree = element.degree()
-    if degree not in (0, 1, 2, 3) or family not in ("Lagrange", "P",
-                                                    "Discontinuous Lagrange", "DP",
-                                                    "Q",
-                                                    "DQ"):
-        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{element.family()}' with degree {element.degree()}")
+    if degree not in (1, 2, 3) or family not in ("Lagrange", "P",
+                                                 "Discontinuous Lagrange", "DP",
+                                                 "Q",
+                                                 "DQ"):
+        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
 
     # https://fenicsproject.discourse.group/t/gather-function-in-parallel-error/1114
 
