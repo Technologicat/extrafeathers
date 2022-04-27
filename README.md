@@ -122,9 +122,13 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
        - In MPI mode, can make a distributed mesh or an MPI-local mesh, as desired.
          - In some versions of FEniCS, some inputs may cause SCOTCH to crash when it attempts to MPI-partition the created mesh. Particularly, in FEniCS 2019, this is the case when the input data is the output of `quad_to_tri`. (That data works just fine in serial mode, and renumbering the nodes does not help.)
          - Constructing a quadrilateral mesh may fail with "cell is not orderable", even if there is just a single cell (even when extracted from a unit square quadrilateral mesh using `all_cells` and then fed back in to `make_mesh`). This is a known issue in DOLFIN [[1](https://bitbucket.org/fenics-project/dolfin/issues/997/quad-hex-meshes-need-ordering-check)] [[2](https://bitbucket.org/fenics-project/dolfin/issues/1089/quadrilateral-mesh-reordering-error)]; it should be fixed in DOLFINx, where the support for quadrilateral meshes has been improved significantly, but we do not support the next-gen FEniCS yet.
+     - `trimesh` [**2D**]
+       - Triangulate the unit square using equilateral triangles (halves of them at two opposite edges).
      - `renumber_nodes_by_distance` [**2D**]
        - As it says on the tin. May specify a custom origin; default is `(min(x), min(y))`.
        - Operates on the `extrafeathers` internal format.
+     - `minmax` [**2D**, **3D**]
+       - Extract the `min` and `max` of a FEM field on nodal elements. Modes available for raw, abs, l2 (euclidean length). When running in MPI mode, automatically gathers data from all processes. The data may live on an arbitrary subspace (e.g. a component of a vector field that itself lives on a `MixedElement`).
 
 
 ### Plotting
