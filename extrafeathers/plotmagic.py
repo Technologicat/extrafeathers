@@ -95,7 +95,7 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
 
     `V`: a 2D scalar function space
          - `.sub(j)` of a vector or tensor function space is fine.
-         - P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, DQ3 elements supported.
+         - P1, P2, P3, DP0, DP1, DP2, DP3, Q1, Q2, Q3, DQ0, DQ1, DQ2, DQ3 elements supported.
 
     `mpi_global`: If `True`, represent the whole mesh.
 
@@ -159,11 +159,11 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     degree = element.degree()
     if cell_kind not in ("triangle", "quadrilateral"):
         raise ValueError(f"Expected `V` to be defined on a triangle or quadrilateral mesh; got '{cell_kind}'.")
-    if degree not in (1, 2, 3) or family not in ("Lagrange", "P",
-                                                 "Discontinuous Lagrange", "DP",
-                                                 "Q",
-                                                 "DQ"):
-        raise ValueError(f"Expected `V` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
+    if degree not in (0, 1, 2, 3) or family not in ("Lagrange", "P",
+                                                    "Discontinuous Lagrange", "DP",
+                                                    "Q",
+                                                    "DQ"):
+        raise ValueError(f"Expected `V` to use a P1, P2, P3, DP0, DP1, DP2, DP3, Q1, Q2, Q3, DQ0, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
 
     # Before proceeding, renumber the DOFs into a contiguous zero-based range.
     # This numbering will correspond to the subspace-relevant slice of the global DOF vector.
@@ -176,9 +176,6 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     except RuntimeError:  # not a subspace
         pass
 
-    # TODO: Support DP0 (a.k.a. dG0) elements. We need to construct a degree-1 space
-    # TODO: to get the element edges.
-
     # TODO: Support S and DS element families. These need adding extra DOFs during
     # TODO: the vis refinement; though S2 specifically could be supported alternatively
     # TODO: by just adding one DOF at the cell center and then converting to triangles,
@@ -190,15 +187,26 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     # TODO:     0-2-1
     # TODO:      S2
 
+    # For dG0 (DP0, DQ0) elements, we must construct a degree-1 space to get the element edges.
+    dG0 = degree == 0 and family in ("Discontinuous Lagrange", "DP", "DQ")
+    if dG0:
+        V_for_cells = dolfin.FunctionSpace(V.mesh(), "P", 1)  # Will automatically create Q1 if quad mesh
+    else:
+        V_for_cells = V
+
     # The cells for the MPI-local mesh part use the global DOF numbers, but refer
     # also to unowned nodes. Thus we must get a copy of the full global DOF and
     # coordinate data even if we want to construct just an MPI-local mesh part.
-    cells, all_nodes = meshmagic.all_cells(V, matplotlibize=True, refine=refine)
+    cells, all_nodes = meshmagic.all_cells(V_for_cells, matplotlibize=True, refine=refine)
     if not mpi_global:
-        cells, _ = meshmagic.my_cells(V, matplotlibize=True, refine=refine)
+        cells, _ = meshmagic.my_cells(V_for_cells, matplotlibize=True, refine=refine)
 
     prep = env()
     prep.cell_kind = cell_kind
+    prep.element = element
+    prep.family = family
+    prep.degree = degree
+    prep.dG0 = dG0
 
     if not len(cells):
         prep.polys = None
@@ -246,6 +254,12 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
             else:
                 raise NotImplementedError(f"Expected degree 1, 2 or 3; got {degree}")
     prep.polys = mcoll.PolyCollection(vertices)
+
+    # For dG0 elements, we don't need a `Triangulation`, because the function values can be
+    # shown as face colors of the `PolyCollection`.
+    if dG0:
+        prep.tris = None
+        return prep
 
     # Degree 1 or higher function visualization needs a triangulation for
     # `tricontourf`, `tripcolor`.
@@ -422,7 +436,7 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
 
     `u`: `dolfin.Function`; a 2D scalar FEM field
          - `.sub(j)` of a vector or tensor field is fine.
-         - P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, DQ3 elements supported.
+         - P1, P2, P3, DP0, DP1, DP2, DP3, Q1, Q2, Q3, DQ0, DQ1, DQ2, DQ3 elements supported.
 
     See `as_mpl_triangulation`, which does most of the work.
 
@@ -450,11 +464,11 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
     element = V.ufl_element()
     family = str(element.family())
     degree = element.degree()
-    if degree not in (1, 2, 3) or family not in ("Lagrange", "P",
-                                                 "Discontinuous Lagrange", "DP",
-                                                 "Q",
-                                                 "DQ"):
-        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
+    if degree not in (0, 1, 2, 3) or family not in ("Lagrange", "P",
+                                                    "Discontinuous Lagrange", "DP",
+                                                    "Q",
+                                                    "DQ"):
+        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP0, DP1, DP2, DP3, Q1, Q2, Q3, DQ0, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
 
     # The global DOF vector always refers to the complete function space.
     # If `V` is a subspace (vector/tensor field component), the DOF vector
@@ -485,7 +499,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
 
     `u`: `dolfin.Function`; a 2D scalar FEM field
          - `.sub(j)` of a vector or tensor field is fine.
-         - P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, DQ3 elements supported.
+         - P1, P2, P3, DP0, DP1, DP2, DP3, Q1, Q2, Q3, DQ0, DQ1, DQ2, DQ3 elements supported.
 
     `show_mesh`: if `True`, show the element edges. If `u` is degree 2 or 3, show the
                  vis edges, too.
@@ -526,11 +540,11 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     element = V.ufl_element()
     family = str(element.family())
     degree = element.degree()
-    if degree not in (1, 2, 3) or family not in ("Lagrange", "P",
-                                                 "Discontinuous Lagrange", "DP",
-                                                 "Q",
-                                                 "DQ"):
-        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP1, DP2, DP3, Q1, Q2, Q3, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
+    if degree not in (0, 1, 2, 3) or family not in ("Lagrange", "P",
+                                                    "Discontinuous Lagrange", "DP",
+                                                    "Q",
+                                                    "DQ"):
+        raise ValueError(f"Expected `u` to use a P1, P2, P3, DP0, DP1, DP2, DP3, Q1, Q2, Q3, DQ0, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
 
     # https://fenicsproject.discourse.group/t/gather-function-in-parallel-error/1114
 
@@ -567,34 +581,77 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
         v_vec = v_vec[prep.subspace_dofs]
         assert len(v_vec) == n_global_dofs  # we have a data value at each DOF of the relevant subspace
 
-        if cell_kind == "triangle":
-            vec_vis = v_vec
-        else:  # cell_kind == "quadrilateral":
-            vec_vis = prep.vec_vis
+        # dG0 elements have constant value over each element; we can treat them by coloring the `PolyCollection`.
+        if prep.dG0:
+            vec_vis = np.array(v_vec)
 
-            # vertex values: take from (subspace-relevant slice of) original global DOF vector
-            vec_vis[prep.tridofs_vtx] = v_vec[prep.qdofs_vtx]
+            # # DEBUG: manual facecolors test
+            # # https://ogeek.cn/qa/?qa=758404/
+            # vmin = kwargs["vmin"] if "vmin" in kwargs else np.min(vec_vis)
+            # vmax = kwargs["vmax"] if "vmax" in kwargs else np.max(vec_vis)
+            # norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+            # polys.set_facecolors(plt.cm.viridis(norm(vec_vis)))
+            # m = mpl.cm.ScalarMappable(cmap=plt.cm.viridis, norm=norm)
+            # m.set_array([])
+            # plt.colorbar(m)
 
-            # cell midpoint values: emulate bilinear interpolation
-            for cell_idx, cell in enumerate(prep.cellsvtx):
-                tridof_center = prep.midtotri[cell_idx]
-                qdofs_vtx = np.array(cell, dtype=np.uint64)  # vertex DOFs only (for bilerp)
-                mean_value = np.sum(v_vec[qdofs_vtx]) / len(qdofs_vtx)
-                vec_vis[tridof_center] = mean_value
+            # Set the `array` attribute to make `colorbar` recognize the `PolyCollection`.
+            # https://matplotlib.org/3.5.0/gallery/shapes_and_collections/artist_reference.html
+            polys = copy(prep.polys)
+            polys.set_edgecolors("none")
+            polys.set_array(vec_vis)
 
-        # TODO: Support DP0 (a.k.a. dG0) elements. Need to `tripcolor` with `shading='flat'`
-        # TODO: since DP0 data is piecewise constant (one value per element).
+            # Apply the most common Matplotlib kwargs to the `PolyCollection`
+            # (we must do this manually since we're using a lower-level API)
+            #
+            # TODO: support other Matplotlib features?
+            cmap = kwargs.pop("cmap", None)
+            if cmap:
+                polys.set_cmap(cmap)
+            vmin = kwargs.pop("vmin", None)
+            vmax = kwargs.pop("vmax", None)
+            if vmin is not None and vmax is not None:
+                polys.set_clim(vmin, vmax)
 
-        theplot = plt.tricontourf(prep.tris, vec_vis, levels=32, **kwargs)
+            # Sanity check: we should have no unrecognized args remaining
+            if kwargs:
+                import warnings
+                unused_args_str = ", ".join(f"'{arg}'" for arg in list(kwargs.keys()))
+                warnings.warn(f"The following kwargs were not used by mpiplot: {unused_args_str}; dG0 mode supports only 'cmap', 'vmin', 'vmax'", UserWarning, stacklevel=2)
 
-        # # Alternative visualization style.
-        # theplot = plt.tripcolor(prep.tris, vec_vis, shading="gouraud", **kwargs)
-        # theplot = plt.tripcolor(prep.tris, vec_vis, shading="flat", **kwargs)
+            ax = plt.gca()
+            theplot = ax.add_collection(polys)
+        else:  # not dG0
+            if cell_kind == "triangle":
+                vec_vis = v_vec
+            else:  # cell_kind == "quadrilateral":
+                # TODO: stuff this algorithm as a function into `prep` itself
 
-        # # Another alternative visualization style.
-        # # https://matplotlib.org/stable/gallery/mplot3d/trisurf3d.html
-        # ax = plt.figure().add_subplot(projection="3d")
-        # theplot = ax.plot_trisurf(xs, ys, vec_vis)
+                vec_vis = prep.vec_vis
+
+                # vertex values: take from (subspace-relevant slice of) original global DOF vector
+                vec_vis[prep.tridofs_vtx] = v_vec[prep.qdofs_vtx]
+
+                # cell midpoint values: emulate bilinear interpolation
+                for cell_idx, cell in enumerate(prep.cellsvtx):
+                    tridof_center = prep.midtotri[cell_idx]
+                    qdofs_vtx = np.array(cell, dtype=np.uint64)  # vertex DOFs only (for bilerp)
+                    mean_value = np.sum(v_vec[qdofs_vtx]) / len(qdofs_vtx)
+                    vec_vis[tridof_center] = mean_value
+
+            # TODO: Support DP0 (a.k.a. dG0) elements. Need to `tripcolor` with `shading='flat'`
+            # TODO: since DP0 data is piecewise constant (one value per element).
+
+            theplot = plt.tricontourf(prep.tris, vec_vis, levels=32, **kwargs)
+
+            # # Alternative visualization style.
+            # theplot = plt.tripcolor(prep.tris, vec_vis, shading="gouraud", **kwargs)
+            # theplot = plt.tripcolor(prep.tris, vec_vis, shading="flat", **kwargs)
+
+            # # Another alternative visualization style.
+            # # https://matplotlib.org/stable/gallery/mplot3d/trisurf3d.html
+            # ax = plt.figure().add_subplot(projection="3d")
+            # theplot = ax.plot_trisurf(xs, ys, vec_vis)
 
     if show_mesh:
         mpiplot_mesh(V, show_partitioning=show_partitioning, prep=prep)
