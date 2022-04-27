@@ -185,7 +185,7 @@ prep_Q2 = plotmagic.mpiplot_prepare(solver.σ_.sub(2))
 prep_Q3 = plotmagic.mpiplot_prepare(solver.σ_.sub(3))
 
 # Enable stabilizers for the Galerkin formulation
-solver.stabilizers.SUPG = False  # stabilizer for advection-dominant problems
+solver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
 
 def dev(T):
     """Deviatoric part of rank-2 tensor `T`."""
