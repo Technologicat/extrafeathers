@@ -357,18 +357,19 @@ class EulerianSolid:
         # V = v_
         # Σ = σ
         εu = ε(U)
-        εv = ε(V)
 
-        # Linear elastic
+        # # Linear elastic
         # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)
 
         # Axially moving Kelvin-Voigt
+        εv = ε(V)
         τ_ret = 0.1  # Kelvin-Voigt retardation time (τ_ret := η/E)  TODO: parameterize
         # σ = 2 [μ + μ_visc d/dt] ε + I tr([λ + λ_visc d/dt] ε)
         #   = 2 μ [1 + τ_ret d/dt] ε + λ I tr([1 + τ_ret d/dt] ε)
         #   = 2 μ [1 + τ_ret (∂/∂t + a·∇)] ε + λ I tr([1 + τ_ret (∂/∂t + a·∇)] ε)
         stress_expr = (2 * μ * (εu + τ_ret * (εv + advs(a, εu))) +
                        λ * Identity(εu.geometric_dimension()) * (tr(εu) + τ_ret * (tr(εv) + advs(a, tr(εu)))))
+
         F_σ = inner(Σ - stress_expr, φ) * dx
 
         # Step 3: v (momentum equation)
