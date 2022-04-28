@@ -6,10 +6,11 @@ import matplotlib.pyplot as plt
 
 from unpythonic import ETAEstimator, timer, Popper
 
-from fenics import (VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
+from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace,
+                    DirichletBC,
                     Constant, Function,
                     project, Vector,
-                    tr, Identity, sqrt, inner,
+                    tr, Identity, sqrt, inner, dot,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
                     Progress,
@@ -24,6 +25,7 @@ from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
 from extrafeathers.pdes import EulerianSolid
+from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, V0, dt, nt,
                      Boundaries,
                      mesh_filename,
@@ -192,6 +194,21 @@ solver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
 def dev(T):
     """Deviatoric part of rank-2 tensor `T`."""
     return T - (1 / 3) * tr(T) * Identity(T.geometric_dimension())
+
+# W = FunctionSpace(mesh, "DP", 0)
+# def elastic_strain_energy():
+#     E = project(inner(solver.σ_, ε(solver.u_)),
+#                 W,
+#                 form_compiler_parameters={"quadrature_degree": 2})
+#     return np.sum(E.vector()[:])
+W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
+def elastic_strain_energy():
+    "∫ σ : ε dΩ"
+    return float(project(inner(solver.σ_, ε(solver.u_)), W))
+def kinetic_energy():
+    "∫ (1/2) ρ v² dΩ"
+    # Note `solver._ρ`; we need the UFL `Constant` object here.
+    return float(project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), W))
 
 # Time-stepping
 t = 0
@@ -416,8 +433,10 @@ for n in range(nt):
     dt_avg = sum(est.que) / len(est.que)
     vis_step_walltime_local = nvismod * dt_avg
 
+    E = elastic_strain_energy()
+    K = kinetic_energy()
     if my_rank == 0:  # DEBUG
-        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1}; wall time per timestep {dt_avg:0.6g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
+        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1}; E = ∫ σ:ε dΩ = {E:0.6g}; K = ∫ (1/2) ρ v² dΩ = {K:0.6g}; K + E = {K + E:0.6g}; wall time per timestep {dt_avg:0.6g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
 
     # In MPI mode, one of the worker processes may have a larger slice of the domain
     # (or require more Krylov iterations to converge) than the root process.
