@@ -221,6 +221,7 @@ nsave_total = 1000  # how many timesteps to save from the whole simulation
 nsavemod = int(nt / nsave_total)  # every how manyth timestep to save
 vis_ratio = 5 / 100  # proportion of timesteps to visualize (plotting is slow; might even leak memory?)
 nvismod = int(vis_ratio * nt)  # every how manyth timestep to visualize
+show_mesh = False
 est = ETAEstimator(nt, keep_last=nvismod)
 if my_rank == 0:
     fig, ax = plt.subplots(2, 4, constrained_layout=True, figsize=(12, 6))
@@ -302,7 +303,7 @@ for n in range(nt):
                 plt.sca(ax[0, 0])
                 plt.cla()
             vmin, vmax = symmetric_vrange(u_.sub(0))
-            theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=True,
+            theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
@@ -314,7 +315,7 @@ for n in range(nt):
                 plt.sca(ax[0, 1])
                 plt.cla()
             vmin, vmax = symmetric_vrange(u_.sub(1))
-            theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=True,
+            theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
@@ -326,7 +327,7 @@ for n in range(nt):
                 plt.sca(ax[1, 0])
                 plt.cla()
             vmin, vmax = symmetric_vrange(v_.sub(0))
-            theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=True,
+            theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
@@ -338,7 +339,7 @@ for n in range(nt):
                 plt.sca(ax[1, 1])
                 plt.cla()
             vmin, vmax = symmetric_vrange(v_.sub(1))
-            theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=True,
+            theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
@@ -350,7 +351,7 @@ for n in range(nt):
                 plt.sca(ax[0, 2])
                 plt.cla()
             vmin, vmax = symmetric_vrange(σ_.sub(0))
-            theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=True,
+            theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
@@ -362,7 +363,7 @@ for n in range(nt):
                 plt.sca(ax[0, 3])
                 plt.cla()
             vmin, vmax = symmetric_vrange(σ_.sub(1))
-            theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=True,
+            theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
@@ -374,7 +375,7 @@ for n in range(nt):
                 plt.sca(ax[1, 2])
                 plt.cla()
             vmin, vmax = symmetric_vrange(σ_.sub(2))
-            theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=True,
+            theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
@@ -386,7 +387,7 @@ for n in range(nt):
                 plt.sca(ax[1, 3])
                 plt.cla()
             vmin, vmax = symmetric_vrange(σ_.sub(3))
-            theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=True,
+            theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
                                         cmap="RdBu_r", vmin=vmin, vmax=vmax)
             if my_rank == 0:
                 colorbars.append(plt.colorbar(theplot))
