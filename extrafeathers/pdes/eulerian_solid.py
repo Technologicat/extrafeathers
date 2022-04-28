@@ -440,6 +440,10 @@ class EulerianSolid:
 
         # `dolfin.errornorm` doesn't support quad elements, because it uses `dolfin.interpolate`.
         # Do the same thing, but avoid interpolation.
+        #
+        # Note this implies we cannot then use a higher-degree dG space to compute the norm,
+        # like `dolfin.errornorm` does, hence this won't be as accurate. But maybe it's enough
+        # for basic convergence monitoring.
         def errnorm(u, u_prev, norm_type):
             e = Function(self.V)
             e.assign(u)
