@@ -455,7 +455,7 @@ class EulerianSolid:
         it2s = []
         it3s = []
         for _ in range(maxit):
-            v_prev.assign(self.v_)
+            v_prev.assign(self.v_)  # convergence monitoring
 
             # Step 1: update `u`
             A1 = assemble(self.a_u)
