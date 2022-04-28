@@ -195,16 +195,22 @@ def dev(T):
 
 # Time-stepping
 t = 0
-est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
 SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
 vis_step_walltime_local = 0
+nsave_total = 1000  # how many timesteps to save from the whole simulation
+nsavemod = int(nt / nsave_total)  # every how manyth timestep to save
+vis_ratio = 0.01  # proportion of timesteps to visualize (plotting is slow)
+nvismod = int(vis_ratio * nt)  # every how manyth timestep to visualize
+est = ETAEstimator(nt, keep_last=nvismod)
 if my_rank == 0:
     fig, ax = plt.subplots(2, 4, constrained_layout=True, figsize=(12, 6))
     plt.show()
     plt.draw()
     plotmagic.pause(0.001)
     colorbars = []
+    print(f"Saving {nsave_total} timesteps in total -> save every {nsavemod} timestep{'s' if nsavemod > 1 else ''}.")
+    print(f"Visualizing {100.0 * vis_ratio:0.3g}% of timesteps -> vis every {nvismod} timestep{'s' if nvismod > 1 else ''}.")
 for n in range(nt):
     begin(msg)
 
@@ -212,44 +218,43 @@ for n in range(nt):
     t += dt
 
     # Solve one timestep
-    krylov_it1, krylov_it2, krylov_it3, (v_it, e) = solver.step()
-    if my_rank == 0:  # DEBUG
-        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {v_it}; ‖v - v_prev‖_H1 = {e}")
+    krylov_it1, krylov_it2, krylov_it3, (system_it, last_diff_H1) = solver.step()
 
-    begin("Saving")
+    if n % nsavemod == 0 or n == nt - 1:
+        begin("Saving")
 
-    if highres_export_V:
-        # Save the displacement visualization at full nodal resolution.
-        solver.u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
-        v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_u.write(v_P1, t)
+        if highres_export_V:
+            # Save the displacement visualization at full nodal resolution.
+            solver.u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
+            v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+            xdmffile_u.write(v_P1, t)
 
-        # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
-        solver.v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
-        v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        xdmffile_v.write(v_P1, t)
-    else:  # save at P1 resolution
-        xdmffile_u.write(solver.u_, t)
-        xdmffile_v.write(solver.v_, t)
+            # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
+            solver.v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
+            v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+            xdmffile_v.write(v_P1, t)
+        else:  # save at P1 resolution
+            xdmffile_u.write(solver.u_, t)
+            xdmffile_v.write(solver.v_, t)
 
-    if highres_export_Q:
-        solver.σ_.vector().gather(q_vec_copy, all_Q_dofs)
-        q_P1.vector()[:] = q_vec_copy[my_Q_dofs]
-        xdmffile_σ.write(q_P1, t)
-    else:  # save at P1 resolution
-        xdmffile_σ.write(solver.σ_, t)
+        if highres_export_Q:
+            solver.σ_.vector().gather(q_vec_copy, all_Q_dofs)
+            q_P1.vector()[:] = q_vec_copy[my_Q_dofs]
+            xdmffile_σ.write(q_P1, t)
+        else:  # save at P1 resolution
+            xdmffile_σ.write(solver.σ_, t)
 
-    # compute von Mises stress for visualization in ParaView
-    # TODO: export von Mises stress at full nodal resolution, too
-    s = dev(solver.σ_)
-    vonMises_expr = sqrt(3 / 2 * inner(s, s))
-    vonMises.assign(project(vonMises_expr, Qscalar))
-    xdmffile_vonMises.write(vonMises, t)
+        # compute von Mises stress for visualization in ParaView
+        # TODO: export von Mises stress at full nodal resolution, too
+        s = dev(solver.σ_)
+        vonMises_expr = sqrt(3 / 2 * inner(s, s))
+        vonMises.assign(project(vonMises_expr, Qscalar))
+        xdmffile_vonMises.write(vonMises, t)
 
-    timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original data
-    timeseries_v.store(solver.v_.vector(), t)
-    timeseries_σ.store(solver.σ_.vector(), t)
-    end()
+        timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original data
+        timeseries_v.store(solver.v_.vector(), t)
+        timeseries_σ.store(solver.σ_.vector(), t)
+        end()
 
     # Accept the timestep, updating the "old" solution
     solver.commit()
@@ -257,7 +262,8 @@ for n in range(nt):
     end()
 
     # Plot the components of u
-    if n % 50 == 0 or n == nt - 1:
+    visualize = n % nvismod == 0 or n == nt - 1
+    if visualize:
         with timer() as tim:
             u_ = solver.u_
             v_ = solver.v_
@@ -408,19 +414,38 @@ for n in range(nt):
     est.tick()
     # TODO: make dt, dt_avg part of the public interface in `unpythonic`
     dt_avg = sum(est.que) / len(est.que)
-    vis_step_walltime_local = 50 * dt_avg
+    vis_step_walltime_local = nvismod * dt_avg
+
+    if my_rank == 0:  # DEBUG
+        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1}; wall time per timestep {dt_avg:0.6g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
 
     # In MPI mode, one of the worker processes may have a larger slice of the domain
     # (or require more Krylov iterations to converge) than the root process.
     # So to get a reliable ETA, we must take the maximum across all processes.
-    times_global = MPI.comm_world.allgather((vis_step_walltime_local, est.estimate, est.formatted_eta))
-    item_with_max_estimate = max(times_global, key=lambda item: item[1])
-    max_eta = item_with_max_estimate[2]
-    item_with_max_vis_step_walltime = max(times_global, key=lambda item: item[0])
-    max_vis_step_walltime = item_with_max_vis_step_walltime[0]
+    # But MPI communication is expensive, so only update this at vis steps.
+    if visualize:
+        times_global = MPI.comm_world.allgather((vis_step_walltime_local, est.estimate, est.formatted_eta))
+        item_with_max_estimate = max(times_global, key=lambda item: item[1])
+        max_eta = item_with_max_estimate[2]
+        item_with_max_vis_step_walltime = max(times_global, key=lambda item: item[0])
+        max_vis_step_walltime = item_with_max_vis_step_walltime[0]
+
+    def roundsig(x, significant_digits):
+        # https://www.adamsmith.haus/python/answers/how-to-round-a-number-to-significant-digits-in-python
+        import math
+        digits_in_int_part = int(math.floor(math.log10(abs(x)))) + 1
+        decimal_digits = significant_digits - digits_in_int_part
+        return round(x, decimal_digits)
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {v_it} iterations; vis every {max_vis_step_walltime:0.2g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
+    msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {system_it} iterations; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
+
+    # Loop-and-a-half situation, so draw one more time to update title.
+    if visualize and my_rank == 0:
+        # figure title (progress message)
+        plt.suptitle(msg)
+        # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
+        plotmagic.pause(0.001)
 
 # Hold plot
 if my_rank == 0:
