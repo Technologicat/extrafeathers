@@ -19,8 +19,14 @@ E = 10
 lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
 mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 
-# To remain subcritical:  V0 < √(E / rho)  (longitudinal elastic wave speed)
-V0 = 0.0           # velocity of co-moving frame in +x direction (constant) [m/s]
+# To remain subcritical:  V0 < √(E / rho)    (longitudinal elastic wave speed)
+#                         V0 < √(mu / rho)?  (shear wave speed)
+#
+# sqrt(10 / 1) ≈ 3.16
+# sqrt((10 / (2 * 1.3)) / 1) ≈ 1.96
+#
+# It seems 1.75 is near the limit of this numerical scheme...
+V0 = 1.75           # velocity of co-moving frame in +x direction (constant) [m/s]
 
 # --------------------------------------------------------------------------------
 # Numerical
