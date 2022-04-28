@@ -486,7 +486,7 @@ class EulerianSolid:
             # it1s.append(1)
 
             # Postprocess `u` to eliminate numerical oscillations
-            postprocessV(self.u_)
+            # postprocessV(self.u_)
 
             # Step 2: update `σ`
             #
@@ -534,7 +534,7 @@ class EulerianSolid:
             it3s.append(solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg'))
 
             # Postprocess `v` to eliminate numerical oscillations
-            postprocessV(self.v_)
+            # postprocessV(self.v_)
 
             # e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
             e = errnorm(self.v_, v_prev, "h1")
