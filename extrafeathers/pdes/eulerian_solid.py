@@ -457,33 +457,43 @@ class EulerianSolid:
         for _ in range(maxit):
             v_prev.assign(self.v_)  # convergence monitoring
 
-            # Step 1: update `u`
-            A1 = assemble(self.a_u)
-            b1 = assemble(self.L_u)
-            [bc.apply(A1) for bc in self.bcu]
-            [bc.apply(b1) for bc in self.bcu]
-            if not self.bcu:
-                A1_PETSc = as_backend_type(A1)
-                A1_PETSc.set_near_nullspace(self.null_space)
-                A1_PETSc.set_nullspace(self.null_space)
-                self.null_space.orthogonalize(b1)
-            it1s.append(solve(A1, self.u_.vector(), b1, 'bicgstab', 'sor'))
+            # # Step 1: update `u`
+            # A1 = assemble(self.a_u)
+            # b1 = assemble(self.L_u)
+            # [bc.apply(A1) for bc in self.bcu]
+            # [bc.apply(b1) for bc in self.bcu]
+            # if not self.bcu:
+            #     A1_PETSc = as_backend_type(A1)
+            #     A1_PETSc.set_near_nullspace(self.null_space)
+            #     A1_PETSc.set_nullspace(self.null_space)
+            #     self.null_space.orthogonalize(b1)
+            # it1s.append(solve(A1, self.u_.vector(), b1, 'bicgstab', 'sor'))
 
-            # # Direct algebraic update, no FEM (results in mass lumping,
-            # # since the spatial connections between the DOFs are ignored):
-            # #   ∂u/∂t = v
-            # # =>
-            # #   (u_ - u_n) / Δt = v
-            # #   u_ - u_n = Δt v
-            # #   u_ = u_n + Δt v
-            # # where
-            # #   v = (1 - θ) v_n + θ v_
-            # # is the approximation of `v` consistent with the time integration scheme.
-            # θ = self.θ
-            # dt = self.dt
-            # V = (1 - θ) * self.v_n.vector()[:] + θ * self.v_.vector()[:]
-            # self.u_.vector()[:] = self.u_n.vector()[:] + dt * V
-            # it1s.append(1)
+            # Mass-lumped direct algebraic update.
+            #
+            # This ignores the spatial connections between the DOFs.
+            # Seems numerically more stable for the Kelvin-Voigt material
+            # than the consistent-mass FEM update.
+            #
+            # We have
+            #   ∂u/∂t = v
+            # which discretizes into
+            #   (u_ - u_n) / Δt = v
+            #   u_ - u_n = Δt v
+            #   u_ = u_n + Δt v
+            # Here
+            #   v = (1 - θ) v_n + θ v_
+            # is the approximation of `v` consistent with the time integration scheme.
+            θ = self.θ
+            dt = self.dt
+            # This is what we want to do:
+            #   V = (1 - θ) * self.v_n.vector()[:] + θ * self.v_.vector()[:]
+            #   self.u_.vector()[:] = self.u_n.vector()[:] + dt * V
+            # Maybe faster to update in-place using the low-level PETSc vector API?
+            self.u_.assign(self.u_n)
+            self.u_.vector().axpy(dt * (1 - θ), self.v_n.vector())
+            self.u_.vector().axpy(dt * θ, self.v_.vector())
+            it1s.append(1)
 
             # Postprocess `u` to eliminate numerical oscillations
             # postprocessV(self.u_)
