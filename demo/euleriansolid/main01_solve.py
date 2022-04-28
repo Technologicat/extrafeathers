@@ -201,6 +201,9 @@ SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
 vis_step_walltime_local = 0
 if my_rank == 0:
     fig, ax = plt.subplots(2, 4, constrained_layout=True, figsize=(12, 6))
+    plt.show()
+    plt.draw()
+    plotmagic.pause(0.001)
     colorbars = []
 for n in range(nt):
     begin(msg)
@@ -391,9 +394,6 @@ for n in range(nt):
             minu, maxu = common.minmax(u_, mode="l2")
 
             if my_rank == 0:
-                plt.draw()
-                if n == 0:
-                    plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
                 plotmagic.pause(0.001)
         last_plot_walltime_local = tim.dt
