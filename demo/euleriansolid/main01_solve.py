@@ -110,9 +110,11 @@ bcσ.append(bcσ_right3)
 # bcσ.append(bcσ_right3)
 
 # # Optional: nonzero initial condition for displacement
+# from fenics import Expression
 # # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
 # u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
 # solver.u_n.assign(u0)
+# solver.u_.assign(u0)
 
 # https://fenicsproject.org/qa/1124/is-there-a-way-to-set-the-inital-guess-in-the-krylov-solver/
 parameters['krylov_solver']['nonzero_initial_guess'] = True
