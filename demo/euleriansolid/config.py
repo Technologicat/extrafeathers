@@ -27,7 +27,7 @@ V0 = 0.0           # velocity of co-moving frame in +x direction (constant) [m/s
 
 T = 5.0           # final time [s]
 
-# On uniform mesh: at N=16, nt=500 works, but at N=32, nt=2500 is needed.
+# With T = 5.0, and a uniform mesh of 16×16 quads, for linear elastic nt=1e3 works, but Kelvin-Voigt needs 2e4.
 nt = 20000          # number of timesteps
 dt = T / nt        # timestep size [s]
 
