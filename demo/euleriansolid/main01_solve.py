@@ -76,6 +76,8 @@ bcσ.append(bcσ_bottom2)
 bcσ.append(bcσ_bottom3)
 
 # # Left and right edges: fixed displacement at both ends
+# # TODO: Does not work with mass-lumped `u`, because in that algorithm we use only BCs for `v`.
+# # TODO: If you want to try this case, set also the optional IC below.
 # bcu_left = DirichletBC(V, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
 # bcu_right = DirichletBC(V, Constant((1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
 # bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
@@ -84,6 +86,13 @@ bcσ.append(bcσ_bottom3)
 # bcu.append(bcu_right)
 # bcv.append(bcv_left)
 # bcv.append(bcv_right)
+
+# # Optional: nonzero initial condition (IC) for displacement
+# from fenics import Expression
+# # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
+# u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
+# solver.u_n.assign(u0)
+# solver.u_.assign(u0)
 
 # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016)
 bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
@@ -110,13 +119,6 @@ bcσ.append(bcσ_right3)
 # bcσ.append(bcσ_right1)
 # bcσ.append(bcσ_right2)
 # bcσ.append(bcσ_right3)
-
-# # Optional: nonzero initial condition for displacement
-# from fenics import Expression
-# # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
-# u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
-# solver.u_n.assign(u0)
-# solver.u_.assign(u0)
 
 # https://fenicsproject.org/qa/1124/is-there-a-way-to-set-the-inital-guess-in-the-krylov-solver/
 parameters['krylov_solver']['nonzero_initial_guess'] = True
