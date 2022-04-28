@@ -475,6 +475,11 @@ class EulerianSolid:
 
             # Mass-lumped direct algebraic update.
             #
+            # TODO: Support boundary conditions for `u`; this algorithm only supports them for `v`.
+            # TODO: Right now, you can instead set an initial condition for `u`; the displacement
+            # TODO: will start from that field, and then be updated by time-integrating `v`.
+            # TODO: See `demo.eulerian_solid.main01_solve` for how to set an IC.
+            #
             # This ignores the spatial connections between the DOFs.
             # Seems numerically more stable for the Kelvin-Voigt material
             # than the consistent-mass FEM update.
