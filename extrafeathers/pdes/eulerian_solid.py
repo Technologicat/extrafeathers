@@ -462,7 +462,12 @@ class EulerianSolid:
             b1 = assemble(self.L_u)
             [bc.apply(A1) for bc in self.bcu]
             [bc.apply(b1) for bc in self.bcu]
-            it1s.append(solve(A1, self.u_.vector(), b1, 'cg', 'sor'))
+            if not self.bcu:
+                A1_PETSc = as_backend_type(A1)
+                A1_PETSc.set_near_nullspace(self.null_space)
+                A1_PETSc.set_nullspace(self.null_space)
+                self.null_space.orthogonalize(b1)
+            it1s.append(solve(A1, self.u_.vector(), b1, 'bicgstab', 'sor'))
 
             # # Direct algebraic update, no FEM (results in mass lumping,
             # # since the spatial connections between the DOFs are ignored):
@@ -521,12 +526,11 @@ class EulerianSolid:
                 A3_PETSc = as_backend_type(A3)
                 A3_PETSc.set_near_nullspace(self.null_space)
                 A3_PETSc.set_nullspace(self.null_space)
-            # # TODO: What goes wrong here? Is it that the null space of the other linear models
-            # # is subtly different from the null space of the linear elastic model? So telling
-            # # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
-            # # the load function against the wrong null space corrupts the loading?
-            # if not self.bcv:
-            #     self.null_space.orthogonalize(b3)
+                # TODO: What goes wrong here? Is it that the null space of the other linear models
+                # is subtly different from the null space of the linear elastic model? So telling
+                # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
+                # the load function against the wrong null space corrupts the loading?
+                self.null_space.orthogonalize(b3)
             it3s.append(solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg'))
 
             # Postprocess `v` to eliminate numerical oscillations
