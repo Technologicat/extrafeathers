@@ -438,7 +438,7 @@ for n in range(nt):
     E = elastic_strain_energy()
     K = kinetic_energy()
     if my_rank == 0:  # DEBUG
-        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1}; E = ∫ σ:ε dΩ = {E:0.6g}; K = ∫ (1/2) ρ v² dΩ = {K:0.6g}; K + E = {K + E:0.6g}; wall time per timestep {dt_avg:0.6g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
+        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1:0.6g}; E = ∫ σ:ε dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; K + E = {K + E:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
 
     # In MPI mode, one of the worker processes may have a larger slice of the domain
     # (or require more Krylov iterations to converge) than the root process.
