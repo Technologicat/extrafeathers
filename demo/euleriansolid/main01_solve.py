@@ -219,7 +219,7 @@ SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
 vis_step_walltime_local = 0
 nsave_total = 1000  # how many timesteps to save from the whole simulation
 nsavemod = int(nt / nsave_total)  # every how manyth timestep to save
-vis_ratio = 0.01  # proportion of timesteps to visualize (plotting is slow)
+vis_ratio = 5 / 100  # proportion of timesteps to visualize (plotting is slow; might even leak memory?)
 nvismod = int(vis_ratio * nt)  # every how manyth timestep to visualize
 est = ETAEstimator(nt, keep_last=nvismod)
 if my_rank == 0:
