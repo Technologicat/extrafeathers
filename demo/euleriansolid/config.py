@@ -19,6 +19,9 @@ E = 10
 lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
 mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 
+# tau = 0.1  # Kelvin-Voigt retardation time [s], defined as  tau := η / E
+tau = 0  # set tau to zero when instantiating solver to use the linear elastic model
+
 # To remain subcritical:  V0 < √(E / rho)    (longitudinal elastic wave speed)
 #                         V0 < √(mu / rho)?  (shear wave speed)
 #

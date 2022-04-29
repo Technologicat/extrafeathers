@@ -80,17 +80,47 @@ class EulerianSolidStabilizerFlags(StabilizerFlags):
 class EulerianSolid:
     """Axially moving linear solid, small-displacement Eulerian formulation.
 
-    For now this is linear elastic or Kelvin-Voigt (chosen by hard-coding),
-    but the plan is to extend this to SLS (the standard linear solid),
-    and to make the constitutive law choosable.
+    For now, this solver provides the linear elastic and Kelvin-Voigt models.
+
+    The spatial discretization is based on a mixed formulation. For linear
+    viscoelastic models, the axial motion introduces a third derivative in the
+    strong form of the primal formulation. Therefore, the primal formulation
+    requires C1 elements (not available in FEniCS, for mathematical reasons
+    outlined in Kirby & Mitchell, 2019; this was done manually for an axially
+    moving sheet in Kurki et al., 2016).
+
+    The alternative, chosen here, is a mixed formulation where both `u` and `σ`
+    appear as unknowns. The additional derivative from the axial motion then
+    appears as a spatial derivative of ε in the constitutive equation for σ.
 
     Time integration is performed using the θ method; Crank-Nicolson by default.
 
-    `V`: function space for displacement
-    `Q`: function space for stress
+    `V`: vector function space for displacement
+    `Q`: tensor function space for stress
     `ρ`: density [kg / m³]
     `λ`: Lamé's first parameter [Pa]
     `μ`: shear modulus [Pa]
+    `τ`: Kelvin-Voigt retardation time [s].
+
+         Defined as `τ := η / E`, where `E` is Young's modulus [Pa], and
+         `η` is the viscous modulus [Pa s].
+
+         **CAUTION**: The initial value of `τ` passed in to the constructor
+         determines the material model.
+
+         If you pass in `τ=...` with a nonzero value, the solver will
+         set up the PDEs for the Kelvin-Voigt model.
+
+         If you pass in `τ=0`, the solver will set up the PDEs for the
+         linear elastic model.
+
+         Setting the value of `τ` later (`solver.τ = ...`) does **not**
+         affect which model is in use; so if needed, you can perform
+         studies with Kelvin-Voigt where `τ` changes quasistatically.
+
+         To force a model change later, set the new value of `τ` first,
+         and then call the `compile_forms` method to refresh the PDEs.
+
     `V0`: velocity of co-moving frame in +x direction (constant) [m/s]
     `bcu`: Dirichlet boundary conditions for displacement
     `bcv`: Dirichlet boundary conditions for Eulerian displacement rate ∂u/∂t
@@ -106,9 +136,29 @@ class EulerianSolid:
          SUPG stabilizer.
 
     As the mesh, we use `V.mesh()`; both `V` and `Q` must be defined on the same mesh.
+
+    For LBB-condition-related reasons, the space `Q` must be much larger than `V`; both
+    {V=Q1, Q=Q2} and {V=Q1, Q=Q3} have been tested to work and to yield similar results.
+
+    Near-term future plans (when I next have time to work on this project) include
+    extending this to support SLS (the standard linear solid); this should be a fairly
+    minor modification, just replacing the equation for `σ` by a PDE; no infra changes.
+    Far-future plans include a viscoplastic model of the Chaboche family (of which a
+    Lagrangean formulation is available in the Julia package `Materials.jl`).
+
+    References:
+        Robert C. Kirby and Lawrence Mitchell. 2019. Code generation for generally
+        mapped finite elements. ACM Transactions on Mathematical Software 45(41):1-23.
+        https://doi.org/10.1145/3361745
+        https://arxiv.org/abs/1808.05513
+
+        Matti Kurki, Juha Jeronen, Tytti Saksa, and Tero Tuovinen. 2016.
+        The origin of in-plane stresses in axially moving orthotropic continua.
+        International Journal of Solids and Structures 81, 43-62.
+        https://doi.org/10.1016/j.ijsolstr.2015.10.027
     """
     def __init__(self, V: VectorFunctionSpace, Q: TensorFunctionSpace,
-                 ρ: float, λ: float, μ: float,
+                 ρ: float, λ: float, μ: float, τ: float,
                  V0: float,
                  bcu: typing.List[DirichletBC],
                  bcv: typing.List[DirichletBC],
@@ -130,11 +180,12 @@ class EulerianSolid:
         #    a term that is one order of ∇ higher. In the primal formulation,
         #    in the weak form, this requires taking second derivatives of `u`.
 
-        # # We won't use it, but this is how to set up the quantities for a monolithic
-        # # mixed problem (in this example, for `u` and `σ`).
+        # # We won't use this here, but since it was hard to find, kept for documentation:
+        # # This is how to set up the quantities for a monolithic mixed problem
+        # # (in this example, for `u` and `σ`).
         # #
-        # # Using a `MixedFunctionSpace` fails for some reason; instead, the way
-        # # to do this is to set up a `MixedElement` and a garden-variety `FunctionSpace`
+        # # Using a `MixedFunctionSpace` fails for some reason. Instead, the way to
+        # # do this is to set up a `MixedElement` and a garden-variety `FunctionSpace`
         # # on that, and then split as needed. Then set Dirichlet BCs on the appropriate
         # # `S.sub(j)` (those may also have their own second-level `.sub(k)` if they are
         # # vector/tensor fields).
@@ -178,9 +229,6 @@ class EulerianSolid:
         #
         # Null space of the linear momentum balance is {u: ε(u) = 0 and ∇·u = 0}
         # This consists of rigid-body translations and infinitesimal rigid-body rotations.
-        #
-        # The other equations have no space derivatives, just a projection of known data,
-        # so no null space for them.
 
         # Strictly, this is the null space of linear elasticity, but the physics shouldn't
         # be that much different for the other linear models.
@@ -201,6 +249,7 @@ class EulerianSolid:
 
         null_space_basis = [interpolate(fu, V).vector() for fu in fus]
 
+        # # Kept for documentation:
         # # In a mixed formulation, we must insert zero functions for the other fields:
         # zeroV = Function(V)
         # zeroV.vector()[:] = 0.0
@@ -229,7 +278,7 @@ class EulerianSolid:
         # need to update formulation to include fictitious forces)
         self.a = Constant((V0, 0))
 
-        # Specific body force. FEM function for maximum generality.
+        # Specific body force (N / kg = m / s²). FEM function for maximum generality.
         self.b = Function(V)
         self.b.vector()[:] = 0.0  # placeholder value
 
@@ -240,6 +289,7 @@ class EulerianSolid:
         self._ρ = Constant(ρ)
         self._λ = Constant(λ)
         self._μ = Constant(μ)
+        self._τ = Constant(τ)
         self._dt = Constant(dt)
         self._θ = Constant(θ)
 
@@ -249,11 +299,17 @@ class EulerianSolid:
         # SUPG stabilizer tuning parameter.
         self._α0 = Constant(1)
 
+        # PDE system iteration parameters.
+        # User-configurable (`solver.maxit = ...`), but not a major advertised feature.
+        self.maxit = 100  # maximum number of system iterations per timestep
+        self.tol = 1e-8  # system iteration tolerance, ‖v - v_prev‖_H1 (over the whole domain)
+
         self.compile_forms()
 
     ρ = ufl_constant_property("ρ", doc="Density [kg / m³]")
     λ = ufl_constant_property("λ", doc="Lamé's first parameter [Pa]")
     μ = ufl_constant_property("μ", doc="Shear modulus [Pa]")
+    τ = ufl_constant_property("τ", doc="Kelvin-Voigt retardation time [s]")
     dt = ufl_constant_property("dt", doc="Timestep [s]")
     θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
     α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
@@ -263,7 +319,7 @@ class EulerianSolid:
 
         # Displacement
         u = self.u      # new (unknown)
-        w = self.w
+        w = self.w      # test
         u_ = self.u_    # latest available approximation
         u_n = self.u_n  # old (end of previous timestep)
 
@@ -292,6 +348,7 @@ class EulerianSolid:
         ρ = self._ρ
         λ = self._λ
         μ = self._μ
+        τ = self._τ
         dt = self._dt
         θ = self._θ
         α0 = self._α0
@@ -303,7 +360,7 @@ class EulerianSolid:
 
             `a`: advection velocity (assumed divergence-free)
             `p`: quantity being advected
-            `q`: test function of `p`
+            `q`: test function of the quantity `p`
             """
             return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
                                dot(dot(a, nabla_grad(q)), p)) * dx +
@@ -321,13 +378,17 @@ class EulerianSolid:
 
         # Define variational problem
 
+        # TODO: We don't actually use this first equation, since we update `u` DOF-wise from `v`
+        # TODO: (essentially using the same equation, but with lumped mass) because that yields
+        # TODO: a numerically more stable simulation. Maybe remove this equation?
+        #
         # Step 1: ∂u/∂t = v -> obtain `u` (explicit in `v`)
         dudt = (u - u_n) / dt
         V = (1 - θ) * v_n + θ * v_  # known; initially `v_ = v_n`, but this variant can be iterated.
         # V = v_n  # forward Euler
         F_u = dot(dudt - V, w) * dx
 
-        # Step 2: σ (using `u` from step 1)
+        # Step 2: solve `σ`, using `u` from step 1 (and if needed, the latest available `v`)
         #
         # TODO:
         #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
@@ -337,42 +398,55 @@ class EulerianSolid:
         #  - Orthotropic Kelvin-Voigt
         #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
         #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #
-        # Linear elastic:
-        #   σ = K : ε
-        #   K = 2 μ ES + 3 λ EV
-        # Because for any rank-2 tensor T,
-        #   ES : T = symm(T)
-        #   EV : T = vol(T) = (1/3) I tr(T)
-        # we have
-        #   σ = 2 μ symm(ε) + 3 λ vol(ε)
-        #     = 2 μ ε + 3 λ vol(ε)
-        #     = 2 μ ε + λ I tr(ε)
-        # where on the second line we have used the symmetry of ε.
 
+        # θ integration: field values at the "θ-point" in time:
         U = (1 - θ) * u_n + θ * u_  # known
         V = (1 - θ) * v_n + θ * v_  # known
         Σ = (1 - θ) * σ_n + θ * σ   # unknown!
+        # # Backward Euler integration:
         # U = u_
         # V = v_
         # Σ = σ
+
         εu = ε(U)
 
-        # # Linear elastic
-        # stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)
+        # Choose constitutive equation
+        if self.τ == 0.0:  # Linear elastic (LE)
+            # Doesn't matter whether classical or axially moving,
+            # since there are no time derivatives in the constitutive law.
+            #
+            # In general:
+            #   σ = K : ε
+            # With isotropic elastic symmetry, the stiffness tensor is:
+            #   K = 2 μ ES + 3 λ EV
+            # Because for any rank-2 tensor T, it holds that
+            #   ES : T = symm(T)
+            #   EV : T = vol(T) = (1/3) I tr(T)
+            # we have
+            #   σ = 2 μ symm(ε) + 3 λ vol(ε)
+            #     = 2 μ ε + 3 λ vol(ε)
+            #     = 2 μ ε + λ I tr(ε)
+            # where on the second line we have used the symmetry of ε to drop the `symm(...)`.
+            stress_expr = 2 * μ * εu + λ * Identity(εu.geometric_dimension()) * tr(εu)
+        else:  # Axially moving Kelvin-Voigt (KV)
+            # σ = 2 [μ + μ_visc d/dt] ε + I tr([λ + λ_visc d/dt] ε)
+            #   = 2 μ [1 + τ d/dt] ε + λ I tr([1 + τ d/dt] ε)
+            #   = 2 μ [1 + τ (∂/∂t + a·∇)] ε + λ I tr([1 + τ (∂/∂t + a·∇)] ε)
+            #   = 2 μ [1 + τ (∂/∂t + a·∇)] ε + λ I [tr(ε) + τ (tr(∂ε/∂t) + a·∇ tr(ε))]
+            # where we have expressed the material derivative in its Eulerian representation,
+            # `d/dt = ∂/∂t + a·∇`.
+            εv = ε(V)
+            stress_expr = (2 * μ * (εu + τ * (εv + advs(a, εu))) +
+                           λ * Identity(εu.geometric_dimension()) * (tr(εu) + τ * (tr(εv) + advs(a, tr(εu)))))
 
-        # Axially moving Kelvin-Voigt
-        εv = ε(V)
-        τ_ret = 0.1  # Kelvin-Voigt retardation time (τ_ret := η/E)  TODO: parameterize
-        # σ = 2 [μ + μ_visc d/dt] ε + I tr([λ + λ_visc d/dt] ε)
-        #   = 2 μ [1 + τ_ret d/dt] ε + λ I tr([1 + τ_ret d/dt] ε)
-        #   = 2 μ [1 + τ_ret (∂/∂t + a·∇)] ε + λ I tr([1 + τ_ret (∂/∂t + a·∇)] ε)
-        stress_expr = (2 * μ * (εu + τ_ret * (εv + advs(a, εu))) +
-                       λ * Identity(εu.geometric_dimension()) * (tr(εu) + τ_ret * (tr(εv) + advs(a, tr(εu)))))
-
+        # For LE and KV, we obtain the stress by simply L2-projecting the above explicit expression
+        # into the basis of `σ`.
+        #
+        # Note that the expression gives the stress at the "θ-point" in time; using our definition
+        # of `Σ` above, FEniCS automatically sorts that out for us.
         F_σ = inner(Σ - stress_expr, φ) * dx
 
-        # Step 3: v (momentum equation)
+        # Step 3: solve `v` from momentum equation
         #
         # - Valid boundary conditions:
         #   - Displacement boundary: `u` and `v` given, no condition on `σ`
@@ -381,10 +455,13 @@ class EulerianSolid:
         #   - Stress (traction) boundary: `n·σ` given, no condition on `u` or `v`
         #     - Dirichlet boundary for `σ`; those rows of `F_σ` removed.
         #     - Need to include the -∫ [n·transpose(σ)]·ψ ds term in `F_v`.
+        #
+        # θ integration:
         dvdt = (v - v_n) / dt
         U = (1 - θ) * u_n + θ * u_  # known
         V = (1 - θ) * v_n + θ * v   # unknown!
         Σ = (1 - θ) * σ_n + θ * σ_  # known
+        # # Backward Euler integration:
         # U = u_
         # V = v
         # Σ = σ_
@@ -393,15 +470,14 @@ class EulerianSolid:
                ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +
                inner(Σ.T, ε(ψ)) * dx -
                dot(dot(n, Σ.T), ψ) * ds +
-               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds -  # +∫ ρ ([a⊗a]·∇u)·ψ dx
+               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds -  # from +∫ ρ ([a⊗a]·∇u)·ψ dx
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
         def mag(vec):
             return dot(vec, vec)**(1 / 2)
         τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (μ / ρ) / he**2)**-1  # [τ] = s  # TODO: tune value
-        # The residual is evaluated elementwise in strong form,
-        # at the end of the timestep.
+        # The residual is evaluated elementwise in strong form, at the end of the timestep.
         R = (ρ * ((v - v_n) / dt + 2 * advs(a, v) + advs(a, advs(a, u_))) -
              div(σ_) - ρ * b)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
@@ -419,24 +495,24 @@ class EulerianSolid:
 
         Updates the latest computed solution.
         """
-        # # Set up manual patch-averaging
-        # if not hasattr(self, "stash_initialized"):
-        #     from ..meshfunction import cellvolume
-        #     self.VtoVdG0, self.VdG0tocell = map_dG0(self.V, self.VdG0)
-        #     self.cell_volume_VdG0 = cellvolume(self.VdG0.mesh())
-        #     self.QtoQdG0, self.QdG0tocell = map_dG0(self.Q, self.QdG0)
-        #     self.cell_volume_QdG0 = cellvolume(self.QdG0.mesh())
-        #     self.stash_initialized = True
-        def postprocessV(u: Function):
-            # `dolfin.interpolate` doesn't support quads, so we can either patch-average manually,
-            # or use `dolfin.project` both ways.
-            # u.assign(project(interpolate(u, self.VdG0), self.V))
-            u.assign(project(project(u, self.VdG0), self.V))
-            # u.assign(patch_average(u, self.VdG0, self.VtoVdG0, self.VdG0tocell, self.cell_volume_VdG0))
-        def postprocessQ(q: Function):
-            # q.assign(project(interpolate(q, self.QdG0), self.Q))
-            q.assign(project(project(q, self.QdG0), self.Q))
-            # q.assign(patch_average(q, self.QdG0, self.QtoQdG0, self.QdG0tocell, self.cell_volume_QdG0))
+        # # # Set up manual patch-averaging
+        # # if not hasattr(self, "stash_initialized"):
+        # #     from ..meshfunction import cellvolume
+        # #     self.VtoVdG0, self.VdG0tocell = meshmagic.map_dG0(self.V, self.VdG0)
+        # #     self.cell_volume_VdG0 = cellvolume(self.VdG0.mesh())
+        # #     self.QtoQdG0, self.QdG0tocell = meshmagic.map_dG0(self.Q, self.QdG0)
+        # #     self.cell_volume_QdG0 = cellvolume(self.QdG0.mesh())
+        # #     self.stash_initialized = True
+        # def postprocessV(u: Function):
+        #     # `dolfin.interpolate` doesn't support quads, so we can either patch-average manually,
+        #     # or use `dolfin.project` both ways.
+        #     # u.assign(project(interpolate(u, self.VdG0), self.V))
+        #     u.assign(project(project(u, self.VdG0), self.V))
+        #     # u.assign(meshmagic.patch_average(u, self.VdG0, self.VtoVdG0, self.VdG0tocell, self.cell_volume_VdG0))
+        # def postprocessQ(q: Function):
+        #     # q.assign(project(interpolate(q, self.QdG0), self.Q))
+        #     q.assign(project(project(q, self.QdG0), self.Q))
+        #     # q.assign(meshmagic.patch_average(q, self.QdG0, self.QtoQdG0, self.QdG0tocell, self.cell_volume_QdG0))
 
         # `dolfin.errornorm` doesn't support quad elements, because it uses `dolfin.interpolate`.
         # Do the same thing, but avoid interpolation.
@@ -453,12 +529,10 @@ class EulerianSolid:
         begin("Solve timestep")
 
         v_prev = Function(self.V)
-        maxit = 100  # TODO: parameterize
-        tol = 1e-8  # TODO: parameterize
         it1s = []
         it2s = []
         it3s = []
-        for _ in range(maxit):
+        for _ in range(self.maxit):
             v_prev.assign(self.v_)  # convergence monitoring
 
             # # Step 1: update `u`
@@ -477,12 +551,13 @@ class EulerianSolid:
             #
             # TODO: Support boundary conditions for `u`; this algorithm only supports them for `v`.
             # TODO: Right now, you can instead set an initial condition for `u`; the displacement
-            # TODO: will start from that field, and then be updated by time-integrating `v`.
-            # TODO: See `demo.euleriansolid.main01_solve` for how to set an IC.
+            # TODO: will start from that field, and then become updated by time-integrating `v`.
+            # TODO: See `demo.euleriansolid.main01_solve` for how to set an IC for `u`.
             #
-            # This ignores the spatial connections between the DOFs.
-            # Seems numerically more stable for the Kelvin-Voigt material
-            # than the consistent-mass FEM update.
+            # This update method ignores the spatial connections between the DOFs.
+            # Seems numerically more stable for the Kelvin-Voigt material than the
+            # consistent-mass FEM update; the consistent update tends to produce
+            # checkerboard oscillations at least when `u` and `v` use the same basis.
             #
             # We have
             #   ∂u/∂t = v
@@ -492,7 +567,7 @@ class EulerianSolid:
             #   u_ = u_n + Δt v
             # Here
             #   v = (1 - θ) v_n + θ v_
-            # is the approximation of `v` consistent with the time integration scheme.
+            # is the approximation of `v` consistent with the θ integration scheme.
             θ = self.θ
             dt = self.dt
             # This is what we want to do:
@@ -504,7 +579,7 @@ class EulerianSolid:
             self.u_.vector().axpy(dt * θ, self.v_.vector())
             it1s.append(1)
 
-            # Postprocess `u` to eliminate numerical oscillations
+            # # Postprocess `u` to eliminate numerical oscillations (no need if function spaces are ok)
             # postprocessV(self.u_)
 
             # Step 2: update `σ`
@@ -524,7 +599,7 @@ class EulerianSolid:
             [bc.apply(b2) for bc in self.bcσ]
             it2s.append(solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor'))
 
-            # Postprocess `σ` to eliminate numerical oscillations
+            # # Postprocess `σ` to eliminate numerical oscillations (no need if function spaces are ok)
             # postprocessQ(self.σ_)
 
             # Step 3: tonight's main event (solve momentum equation for `v`)
@@ -552,15 +627,15 @@ class EulerianSolid:
                 self.null_space.orthogonalize(b3)
             it3s.append(solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg'))
 
-            # Postprocess `v` to eliminate numerical oscillations
+            # # Postprocess `v` to eliminate numerical oscillations (no need if function spaces are ok)
             # postprocessV(self.v_)
 
             # e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
             e = errnorm(self.v_, v_prev, "h1")
-            if e < tol:
+            if e < self.tol:
                 break
 
-            # # relaxation / over-relaxation
+            # # relaxation / over-relaxation to help system iteration converge - does not seem to help here
             # import dolfin
             # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
             #     print(f"After iteration {(_ + 1)}: ‖v - v_prev‖_H1 = {e}")
@@ -568,7 +643,7 @@ class EulerianSolid:
             #     γ = 1.05
             #     self.v_.vector()[:] = (1 - γ) * v_prev.vector()[:] + γ * self.v_.vector()[:]
 
-        # # DEBUG
+        # # DEBUG: do we have enough boundary conditions in the discrete system?
         # import numpy as np
         # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
         # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))

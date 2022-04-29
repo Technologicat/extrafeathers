@@ -26,7 +26,7 @@ from extrafeathers import plotmagic
 
 from extrafeathers.pdes import EulerianSolid
 from extrafeathers.pdes.eulerian_solid import ε
-from .config import (rho, lamda, mu, V0, dt, nt,
+from .config import (rho, lamda, mu, tau, V0, dt, nt,
                      Boundaries,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
@@ -52,8 +52,8 @@ if my_rank == 0:
 bcu = []
 bcv = []
 bcσ = []
-solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
-# solver = EulerianSolid(V, Q, rho, lamda, mu, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
+solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
+# solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
 
 # Define boundary conditions
 #
