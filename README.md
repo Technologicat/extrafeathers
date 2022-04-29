@@ -428,6 +428,13 @@ mpirun python -m demo.euleriansolid.main01_solve
 
 Then load up the results in ParaView. Displacement, stress tensor, and the von Mises stress are exported.
 
+Can also run using an unstructured triangle mesh:
+
+```bash
+python -m demo.euleriansolid.main00_mesh  # import Gmsh mesh
+mpirun python -m demo.euleriansolid.main01_solve
+```
+
 
 ## Questions & answers
 
