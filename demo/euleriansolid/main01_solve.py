@@ -220,10 +220,10 @@ msg = "Starting. Progress information will be available shortly..."
 SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
 vis_step_walltime_local = 0
 nsave_total = 1000  # how many timesteps to save from the whole simulation
-nsavemod = int(nt / nsave_total)  # every how manyth timestep to save
-vis_ratio = 5 / 100  # proportion of timesteps to visualize (plotting is slow; might even leak memory?)
-nvismod = int(vis_ratio * nt)  # every how manyth timestep to visualize
-show_mesh = False
+nsavemod = max(1, int(nt / nsave_total))  # every how manyth timestep to save
+vis_ratio = 1 / 100  # how often to visualize (plotting is slow; might even leak memory?)
+nvismod = max(1, int(vis_ratio * nt))  # every how manyth timestep to visualize
+show_mesh = True
 est = ETAEstimator(nt, keep_last=nvismod)
 if my_rank == 0:
     fig, ax = plt.subplots(2, 4, constrained_layout=True, figsize=(12, 6))
@@ -232,7 +232,8 @@ if my_rank == 0:
     plotmagic.pause(0.001)
     colorbars = []
     print(f"Saving {nsave_total} timesteps in total -> save every {nsavemod} timestep{'s' if nsavemod > 1 else ''}.")
-    print(f"Visualizing {100.0 * vis_ratio:0.3g}% of timesteps -> vis every {nvismod} timestep{'s' if nvismod > 1 else ''}.")
+    nvisualizations = round(1 / vis_ratio)
+    print(f"Visualizing at every {100.0 * vis_ratio:0.3g}% of simulation ({nvisualizations} visualization{'s' if nvisualizations > 1 else ''} total) -> vis every {nvismod} timestep{'s' if nvismod > 1 else ''}.")
 for n in range(nt):
     begin(msg)
 
