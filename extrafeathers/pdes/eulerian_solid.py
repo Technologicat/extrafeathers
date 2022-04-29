@@ -434,6 +434,7 @@ class EulerianSolid:
             #   = 2 μ [1 + τ (∂/∂t + a·∇)] ε + λ I [tr(ε) + τ (tr(∂ε/∂t) + a·∇ tr(ε))]
             # where we have expressed the material derivative in its Eulerian representation,
             # `d/dt = ∂/∂t + a·∇`.
+            # TODO: Should we integrate by parts to move the advection operator to the test function?
             εv = ε(V)
             stress_expr = (2 * μ * (εu + τ * (εv + advs(a, εu))) +
                            λ * Identity(εu.geometric_dimension()) * (tr(εu) + τ * (tr(εv) + advs(a, tr(εu)))))
