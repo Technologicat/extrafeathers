@@ -421,7 +421,13 @@ Some simulation parameters can be found in [`demo.boussinesq.config`](demo/bouss
 **Code**: [[mesh import](demo/euleriansolid/main00_mesh.py)] [[internal mesh generation](demo/euleriansolid/main00_alternative_mesh.py)] [[configuration](demo/euleriansolid/config.py)] [[solver](demo/euleriansolid/main01_solve.py)]  
 **Reusable PDE**: [[Eulerian linear solid](extrafeathers/pdes/eulerian_solid.py)]
 
-The Eulerian view to solid mechanics is also known as [axially moving materials](https://link.springer.com/book/10.1007/978-3-030-23803-2).
+Deformation of a two-dimensional sheet, possibly subjected to axial motion. The Eulerian view to solid mechanics is also known as [axially moving materials](https://link.springer.com/book/10.1007/978-3-030-23803-2). Our Eulerian displacement `u` is termed the *mixed Lagrangean-Eulerian displacement* by Koivurova and Salonen (1999).
+
+For now, the linear elastic and Kelvin-Voigt constitutive models are provided. Future plans include standard linear solid (SLS) (which only needs replacing the FEniCS form for the constitutive law; the algorithm can already handle it) and viscoplastic models (major work; for reference, see the Julia package [`Materials.jl`](https://github.com/JuliaFEM/Materials.jl)), but when and whether this will happen depends on my work schedule. Right now the solver is provided as-is.
+
+For linear viscoelastic models, the axial motion introduces a third derivative in the strong form of the primal formulation. Therefore, the primal formulation requires C1 elements (not available in FEniCS, for mathematical reasons outlined in Kirby & Mitchell, 2019). The steady state of an axially moving Kelvin-Voigt sheet was solved in Kurki et al., 2016, using a custom C1 FEM code that was specialized to automatic discretization of PDEs on structured quadrilateral grids using Bogner-Fox-Schmit elements.
+
+The alternative chosen here is a mixed C0 formulation, where both `u` and `σ` appear as unknowns. The additional derivative from the axial motion then appears in the constitutive equation for σ.
 
 Recommended way to run the demo:
 
@@ -438,6 +444,15 @@ Can also run using an unstructured triangle mesh (generated from [`demo/meshes/b
 python -m demo.euleriansolid.main00_mesh  # import Gmsh mesh
 mpirun python -m demo.euleriansolid.main01_solve
 ```
+
+**References**:
+
+Robert C. Kirby and Lawrence Mitchell. 2019. Code generation for generally mapped finite elements. *ACM Transactions on Mathematical Software* **45**(41), 1-23. https://doi.org/10.1145/3361745 https://arxiv.org/abs/1808.05513
+
+H. Koivurova and E.-M. Salonen. 1999. Comments on non-linear formulations for travelling string and beam problems. *Journal of Sound and Vibration* **255**(5), 845-856.
+
+Matti Kurki, Juha Jeronen, Tytti Saksa, and Tero Tuovinen. 2016. The origin of in-plane stresses in axially moving orthotropic continua. *International Journal of Solids and Structures* **81**, 43-62. https://doi.org/10.1016/j.ijsolstr.2015.10.027
+
 
 
 ## Questions & answers
