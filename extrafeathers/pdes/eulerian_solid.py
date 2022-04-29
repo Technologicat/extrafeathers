@@ -472,7 +472,7 @@ class EulerianSolid:
             # SUPG stabilization. Note that the SUPG terms are added only in the element interiors.
             def mag(vec):
                 return dot(vec, vec)**(1 / 2)
-            τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
+            τ_SUPG = (α0 / self.Q.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
             # The residual is evaluated elementwise in strong form, at the end of the timestep.
             εu_ = ε(u_)
             εv_ = ε(v_)
@@ -512,7 +512,7 @@ class EulerianSolid:
         # SUPG: streamline upwinding Petrov-Galerkin.
         def mag(vec):
             return dot(vec, vec)**(1 / 2)
-        τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s  # TODO: tune value
+        τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s  # TODO: tune value
         # The residual is evaluated elementwise in strong form, at the end of the timestep.
         R = (ρ * ((v - v_n) / dt + 2 * advs(a, v) + advs(a, advs(a, u_))) -
              div(σ_) - ρ * b)
