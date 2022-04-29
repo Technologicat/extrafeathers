@@ -206,9 +206,11 @@ python -m demo.dofnumbering P3
 python -m demo.dofnumbering Q1
 python -m demo.dofnumbering Q2
 python -m demo.dofnumbering Q3
+python -m demo.dofnumbering DP0
 python -m demo.dofnumbering DP1
 python -m demo.dofnumbering DP2
 python -m demo.dofnumbering DP3
+python -m demo.dofnumbering DQ0
 python -m demo.dofnumbering DQ1
 python -m demo.dofnumbering DQ2
 python -m demo.dofnumbering DQ3
@@ -233,9 +235,11 @@ python -m demo.refelement P3
 python -m demo.refelement Q1
 python -m demo.refelement Q2
 python -m demo.refelement Q3
+python -m demo.refelement DP0
 python -m demo.refelement DP1
 python -m demo.refelement DP2
 python -m demo.refelement DP3
+python -m demo.refelement DQ0
 python -m demo.refelement DQ1
 python -m demo.refelement DQ2
 python -m demo.refelement DQ3
