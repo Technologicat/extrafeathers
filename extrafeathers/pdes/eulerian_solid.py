@@ -31,12 +31,11 @@ from fenics import (VectorFunctionSpace, TensorFunctionSpace,
                     nabla_grad, div, dx, ds,
                     Identity,
                     lhs, rhs, assemble, solve,
-                    interpolate, project, VectorSpaceBasis, as_backend_type,
-                    errornorm, norm,
+                    interpolate, VectorSpaceBasis, as_backend_type,
+                    norm,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
-from ..meshmagic import patch_average, map_dG0
 from .util import ufl_constant_property, StabilizerFlags
 
 
