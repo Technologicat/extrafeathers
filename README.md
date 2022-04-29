@@ -23,6 +23,7 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
     - [Incompressible flow (Navier-Stokes)](#incompressible-flow-navier-stokes)
     - [Forced convection (one-way coupled problem)](#forced-convection-one-way-coupled-problem)
     - [Natural convection (two-way coupled problem)](#natural-convection-two-way-coupled-problem)
+    - [Eulerian linear solid mechanics](#eulerian-linear-solid-mechanics)
 - [Questions & answers](#questions--answers)
     - [How to list the whole public API, and only the public API?](#how-to-list-the-whole-public-api-and-only-the-public-api)
     - [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
@@ -409,6 +410,23 @@ Some simulation parameters can be found in [`demo.boussinesq.config`](demo/bouss
 ![Boussinesq demo output](img/boussinesq.png)
 
 *Natural convection induced by a hot cylinder kept at fixed temperature. We use a fine mesh for y ∈ [0, 0.75], and coarsen toward y = 3.0. Note the orientation; gravity has been added to the model, pointing down in the image. The [Boussinesq approximation](https://en.wikipedia.org/wiki/Boussinesq_approximation_(buoyancy)) automatically generates the hydrostatic pressure. Flow solved using P2P1 (Taylor-Hood) elements, SUPG and LSIC stabilization, and skew-symmetric advection. Temperature solved using P2 elements, SUPG stabilization, and skew-symmetric advection.*
+
+
+### Eulerian linear solid mechanics
+
+**Code**: [[mesh import](demo/euleriansolid/main00_mesh.py)] [[internal mesh generation](demo/euleriansolid/main00_alternative_mesh.py)] [[configuration](demo/euleriansolid/config.py)] [[solver](demo/euleriansolid/main01_solve.py)]  
+**Reusable PDEs**: [[Navier-Stokes](extrafeathers/pdes/eulerian_solid.py)]
+
+The Eulerian view to solid mechanics is also known as [axially moving materials](https://link.springer.com/book/10.1007/978-3-030-23803-2).
+
+Recommended way to run the demo:
+
+```bash
+python -m demo.euleriansolid.main00_alternative_mesh  # generate quad mesh
+mpirun python -m demo.euleriansolid.main01_solve
+```
+
+Then load up the results in ParaView. Displacement, stress tensor, and the von Mises stress are exported.
 
 
 ## Questions & answers
