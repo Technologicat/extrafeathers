@@ -164,6 +164,8 @@ q_vec_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data o
 
 # TODO: We cannot export quads at full nodal resolution in FEniCS 2019,
 # TODO: because the mesh editor fails with "cell is not orderable".
+#
+# TODO: We can work around this on the unit square by just manually generating a suitable mesh.
 highres_export_V = (V.ufl_element().degree() > 1 and V.ufl_element().family() == "Lagrange")
 if highres_export_V:
     if my_rank == 0:
