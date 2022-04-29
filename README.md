@@ -419,7 +419,7 @@ Some simulation parameters can be found in [`demo.boussinesq.config`](demo/bouss
 ### Eulerian linear solid mechanics
 
 **Code**: [[mesh import](demo/euleriansolid/main00_mesh.py)] [[internal mesh generation](demo/euleriansolid/main00_alternative_mesh.py)] [[configuration](demo/euleriansolid/config.py)] [[solver](demo/euleriansolid/main01_solve.py)]  
-**Reusable PDEs**: [[Navier-Stokes](extrafeathers/pdes/eulerian_solid.py)]
+**Reusable PDE**: [[Eulerian linear solid](extrafeathers/pdes/eulerian_solid.py)]
 
 The Eulerian view to solid mechanics is also known as [axially moving materials](https://link.springer.com/book/10.1007/978-3-030-23803-2).
 
