@@ -83,7 +83,11 @@ def σ(u, p, μ):
         # W = FunctionSpace(mesh, 'P', 2)  # or create your own space
 
         def dev(T):
-            '''Deviatoric part of rank-2 tensor `T`.'''
+            '''Deviatoric (traceless) part of rank-2 tensor `T`.
+
+            This assumes, for 2D, that `T` is actually 3D, but
+            the third row and column of `T` are zero.
+            '''
             return T - (1 / 3) * tr(T) * Identity(T.geometric_dimension())
         # `solver._μ` is the UFL `Constant` object
         σ = σ(solver.u_, solver.p_, solver._μ)

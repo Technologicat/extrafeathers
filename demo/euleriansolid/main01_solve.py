@@ -195,10 +195,6 @@ prep_Q3 = plotmagic.mpiplot_prepare(solver.σ_.sub(3))
 # Enable stabilizers for the Galerkin formulation
 solver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
 
-def dev(T):
-    """Deviatoric part of rank-2 tensor `T`."""
-    return T - (1 / 3) * tr(T) * Identity(T.geometric_dimension())
-
 # W = FunctionSpace(mesh, "DP", 0)
 # def elastic_strain_energy():
 #     E = project(inner(solver.σ_, ε(solver.u_)),
@@ -269,8 +265,46 @@ for n in range(nt):
 
         # compute von Mises stress for visualization in ParaView
         # TODO: export von Mises stress at full nodal resolution, too
+        #
+        # TODO: von Mises stress in 2D - does this argument make sense?
+        #
+        # The deviatoric part is *defined* as the traceless part, so for a 2D tensor the
+        # factor appearing in `dev` is (1/2), not (1/3). The motivation of the definition
+        # of the von Mises stress is to scale the representative stress √(s:s) by a factor
+        # that makes it match the stress when in uniaxial tension. See e.g.:
+        #     https://www.continuummechanics.org/vonmisesstress.html
+        #
+        # In 2D, we have
+        #     σ = [[σ11 0] [0 0]]  (uniaxial tension; pure 2D case, not embedded in 3D)
+        #     d = 2   (dimension)
+        #     tr(σ) ≡ ∑ σkk = σ11
+        #     s := dev(σ) ≡ σ - (1/d) I tr(σ)
+        #                 = σ - (1/2) I tr(σ)
+        #                 = [[(1/2)*σ11 0] [0 -(1/2)*σ11]]
+        #     s:s ≡ ∑ ski ski = (1/4) σ11² + (1/4) σ11² = (1/2) σ11²
+        #     σ_rep = √(s:s) = √(1/2) σ11
+        # To match the uniaxial stress, we define
+        #     σ_VM2D := √(2) σ_rep = σ11
+        # so the scaling factor appearing in the definition of a pure-2D von Mises stress
+        # is found to be √(2).
+        #
+        # Note this is for pure 2D (where both stress and strain are 2D; no third dimension
+        # exists), not 3D under plane stress. For the latter, we would use the standard 3D
+        # formulas as-is.
+        #
+        def dev(T):
+            """Deviatoric (traceless) part of rank-2 tensor `T`.
+
+            This is the true traceless part, taking the dimensionality
+            of `T` as-is.
+            """
+            d = T.geometric_dimension()
+            return T - (1 / d) * tr(T) * Identity(d)
         s = dev(solver.σ_)
-        vonMises_expr = sqrt(3 / 2 * inner(s, s))
+        d = s.geometric_dimension()
+        dim_to_scale_factor = {3: sqrt(3 / 2), 2: sqrt(2)}
+        scale = dim_to_scale_factor[d]
+        vonMises_expr = scale * sqrt(inner(s, s))
         vonMises.assign(project(vonMises_expr, Qscalar))
         xdmffile_vonMises.write(vonMises, t)
 
