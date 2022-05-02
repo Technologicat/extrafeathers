@@ -24,6 +24,9 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
     - [Forced convection (one-way coupled problem)](#forced-convection-one-way-coupled-problem)
     - [Natural convection (two-way coupled problem)](#natural-convection-two-way-coupled-problem)
     - [Eulerian linear solid mechanics](#eulerian-linear-solid-mechanics)
+        - [Constitutive law for linear viscoelastic materials in axial motion](#constitutive-law-for-linear-viscoelastic-materials-in-axial-motion)
+        - [Notes on the numerical scheme](#notes-on-the-numerical-scheme)
+        - [Running the demo](#running-the-demo)
 - [Questions & answers](#questions--answers)
     - [How to list the whole public API, and only the public API?](#how-to-list-the-whole-public-api-and-only-the-public-api)
     - [What's up with the Unicode variable names?](#whats-up-with-the-unicode-variable-names)
@@ -421,15 +424,100 @@ Some simulation parameters can be found in [`demo.boussinesq.config`](demo/bouss
 **Code**: [[mesh import](demo/euleriansolid/main00_mesh.py)] [[internal mesh generation](demo/euleriansolid/main00_alternative_mesh.py)] [[configuration](demo/euleriansolid/config.py)] [[solver](demo/euleriansolid/main01_solve.py)]  
 **Reusable PDE**: [[Eulerian linear solid](extrafeathers/pdes/eulerian_solid.py)]
 
-Deformation of a two-dimensional sheet, possibly subjected to axial motion. The Eulerian view to solid mechanics is also known as [axially moving materials](https://link.springer.com/book/10.1007/978-3-030-23803-2). Our Eulerian displacement `u` is termed the *mixed Lagrangean-Eulerian displacement* by Koivurova and Salonen (1999).
+Deformation of a sheet in two-dimensional space, with the sheet optionally subjected to axial motion.
 
-For now, the linear elastic and Kelvin-Voigt constitutive models are provided. Future plans include standard linear solid (SLS) (which only needs replacing the FEniCS form for the constitutive law; the algorithm can already handle it) and viscoplastic models (major work; for reference, see the Julia package [`Materials.jl`](https://github.com/JuliaFEM/Materials.jl)), but when and whether this will happen depends on my work schedule. Right now the solver is provided as-is.
+The Eulerian view to solid mechanics - which is halfway between traditional solid mechanics and fluid mechanics, and commonly used in the analysis of process industry applications - is also known as [axially moving materials](https://link.springer.com/book/10.1007/978-3-030-23803-2). Our Eulerian displacement `u` is what Koivurova and Salonen (1999) term the *mixed Lagrangean-Eulerian displacement*. It is essentially an Eulerian quantity with the overall axial motion abstracted out; or in other words, `u` is the displacement from a reference state where the material moves uniformly at constant axial velocity.
 
-For linear viscoelastic models, the axial motion introduces a third derivative in the strong form of the primal formulation. Therefore, the primal formulation requires C1 elements (not available in FEniCS, for mathematical reasons outlined in Kirby & Mitchell, 2019). The steady state of an axially moving Kelvin-Voigt sheet was solved in Kurki et al., 2016, using a custom C1 FEM code that was specialized to automatic discretization of PDEs on structured quadrilateral grids using Bogner-Fox-Schmit elements.
+For now, we provide the linear elastic and Kelvin-Voigt constitutive models. Future plans include standard linear solid (SLS) (which only needs replacing the weak form for the constitutive law; the algorithm can already handle it) and viscoplastic models (major work; for reference, see the Julia package [`Materials.jl`](https://github.com/JuliaFEM/Materials.jl)). However, when and whether this will happen depends on my work schedule. Right now the solver is provided as-is.
 
-The alternative chosen here is a mixed C0 formulation, where both `u` and `σ` appear as unknowns. The additional derivative from the axial motion then appears in the constitutive equation for σ.
+#### Constitutive law for linear viscoelastic materials in axial motion
 
-Recommended way to run the demo:
+For Eulerian descriptions of linear viscoelastic models, the axial motion introduces a third derivative in the strong form of the primal formulation (where we have a single PDE written in terms of `u`). Therefore, the weak form requires C1-continuous elements, which are not available in FEniCS, mainly for mathematical reasons outlined in Kirby & Mitchell (2019). The steady state of an axially moving Kelvin-Voigt sheet was solved in Kurki et al. (2016) using a custom C1 FEM code that was specialized to automatic discretization of PDEs on structured quadrilateral grids using Bogner-Fox-Schmit elements.
+
+In this solver, we use a mixed C0 formulation, where both the displacement `u` and the stress tensor `σ` appear as unknowns. The extra spatial derivative then appears in the constitutive equation. For illustration, consider the Kelvin-Voigt solid.
+
+With arbitrary elastic and viscous symmetry groups, the Kelvin-Voigt constitutive law reads
+```
+σ = E:ε + η:dε/dt
+```
+where `E` is the elastic stiffness tensor and `η` is the viscous stiffness tensor. Both tensors are rank-4, and satisfy the major and minor symmetries. As of v0.4.0, the material model implemented in the solver is isotropic, for which we can write the elastic stiffness tensor in [Lamé](https://en.wikipedia.org/wiki/Lam%C3%A9_parameters) format as
+```
+E = 2μS + 3λV
+```
+The tensors `S` and `V` are the symmetric and volumetric rank-4 identity tensors; `μ` is the shear modulus, and `λ` is the first Lamé parameter. For any rank-2 tensor `T`, the tensors `S` and `V` satisfy the projection relations
+```
+S:T = symm(T)
+V:T = vol(T) ≡ (1/3) I tr(T)
+```
+These are indeed projections; the operators `S:(...)` and `V:(...)` are idempotent.
+
+To simplify the model (thus also reducing requirements on experimental data we must acquire to be able to use the model), we assume that the elastic and viscous stiffnesses behave similarly, differing only by a scaling factor. We define the viscous stiffness tensor `η` in terms of `E` and the *Kelvin-Voigt retardation time* `τ` as
+```
+η = τ E
+```
+Physically, `τ` is related to the creep rate. Note in one space dimension, one commonly writes `τ := η / E`, but the above alternative definition works also in 2D and 3D.
+
+Since the constitutive law holds at a material point, in the Eulerian representation we have `d/dt = ∂/∂t + a·∇`, where `a` is the drive velocity field (assumed constant in space) that describes the axial motion. The Eulerian representation of the constitutive law is thus
+```
+σ = E:ε + η:(∂ε/∂t + a·∇ε)
+```
+where `ε` is the Eulerian description of the strain. To obtain the strain, in the small-displacement regime, the kinematic relation is
+```
+εij = (symm ∇u)ij ≡ (1/2) (∂i uj + ∂j ui)
+```
+Using an Eulerian description for the displacement `u`, we get the Eulerian `ε`.
+
+Because we represent `u` by C0-continuous elements, `∇u` is discontinuous across element boundaries. Therefore, `ε` is discontinuous across element boundaries, and in order for the weak form to remain integrable (without introducing jump terms), we are not allowed to take spatial derivatives of `ε`.
+
+To overcome this, we integrate by parts in the `a·∇ε` term, moving the directional derivative `a·∇` onto the test function. The weak form of the constitutive law reads
+```
+∫ φ:σ dx = ∫ φ:E:ε dx + ∫ φ:η:(∂ε/∂t + a·∇ε) dx
+```
+where `φ` is a rank-2 test tensor (virtual strain), and `∫ ... dx` denotes integration over the domain. The appropriate integration-by-parts formula is 
+```
+∫ φ:η:[(a·∇)ε] dx = ∫ (a·n) (φ:η:ε) dΓ - ∫ [(a·∇)φ]:η:ε dx - ∫ φ:[(a·∇)η]:ε dx - ∫ (∇·a) (φ:η:ε) dx
+```
+where `∫ ... dΓ` denotes integration over the boundary of the domain, `φ` and `ε` are rank-2 tensors, `η` is a rank-4 tensor that satisfies the major symmetry, and `a` is a vector. (The formula is easily shown using the divergence theorem.)
+
+The axial drive velocity field is divergence-free, so the last term vanishes. If `η` is constant in space, also the second-to-last term vanishes, and we have
+```
+∫ φ:η:[(a·∇)ε] dx = ∫ (a·n) (φ:η:ε) dΓ - ∫ [(a·∇)φ]:η:ε dx
+```
+which is the form used in the solver. The weak form of the constitutive law becomes
+```
+∫ φ:σ dx = ∫ φ:E:ε dx + ∫ φ:η:∂ε/∂t dx - ∫ [(a·∇)φ]:η:ε dx + ∫ (a·n) (φ:η:ε) dΓ
+```
+Using the definition `η = τ E`, we obtain the final weak form:
+```
+∫ φ:σ dx = ∫ φ:E:ε dx + τ ∫ φ:E:∂ε/∂t dx - τ ∫ [(a·∇)φ]:E:ε dx + τ ∫ (a·n) (φ:E:ε) dΓ
+```
+Note we have applied integration by parts *on the right-hand side* of the constitutive equation. Therefore, the boundary term **does not** represent a boundary condition for `σ`; it should be evaluated as-is.
+
+With this integration by parts, there is no need to spatially differentiate `ε`. All terms are integrable across element boundaries even when `u` is represented by C0-continuous elements. The SLS model can be treated similarly.
+
+#### Notes on the numerical scheme
+
+Time integration is performed with the θ method, defaulting to Crank-Nicolson (`θ = 1/2`).
+
+Each timestep of the dynamic simulation is solved iteratively, in three steps:
+
+ 1. Update `u` using the latest available `v`.
+    - We integrate each DOF independently using the θ method. This results in mass lumping.
+    - It was observed in practice that if we solve for `u` from a consistent-mass representation, the numerical scheme becomes prone to checkerboard oscillations, at least when `u` and `v` use the same basis.
+ 2. Solve `σ` from the constitutive law, where the Eulerian strain and strain rate are obtained as `ε = symm ∇u` and `∂ε/∂t = symm ∇v`.
+ 3. Solve `v` from the linear momentum balance equation, using `u` and `σ`.
+ 
+Iterate until `||v - v_prev||_H1` is small enough.
+
+Note `u` **does not take boundary conditions** in this scheme, because `u` is just the time integral of `v`. Instead, one should set an initial field for `u`, and then set the boundary conditions for `v` appropriately. If you want a prescribed displacement at a boundary, that should be fed in as the initial condition for `u`.
+
+The function space for the stress must be sufficiently large compared to that for the displacement. With Q1 displacement, Q2 stress works fine.
+
+It is observed in practice that at moderate axial velocities (~30% of critical), our numerical scheme produces acceptable Eulerian velocity (`v ≡ ∂u/∂t`) and displacement (`u`) fields, but the components of the stress tensor exhibit unphysical oscillations. These however do not seem to affect `v` or `u` adversely. When the axial velocity is zero (`a = 0`), the extra term vanishes, as do the numerical oscillations.
+
+#### Running the demo
+
+The recommended way to run the demo is
 
 ```bash
 python -m demo.euleriansolid.main00_alternative_mesh  # generate quad mesh
