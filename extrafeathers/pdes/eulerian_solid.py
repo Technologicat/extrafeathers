@@ -503,10 +503,10 @@ class EulerianSolid:
         # Σ = σ_
         F_v = (ρ * dot(dvdt, ψ) * dx +
                2 * ρ * advw(a, V, ψ) -
-               ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +
+               ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +  # from +∫ ρ [(a·∇)(a·∇)u]·ψ dx
+               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds +
                inner(Σ.T, ε(ψ)) * dx -
-               dot(dot(n, Σ.T), ψ) * ds +
-               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds -  # from +∫ ρ ([a⊗a]·∇u)·ψ dx
+               dot(dot(n, Σ.T), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
