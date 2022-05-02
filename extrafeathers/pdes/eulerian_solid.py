@@ -481,7 +481,7 @@ class EulerianSolid:
             εv_ = ε(v_)
             K_inner_εu_ = K_inner_operator(εu_)
             K_inner_εv_ = K_inner_operator(εv_)
-            R = σ_ - (K_inner_εu_ + τ * (K_inner_εv_ + K_inner_operator(advs(a, εu_))))
+            R = σ - (K_inner_εu_ + τ * (K_inner_εv_ + K_inner_operator(advs(a, εu_))))
             F_SUPG = enable_SUPG_flag * τ_SUPG * inner(advs(a, φ), R) * dx
             F_σ += F_SUPG
 
