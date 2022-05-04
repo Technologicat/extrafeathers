@@ -526,7 +526,7 @@ class EulerianSolid:
                ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +  # from +∫ ρ [(a·∇)(a·∇)u]·ψ dx
                ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds +
                inner(Σ.T, ε(ψ)) * dx -
-               dot(dot(n, Σ.T), ψ) * ds -
+               dot(dot(n, Σ), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
