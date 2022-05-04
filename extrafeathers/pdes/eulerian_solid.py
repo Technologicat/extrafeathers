@@ -360,6 +360,8 @@ class EulerianSolid:
             `a`: advection velocity (assumed divergence-free)
             `p`: quantity being advected
             `q`: test function of the quantity `p`
+
+            `p` and `q` must be at least C0.
             """
             return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
                                dot(dot(a, nabla_grad(q)), p)) * dx +
@@ -369,6 +371,8 @@ class EulerianSolid:
 
             `a`: advection velocity (assumed divergence-free)
             `p`: quantity being advected
+
+            `a` and `p` must be at least C0.
             """
             return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
 
