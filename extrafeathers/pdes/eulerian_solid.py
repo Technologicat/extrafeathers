@@ -929,28 +929,28 @@ class SteadyStateEulerianSolid:
             u_prev.assign(self.u_)  # convergence monitoring
 
             # Step 1: update `σ`
-            A2 = assemble(self.a_σ)
-            b2 = assemble(self.L_σ)
-            [bc.apply(A2) for bc in self.bcσ]
-            [bc.apply(b2) for bc in self.bcσ]
-            it1s.append(solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor'))
+            A1 = assemble(self.a_σ)
+            b1 = assemble(self.L_σ)
+            [bc.apply(A1) for bc in self.bcσ]
+            [bc.apply(b1) for bc in self.bcσ]
+            it1s.append(solve(A1, self.σ_.vector(), b1, 'bicgstab', 'sor'))
 
             # Step 2: tonight's main event (solve steady-state momentum equation for `u`)
-            A3 = assemble(self.a_u)
-            b3 = assemble(self.L_u)
-            [bc.apply(A3) for bc in self.bcu]
-            [bc.apply(b3) for bc in self.bcu]
+            A2 = assemble(self.a_u)
+            b2 = assemble(self.L_u)
+            [bc.apply(A2) for bc in self.bcu]
+            [bc.apply(b2) for bc in self.bcu]
             # Eliminate rigid-body motion solutions of momentum equation (for Krylov solvers)
             if not self.bcu:
-                A3_PETSc = as_backend_type(A3)
+                A3_PETSc = as_backend_type(A2)
                 A3_PETSc.set_near_nullspace(self.null_space)
                 A3_PETSc.set_nullspace(self.null_space)
                 # TODO: What goes wrong here? Is it that the null space of the other linear models
                 # is subtly different from the null space of the linear elastic model? So telling
                 # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
                 # the load function against the wrong null space corrupts the loading?
-                self.null_space.orthogonalize(b3)
-            it2s.append(solve(A3, self.u_.vector(), b3, 'bicgstab', 'hypre_amg'))
+                self.null_space.orthogonalize(b2)
+            it2s.append(solve(A2, self.u_.vector(), b2, 'bicgstab', 'hypre_amg'))
 
             # e = errornorm(self.u_, u_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
             e = errnorm(self.u_, u_prev, "h1")
