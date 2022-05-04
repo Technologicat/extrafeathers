@@ -84,8 +84,8 @@ bcσ.append(bcσ_bottom3)
 # # Our mass-lumped formulation takes no BCs for `u` (which is simply the time integral of `v`);
 # # instead, set an initial condition on `u`, and set `v = 0` at the fixed boundaries.
 # from fenics import Expression
-# # u0 = project(Expression(("1e-1 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
-# u0 = project(Expression(("1e-1 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
+# # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
+# u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
 # solver.u_n.assign(u0)
 # solver.u_.assign(u0)
 # bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
@@ -94,8 +94,8 @@ bcσ.append(bcσ_bottom3)
 # bcv.append(bcv_right)
 # #
 # # For steady-state solver
-# bcu_left = DirichletBC(V, Constant((-1e-1, 0)), boundary_parts, Boundaries.LEFT.value)
-# bcu_right = DirichletBC(V, Constant((+1e-1, 0)), boundary_parts, Boundaries.RIGHT.value)
+# bcu_left = DirichletBC(V, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+# bcu_right = DirichletBC(V, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
 # bcu.append(bcu_left)
 # bcu.append(bcu_right)
 
