@@ -20,7 +20,7 @@ __all__ = ["pause",
            "plot_facet_meshfunction"]
 
 from collections import defaultdict
-from copy import copy
+from copy import deepcopy
 from enum import IntEnum
 from itertools import chain
 import typing
@@ -597,7 +597,7 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
 
             # Set the `array` attribute to make `colorbar` recognize the `PolyCollection`.
             # https://matplotlib.org/3.5.0/gallery/shapes_and_collections/artist_reference.html
-            polys = copy(prep.polys)
+            polys = deepcopy(prep.polys)
             polys.set_edgecolors("none")
             polys.set_array(vec_vis)
 
@@ -753,7 +753,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
                     continue
                 # Each Matplotlib artist object may only be added to one figure at a time,
                 # and each `PolyCollection` instance only creates one artist.
-                polys = copy(polys)
+                polys = deepcopy(polys)
                 polys.set_linewidth(all_edges_width)
                 polys.set_edgecolor(all_edges_color(mpi_rank))
                 polys.set_facecolor('none')
@@ -775,7 +775,7 @@ def mpiplot_mesh(V: dolfin.FunctionSpace, *,
             for mpi_rank, polys in enumerate(all_polys):
                 if not polys:
                     continue
-                polys = copy(polys)
+                polys = deepcopy(polys)
                 polys.set_linewidth(2.0)
                 polys.set_edgecolor(element_edges_color(mpi_rank))
                 polys.set_facecolor('none')
