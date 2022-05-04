@@ -194,9 +194,9 @@ class EulerianSolid:
         # s_ = Function(S)
         # u_, σ_ = split(s_)
 
-        u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
-        w = TestFunction(V)
-        v = TrialFunction(V)
+        # u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
+        # w = TestFunction(V)
+        v = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
         ψ = TestFunction(V)
         σ = TrialFunction(Q)
         φ = TestFunction(Q)
@@ -213,8 +213,8 @@ class EulerianSolid:
         self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)  # "DG" is a handy alias for "DP or DQ dep. on mesh"
         self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
 
-        self.u, self.v, self.σ = u, v, σ  # trials
-        self.w, self.ψ, self.φ = w, ψ, φ  # tests
+        self.v, self.σ = v, σ  # trials
+        self.ψ, self.φ = ψ, φ  # tests
         self.u_, self.v_, self.σ_ = u_, v_, σ_  # latest computed approximation
         self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
 
@@ -314,16 +314,14 @@ class EulerianSolid:
         n = FacetNormal(self.mesh)
 
         # Displacement
-        u = self.u      # new (unknown)
-        w = self.w      # test
         u_ = self.u_    # latest available approximation
         u_n = self.u_n  # old (end of previous timestep)
 
         # Eulerian time rate of displacement,  v = ∂u/∂t
-        v = self.v
+        v = self.v      # new (unknown)
         ψ = self.ψ      # test
-        v_ = self.v_
-        v_n = self.v_n
+        v_ = self.v_    # latest available approximation
+        v_n = self.v_n  # old (end of previous timestep)
 
         # Stress
         σ = self.σ
