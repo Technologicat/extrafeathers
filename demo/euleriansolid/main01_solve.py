@@ -49,17 +49,12 @@ Qscalar = Q.sub(0).collapse()
 if my_rank == 0:
     print(f"Number of DOFs: displacement {V.dim()}, velocity {V.dim()}, stress {Q.dim()}, total {2 * V.dim() + Q.dim()}")
 
-bcu = []
 bcv = []
 bcσ = []
-solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
-# solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
+solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
+# solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
 
 # Define boundary conditions
-#
-# - on each boundary, set either `u` or `n·σ`
-#   (the latter needs some trickery on boundaries not aligned with axes)
-# - if you set `u`, set also `v` consistently
 
 # Top and bottom edges: zero normal stress
 #
@@ -80,32 +75,26 @@ bcσ.append(bcσ_bottom1)
 bcσ.append(bcσ_bottom2)
 bcσ.append(bcσ_bottom3)
 
-# # Left and right edges: fixed displacement at both ends
-# # TODO: Does not work with mass-lumped `u`, because in that algorithm we use only BCs for `v`.
-# # TODO: If you want to try this case, set also the optional IC below.
-# # bcu_left = DirichletBC(V, Constant((-1e-1, 0)), boundary_parts, Boundaries.LEFT.value)
-# # bcu_right = DirichletBC(V, Constant((1e-1, 0)), boundary_parts, Boundaries.RIGHT.value)
-# bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-# bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
-# # bcu.append(bcu_left)
-# # bcu.append(bcu_right)
-# bcv.append(bcv_left)
-# bcv.append(bcv_right)
-#
-# # Optional: nonzero initial condition (IC) for displacement
+# # Left and right edges: fixed displacement
+# #
+# # Our mass-lumped formulation takes no BCs for `u` (which is simply the time integral of `v`);
+# # instead, set an initial condition on `u`, and set `v = 0` at the fixed boundaries.
 # from fenics import Expression
 # # u0 = project(Expression(("1e-1 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]
 # u0 = project(Expression(("1e-1 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]
 # solver.u_n.assign(u0)
 # solver.u_.assign(u0)
+# bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+# bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+# bcv.append(bcv_left)
+# bcv.append(bcv_right)
 
-# Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016)
-bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+# Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+# Here the initial field for `u` is zero, so it does not need to be specified.
 bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
 bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
 bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
 bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
-bcu.append(bcu_left)
 bcv.append(bcv_left)
 bcσ.append(bcσ_right1)
 bcσ.append(bcσ_right2)
@@ -142,14 +131,13 @@ xdmffile_σ = XDMFFile(MPI.comm_world, vis_σ_filename)
 xdmffile_σ.parameters["flush_output"] = True
 xdmffile_σ.parameters["rewrite_function_mesh"] = False
 
-# ParaView doesn't have a filter for this, so we compute it ourselves.
+# ParaView doesn't have a filter for von Mises stress, so we compute it ourselves.
 xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
 xdmffile_vonMises.parameters["flush_output"] = True
 xdmffile_vonMises.parameters["rewrite_function_mesh"] = False
 vonMises = Function(Qscalar)
 
 # Create time series (for use in other FEniCS solvers)
-#
 timeseries_u = TimeSeries(sol_u_filename)
 timeseries_v = TimeSeries(sol_v_filename)
 timeseries_σ = TimeSeries(sol_σ_filename)
