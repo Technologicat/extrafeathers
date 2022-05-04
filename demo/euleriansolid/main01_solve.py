@@ -24,7 +24,7 @@ from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
-from extrafeathers.pdes import EulerianSolid
+from extrafeathers.pdes import EulerianSolid, SteadyStateEulerianSolid
 from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, tau, V0, dt, nt,
                      Boundaries,
@@ -49,10 +49,12 @@ Qscalar = Q.sub(0).collapse()
 if my_rank == 0:
     print(f"Number of DOFs: displacement {V.dim()}, velocity {V.dim()}, stress {Q.dim()}, total {2 * V.dim() + Q.dim()}")
 
-bcv = []
-bcσ = []
-solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
+bcu = []  # for steady-state solver
+bcv = []  # for dynamic solver
+bcσ = []  # for both solvers
+# solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
 # solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
+solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)  # Eulerian steady state
 
 # Define boundary conditions
 
@@ -77,6 +79,8 @@ bcσ.append(bcσ_bottom3)
 
 # # Left and right edges: fixed displacement
 # #
+# # For dynamic solver
+# #
 # # Our mass-lumped formulation takes no BCs for `u` (which is simply the time integral of `v`);
 # # instead, set an initial condition on `u`, and set `v = 0` at the fixed boundaries.
 # from fenics import Expression
@@ -88,17 +92,25 @@ bcσ.append(bcσ_bottom3)
 # bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
 # bcv.append(bcv_left)
 # bcv.append(bcv_right)
+#
+# For steady-state solver
+bcu_left = DirichletBC(V, Constant((-1e-1, 0)), boundary_parts, Boundaries.LEFT.value)
+bcu_right = DirichletBC(V, Constant((+1e-1, 0)), boundary_parts, Boundaries.RIGHT.value)
+bcu.append(bcu_left)
+bcu.append(bcu_right)
 
-# Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-# Here the initial field for `u` is zero, so it does not need to be specified.
-bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
-bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
-bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
-bcv.append(bcv_left)
-bcσ.append(bcσ_right1)
-bcσ.append(bcσ_right2)
-bcσ.append(bcσ_right3)
+# # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+# # Here the initial field for `u` is zero, so it does not need to be specified.
+# bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+# bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+# bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+# bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+# bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+# bcu.append(bcu_left)
+# bcv.append(bcv_left)
+# bcσ.append(bcσ_right1)
+# bcσ.append(bcσ_right2)
+# bcσ.append(bcσ_right3)
 
 # # Left and right edges: constant pull at both ends
 # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
@@ -181,6 +193,31 @@ if highres_export_Q:
 
 # --------------------------------------------------------------------------------
 # Helper functions
+
+show_mesh = True
+SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
+
+def roundsig(x, significant_digits):
+    # https://www.adamsmith.haus/python/answers/how-to-round-a-number-to-significant-digits-in-python
+    import math
+    digits_in_int_part = int(math.floor(math.log10(abs(x)))) + 1
+    decimal_digits = significant_digits - digits_in_int_part
+    return round(x, decimal_digits)
+
+# W = FunctionSpace(mesh, "DP", 0)
+# def elastic_strain_energy():
+#     E = project((1 / 2) * inner(solver.σ_, ε(solver.u_)),
+#                 W,
+#                 form_compiler_parameters={"quadrature_degree": 2})
+#     return np.sum(E.vector()[:])
+W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
+def elastic_strain_energy():
+    "Compute and return total elastic strain energy, ∫ (1/2) σ : ε dΩ"
+    return float(project((1 / 2) * inner(solver.σ_, ε(solver.u_)), W))
+def kinetic_energy():
+    "Compute and return total kinetic energy, ∫ (1/2) ρ v² dΩ"
+    # Note `solver._ρ`; we need the UFL `Constant` object here.
+    return float(project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), W))
 
 # Preparation for plotting.
 #
@@ -448,33 +485,53 @@ def plotit():
         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
         plotmagic.pause(0.001)
 
-# W = FunctionSpace(mesh, "DP", 0)
-# def elastic_strain_energy():
-#     E = project((1 / 2) * inner(solver.σ_, ε(solver.u_)),
-#                 W,
-#                 form_compiler_parameters={"quadrature_degree": 2})
-#     return np.sum(E.vector()[:])
-W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
-def elastic_strain_energy():
-    "Compute and return total elastic strain energy, ∫ (1/2) σ : ε dΩ"
-    return float(project((1 / 2) * inner(solver.σ_, ε(solver.u_)), W))
-def kinetic_energy():
-    "Compute and return total kinetic energy, ∫ (1/2) ρ v² dΩ"
-    # Note `solver._ρ`; we need the UFL `Constant` object here.
-    return float(project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), W))
+# --------------------------------------------------------------------------------
+# Steady-state solution
+
+if my_rank == 0:
+    print("Solving steady state...")
+krylov_it1, krylov_it2, (system_it, last_diff_H1) = solver.solve()
+
+if my_rank == 0:
+    fig, ax = plt.subplots(3, 5, constrained_layout=True, figsize=(12, 6))
+    plt.show()
+    plt.draw()
+    plotmagic.pause(0.001)
+    colorbars = []
+
+msg = "Plotting..."
+with timer() as tim:
+    plotit()
+
+minu, maxu = common.minmax(solver.u_, mode="l2")
+
+last_plot_walltime_local = tim.dt
+last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
+last_plot_walltime = max(last_plot_walltime_global)
+msg = f"{SUPG_str}; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {system_it} iterations; plot {last_plot_walltime:0.2g} s"
+# Loop-and-a-half situation, so draw one more time to update title.
+if my_rank == 0:
+    # figure title (progress message)
+    plt.suptitle(msg)
+    # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
+    plotmagic.pause(0.001)
+# Hold plot
+if my_rank == 0:
+    plt.ioff()
+    plt.show()
+from sys import exit
+exit(0)
 
 # --------------------------------------------------------------------------------
 # Time-stepping
 
 t = 0
 msg = "Starting. Progress information will be available shortly..."
-SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
 vis_step_walltime_local = 0
 nsave_total = 1000  # how many timesteps to save from the whole simulation
 nsavemod = max(1, int(nt / nsave_total))  # every how manyth timestep to save
 vis_every = 5 / 100  # how often to visualize (plotting is slow; might even leak memory?)
 nvismod = max(1, int(vis_every * nt))  # every how manyth timestep to visualize
-show_mesh = True
 est = ETAEstimator(nt, keep_last=nvismod)
 if my_rank == 0:
     fig, ax = plt.subplots(3, 5, constrained_layout=True, figsize=(12, 6))
@@ -628,13 +685,6 @@ for n in range(nt):
         max_eta = item_with_max_estimate[2]
         item_with_max_vis_step_walltime = max(times_global, key=lambda item: item[0])
         max_vis_step_walltime = item_with_max_vis_step_walltime[0]
-
-    def roundsig(x, significant_digits):
-        # https://www.adamsmith.haus/python/answers/how-to-round-a-number-to-significant-digits-in-python
-        import math
-        digits_in_int_part = int(math.floor(math.log10(abs(x)))) + 1
-        decimal_digits = significant_digits - digits_in_int_part
-        return round(x, decimal_digits)
 
     # msg for *next* timestep. Loop-and-a-half situation...
     msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {system_it} iterations; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
