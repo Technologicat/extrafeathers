@@ -904,15 +904,6 @@ class SteadyStateEulerianSolid:
                dot(dot(n, σ_), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
-        # SUPG: streamline upwinding Petrov-Galerkin.
-        def mag(vec):
-            return dot(vec, vec)**(1 / 2)
-        τ_SUPG = (α0 / self.V.ufl_element().degree()) * (2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s  # TODO: tune value
-        # The residual is evaluated elementwise in strong form, at the end of the timestep.
-        R = (ρ * (advs(a, advs(a, u_))) - div(σ_) - ρ * b)
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
-        F_u += F_SUPG
-
         self.a_u = lhs(F_u)
         self.L_u = rhs(F_u)
         self.a_σ = lhs(F_σ)
