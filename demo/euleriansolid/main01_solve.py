@@ -213,6 +213,248 @@ def kinetic_energy():
     # Note `solver._ρ`; we need the UFL `Constant` object here.
     return float(project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), W))
 
+def plotit():
+    u_ = solver.u_
+    v_ = solver.v_
+    σ_ = solver.σ_
+
+    def symmetric_vrange(p):
+        ignored_minp, maxp = common.minmax(p, take_abs=True, mode="raw")
+        return -maxp, maxp
+
+    # remove old colorbars, since `plt.cla` doesn't
+    if my_rank == 0:
+        for cb in Popper(colorbars):
+            cb.remove()
+
+    # u1
+    if my_rank == 0:
+        plt.sca(ax[0, 0])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(u_.sub(0))
+    theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$u_{1}$ [m]")
+        plt.axis("equal")
+
+    # u2
+    if my_rank == 0:
+        plt.sca(ax[0, 1])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(u_.sub(1))
+    theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$u_{2}$ [m]")
+        plt.axis("equal")
+
+    # ε11
+    # TODO: We assume for now that `u` is degree-1, so that `ε` is piecewise constant
+    # TODO: (affects the choice of space and prep here).
+    ε_ = project(ε(solver.u_), solver.QdG0)
+    if my_rank == 0:
+        plt.sca(ax[0, 2])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(ε_.sub(0))
+    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_QdG0_0, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\varepsilon_{11}$")
+        plt.axis("equal")
+
+    # ε12
+    if my_rank == 0:
+        plt.sca(ax[0, 3])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(ε_.sub(1))
+    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_QdG0_1, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\varepsilon_{12}$")
+        plt.axis("equal")
+
+    # # ε21 - same as ε12 (if the solver works correctly)
+    # if my_rank == 0:
+    #     plt.sca(ax[XXX, XXX])
+    #     plt.cla()
+    # vmin, vmax = symmetric_vrange(σ_.sub(2))
+    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_QdG0_2, show_mesh=show_mesh,
+    #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    # if my_rank == 0:
+    #     colorbars.append(plt.colorbar(theplot))
+    #     plt.title(r"$\varepsilon_{21}$")
+    #     plt.axis("equal")
+
+    # ε22
+    if my_rank == 0:
+        plt.sca(ax[0, 4])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(ε_.sub(3))
+    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_QdG0_3, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\varepsilon_{22}$")
+        plt.axis("equal")
+
+    # v1
+    if my_rank == 0:
+        plt.sca(ax[1, 0])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(v_.sub(0))
+    theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$v_{1}$ [m/s]")
+        plt.axis("equal")
+
+    # v2
+    if my_rank == 0:
+        plt.sca(ax[1, 1])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(v_.sub(1))
+    theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$v_{2}$ [m/s]")
+        plt.axis("equal")
+
+    # ∂ε11/∂t
+    # TODO: We assume for now that `v` is degree-1, so that `∂ε/∂t` is piecewise constant
+    # TODO: (affects the choice of space and prep here).
+    ε_ = project(ε(solver.v_), solver.QdG0)
+    if my_rank == 0:
+        plt.sca(ax[1, 2])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(ε_.sub(0))
+    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_QdG0_0, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\partial \varepsilon_{11} / \partial t$ [1/s]")
+        plt.axis("equal")
+
+    # ∂ε12/∂t
+    if my_rank == 0:
+        plt.sca(ax[1, 3])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(ε_.sub(1))
+    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_QdG0_1, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\partial \varepsilon_{12} / \partial t$ [1/s]")
+        plt.axis("equal")
+
+    # # ∂ε21/∂t - same as ∂ε12/∂t (if the solver works correctly)
+    # if my_rank == 0:
+    #     plt.sca(ax[XXX, XXX])
+    #     plt.cla()
+    # vmin, vmax = symmetric_vrange(σ_.sub(2))
+    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_QdG0_2, show_mesh=show_mesh,
+    #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    # if my_rank == 0:
+    #     colorbars.append(plt.colorbar(theplot))
+    #    plt.title(r"$\partial \varepsilon_{21} / \partial t$ [1/s]")
+    #     plt.axis("equal")
+
+    # ∂ε22/∂t
+    if my_rank == 0:
+        plt.sca(ax[1, 4])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(ε_.sub(3))
+    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_QdG0_3, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\partial \varepsilon_{22} / \partial t$ [1/s]")
+        plt.axis("equal")
+
+    # σ11
+    if my_rank == 0:
+        plt.sca(ax[2, 2])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(σ_.sub(0))
+    theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\sigma_{11}$ [Pa]")
+        plt.axis("equal")
+
+    # σ12
+    if my_rank == 0:
+        plt.sca(ax[2, 3])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(σ_.sub(1))
+    theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\sigma_{12}$ [Pa]")
+        plt.axis("equal")
+
+    # # σ21 - same as σ12 (if the solver works correctly)
+    # if my_rank == 0:
+    #     plt.sca(ax[XXX, XXX])
+    #     plt.cla()
+    # vmin, vmax = symmetric_vrange(σ_.sub(2))
+    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
+    #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    # if my_rank == 0:
+    #     colorbars.append(plt.colorbar(theplot))
+    #     plt.title(r"$\sigma_{21}$ [Pa]")
+    #     plt.axis("equal")
+
+    # σ22
+    if my_rank == 0:
+        plt.sca(ax[2, 4])
+        plt.cla()
+    vmin, vmax = symmetric_vrange(σ_.sub(3))
+    theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
+                                cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$\sigma_{22}$ [Pa]")
+        plt.axis("equal")
+
+    # We have 13 plots, but 15 subplot slots, so let's use the last two to plot the energy.
+    E = project((1 / 2) * inner(solver.σ_, ε(solver.u_)), QdG0scalar)  # elastic strain energy
+    if my_rank == 0:
+        plt.sca(ax[2, 0])
+        plt.cla()
+    theplot = plotmagic.mpiplot(E, prep=prep_QdG0scalar, show_mesh=show_mesh)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$(1/2) \sigma : \varepsilon$ [J/m³]")
+        plt.axis("equal")
+
+    K = project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), Vscalar)  # kinetic energy
+    if my_rank == 0:
+        plt.sca(ax[2, 1])
+        plt.cla()
+    theplot = plotmagic.mpiplot(K, prep=prep_Vscalar, show_mesh=show_mesh)
+    if my_rank == 0:
+        colorbars.append(plt.colorbar(theplot))
+        plt.title(r"$(1/2) \rho v^2$ [J/m³]")
+        plt.axis("equal")
+
+    # figure title (progress message)
+    if my_rank == 0:
+        plt.suptitle(msg)
+
+    if my_rank == 0:
+        # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
+        plotmagic.pause(0.001)
+
+
 # Time-stepping
 t = 0
 msg = "Starting. Progress information will be available shortly..."
@@ -325,241 +567,7 @@ for n in range(nt):
     visualize = n % nvismod == 0 or n == nt - 1
     if visualize:
         with timer() as tim:
-            u_ = solver.u_
-            v_ = solver.v_
-            σ_ = solver.σ_
-
-            def symmetric_vrange(p):
-                ignored_minp, maxp = common.minmax(p, take_abs=True, mode="raw")
-                return -maxp, maxp
-
-            # remove old colorbars, since `plt.cla` doesn't
-            if my_rank == 0:
-                for cb in Popper(colorbars):
-                    cb.remove()
-
-            # u1
-            if my_rank == 0:
-                plt.sca(ax[0, 0])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(u_.sub(0))
-            theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$u_{1}$ [m]")
-                plt.axis("equal")
-
-            # u2
-            if my_rank == 0:
-                plt.sca(ax[0, 1])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(u_.sub(1))
-            theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$u_{2}$ [m]")
-                plt.axis("equal")
-
-            # ε11
-            # TODO: We assume for now that `u` is degree-1, so that `ε` is piecewise constant
-            # TODO: (affects the choice of space and prep here).
-            ε_ = project(ε(solver.u_), solver.QdG0)
-            if my_rank == 0:
-                plt.sca(ax[0, 2])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(ε_.sub(0))
-            theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_QdG0_0, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\varepsilon_{11}$")
-                plt.axis("equal")
-
-            # ε12
-            if my_rank == 0:
-                plt.sca(ax[0, 3])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(ε_.sub(1))
-            theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_QdG0_1, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\varepsilon_{12}$")
-                plt.axis("equal")
-
-            # # ε21 - same as ε12 (if the solver works correctly)
-            # if my_rank == 0:
-            #     plt.sca(ax[XXX, XXX])
-            #     plt.cla()
-            # vmin, vmax = symmetric_vrange(σ_.sub(2))
-            # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_QdG0_2, show_mesh=show_mesh,
-            #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            # if my_rank == 0:
-            #     colorbars.append(plt.colorbar(theplot))
-            #     plt.title(r"$\varepsilon_{21}$")
-            #     plt.axis("equal")
-
-            # ε22
-            if my_rank == 0:
-                plt.sca(ax[0, 4])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(ε_.sub(3))
-            theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_QdG0_3, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\varepsilon_{22}$")
-                plt.axis("equal")
-
-            # v1
-            if my_rank == 0:
-                plt.sca(ax[1, 0])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(v_.sub(0))
-            theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$v_{1}$ [m/s]")
-                plt.axis("equal")
-
-            # v2
-            if my_rank == 0:
-                plt.sca(ax[1, 1])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(v_.sub(1))
-            theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$v_{2}$ [m/s]")
-                plt.axis("equal")
-
-            # ∂ε11/∂t
-            # TODO: We assume for now that `v` is degree-1, so that `∂ε/∂t` is piecewise constant
-            # TODO: (affects the choice of space and prep here).
-            ε_ = project(ε(solver.v_), solver.QdG0)
-            if my_rank == 0:
-                plt.sca(ax[1, 2])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(ε_.sub(0))
-            theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_QdG0_0, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\partial \varepsilon_{11} / \partial t$ [1/s]")
-                plt.axis("equal")
-
-            # ∂ε12/∂t
-            if my_rank == 0:
-                plt.sca(ax[1, 3])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(ε_.sub(1))
-            theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_QdG0_1, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\partial \varepsilon_{12} / \partial t$ [1/s]")
-                plt.axis("equal")
-
-            # # ∂ε21/∂t - same as ∂ε12/∂t (if the solver works correctly)
-            # if my_rank == 0:
-            #     plt.sca(ax[XXX, XXX])
-            #     plt.cla()
-            # vmin, vmax = symmetric_vrange(σ_.sub(2))
-            # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_QdG0_2, show_mesh=show_mesh,
-            #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            # if my_rank == 0:
-            #     colorbars.append(plt.colorbar(theplot))
-            #    plt.title(r"$\partial \varepsilon_{21} / \partial t$ [1/s]")
-            #     plt.axis("equal")
-
-            # ∂ε22/∂t
-            if my_rank == 0:
-                plt.sca(ax[1, 4])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(ε_.sub(3))
-            theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_QdG0_3, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\partial \varepsilon_{22} / \partial t$ [1/s]")
-                plt.axis("equal")
-
-            # σ11
-            if my_rank == 0:
-                plt.sca(ax[2, 2])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(σ_.sub(0))
-            theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\sigma_{11}$ [Pa]")
-                plt.axis("equal")
-
-            # σ12
-            if my_rank == 0:
-                plt.sca(ax[2, 3])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(σ_.sub(1))
-            theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\sigma_{12}$ [Pa]")
-                plt.axis("equal")
-
-            # # σ21 - same as σ12 (if the solver works correctly)
-            # if my_rank == 0:
-            #     plt.sca(ax[XXX, XXX])
-            #     plt.cla()
-            # vmin, vmax = symmetric_vrange(σ_.sub(2))
-            # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
-            #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            # if my_rank == 0:
-            #     colorbars.append(plt.colorbar(theplot))
-            #     plt.title(r"$\sigma_{21}$ [Pa]")
-            #     plt.axis("equal")
-
-            # σ22
-            if my_rank == 0:
-                plt.sca(ax[2, 4])
-                plt.cla()
-            vmin, vmax = symmetric_vrange(σ_.sub(3))
-            theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
-                                        cmap="RdBu_r", vmin=vmin, vmax=vmax)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$\sigma_{22}$ [Pa]")
-                plt.axis("equal")
-
-            # We have 13 plots, but 15 subplot slots, so let's use the last two to plot the energy.
-            E = project((1 / 2) * inner(solver.σ_, ε(solver.u_)), QdG0scalar)  # elastic strain energy
-            if my_rank == 0:
-                plt.sca(ax[2, 0])
-                plt.cla()
-            theplot = plotmagic.mpiplot(E, prep=prep_QdG0scalar, show_mesh=show_mesh)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$(1/2) \sigma : \varepsilon$ [J/m³]")
-                plt.axis("equal")
-
-            K = project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), Vscalar)  # kinetic energy
-            if my_rank == 0:
-                plt.sca(ax[2, 1])
-                plt.cla()
-            theplot = plotmagic.mpiplot(K, prep=prep_Vscalar, show_mesh=show_mesh)
-            if my_rank == 0:
-                colorbars.append(plt.colorbar(theplot))
-                plt.title(r"$(1/2) \rho v^2$ [J/m³]")
-                plt.axis("equal")
-
-            # figure title (progress message)
-            if my_rank == 0:
-                plt.suptitle(msg)
+            plotit()
 
             # info for msg (expensive; only update these once per vis step)
 
@@ -567,7 +575,7 @@ for n in range(nt):
             # #  - `dolfin.interpolate` doesn't work (point/cell intersection only implemented for simplices),
             # #  - `dolfin.project` doesn't work for `dolfin.Expression`, either; same reason.
             # magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
-            #                        u0=u_.sub(0), u1=u_.sub(1))
+            #                        u0=solver.u_.sub(0), u1=solver.u_.sub(1))
             # magu = interpolate(magu_expr, Vscalar)
             # uvec = np.array(magu.vector())
             #
@@ -580,11 +588,7 @@ for n in range(nt):
             # maxu = max(maxu_global)
 
             # So let's do this manually. We can operate on the nodal values directly.
-            minu, maxu = common.minmax(u_, mode="l2")
-
-            if my_rank == 0:
-                # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-                plotmagic.pause(0.001)
+            minu, maxu = common.minmax(solver.u_, mode="l2")
         last_plot_walltime_local = tim.dt
         last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
         last_plot_walltime = max(last_plot_walltime_global)
