@@ -502,10 +502,10 @@ class EulerianSolid:
         # Step 3: solve `v` from momentum equation
         #
         # - Valid boundary conditions:
-        #   - Displacement boundary: `u` and `v` given, no condition on `σ`
-        #     - Dirichlet boundary for `u` and `v`; those rows of `F_v` removed, ∫ ds terms don't matter.
+        #   - Displacement boundary: `v` given, no condition on `σ`
+        #     - Dirichlet boundary for `v`; those rows of `F_v` removed, ∫ ds terms don't matter.
         #     - Affects `σ` automatically, via the step 1 and step 2 updates.
-        #   - Stress (traction) boundary: `n·σ` given, no condition on `u` or `v`
+        #   - Stress (traction) boundary: `n·σ` given, no condition on `v`
         #     - Dirichlet boundary for `σ`; those rows of `F_σ` removed.
         #     - Need to include the -∫ [n·σ]·ψ ds term in `F_v`.
         #
