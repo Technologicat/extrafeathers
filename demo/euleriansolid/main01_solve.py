@@ -639,6 +639,7 @@ for n in range(nt):
     # Plot the components of u
     visualize = n % nvismod == 0 or n == nt - 1
     if visualize:
+        begin("Plotting")
         with timer() as tim:
             plotit()
 
@@ -665,6 +666,7 @@ for n in range(nt):
         last_plot_walltime_local = tim.dt
         last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
         last_plot_walltime = max(last_plot_walltime_global)
+        end()
 
     # Update progress bar
     progress += 1
