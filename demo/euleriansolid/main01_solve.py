@@ -114,6 +114,9 @@ bcσ.append(bcσ_right3)
 # bcσ.append(bcσ_right2)
 # bcσ.append(bcσ_right3)
 
+# Enable stabilizers for the Galerkin formulation
+solver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
+
 # https://fenicsproject.org/qa/1124/is-there-a-way-to-set-the-inital-guess-in-the-krylov-solver/
 parameters['krylov_solver']['nonzero_initial_guess'] = True
 # parameters['krylov_solver']['monitor_convergence'] = True
@@ -176,6 +179,11 @@ if highres_export_Q:
     if my_rank == 0:
         print(f"Preparation complete in {tim.dt:0.6g} seconds.")
 
+# --------------------------------------------------------------------------------
+# Helper functions
+
+# Preparation for plotting.
+#
 # Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
 # `u` and `v` both live on `V`, so both can use the same preps.
 prep_V0 = plotmagic.mpiplot_prepare(solver.u_.sub(0))
@@ -195,27 +203,13 @@ QdG0scalar = solver.QdG0.sub(0).collapse()
 tmp = Function(QdG0scalar)
 prep_QdG0scalar = plotmagic.mpiplot_prepare(tmp)
 
-# Enable stabilizers for the Galerkin formulation
-solver.stabilizers.SUPG = True  # stabilizer for advection-dominant problems
-
-# W = FunctionSpace(mesh, "DP", 0)
-# def elastic_strain_energy():
-#     E = project((1 / 2) * inner(solver.σ_, ε(solver.u_)),
-#                 W,
-#                 form_compiler_parameters={"quadrature_degree": 2})
-#     return np.sum(E.vector()[:])
-W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
-def elastic_strain_energy():
-    "∫ (1/2) σ : ε dΩ"
-    return float(project((1 / 2) * inner(solver.σ_, ε(solver.u_)), W))
-def kinetic_energy():
-    "∫ (1/2) ρ v² dΩ"
-    # Note `solver._ρ`; we need the UFL `Constant` object here.
-    return float(project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), W))
-
 def plotit():
+    # Plot the current solution
     u_ = solver.u_
-    v_ = solver.v_
+    if hasattr(solver, "v_"):  # dynamic solver
+        v_ = solver.v_
+    else:  # steady-state solver
+        v_ = Function(V)  # all zeros
     σ_ = solver.σ_
 
     def symmetric_vrange(p):
@@ -254,7 +248,7 @@ def plotit():
     # ε11
     # TODO: We assume for now that `u` is degree-1, so that `ε` is piecewise constant
     # TODO: (affects the choice of space and prep here).
-    ε_ = project(ε(solver.u_), solver.QdG0)
+    ε_ = project(ε(u_), solver.QdG0)
     if my_rank == 0:
         plt.sca(ax[0, 2])
         plt.cla()
@@ -329,7 +323,7 @@ def plotit():
     # ∂ε11/∂t
     # TODO: We assume for now that `v` is degree-1, so that `∂ε/∂t` is piecewise constant
     # TODO: (affects the choice of space and prep here).
-    ε_ = project(ε(solver.v_), solver.QdG0)
+    ε_ = project(ε(v_), solver.QdG0)
     if my_rank == 0:
         plt.sca(ax[1, 2])
         plt.cla()
@@ -426,7 +420,7 @@ def plotit():
         plt.axis("equal")
 
     # We have 13 plots, but 15 subplot slots, so let's use the last two to plot the energy.
-    E = project((1 / 2) * inner(solver.σ_, ε(solver.u_)), QdG0scalar)  # elastic strain energy
+    E = project((1 / 2) * inner(σ_, ε(u_)), QdG0scalar)  # elastic strain energy
     if my_rank == 0:
         plt.sca(ax[2, 0])
         plt.cla()
@@ -436,7 +430,7 @@ def plotit():
         plt.title(r"$(1/2) \sigma : \varepsilon$ [J/m³]")
         plt.axis("equal")
 
-    K = project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), Vscalar)  # kinetic energy
+    K = project((1 / 2) * solver._ρ * dot(v_, v_), Vscalar)  # kinetic energy
     if my_rank == 0:
         plt.sca(ax[2, 1])
         plt.cla()
@@ -454,8 +448,24 @@ def plotit():
         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
         plotmagic.pause(0.001)
 
+# W = FunctionSpace(mesh, "DP", 0)
+# def elastic_strain_energy():
+#     E = project((1 / 2) * inner(solver.σ_, ε(solver.u_)),
+#                 W,
+#                 form_compiler_parameters={"quadrature_degree": 2})
+#     return np.sum(E.vector()[:])
+W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
+def elastic_strain_energy():
+    "Compute and return total elastic strain energy, ∫ (1/2) σ : ε dΩ"
+    return float(project((1 / 2) * inner(solver.σ_, ε(solver.u_)), W))
+def kinetic_energy():
+    "Compute and return total kinetic energy, ∫ (1/2) ρ v² dΩ"
+    # Note `solver._ρ`; we need the UFL `Constant` object here.
+    return float(project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), W))
 
+# --------------------------------------------------------------------------------
 # Time-stepping
+
 t = 0
 msg = "Starting. Progress information will be available shortly..."
 SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
