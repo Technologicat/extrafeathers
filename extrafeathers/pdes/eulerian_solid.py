@@ -501,17 +501,6 @@ class EulerianSolid:
 
             # Let's try classic artificial diffusion along streamlines?
             # F_σ += he**2 / mag(a)**2 * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
-            def mag(vec):
-                return dot(vec, vec)**(1 / 2)
-            τ_SUPG = (α0 / self.Q.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
-            # The residual is evaluated elementwise in strong form, at the end of the timestep.
-            εu_ = ε(u_)
-            εv_ = ε(v_)
-            K_inner_εu_ = K_inner_operator(εu_)
-            K_inner_εv_ = K_inner_operator(εv_)
-            R = σ - (K_inner_εu_ + τ * (K_inner_εv_ + K_inner_operator(advs(a, εu_))))
-            F_SUPG = enable_SUPG_flag * τ_SUPG * inner(advs(a, φ), R) * dx
-            F_σ += F_SUPG
 
         # Step 3: solve `v` from momentum equation
         #
