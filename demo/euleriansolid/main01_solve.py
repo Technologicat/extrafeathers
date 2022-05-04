@@ -52,9 +52,9 @@ if my_rank == 0:
 bcu = []  # for steady-state solver
 bcv = []  # for dynamic solver
 bcσ = []  # for both solvers
-# solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
+solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
 # solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
-solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)  # Eulerian steady state
+# solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)  # Eulerian steady state
 
 # Define boundary conditions
 
@@ -92,25 +92,25 @@ bcσ.append(bcσ_bottom3)
 # bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
 # bcv.append(bcv_left)
 # bcv.append(bcv_right)
-#
-# For steady-state solver
-bcu_left = DirichletBC(V, Constant((-1e-1, 0)), boundary_parts, Boundaries.LEFT.value)
-bcu_right = DirichletBC(V, Constant((+1e-1, 0)), boundary_parts, Boundaries.RIGHT.value)
-bcu.append(bcu_left)
-bcu.append(bcu_right)
-
-# # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-# # Here the initial field for `u` is zero, so it does not need to be specified.
-# bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-# bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-# bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
-# bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
-# bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+# #
+# # For steady-state solver
+# bcu_left = DirichletBC(V, Constant((-1e-1, 0)), boundary_parts, Boundaries.LEFT.value)
+# bcu_right = DirichletBC(V, Constant((+1e-1, 0)), boundary_parts, Boundaries.RIGHT.value)
 # bcu.append(bcu_left)
-# bcv.append(bcv_left)
-# bcσ.append(bcσ_right1)
-# bcσ.append(bcσ_right2)
-# bcσ.append(bcσ_right3)
+# bcu.append(bcu_right)
+
+# Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+# Here the initial field for `u` is zero, so it does not need to be specified.
+bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+bcu.append(bcu_left)
+bcv.append(bcv_left)
+bcσ.append(bcσ_right1)
+bcσ.append(bcσ_right2)
+bcσ.append(bcσ_right3)
 
 # # Left and right edges: constant pull at both ends
 # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
@@ -488,39 +488,45 @@ def plotit():
 # --------------------------------------------------------------------------------
 # Steady-state solution
 
-if my_rank == 0:
-    print("Solving steady state...")
-krylov_it1, krylov_it2, (system_it, last_diff_H1) = solver.solve()
-
-if my_rank == 0:
-    fig, ax = plt.subplots(3, 5, constrained_layout=True, figsize=(12, 6))
-    plt.show()
-    plt.draw()
-    plotmagic.pause(0.001)
-    colorbars = []
-
-msg = "Plotting..."
-with timer() as tim:
-    plotit()
-
-minu, maxu = common.minmax(solver.u_, mode="l2")
-
-last_plot_walltime_local = tim.dt
-last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
-last_plot_walltime = max(last_plot_walltime_global)
-msg = f"{SUPG_str}; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {system_it} iterations; plot {last_plot_walltime:0.2g} s"
-# Loop-and-a-half situation, so draw one more time to update title.
-if my_rank == 0:
-    # figure title (progress message)
-    plt.suptitle(msg)
-    # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
-    plotmagic.pause(0.001)
-# Hold plot
-if my_rank == 0:
-    plt.ioff()
-    plt.show()
-from sys import exit
-exit(0)
+# if my_rank == 0:
+#     print("Solving steady state...")
+# with timer() as tim:
+#     krylov_it1, krylov_it2, (system_it, last_diff_H1) = solver.solve()
+# E = elastic_strain_energy()
+# if my_rank == 0:  # DEBUG
+#     print(f"Krylov {krylov_it1}, {krylov_it2}; system {system_it}; ‖u - u_prev‖_H1 = {last_diff_H1:0.6g}; E = ∫ (1/2) ρ σ:ε dΩ = {E:0.3g}; solve wall time {tim.dt:0.3g}s")
+#
+# if my_rank == 0:
+#     fig, ax = plt.subplots(3, 5, constrained_layout=True, figsize=(12, 6))
+#     plt.show()
+#     plt.draw()
+#     plotmagic.pause(0.001)
+#     colorbars = []
+#
+# if my_rank == 0:
+#     print("Plotting...")
+# msg = "Plotting..."
+# with timer() as tim:
+#     plotit()
+#
+# minu, maxu = common.minmax(solver.u_, mode="l2")
+#
+# last_plot_walltime_local = tim.dt
+# last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
+# last_plot_walltime = max(last_plot_walltime_global)
+# msg = f"{SUPG_str}; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {system_it} iterations; plot {last_plot_walltime:0.2g} s"
+# # Loop-and-a-half situation, so draw one more time to update title.
+# if my_rank == 0:
+#     # figure title (progress message)
+#     plt.suptitle(msg)
+#     # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
+#     plotmagic.pause(0.001)
+# # Hold plot
+# if my_rank == 0:
+#     plt.ioff()
+#     plt.show()
+# from sys import exit
+# exit(0)
 
 # --------------------------------------------------------------------------------
 # Time-stepping
