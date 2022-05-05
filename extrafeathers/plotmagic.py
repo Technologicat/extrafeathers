@@ -171,10 +171,27 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     # The fully general case is when `V` is on a `MixedElement` with several
     # vector/tensor fields, and the quantity of interest lives on `V.sub(j).sub(k)`
     # (field `j`, component `k`).
+    #
+    # In the collapse, the ordering of the DOFs will in general change (at least in MPI mode).
     try:
-        V = V.collapse()
-    except RuntimeError:  # not a subspace
-        pass
+        l2g_old = V.dofmap().tabulate_local_to_global_dofs()
+        V, newlocal_to_oldlocal = V.collapse(collapsed_dofs=True)  # MPI-local DOF numbering!
+    except RuntimeError:  # not a subspace, no collapse needed
+        new_to_old = {k: k for k in range(V.dim())}
+    else:  # subspace; convert the mapping to global DOF numbering
+        newlocal_to_oldlocal = dict(sorted(newlocal_to_oldlocal.items(), key=lambda item: item[0]))
+        l2g_new = V.dofmap().tabulate_local_to_global_dofs()
+        new_to_old = {l2g_new[new]: l2g_old[old] for new, old in newlocal_to_oldlocal.items()}
+        def merge(mappings):
+            merged = {}
+            while mappings:
+                merged.update(mappings.pop())
+            return merged
+        new_to_old = dolfin.MPI.comm_world.allgather(new_to_old)
+        new_to_old = merge(new_to_old)
+    assert len(new_to_old) == V.dim()  # each new DOF maps to some old DOF in the collapse
+    old_to_new = {old: new for new, old in new_to_old.items()}
+    assert len(old_to_new) == V.dim()  # each old DOF maps to some new DOF in the collapse
 
     # TODO: Support S and DS element families. These need adding extra DOFs during
     # TODO: the vis refinement; though S2 specifically could be supported alternatively
@@ -207,6 +224,8 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     prep.family = family
     prep.degree = degree
     prep.dG0 = dG0
+    prep.new_to_old = new_to_old
+    prep.old_to_new = old_to_new
 
     if not len(cells):
         prep.polys = None
@@ -429,6 +448,7 @@ def as_mpl_triangulation(V: dolfin.FunctionSpace, *,
     return prep
 
 
+# TODO: doesn't now do much over what `as_mpl_triangulation` does. Consider combining into that.
 def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
     """Optional performance optimization for `mpiplot`.
 
@@ -470,21 +490,9 @@ def mpiplot_prepare(u: typing.Union[dolfin.Function, dolfin.Expression]) -> env:
                                                     "DQ"):
         raise ValueError(f"Expected `u` to use a P1, P2, P3, DP0, DP1, DP2, DP3, Q1, Q2, Q3, DQ0, DQ1, DQ2, or DQ3 element, got '{family}' with degree {degree}")
 
-    # The global DOF vector always refers to the complete function space.
-    # If `V` is a subspace (vector/tensor field component), the DOF vector
-    # will include also those DOFs that are not part of `V`. Determine the
-    # DOFs that belong to `V`.
-    dofmaps = dolfin.MPI.comm_world.allgather(V.dofmap().dofs())
-
-    # CAUTION: `all_cells`, used by `as_mpl_triangulation`,
-    # sorts the nodes by global DOF number; must match the ordering.
-    # FEniCS keeps a contiguous block of DOF numbers for each MPI process,
-    # and they are kept sorted, so this is satisfied.
-    subspace_dofs = np.sort(np.concatenate(dofmaps))
-
     prep = as_mpl_triangulation(V, refine=True)  # this converts to degree 1
     prep.V = V
-    prep.subspace_dofs = subspace_dofs
+    prep.subspace_dofs = np.array([prep.new_to_old[new] for new in range(V.dim())], dtype=np.uint64)
     return prep
 
 
@@ -555,16 +563,21 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     if not prep:
         prep = mpiplot_prepare(u)
 
+    n_global_dofs = V.dim()  # number of DOFs in the relevant subspace
+
     # Make a complete copy of the DOF vector onto the root process.
     # NOTE: This copies **ALL** DOFs, also those of other subspaces when `u` is a `.sub(j)`.
-    v_vec = u.vector().gather_on_zero()
-    n_global_dofs = V.dim()  # number of DOFs in the relevant subspace
+    # v_vec = u.vector().gather_on_zero()
+    # # Then to extract just the subspace, do something like:
+    # dofmaps = dolfin.MPI.comm_world.allgather(V.dofmap().dofs())
+    # subspace_dofs = np.concatenate(dofmaps)
+    # v_vec = v_vec[subspace_dofs]
 
     # # Make a complete copy of the DOF vector u_vec to all MPI processes.
     # # NOTE: This copies only the subspace-relevant DOFs when `u` is a `.sub(j)`.
     # dofmaps = dolfin.MPI.comm_world.allgather(V.dofmap().dofs())
     # subspace_dofs = np.sort(np.concatenate(dofmaps))
-    # v_vec = dolfin.Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on W
+    # v_vec = dolfin.Vector(dolfin.MPI.comm_self)  # MPI-local, for receiving global DOF data on W
     # u.vector().gather(v_vec, subspace_dofs)  # in_vec.gather(out_vec, indices); really "allgather"
     # dm = np.array(V.dofmap().dofs())
     # print(f"Process {my_rank}: local #DOFs {len(dm)} (min {min(dm)}, max {max(dm)}) out of global {V.dim()}")
@@ -574,11 +587,12 @@ def mpiplot(u: typing.Union[dolfin.Function, dolfin.Expression], *,
     # v_vec = dolfin.Vector(dolfin.MPI.comm_self, u_vec.local_size())
     # u_vec.gather(v_vec, V.dofmap().dofs())  # in_vec.gather(out_vec, indices)
 
+    # Make a copy of the subspace-relevant DOFs only, to all MPI processes.
+    v_vec = dolfin.Vector(dolfin.MPI.comm_self)
+    u.vector().gather(v_vec, prep.subspace_dofs)
+
     theplot = None
     if dolfin.MPI.comm_world.rank == 0:
-        # If `V` is a subspace (vector/tensor field component), take only the
-        # DOFs that belong to `V`. (For a true scalar space `V`, this is a no-op.)
-        v_vec = v_vec[prep.subspace_dofs]
         assert len(v_vec) == n_global_dofs  # we have a data value at each DOF of the relevant subspace
 
         # dG0 elements have constant value over each element; we can treat them by coloring the `PolyCollection`.
