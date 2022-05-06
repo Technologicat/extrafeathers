@@ -347,6 +347,9 @@ with timer() as tim:
     xmax = np.max(nodes_array[:, 0])
     ymin = np.min(nodes_array[:, 1])
     ymax = np.max(nodes_array[:, 1])
+if my_rank == 0:
+    print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
+    print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}], y ∈ [{ymin:0.6g}, {ymax:0.6g}].")
 
 def plotit():
     # Plot the current solution
