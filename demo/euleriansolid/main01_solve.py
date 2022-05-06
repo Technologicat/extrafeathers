@@ -122,7 +122,7 @@ if dynamic:
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
-    # Left and right edges: fixed speed
+    # Left and right edges: fixed speed (strain-controlled pull)
     # Here `u` starts from zero, because the initial field is not specified. This is always a valid initial state.
     bcv_left = DirichletBC(V, Constant((-1e-2, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
     bcv_right = DirichletBC(V, Constant((+1e-2, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
