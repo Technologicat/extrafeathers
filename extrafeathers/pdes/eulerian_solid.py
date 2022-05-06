@@ -499,9 +499,11 @@ class EulerianSolid:
                     0.5 * τ * inner(K_inner_εu_, advs(a, sym(φ))) * dx +  # 1/2 ∫ (φ:Kη):(a·∇)ε dx
                     0.5 * τ * dot(a, n) * inner(K_inner_εu_, sym(φ)) * ds))  # generated, 1/2 ∫ (φ:Kη):(a·∇)ε dx
 
-            # TODO: Fix the stress stabilization. Commented out, because doesn't seem to work correctly.
-            #
+            # # TODO: Fix the stress stabilization. Commented out, because doesn't seem to work correctly.
+            # #
             # # SUPG stabilization. Note that the SUPG terms are added only in the element interiors.
+            # def mag(vec):
+            #     return dot(vec, vec)**(1 / 2)
             # τ_SUPG = (α0 / self.Q.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
             # # τ_SUPG = (α0 / self.Q.ufl_element().degree()) * (2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
             # # τ_SUPG = Constant(0.004)  # TODO: tune value
@@ -520,8 +522,30 @@ class EulerianSolid:
             # F_SUPG = enable_SUPG_flag * τ_SUPG * inner(advs(a, sym(φ)), R) * dx
             # F_σ += F_SUPG
 
-            # Let's try classic artificial diffusion along streamlines? (This didn't help, either.)
-            # F_σ += he**2 / mag(a)**2 * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
+            # # Let's try classic artificial diffusion along streamlines?
+            # #
+            # # No idea about tuning factor; he²/mag(a)² has the right units (s², to cancel the units of (a·∇)²,
+            # # so that the units of the form match the other terms of the equation), but its value seems too
+            # # large, leading to excessive smoothing. Multiplying it by a further 0.1 seems to work, but
+            # # no idea why.
+            # #
+            # # # DEBUG - for 16×16 quads, `he` seems to be ~0.0884
+            # # # TODO: debug missing C++ `eval` method of our `cell_mf_to_expression`
+            # # # TODO: (it does have one, but it needs a cell number; maybe need a variant without the cell)
+            # # import matplotlib.pyplot as plt
+            # # import dolfin
+            # # from .. import plotmagic
+            # # theplot = plotmagic.mpiplot(dolfin.project(he, self.V.sub(0).collapse()))
+            # # if dolfin.MPI.comm_world.rank == 0:
+            # #     plt.colorbar(theplot)
+            # #     plt.show()
+            # # from sys import exit
+            # # exit(0)
+            # #
+            # # Qdeg = Constant(self.Q.ufl_element().degree())
+            # def mag(vec):
+            #     return dot(vec, vec)**(1 / 2)
+            # F_σ += θ * dt * (he / mag(a)) * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
 
         # Step 3: solve `v` from momentum equation
         #
