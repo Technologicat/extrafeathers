@@ -360,12 +360,14 @@ def plotit():
     # ε11
     # TODO: We assume for now that `u` is degree-1, so that `ε` is piecewise constant
     # TODO: (affects the choice of space and prep here).
-    ε_ = project(ε(u_), solver.QdG0)
+    # ε_ = project(ε(u_), solver.QdG0)
+    # ε_ = project(solver.εu_, solver.QdG0)
+    ε_ = solver.εu_
     if my_rank == 0:
         plt.sca(ax[0, 2])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(0))
-    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_QdG0_0, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -377,7 +379,7 @@ def plotit():
         plt.sca(ax[0, 3])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(1))
-    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_QdG0_1, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -389,7 +391,7 @@ def plotit():
     #     plt.sca(ax[XXX, XXX])
     #     plt.cla()
     # vmin, vmax = symmetric_vrange(σ_.sub(2))
-    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_QdG0_2, show_mesh=show_mesh,
+    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
     #     colorbars.append(plt.colorbar(theplot))
@@ -401,7 +403,7 @@ def plotit():
         plt.sca(ax[0, 4])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(3))
-    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_QdG0_3, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -435,12 +437,14 @@ def plotit():
     # ∂ε11/∂t
     # TODO: We assume for now that `v` is degree-1, so that `∂ε/∂t` is piecewise constant
     # TODO: (affects the choice of space and prep here).
-    ε_ = project(ε(v_), solver.QdG0)
+    # ε_ = project(ε(v_), solver.QdG0)
+    # ε_ = project(solver.εv_, solver.QdG0)
+    ε_ = solver.εv_
     if my_rank == 0:
         plt.sca(ax[1, 2])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(0))
-    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_QdG0_0, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -452,7 +456,7 @@ def plotit():
         plt.sca(ax[1, 3])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(1))
-    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_QdG0_1, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -464,7 +468,7 @@ def plotit():
     #     plt.sca(ax[XXX, XXX])
     #     plt.cla()
     # vmin, vmax = symmetric_vrange(σ_.sub(2))
-    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_QdG0_2, show_mesh=show_mesh,
+    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
     #     colorbars.append(plt.colorbar(theplot))
@@ -476,7 +480,7 @@ def plotit():
         plt.sca(ax[1, 4])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(3))
-    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_QdG0_3, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -762,7 +766,7 @@ for n in range(nt):
     E = elastic_strain_energy()
     K = kinetic_energy()
     if my_rank == 0:  # DEBUG
-        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1:0.6g}; E = ∫ (1/2) ρ σ:ε dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; K + E = {K + E:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
+        print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1:0.6g}; E = ∫ (1/2) σ:ε dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; K + E = {K + E:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
 
     # In MPI mode, one of the worker processes may have a larger slice of the domain
     # (or require more Krylov iterations to converge) than the root process.
