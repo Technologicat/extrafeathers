@@ -32,7 +32,8 @@ from .config import (rho, lamda, mu, tau, V0, dt, nt,
                      vis_u_filename, sol_u_filename,
                      vis_v_filename, sol_v_filename,
                      vis_σ_filename, sol_σ_filename,
-                     vis_vonMises_filename)
+                     vis_vonMises_filename,
+                     fig_output_dir, fig_basename, fig_format)
 
 
 my_rank = MPI.comm_world.rank
@@ -702,6 +703,7 @@ if not dynamic:
 assert dynamic
 
 t = 0
+vis_count = 0
 msg = "Starting. Progress information will be available shortly..."
 vis_step_walltime_local = 0
 nsavemod = max(1, int(nt / nsave_total))  # every how manyth timestep to save
@@ -873,6 +875,8 @@ for n in range(nt):
         plt.tight_layout()
         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
         plotmagic.pause(0.001)
+        plt.savefig(f"{fig_output_dir}{fig_basename}{vis_count:06d}.{fig_format}")
+        vis_count += 1
 
 # Hold plot
 if my_rank == 0:

@@ -88,3 +88,8 @@ vis_vonMises_filename = "demo/output/euleriansolid/vonMises.xdmf"
 sol_u_filename = "demo/output/euleriansolid/displacement_series"
 sol_v_filename = "demo/output/euleriansolid/velocity_series"
 sol_σ_filename = "demo/output/euleriansolid/stress_series"
+
+# For auto-saving visualization screenshots (from dynamic solver)
+fig_output_dir = "demo/output/euleriansolid/"
+fig_basename = "vis"
+fig_format = "png"

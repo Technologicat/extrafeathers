@@ -29,7 +29,8 @@ from .config import (rho, c, k, dt, nt,
                      Boundaries, L,
                      mesh_filename,
                      vis_T_filename, sol_T_filename,
-                     sol_u_filename)
+                     sol_u_filename,
+                     fig_output_dir, fig_basename, fig_format)
 
 my_rank = MPI.comm_world.rank
 
@@ -117,6 +118,7 @@ my_advection_velocity_dofs = advection_velocity.function_space().dofmap().dofs()
 
 # Time-stepping
 t = 0
+vis_count = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
 SUPG_str = "[SUPG] " if solver.stabilizers.SUPG else ""  # for messages
@@ -222,6 +224,8 @@ for n in range(nt):
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
                 plotmagic.pause(0.001)
+                plt.savefig(f"{fig_output_dir}{fig_basename}_stage02_{vis_count:06d}.{fig_format}")
+                vis_count += 1
         last_plot_walltime_local = tim.dt
         last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
         last_plot_walltime = max(last_plot_walltime_global)

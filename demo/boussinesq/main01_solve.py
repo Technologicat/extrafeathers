@@ -27,7 +27,8 @@ from .config import (rho, mu, c, k, alpha, T0, g, dt, nt,
                      mesh_filename,
                      vis_T_filename, sol_T_filename,
                      vis_u_filename, sol_u_filename,
-                     vis_p_filename, sol_p_filename)
+                     vis_p_filename, sol_p_filename,
+                     fig_output_dir, fig_basename, fig_format)
 
 my_rank = MPI.comm_world.rank
 
@@ -139,6 +140,7 @@ specific_buoyancy = ρ_over_ρ0 * Constant((0, -g))  # N / kg = m / s²
 
 # Time-stepping
 t = 0
+vis_count = 0
 est = ETAEstimator(nt)
 msg = "Starting. Progress information will be available shortly..."
 flow_SUPG_str = "S" if flowsolver.stabilizers.SUPG else ""
@@ -315,6 +317,8 @@ for n in range(nt):
                     plt.show()
                 # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
                 plotmagic.pause(0.001)
+                plt.savefig(f"{fig_output_dir}{fig_basename}{vis_count:06d}.{fig_format}")
+                vis_count += 1
         last_plot_walltime_local = tim.dt
         last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
         last_plot_walltime = max(last_plot_walltime_global)

@@ -66,3 +66,8 @@ vis_T_filename = "demo/output/boussinesq/temperature.xdmf"
 sol_u_filename = "demo/output/boussinesq/velocity_series"
 sol_p_filename = "demo/output/boussinesq/pressure_series"
 sol_T_filename = "demo/output/boussinesq/temperature_series"
+
+# For auto-saving visualization screenshots (from dynamic solver)
+fig_output_dir = "demo/output/boussinesq/"
+fig_basename = "vis"
+fig_format = "png"

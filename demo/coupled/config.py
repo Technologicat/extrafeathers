@@ -134,3 +134,8 @@ vis_T_filename = "demo/output/coupled/temperature.xdmf"
 sol_u_filename = "demo/output/coupled/velocity_series"
 sol_p_filename = "demo/output/coupled/pressure_series"
 sol_T_filename = "demo/output/coupled/temperature_series"
+
+# For auto-saving visualization screenshots (from dynamic solver)
+fig_output_dir = "demo/output/coupled/"
+fig_basename = "vis"
+fig_format = "png"
