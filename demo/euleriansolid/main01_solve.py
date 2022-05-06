@@ -884,7 +884,7 @@ for n in range(nt):
         max_vis_step_walltime = item_with_max_vis_step_walltime[0]
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; {system_it} iterations; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
+    msg = f"{SUPG_str}t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); V₀ = {V0} m/s; τ = {tau:0.3g} s; |u| ∈ [{minu:0.6g}, {maxu:0.6g}] m; {system_it} iterations; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
 
     # Loop-and-a-half situation, so draw one more time to update title.
     if visualize and my_rank == 0:
