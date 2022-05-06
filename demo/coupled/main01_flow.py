@@ -396,5 +396,6 @@ for n in range(nt):
 
 # Hold plot
 if my_rank == 0:
+    print("Simulation complete.")
     plt.ioff()
     plt.show()
