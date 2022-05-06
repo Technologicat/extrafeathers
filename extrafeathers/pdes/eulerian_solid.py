@@ -209,6 +209,22 @@ class EulerianSolid:
         σ_ = Function(Q)
         σ_n = Function(Q)
 
+        # Function space for strain projection, before inserting the strain into the constitutive law.
+        #
+        # It seems a degree-1 space is too small to give correct results.
+        # This is Likely related to the requirements for the stress space.
+        #
+        # P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like without projection)
+        # P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like without projection)
+        # P = TensorFunctionSpace(self.mesh, Q.ufl_element().family(), 1)  # results completely wrong
+        P = Q  # Q2; just small oscillations near high gradients of `u` and `v`
+        self.P = P
+        self.w = TestFunction(P)
+        self.εu = TrialFunction(P)
+        self.εv = TrialFunction(P)
+        self.εu_ = Function(P)
+        self.εv_ = Function(P)
+
         self.V = V
         self.Q = Q
         self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)  # "DG" is a handy alias for "DP or DQ dep. on mesh"
@@ -408,8 +424,9 @@ class EulerianSolid:
         # Step 1½: Project the strains into a C0 space - this makes them once differentiable.
         εu = self.εu  # unknown
         εv = self.εv
-        F_εu = inner(εu, φ) * dx - inner(ε(U), sym(φ)) * dx
-        F_εv = inner(εv, φ) * dx - inner(ε(V), sym(φ)) * dx
+        w = self.w
+        F_εu = inner(εu, w) * dx - inner(ε(U), sym(w)) * dx
+        F_εv = inner(εv, w) * dx - inner(ε(V), sym(w)) * dx
         εu_ = self.εu_  # known, at the "θ-point" in time
         εv_ = self.εv_
         Id = Identity(εu_.geometric_dimension())

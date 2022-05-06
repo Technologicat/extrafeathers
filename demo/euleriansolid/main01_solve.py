@@ -294,6 +294,7 @@ else:  # dynamic solver
     tmp = solver.u_
 prep_V0 = plotmagic.mpiplot_prepare(tmp.sub(0))
 prep_V1 = plotmagic.mpiplot_prepare(tmp.sub(1))
+
 if hasattr(solver, "s_"):  # steady-state solver
     tmp = solver.s_.sub(1)
 else:  # dynamic solver
@@ -302,13 +303,22 @@ prep_Q0 = plotmagic.mpiplot_prepare(tmp.sub(0))
 prep_Q1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 prep_Q2 = plotmagic.mpiplot_prepare(tmp.sub(2))
 prep_Q3 = plotmagic.mpiplot_prepare(tmp.sub(3))
+
 tmp = Function(solver.QdG0)
 prep_QdG0_0 = plotmagic.mpiplot_prepare(tmp.sub(0))
 prep_QdG0_1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 prep_QdG0_2 = plotmagic.mpiplot_prepare(tmp.sub(2))
 prep_QdG0_3 = plotmagic.mpiplot_prepare(tmp.sub(3))
+
+tmp = Function(solver.P)
+prep_P0 = plotmagic.mpiplot_prepare(tmp.sub(0))
+prep_P1 = plotmagic.mpiplot_prepare(tmp.sub(1))
+prep_P2 = plotmagic.mpiplot_prepare(tmp.sub(2))
+prep_P3 = plotmagic.mpiplot_prepare(tmp.sub(3))
+
 tmp = Function(Vscalar)
 prep_Vscalar = plotmagic.mpiplot_prepare(tmp)
+
 QdG0scalar = solver.QdG0.sub(0).collapse()
 tmp = Function(QdG0scalar)
 prep_QdG0scalar = plotmagic.mpiplot_prepare(tmp)
@@ -358,16 +368,12 @@ def plotit():
         plt.axis("equal")
 
     # ε11
-    # TODO: We assume for now that `u` is degree-1, so that `ε` is piecewise constant
-    # TODO: (affects the choice of space and prep here).
-    # ε_ = project(ε(u_), solver.QdG0)
-    # ε_ = project(solver.εu_, solver.QdG0)
     ε_ = solver.εu_
     if my_rank == 0:
         plt.sca(ax[0, 2])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(0))
-    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_P0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -379,7 +385,7 @@ def plotit():
         plt.sca(ax[0, 3])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(1))
-    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_P1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -391,7 +397,7 @@ def plotit():
     #     plt.sca(ax[XXX, XXX])
     #     plt.cla()
     # vmin, vmax = symmetric_vrange(σ_.sub(2))
-    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
+    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_P2, show_mesh=show_mesh,
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
     #     colorbars.append(plt.colorbar(theplot))
@@ -403,7 +409,7 @@ def plotit():
         plt.sca(ax[0, 4])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(3))
-    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_P3, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -435,16 +441,12 @@ def plotit():
         plt.axis("equal")
 
     # ∂ε11/∂t
-    # TODO: We assume for now that `v` is degree-1, so that `∂ε/∂t` is piecewise constant
-    # TODO: (affects the choice of space and prep here).
-    # ε_ = project(ε(v_), solver.QdG0)
-    # ε_ = project(solver.εv_, solver.QdG0)
     ε_ = solver.εv_
     if my_rank == 0:
         plt.sca(ax[1, 2])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(0))
-    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_P0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -456,7 +458,7 @@ def plotit():
         plt.sca(ax[1, 3])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(1))
-    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_P1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
@@ -468,7 +470,7 @@ def plotit():
     #     plt.sca(ax[XXX, XXX])
     #     plt.cla()
     # vmin, vmax = symmetric_vrange(σ_.sub(2))
-    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
+    # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_P2, show_mesh=show_mesh,
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
     #     colorbars.append(plt.colorbar(theplot))
@@ -480,7 +482,7 @@ def plotit():
         plt.sca(ax[1, 4])
         plt.cla()
     vmin, vmax = symmetric_vrange(ε_.sub(3))
-    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_P3, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         colorbars.append(plt.colorbar(theplot))
