@@ -506,7 +506,7 @@ class EulerianSolid:
             # # τ_SUPG = (α0 / self.Q.ufl_element().degree()) * (2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
             # # τ_SUPG = Constant(0.004)  # TODO: tune value
             # # The residual is evaluated elementwise in strong form, at the end of the timestep.
-            # εu_ = ε(u_)
+            # εu_ = ε(u_)  # at end of timestep
             # εv_ = ε(v_)
             # K_inner_εu_ = K_inner_operator(εu_)
             # K_inner_εv_ = K_inner_operator(εv_)
