@@ -545,7 +545,9 @@ class EulerianSolid:
             # # Qdeg = Constant(self.Q.ufl_element().degree())
             # def mag(vec):
             #     return dot(vec, vec)**(1 / 2)
-            # F_σ += θ * dt * (he / mag(a)) * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
+            # tune = Constant(0.1)
+            # F_σ += tune * (he**2 / mag(a)**2) * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
+            # # F_σ += θ * dt * (he / mag(a)) * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
 
         # Step 3: solve `v` from momentum equation
         #
