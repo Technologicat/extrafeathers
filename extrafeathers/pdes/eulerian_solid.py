@@ -168,8 +168,8 @@ class EulerianSolid:
 
         # Trial and test functions
         #
-        # `u`: displacement
-        # `v`: Eulerian time rate of displacement (reduction to 1st order system)
+        # `u`: displacement [new algorithm: algebraic update for `u`; no trial or test functions]
+        # `v`: Eulerian time rate of displacement, i.e. Eulerian velocity in linear momentum balance
         # `σ`: stress
         #  - Mixed formulation; stress has its own equation to allow easily
         #    changing the constitutive model.
