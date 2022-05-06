@@ -178,23 +178,6 @@ class EulerianSolid:
         #    a term that is one order of ∇ higher. In the primal formulation,
         #    in the weak form, this requires taking second derivatives of `u`.
 
-        # # We won't use this here, but since it was hard to find, kept for documentation:
-        # # This is how to set up the quantities for a monolithic mixed problem
-        # # (in this example, for `u` and `σ`).
-        # #
-        # # Using a `MixedFunctionSpace` fails for some reason. Instead, the way to
-        # # do this is to set up a `MixedElement` and a garden-variety `FunctionSpace`
-        # # on that, and then split as needed. Then set Dirichlet BCs on the appropriate
-        # # `S.sub(j)` (those may also have their own second-level `.sub(k)` if they are
-        # # vector/tensor fields).
-        # #
-        # e = MixedElement(V.ufl_element(), Q.ufl_element())
-        # S = FunctionSpace(self.mesh, e)
-        # u, σ = TrialFunctions(S)
-        # w, φ = TestFunctions(S)
-        # s_ = Function(S)
-        # u_, σ_ = split(s_)
-
         # u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
         # w = TestFunction(V)
         v = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
@@ -262,19 +245,6 @@ class EulerianSolid:
             raise NotImplementedError(f"dim = {dim}")
 
         null_space_basis = [interpolate(fu, V).vector() for fu in fus]
-
-        # # Kept for documentation:
-        # # In a mixed formulation, we must insert zero functions for the other fields:
-        # zeroV = Function(V)
-        # zeroV.vector()[:] = 0.0
-        # zeroQ = Function(Q)
-        # zeroQ.vector()[:] = 0.0
-        # # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
-        # assigner = FunctionAssigner(S, [V, Q])  # receiving space, assigning space
-        # fss = [Function(S) for _ in range(len(fus))]
-        # for fs, fu in zip(fss, fus):
-        #     assigner.assign(fs, [project(fu, V), zeroQ])
-        # null_space_basis = [fs.vector() for fs in fss]
 
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
