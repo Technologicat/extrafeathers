@@ -58,7 +58,7 @@ dynamic = True
 
 # for dynamic solver
 nsave_total = 1000  # how many timesteps to save from the whole simulation
-vis_every = 5 / 100  # how often to visualize (plotting is slow; might even leak memory?)
+vis_every = 5 / 100  # how often to visualize (plotting is slow)
 
 enable_SUPG = True
 
@@ -323,6 +323,15 @@ QdG0scalar = solver.QdG0.sub(0).collapse()
 tmp = Function(QdG0scalar)
 prep_QdG0scalar = plotmagic.mpiplot_prepare(tmp)
 
+# Detect bounding box.
+with timer() as tim:
+    ignored_cells, nodes_dict = meshmagic.all_cells(Vscalar)
+    ignored_dofs, nodes_array = meshmagic.nodes_to_array(nodes_dict)
+    xmin = np.min(nodes_array[:, 0])
+    xmax = np.max(nodes_array[:, 0])
+    ymin = np.min(nodes_array[:, 1])
+    ymax = np.max(nodes_array[:, 1])
+
 def plotit():
     # Plot the current solution
     if hasattr(solver, "s_"):  # steady-state solver
@@ -338,233 +347,303 @@ def plotit():
         ignored_minp, maxp = common.minmax(p, take_abs=True, mode="raw")
         return -maxp, maxp
 
-    # remove old colorbars, since `plt.cla` doesn't
+    # remove old colorbars, since `ax.cla` doesn't
     if my_rank == 0:
+        print("DEBUG: remove old colorbars")
         for cb in Popper(colorbars):
             cb.remove()
 
     # u1
     if my_rank == 0:
-        plt.sca(ax[0, 0])
-        plt.cla()
+        print("DEBUG: plot u1")
+        ax = axs[0, 0]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(u_.sub(0))
     theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$u_{1}$ [m]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$u_{1}$ [m]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # u2
     if my_rank == 0:
-        plt.sca(ax[0, 1])
-        plt.cla()
+        print("DEBUG: plot u2")
+        ax = axs[0, 1]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(u_.sub(1))
     theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$u_{2}$ [m]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$u_{2}$ [m]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # ε11
     ε_ = solver.εu_
     if my_rank == 0:
-        plt.sca(ax[0, 2])
-        plt.cla()
+        print("DEBUG: plot ε11")
+        ax = axs[0, 2]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(ε_.sub(0))
     theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_P0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\varepsilon_{11}$")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\varepsilon_{11}$")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # ε12
     if my_rank == 0:
-        plt.sca(ax[0, 3])
-        plt.cla()
+        print("DEBUG: plot ε12")
+        ax = axs[0, 3]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(ε_.sub(1))
     theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_P1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\varepsilon_{12}$")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\varepsilon_{12}$")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # # ε21 - same as ε12 (if the solver works correctly)
     # if my_rank == 0:
-    #     plt.sca(ax[XXX, XXX])
-    #     plt.cla()
+    #     ax = axs[XXX, XXX]
+    #     ax.cla()
     # vmin, vmax = symmetric_vrange(σ_.sub(2))
     # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_P2, show_mesh=show_mesh,
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
-    #     colorbars.append(plt.colorbar(theplot))
-    #     plt.title(r"$\varepsilon_{21}$")
-    #     plt.axis("equal")
+    #     colorbars.append(fig.colorbar(theplot, ax=ax))
+    #     ax.set_title(r"$\varepsilon_{21}$")
+    #     ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+    #     ax.set_aspect("equal")
 
     # ε22
     if my_rank == 0:
-        plt.sca(ax[0, 4])
-        plt.cla()
+        print("DEBUG: plot ε22")
+        ax = axs[0, 4]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(ε_.sub(3))
     theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_P3, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\varepsilon_{22}$")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\varepsilon_{22}$")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # v1
     if my_rank == 0:
-        plt.sca(ax[1, 0])
-        plt.cla()
+        print("DEBUG: plot v1")
+        ax = axs[1, 0]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(v_.sub(0))
     theplot = plotmagic.mpiplot(v_.sub(0), prep=prep_V0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$v_{1}$ [m/s]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$v_{1}$ [m/s]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # v2
     if my_rank == 0:
-        plt.sca(ax[1, 1])
-        plt.cla()
+        print("DEBUG: plot v2")
+        ax = axs[1, 1]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(v_.sub(1))
     theplot = plotmagic.mpiplot(v_.sub(1), prep=prep_V1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$v_{2}$ [m/s]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$v_{2}$ [m/s]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # ∂ε11/∂t
     ε_ = solver.εv_
     if my_rank == 0:
-        plt.sca(ax[1, 2])
-        plt.cla()
+        print("DEBUG: plot ∂ε11/∂t")
+        ax = axs[1, 2]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(ε_.sub(0))
     theplot = plotmagic.mpiplot(ε_.sub(0), prep=prep_P0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\partial \varepsilon_{11} / \partial t$ [1/s]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\partial \varepsilon_{11} / \partial t$ [1/s]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # ∂ε12/∂t
     if my_rank == 0:
-        plt.sca(ax[1, 3])
-        plt.cla()
+        print("DEBUG: plot ∂ε12/∂t")
+        ax = axs[1, 3]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(ε_.sub(1))
     theplot = plotmagic.mpiplot(ε_.sub(1), prep=prep_P1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\partial \varepsilon_{12} / \partial t$ [1/s]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\partial \varepsilon_{12} / \partial t$ [1/s]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # # ∂ε21/∂t - same as ∂ε12/∂t (if the solver works correctly)
     # if my_rank == 0:
-    #     plt.sca(ax[XXX, XXX])
-    #     plt.cla()
+    #     ax = axs[XXX, XXX]
+    #     ax.cla()
+    #     plt.sca(ax)  # for `plotmagic.mpiplot`
     # vmin, vmax = symmetric_vrange(σ_.sub(2))
     # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_P2, show_mesh=show_mesh,
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
-    #     colorbars.append(plt.colorbar(theplot))
-    #    plt.title(r"$\partial \varepsilon_{21} / \partial t$ [1/s]")
-    #     plt.axis("equal")
+    #     colorbars.append(fig.colorbar(theplot, ax=ax))
+    #     ax.set_title(r"$\partial \varepsilon_{21} / \partial t$ [1/s]")
+    #     ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+    #     ax.set_aspect("equal")
 
     # ∂ε22/∂t
     if my_rank == 0:
-        plt.sca(ax[1, 4])
-        plt.cla()
+        print("DEBUG: plot ∂ε22/∂t")
+        ax = axs[1, 4]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(ε_.sub(3))
     theplot = plotmagic.mpiplot(ε_.sub(3), prep=prep_P3, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\partial \varepsilon_{22} / \partial t$ [1/s]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\partial \varepsilon_{22} / \partial t$ [1/s]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # σ11
     if my_rank == 0:
-        plt.sca(ax[2, 2])
-        plt.cla()
+        print("DEBUG: plot σ11")
+        ax = axs[2, 2]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(σ_.sub(0))
     theplot = plotmagic.mpiplot(σ_.sub(0), prep=prep_Q0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\sigma_{11}$ [Pa]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\sigma_{11}$ [Pa]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # σ12
     if my_rank == 0:
-        plt.sca(ax[2, 3])
-        plt.cla()
+        print("DEBUG: plot σ12")
+        ax = axs[2, 3]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(σ_.sub(1))
     theplot = plotmagic.mpiplot(σ_.sub(1), prep=prep_Q1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\sigma_{12}$ [Pa]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\sigma_{12}$ [Pa]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # # σ21 - same as σ12 (if the solver works correctly)
     # if my_rank == 0:
-    #     plt.sca(ax[XXX, XXX])
-    #     plt.cla()
+    #     ax = axs[XXX, XXX]
+    #     ax.cla()
+    #     plt.sca(ax)  # for `plotmagic.mpiplot`
     # vmin, vmax = symmetric_vrange(σ_.sub(2))
     # theplot = plotmagic.mpiplot(σ_.sub(2), prep=prep_Q2, show_mesh=show_mesh,
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
-    #     colorbars.append(plt.colorbar(theplot))
-    #     plt.title(r"$\sigma_{21}$ [Pa]")
-    #     plt.axis("equal")
+    #     colorbars.append(fig.colorbar(theplot, ax=ax))
+    #     ax.set_title(r"$\sigma_{21}$ [Pa]")
+    #     ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+    #     ax.set_aspect("equal")
 
     # σ22
     if my_rank == 0:
-        plt.sca(ax[2, 4])
-        plt.cla()
+        print("DEBUG: plot σ22")
+        ax = axs[2, 4]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(σ_.sub(3))
     theplot = plotmagic.mpiplot(σ_.sub(3), prep=prep_Q3, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$\sigma_{22}$ [Pa]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$\sigma_{22}$ [Pa]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # We have 13 plots, but 15 subplot slots, so let's use the last two to plot the energy.
     E = project((1 / 2) * inner(σ_, ε(u_)), QdG0scalar)  # elastic strain energy
     if my_rank == 0:
-        plt.sca(ax[2, 0])
-        plt.cla()
+        print("DEBUG: plot elastic strain energy")
+        ax = axs[2, 0]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     theplot = plotmagic.mpiplot(E, prep=prep_QdG0scalar, show_mesh=show_mesh)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$(1/2) \sigma : \varepsilon$ [J/m³]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$(1/2) \sigma : \varepsilon$ [J/m³]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     K = project((1 / 2) * solver._ρ * dot(v_, v_), Vscalar)  # kinetic energy
     if my_rank == 0:
-        plt.sca(ax[2, 1])
-        plt.cla()
+        print("DEBUG: plot kinetic energy")
+        ax = axs[2, 1]
+        ax.cla()
+        plt.sca(ax)  # for `plotmagic.mpiplot`
     theplot = plotmagic.mpiplot(K, prep=prep_Vscalar, show_mesh=show_mesh)
     if my_rank == 0:
-        colorbars.append(plt.colorbar(theplot))
-        plt.title(r"$(1/2) \rho v^2$ [J/m³]")
-        plt.axis("equal")
+        print("DEBUG: colorbar")
+        colorbars.append(fig.colorbar(theplot, ax=ax))
+        ax.set_title(r"$(1/2) \rho v^2$ [J/m³]")
+        ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+        ax.set_aspect("equal")
 
     # figure title (progress message)
     if my_rank == 0:
-        plt.suptitle(msg)
+        print("DEBUG: update figure title")
+        fig.suptitle(msg)
 
     if my_rank == 0:
+        print("DEBUG: render plot")
+        plt.tight_layout()
         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
         plotmagic.pause(0.001)
+        print("DEBUG: plotting done")
 
 # --------------------------------------------------------------------------------
 # Steady-state solution
@@ -581,7 +660,8 @@ if not dynamic:
     if my_rank == 0:
         print("Opening figure window...")
     if my_rank == 0:
-        fig, ax = plt.subplots(3, 5, constrained_layout=True, figsize=(12, 6))
+        fig, axs = plt.subplots(3, 5, figsize=(12, 6))
+        plt.tight_layout()
         plt.show()
         plt.draw()
         plotmagic.pause(0.001)
@@ -606,7 +686,8 @@ if not dynamic:
     msg = f"{SUPG_str}; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; plot {last_plot_walltime:0.2g} s"
     # Draw one more time to update title.
     if my_rank == 0:
-        plt.suptitle(msg)
+        fig.suptitle(msg)
+        plt.tight_layout()
         plotmagic.pause(0.001)
         plt.ioff()
         print("All done, showing figure.")
@@ -627,12 +708,13 @@ nsavemod = max(1, int(nt / nsave_total))  # every how manyth timestep to save
 nvismod = max(1, int(vis_every * nt))  # every how manyth timestep to visualize
 est = ETAEstimator(nt, keep_last=nvismod)
 if my_rank == 0:
-    fig, ax = plt.subplots(3, 5, constrained_layout=True, figsize=(12, 6))
+    fig, axs = plt.subplots(3, 5, figsize=(12, 6))
+    plt.tight_layout()
     plt.show()
     plt.draw()
     plotmagic.pause(0.001)
     colorbars = []
-    print(f"Saving {nsave_total} timesteps in total -> save every {nsavemod} timestep{'s' if nsavemod > 1 else ''}.")
+    print(f"Saving max. {nsave_total} timesteps in total -> save every {nsavemod} timestep{'s' if nsavemod > 1 else ''}.")
     nvisualizations = round(1 / vis_every)
     print(f"Visualizing at every {100.0 * vis_every:0.3g}% of simulation ({nvisualizations} visualization{'s' if nvisualizations > 1 else ''} total) -> vis every {nvismod} timestep{'s' if nvismod > 1 else ''}.")
 for n in range(nt):
@@ -787,7 +869,8 @@ for n in range(nt):
     # Loop-and-a-half situation, so draw one more time to update title.
     if visualize and my_rank == 0:
         # figure title (progress message)
-        plt.suptitle(msg)
+        fig.suptitle(msg)
+        plt.tight_layout()
         # https://stackoverflow.com/questions/35215335/matplotlibs-ion-and-draw-not-working
         plotmagic.pause(0.001)
 
