@@ -494,7 +494,8 @@ class EulerianSolid:
             #         τ * inner(K_inner_operator(advs(a, εu_)), sym(φ)) * dx))  # ∫ (φ:Kη):(a·∇)ε dx
 
             # "Symmetrized": half integrated by parts, half not.
-            # The `a·∇` operates on both the quantity and test parts.
+            # The `a·∇` operates on both the quantity and test parts. This is most similar to the
+            # skew-symmetric advection operator used in modern FEM discretizations of Navier-Stokes.
             F_σ = (inner(Σ, φ) * dx -
                    (inner(K_inner_εu_ + τ * K_inner_εv_, sym(φ)) * dx +  # linear elastic and τ ∂/∂t (...)
                     0.5 * τ * inner(K_inner_operator(advs(a, εu_)), sym(φ)) * dx -  # 1/2 ∫ (φ:Kη):(a·∇)ε dx
