@@ -455,9 +455,9 @@ class EulerianSolid:
             #   F_σ = inner(Σ - stress_expr, φ) * dx
             #
             # But since we have C0 elements, the spatial derivatives of ε = symm(∇u) are not defined
-            # across element boundaries. Thus we must move the advection operator to the test function.
-            # Equation (774) in the report (section "Weak form of the constitutive law") gives the
-            # appropriate integration-by-parts formula:
+            # across element boundaries (in the original algorithm, without strain projection into C0 space).
+            # Thus we must move the advection operator to the test function. Equation (774) in the report
+            # (section "Weak form of the constitutive law") gives the appropriate integration-by-parts formula:
             #
             #   ∫ (φ:Kη):(a·∇)ε dx = ∫ (a·n) (φ:Kη:ε) dΓ - ∫ [(a·∇)φ]:Kη:ε dx
             #
