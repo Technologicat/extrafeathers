@@ -194,8 +194,11 @@ class EulerianSolid:
 
         # Function space for strain projection, before inserting the strain into the constitutive law.
         #
-        # It seems a degree-1 space is too small to give correct results.
-        # This is Likely related to the requirements for the stress space.
+        # - Discontinuous strain spaces seem to give rise to oscillations in the stress.
+        #   Thus, to stabilize, it is important to choose an appropriate continuous space here.
+        #   Which spaces are "appropriate" is left as an exercise to the reader.
+        # - It seems a degree-1 space is too small to give correct results.
+        #   This is likely related to the requirements for the stress space.
         #
         # P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like without projection)
         # P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like without projection)
