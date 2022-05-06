@@ -42,13 +42,28 @@ my_rank = MPI.comm_world.rank
 mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_filename)
 
 # Define function spaces
-V = VectorFunctionSpace(mesh, 'P', 1)
-Q = TensorFunctionSpace(mesh, 'P', 2)
+V = VectorFunctionSpace(mesh, 'P', 1)  # displacement
+Q = TensorFunctionSpace(mesh, 'P', 2)  # stress
+
+# Function space for strain projection, before inserting the strain into the constitutive law.
+#
+# - Discontinuous strain spaces seem to give rise to oscillations in the stress.
+#   Thus, to stabilize, it is important to choose an appropriate continuous space here.
+#   Which spaces are "appropriate" is left as an exercise to the reader.
+# - It seems a degree-1 space is too small to give correct results.
+#   This is likely related to the requirements for the stress space.
+#
+# P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like old algo without strain projection)
+# P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like old algo without strain projection)
+# P = TensorFunctionSpace(self.mesh, Q.ufl_element().family(), 1)  # results completely wrong
+P = Q  # Q2; just small oscillations near high gradients of `u` and `v`
+
+# for visualization purposes
 Vscalar = V.sub(0).collapse()
 Qscalar = Q.sub(0).collapse()
 
 if my_rank == 0:
-    print(f"Number of DOFs: displacement {V.dim()}, velocity {V.dim()}, stress {Q.dim()}, total {2 * V.dim() + Q.dim()}")
+    print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
 
 # --------------------------------------------------------------------------------
 # Choose the solver
@@ -73,8 +88,8 @@ bcu = []  # for steady-state solver
 bcv = []  # for dynamic solver
 bcσ = []  # for both solvers
 if dynamic:
-    solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
-    # solver = EulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
+    solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
+    # solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
 else:  # steady state
     solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)
 

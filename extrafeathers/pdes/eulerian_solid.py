@@ -97,6 +97,9 @@ class EulerianSolid:
 
     `V`: vector function space for displacement
     `Q`: tensor function space for stress
+    `P`: tensor function space for strain projection
+         Strains are L2-projected into `P` before using them in the constitutive
+         law. Improves stability in Kelvin-Voigt in the presence of axial motion.
     `ρ`: density [kg / m³]
     `λ`: Lamé's first parameter [Pa]
     `μ`: shear modulus [Pa]
@@ -156,7 +159,9 @@ class EulerianSolid:
         International Journal of Solids and Structures 81, 43-62.
         https://doi.org/10.1016/j.ijsolstr.2015.10.027
     """
-    def __init__(self, V: VectorFunctionSpace, Q: TensorFunctionSpace,
+    def __init__(self, V: VectorFunctionSpace,
+                 Q: TensorFunctionSpace,
+                 P: TensorFunctionSpace,
                  ρ: float, λ: float, μ: float, τ: float,
                  V0: float,
                  bcv: typing.List[DirichletBC],
@@ -192,29 +197,19 @@ class EulerianSolid:
         σ_ = Function(Q)
         σ_n = Function(Q)
 
-        # Function space for strain projection, before inserting the strain into the constitutive law.
-        #
-        # - Discontinuous strain spaces seem to give rise to oscillations in the stress.
-        #   Thus, to stabilize, it is important to choose an appropriate continuous space here.
-        #   Which spaces are "appropriate" is left as an exercise to the reader.
-        # - It seems a degree-1 space is too small to give correct results.
-        #   This is likely related to the requirements for the stress space.
-        #
-        # P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like without projection)
-        # P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like without projection)
-        # P = TensorFunctionSpace(self.mesh, Q.ufl_element().family(), 1)  # results completely wrong
-        P = Q  # Q2; just small oscillations near high gradients of `u` and `v`
+        self.V = V
+        self.Q = Q
+
+        # TODO: These were only used for manual patch-averaging; remove?
+        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)  # "DG" is a handy alias for "DP or DQ dep. on mesh"
+        self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
+
         self.P = P
         self.w = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
         self.εu_ = Function(P)
         self.εv_ = Function(P)
-
-        self.V = V
-        self.Q = Q
-        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)  # "DG" is a handy alias for "DP or DQ dep. on mesh"
-        self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
 
         self.v, self.σ = v, σ  # trials
         self.ψ, self.φ = ψ, φ  # tests
