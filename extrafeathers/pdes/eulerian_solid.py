@@ -395,6 +395,8 @@ class EulerianSolid:
         w = self.w
         F_εu = inner(εu, w) * dx - inner(ε(U), sym(w)) * dx
         F_εv = inner(εv, w) * dx - inner(ε(V), sym(w)) * dx
+
+        # After strain projection:
         εu_ = self.εu_  # known, at the "θ-point" in time
         εv_ = self.εv_
         Id = Identity(εu_.geometric_dimension())
