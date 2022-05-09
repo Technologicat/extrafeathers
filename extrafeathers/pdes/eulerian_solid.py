@@ -566,15 +566,19 @@ class EulerianSolid:
         # is `ρ dV/dt`.
         #
         # We have defined our `v` as the Eulerian rate of `u`:
+        #
         #   v := ∂u/∂t
+        #
         # Here `u` is the Eulerian displacement field, with respect to the reference
         # state where the material moves uniformly at the axial velocity `a`.
         #
         # In this formulation, in the inertia term we have
+        #
         #   dV/dt ≡ (∂/∂t + (a·∇)) V
         #         = (∂/∂t + (a·∇))² u
         #         = ∂²u/∂t² + 2 (a·∇) ∂u/∂t + (a·∇)² u
         #         ≡ ∂v/∂t + 2 (a·∇) v + (a·∇)² u
+        #
         # which is what we have (converted into weak form) below.
         #
         # The linear momentum balance and the constitutive law take nonstandard
@@ -583,7 +587,9 @@ class EulerianSolid:
         #
         # There is an alternative. If we were to use `V` as our velocity variable
         # instead of `v`, then in the inertia term, we would have just
+        #
         #   dV/dt = ∂V/∂t + (a·∇) V
+        #
         # This leads to the same form of linear momentum balance as in Navier-Stokes,
         # albeit the constitutive equation is different (because this is a solid),
         # and to be able to evaluate the stress, we need the displacement field `u`.
@@ -592,6 +598,31 @@ class EulerianSolid:
         # constitutive equation take their standard (not axially moving) forms,
         # which are easier to handle numerically, but then for updating `u`,
         # we need to solve the linear first-order transport PDE (*).
+        #
+        # For example, for the axially moving Kelvin-Voigt material, the full set of
+        # equations is:
+        #
+        #   ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
+        #
+        #   σ = 2 [μ + μ_visc d/dt] ε + I tr([λ + λ_visc d/dt] ε)
+        #     = [2 μ + λ I tr] ε + [2 μ_visc + λ_visc I tr] d/dt ε
+        #     = [2 μ + λ I tr] (symm ∇u) + [2 μ_visc + λ_visc I tr] d/dt (symm ∇u)
+        #     = [2 μ + λ I tr] (symm ∇u) + [2 μ_visc + λ_visc I tr] (symm ∇) du/dt
+        #     = [2 μ + λ I tr] (symm ∇) u + [2 μ_visc + λ_visc I tr] (symm ∇) V
+        #     = [2 μ + λ I tr] (symm ∇) u + τ [2 μ + λ I tr] (symm ∇) V
+        #     =: ℒ(u) + τ ℒ(V)
+        #
+        #   V = ∂u/∂t + (a·∇) u
+        #
+        # where we have defined the constitutive linear operator
+        #
+        #   ℒ = [2 μ + λ I tr] (symm ∇)
+        #
+        # Note that now:
+        #   - The linear momentum balance has the same form as in Navier-Stokes.
+        #   - The constitutive equation does not explicitly mention the axial motion.
+        #   - The axial motion is incorporated by the equation connecting `V` and `u`.
+        #
         # ------------------------------------------------------------
         #
         # - Valid boundary conditions:
