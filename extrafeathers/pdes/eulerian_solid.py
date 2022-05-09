@@ -818,6 +818,13 @@ class EulerianSolid:
 
 # --------------------------------------------------------------------------------
 
+# TODO: The steady-state solver does not work yet. Essentially, the equations have the wrong roles
+# TODO: when we look at which quantities appear in each of them. Consider the classical (not axially moving)
+# TODO: case. The linear momentum balance has just `σ`, no `u`, although it is tested by the test function
+# TODO: of `u`. So it is "the equation of `u`", but we cannot solve `u` from it; `σ` could be solved from
+# TODO: it just fine. `u` should be solved from the constitutive law, which is currently tested by the test
+# TODO: function of `σ`. The tests are nontrivial to swap (to switch the roles), because their tensor ranks
+# TODO: are different.
 class SteadyStateEulerianSolid:
     """Axially moving linear solid, small-displacement Eulerian formulation.
 
