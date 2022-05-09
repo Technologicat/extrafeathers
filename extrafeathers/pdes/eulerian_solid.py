@@ -551,6 +551,49 @@ class EulerianSolid:
 
         # Step 3: solve `v` from momentum equation
         #
+        # TODO: We could some day try also the alternative formulation described below.
+        # ------------------------------------------------------------
+        # IMPORTANT NOTE on the formulation.
+        #
+        # Temporarily, for the sake of explanation, let us denote the material
+        # parcel velocity (i.e. the true physical velocity of the material,
+        # minus the uniform axial motion), by `V`:
+        #
+        #   V := du/dt
+        #      ≡ ∂u/∂t + (a·∇) u   (*)
+        #
+        # The inertia term in the linear momentum balance for a general continuum
+        # is `ρ dV/dt`.
+        #
+        # We have defined our `v` as the Eulerian rate of `u`:
+        #   v := ∂u/∂t
+        # Here `u` is the Eulerian displacement field, with respect to the reference
+        # state where the material moves uniformly at the axial velocity `a`.
+        #
+        # In this formulation, in the inertia term we have
+        #   dV/dt ≡ (∂/∂t + (a·∇)) V
+        #         = (∂/∂t + (a·∇))² u
+        #         = ∂²u/∂t² + 2 (a·∇) ∂u/∂t + (a·∇)² u
+        #         ≡ ∂v/∂t + 2 (a·∇) v + (a·∇)² u
+        # which is what we have (converted into weak form) below.
+        #
+        # The linear momentum balance and the constitutive law take nonstandard
+        # Eulerian forms that account for the uniform axial motion, but `u` can
+        # be updated by simply time-integrating `v`.
+        #
+        # There is an alternative. If we were to use `V` as our velocity variable
+        # instead of `v`, then in the inertia term, we would have just
+        #   dV/dt = ∂V/∂t + (a·∇) V
+        # This leads to the same form of linear momentum balance as in Navier-Stokes,
+        # albeit the constitutive equation is different (because this is a solid),
+        # and to be able to evaluate the stress, we need the displacement field `u`.
+        #
+        # In this alternative formulation, the linear momentum balance and the
+        # constitutive equation take their standard (not axially moving) forms,
+        # which are easier to handle numerically, but then for updating `u`,
+        # we need to solve the linear first-order transport PDE (*).
+        # ------------------------------------------------------------
+        #
         # - Valid boundary conditions:
         #   - Displacement boundary: `v` given, no condition on `σ`
         #     - Dirichlet boundary for `v`; those rows of `F_v` removed, ∫ ds terms don't matter.
