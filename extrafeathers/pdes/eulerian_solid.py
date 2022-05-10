@@ -592,7 +592,9 @@ class EulerianSolid:
         #
         #   ρ dV/dt - ∇·σ = ρ b
         #
-        # We have defined our velocity variable `v` as the Eulerian rate of `u`:
+        #
+        # In the formulation used here (class `EulerianSolid`), we have defined
+        # our velocity variable `v` as the Eulerian rate of `u`:
         #
         #   v := ∂u/∂t    (***)
         #
@@ -611,9 +613,10 @@ class EulerianSolid:
         # axial motion, but `u` is simply the time integral of `v`.
         #
         #
-        # An alternative formulation is possible. If we use `V` as our velocity
-        # variable instead of `v`, then we have, in the co-moving frame (exactly,
-        # no approximation)
+        # An alternative formulation is implemented in class `EulerianSolidAlternative`.
+        #
+        # If we use `V` as our velocity variable instead of `v`, then we have,
+        # in the co-moving frame (exactly, no approximation)
         #
         #   dV/dt = ∂V/∂t + (V·∇) V
         #
@@ -623,15 +626,14 @@ class EulerianSolid:
         #               = [∂/∂t + ((a + V)·∇)] V          [`a` is constant]
         #               ≈ [∂/∂t + (a·∇)] V                [drop 2nd-order small term]
         #
-        # This leads to a form of linear momentum balance that is very similar
-        # to that of Navier-Stokes, albeit the constitutive equation is different
-        # (because this is a solid), and to be able to evaluate the stress, we
-        # need to track the displacement `u`.
+        # The linear momentum balance becomes very similar to that of Navier-Stokes,
+        # albeit the constitutive equation is different (because this is a solid),
+        # and to be able to evaluate the stress, we need to track the displacement `u`.
         #
-        # In this formulation, the linear momentum balance and the constitutive
-        # equation take their standard (not axially moving) forms, which are
-        # easier to handle numerically, but then for updating `u`, we need to
-        # solve the linear first-order transport PDE (*).
+        # The linear momentum balance and the constitutive equation take their
+        # standard (not axially moving) forms, which are easier to handle
+        # numerically, but then for updating `u`, we need to solve the linear
+        # first-order transport PDE (*).
         #
         # For the axially moving Kelvin-Voigt material, the full set of equations
         # in the alternative formulation is:
@@ -653,8 +655,6 @@ class EulerianSolid:
         #   ℒ(...) = E : (symm ∇) (...)
         #
         # Note that now:
-        #   - The linear momentum balance is similar in form to that of
-        #     Navier-Stokes, but the constitutive equation is different.
         #   - The constitutive equation does not explicitly mention the axial
         #     motion (no `a·∇` or `V·∇`); this is absorbed by the `V` on the RHS.
         #   - The axial motion is incorporated in an extremely simple fashion
