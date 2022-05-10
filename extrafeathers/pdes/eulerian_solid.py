@@ -552,7 +552,6 @@ class EulerianSolid:
 
         # Step 3: solve `v` from momentum equation
         #
-        # TODO: We could some day try also the alternative formulation described below.
         # ------------------------------------------------------------
         # IMPORTANT NOTE on the formulation.
         #
