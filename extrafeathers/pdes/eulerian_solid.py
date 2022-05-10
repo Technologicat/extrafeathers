@@ -42,6 +42,10 @@ from ..meshfunction import meshsize, cell_mf_to_expression
 from .util import ufl_constant_property, StabilizerFlags
 
 
+def mag(vec):
+    """UFL expression for the magnitude of vector `vec`."""
+    return dot(vec, vec)**(1 / 2)
+
 def ε(u):
     """Symmetric gradient of the displacement `u`, a.k.a. the infinitesimal (Cauchy) strain.
 
@@ -470,8 +474,6 @@ class EulerianSolid:
             # (K:ε(u) or K:ε(v)) is symmetric in all terms here.
             #
             # # let's try streamline upwinding?
-            # def mag(vec):
-            #     return dot(vec, vec)**(1 / 2)
             # φup = φ + he / mag(a) * dot(a, nabla_grad(φ))
             #
             # TODO: Compute as projection into lower-degree space?  PΣ = ...
@@ -504,8 +506,6 @@ class EulerianSolid:
             # # TODO: Fix the stress stabilization. Commented out, because doesn't seem to work correctly.
             # #
             # # SUPG stabilization. Note that the SUPG terms are added only in the element interiors.
-            # def mag(vec):
-            #     return dot(vec, vec)**(1 / 2)
             # τ_SUPG = (α0 / self.Q.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
             # # τ_SUPG = (α0 / self.Q.ufl_element().degree()) * (2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
             # # τ_SUPG = Constant(0.004)  # TODO: tune value
@@ -545,8 +545,6 @@ class EulerianSolid:
             # # exit(0)
             # #
             # # Qdeg = Constant(self.Q.ufl_element().degree())
-            # def mag(vec):
-            #     return dot(vec, vec)**(1 / 2)
             # tune = Constant(0.1)
             # F_σ += tune * (he**2 / mag(a)**2) * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
             # # F_σ += θ * dt * (he / mag(a)) * inner(dot(a, nabla_grad(σ)), dot(a, nabla_grad(sym(φ)))) * dx
@@ -690,8 +688,6 @@ class EulerianSolid:
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
-        def mag(vec):
-            return dot(vec, vec)**(1 / 2)
         τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s  # TODO: tune value
         # The residual is evaluated elementwise in strong form, at the end of the timestep.
         R = (ρ * ((v - v_n) / dt + 2 * advs(a, v) + advs(a, advs(a, u_))) -
@@ -1107,8 +1103,6 @@ class EulerianSolidAlternative:
                dot(V, w) * dx)   # skew-symmetric form for improved stability
 
         # SUPG: streamline upwinding Petrov-Galerkin.
-        def mag(vec):
-            return dot(vec, vec)**(1 / 2)
         τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
         # The residual is evaluated elementwise in strong form, at the end of the timestep.
         R = ((u - u_n) / dt + advs(a, u) - v_)
@@ -1131,24 +1125,6 @@ class EulerianSolidAlternative:
         V = (1 - θ) * v_n + θ * v_  # known
         Σ = (1 - θ) * σ_n + θ * σ   # unknown!
 
-        # VISUALIZATION PURPOSES ONLY
-        #
-        # Step 1½: Project the strains into a C0 space - this makes them once differentiable.
-        εu = self.εu  # unknown
-        εv = self.εv
-        q = self.q
-        F_εu = inner(εu, q) * dx - inner(ε(U), sym(q)) * dx
-        F_εv = inner(εv, q) * dx - inner(ε(V), sym(q)) * dx
-
-        # # After strain projection:
-        # εu_ = self.εu_  # known, at the "θ-point" in time
-        # εv_ = self.εv_
-        # Id = Identity(εu_.geometric_dimension())
-        # K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        # K_inner_εu_ = K_inner_operator(εu_)
-        # K_inner_εv_ = K_inner_operator(εv_)
-
-        # Original definitions for step 2, no projection
         εu_ = ε(U)
         εv_ = ε(V)
         Id = Identity(εu_.geometric_dimension())
@@ -1192,18 +1168,11 @@ class EulerianSolidAlternative:
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
-        def mag(vec):
-            return dot(vec, vec)**(1 / 2)
         τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s  # TODO: tune value
         # The residual is evaluated elementwise in strong form, at the end of the timestep.
         R = (ρ * ((v - v_n) / dt + advs(a, v)) - div(σ_) - ρ * b)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
         F_v += F_SUPG
-
-        self.a_εu = lhs(F_εu)
-        self.L_εu = rhs(F_εu)
-        self.a_εv = lhs(F_εv)
-        self.L_εv = rhs(F_εv)
 
         self.a_u = lhs(F_u)
         self.L_u = rhs(F_u)
@@ -1211,6 +1180,17 @@ class EulerianSolidAlternative:
         self.L_σ = rhs(F_σ)
         self.a_v = lhs(F_v)
         self.L_v = rhs(F_v)
+
+        # Strains at end of timestep, for visualization only.
+        εu = self.εu  # unknown
+        εv = self.εv
+        q = self.q
+        F_εu = inner(εu, q) * dx - inner(ε(u_), sym(q)) * dx
+        F_εv = inner(εv, q) * dx - inner(ε(v_), sym(q)) * dx
+        self.a_εu = lhs(F_εu)
+        self.L_εu = rhs(F_εu)
+        self.a_εv = lhs(F_εv)
+        self.L_εv = rhs(F_εv)
 
     def step(self) -> typing.Tuple[int, int, int, typing.Tuple[int, float]]:
         """Take a timestep of length `self.dt`.
