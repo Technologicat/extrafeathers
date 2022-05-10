@@ -46,28 +46,119 @@ def mag(vec):
     """UFL expression for the magnitude of vector `vec`."""
     return dot(vec, vec)**(1 / 2)
 
-def advw(a, p, q, n):
+def advw(a, p, q, n, *, mode="divergence-free"):
     """Advection operator, skew-symmetric weak form.
 
-    `a`: advection velocity (assumed divergence-free)
+    The skew-symmetric form typically improves numerical stability,
+    especially for divergence-free advection velocity fields.
+
+    `a`: advection velocity vector field
     `p`: quantity being advected
     `q`: test function of the quantity `p`
+         `p` and `q` must be at least C0-continuous.
     `n`: facet normal of mesh
 
-    `p` and `q` must be at least C0.
+    `mode`: one of "general" or "divergence-free".
+            If "divergence-free", it is assumed that `div(a) ≡ 0`.
+            This affects the form produced.
+
+    Return value is an UFL form representing the advection term.
     """
-    return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
-                       dot(dot(a, nabla_grad(q)), p)) * dx +
-                       (1 / 2) * dot(n, a) * dot(p, q) * ds)
-def advs(a, p):
+    if mode not in ("general", "divergence-free"):
+        raise ValueError(f"Expected `mode` to be one of 'general', 'divergence-free'; got {mode}")
+
+    # TODO: Notation. For now, excuse the `u` and `v` instead of `p` and `q`,
+    # TODO: respectively.
+    #
+    # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has
+    # become standard to use this skew-symmetric weak form:
+    #   (1/2) a · [∇u · v - ∇v · u] dx
+    # which in the strong form is equivalent with replacing the convective term
+    #   (a·∇) u
+    # by the modified term
+    #   (a·∇) u  +  (1/2) (∇·a) u
+    # This is consistent when `div(a) ≡ 0`, and in Navier-Stokes, necessary for
+    # unconditional time stability for schemes that are able to provide it.
+    #
+    # To see this equivalence, consider the conversion of the modified term
+    # into weak form:
+    #    ((a·∇) u) · v dx  +  (1/2) (∇·a) u · v dx
+    # Observing that
+    #    ∂i (ai uk vk) = (∂i ai) uk vk + ai ∂i (uk vk)
+    #    ∇·(a (u · v)) = (∇·a) u · v  +  a · ∇(u · v)
+    # we use the divergence theorem in the last term of the weak form, obtaining
+    #    (a·∇) u · v dx  -  (1/2) a · ∇(u · v) dx  +  (1/2) n · a (u · v) ds
+    # Furthermore, noting that
+    #    a · ∇(u · v) = ai ∂i (uk vk)
+    #                  = ai (∂i uk) vk + ai uk (∂i vk)
+    #                  = a · ∇u · v  +  a · ∇v · u
+    #                  = a · [∇u · v + ∇v · u]
+    # and
+    #    ((a·∇) u) · v = ((ai ∂i) uk) vk = ai (∂i uk) vk = a · ∇u · v
+    # we have the terms
+    #      a · ∇u · v dx
+    #    - (1/2) a · [∇u · v + ∇v · u] dx
+    #    + (1/2) n · a (u · v) ds
+    # Cleaning up, we obtain
+    #    (1/2) a · [∇u · v - ∇v · u] dx  +  (1/2) n · a (u · v) ds
+    # as claimed. Keep in mind the boundary term, which contributes on boundaries
+    # through which there is flow (i.e. inlets and outlets) - we do not want to
+    # introduce an extra boundary condition.
+    #
+    # Another way to view the role of the extra term in the skew-symmetric form is to
+    # consider the Helmholtz decomposition of the convection velocity `a`:
+    #   a = ∇φ + ∇×A
+    # where φ is a scalar potential (for the irrotational part) and A is a
+    # vector potential (for the divergence-free part). We have
+    #   (∇·a) = ∇·∇φ + ∇·∇×A = ∇²φ + 0
+    # so the extra term is proportional to the laplacian of the scalar potential:
+    #   (∇·a) u = (∇²φ) u
+    #
+    # References:
+    #     Jean Donea and Antonio Huerta. 2003. Finite Element Methods
+    #     for Flow Problems. Wiley. ISBN 0-471-49666-9.
+
+    if mode == "general":
+        # This is the weak form of `[(a·∇) p + (1/2) (∇·a) p] - (1/2) (∇·a) p`,
+        # where the first `(1/2) (∇·a) p` is absorbed by the integration by parts.
+        return (1 / 2) * ((dot(dot(a, nabla_grad(p)), q) -
+                           dot(dot(a, nabla_grad(q)), p)) * dx +
+                          dot(n, a) * dot(p, q) * ds -
+                          div(a) * p * q * dx)  # the second (1/2) (∇·a) p
+    else:  # mode == "divergence-free":
+        # This is the skew-symmetric weak form of `(a·∇) p + (1/2) (∇·a) p`,
+        # intended to be used when `div(a) ≡ 0`.
+        return (1 / 2) * ((dot(dot(a, nabla_grad(p)), q) -
+                           dot(dot(a, nabla_grad(q)), p)) * dx +
+                           dot(n, a) * dot(p, q) * ds)
+
+def advs(a, p, *, mode="divergence-free"):
     """Advection operator, strong form (for SUPG residual).
 
-    `a`: advection velocity (assumed divergence-free)
-    `p`: quantity being advected
+    Corresponds to the weak form produced by `advw`, which see.
 
-    `a` and `p` must be at least C0.
+    `a`: advection velocity
+    `p`: quantity being advected
+         `a` and `p` must be at least C0-continuous.
+    `mode`: like `mode` of `advw`.
+
+    Return value is an UFL expression representing the advection term.
     """
-    return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
+    if mode not in ("general", "divergence-free"):
+        raise ValueError(f"Expected `mode` to be one of 'general', 'divergence-free'; got {mode}")
+
+    if mode == "general":
+        # Here the modifications cancel in the strong form;
+        # we both add and subtract `(1/2) (∇·a) p`.
+        return dot(a, nabla_grad(p))
+    else:  # mode == "divergence-free":
+        # To match `advw`, we must include the `(1/2) (∇·a) p` term that was added,
+        # in case `a` is not actually exactly divergence-free.
+        #
+        # `advs` is most often used for computing the residual in SUPG
+        # stabilization, so it needs to see the numerical error caused
+        # by any nonzero values in the field `div(a)`.
+        return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
 
 def ε(u):
     """Symmetric gradient of the displacement `u`, a.k.a. the infinitesimal (Cauchy) strain.
@@ -1077,8 +1168,10 @@ class EulerianSolidAlternative:
                dot(V, w) * dx)   # skew-symmetric form for improved stability
 
         # SUPG: streamline upwinding Petrov-Galerkin.
-        τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
-        # The residual is evaluated elementwise in strong form, at the end of the timestep.
+        # The residual is evaluated elementwise in strong form,
+        # at the end of the timestep.
+        deg = Constant(self.V.ufl_element().degree())
+        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
         R = ((u - u_n) / dt + advs(a, u) - v_)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
         F_u += F_SUPG
@@ -1135,15 +1228,24 @@ class EulerianSolidAlternative:
         U = (1 - θ) * u_n + θ * u_  # known
         V = (1 - θ) * v_n + θ * v   # unknown!
         Σ = (1 - θ) * σ_n + θ * σ_  # known
-        F_v = (ρ * dot(dvdt, ψ) * dx +
-               ρ * advw(a, V, ψ, n) +
-               inner(Σ.T, ε(ψ)) * dx -
-               dot(dot(n, Σ), ψ) * ds -
+        F_v = (ρ * dot(dvdt, ψ) * dx + ρ * advw(a, V, ψ, n) +
+               inner(Σ.T, ε(ψ)) * dx - dot(dot(n, Σ), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
-        τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s  # TODO: tune value
-        # The residual is evaluated elementwise in strong form, at the end of the timestep.
+        # The residual is evaluated elementwise in strong form,
+        # at the end of the timestep.
+        deg = Constant(self.V.ufl_element().degree())
+        # # Very basic scaling; the resulting τ_SUPG is perhaps too large
+        # # (excessive diffusion along streamlines of `a`).
+        # τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s
+        #
+        # Navier-Stokes uses 4 * (μ / ρ) / he² in the second-order part.
+        # Since we have both elastic and viscous effects, with both shear
+        # and volumetric contributions, take the largest one of these as
+        # the representative second-order coefficient.
+        moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
+        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
         R = (ρ * ((v - v_n) / dt + advs(a, v)) - div(σ_) - ρ * b)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
         F_v += F_SUPG
