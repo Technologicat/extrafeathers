@@ -46,6 +46,29 @@ def mag(vec):
     """UFL expression for the magnitude of vector `vec`."""
     return dot(vec, vec)**(1 / 2)
 
+def advw(a, p, q, n):
+    """Advection operator, skew-symmetric weak form.
+
+    `a`: advection velocity (assumed divergence-free)
+    `p`: quantity being advected
+    `q`: test function of the quantity `p`
+    `n`: facet normal of mesh
+
+    `p` and `q` must be at least C0.
+    """
+    return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
+                       dot(dot(a, nabla_grad(q)), p)) * dx +
+                       (1 / 2) * dot(n, a) * dot(p, q) * ds)
+def advs(a, p):
+    """Advection operator, strong form (for SUPG residual).
+
+    `a`: advection velocity (assumed divergence-free)
+    `p`: quantity being advected
+
+    `a` and `p` must be at least C0.
+    """
+    return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
+
 def ε(u):
     """Symmetric gradient of the displacement `u`, a.k.a. the infinitesimal (Cauchy) strain.
 
@@ -339,28 +362,6 @@ class EulerianSolid:
         α0 = self._α0
 
         enable_SUPG_flag = self.stabilizers._SUPG
-
-        def advw(a, p, q):
-            """Advection operator, weak form.
-
-            `a`: advection velocity (assumed divergence-free)
-            `p`: quantity being advected
-            `q`: test function of the quantity `p`
-
-            `p` and `q` must be at least C0.
-            """
-            return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
-                               dot(dot(a, nabla_grad(q)), p)) * dx +
-                               (1 / 2) * dot(n, a) * dot(p, q) * ds)
-        def advs(a, p):
-            """Advection operator, strong form (for SUPG residual).
-
-            `a`: advection velocity (assumed divergence-free)
-            `p`: quantity being advected
-
-            `a` and `p` must be at least C0.
-            """
-            return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
 
         # Define variational problem
 
@@ -680,7 +681,7 @@ class EulerianSolid:
         # V = v
         # Σ = σ_
         F_v = (ρ * dot(dvdt, ψ) * dx +
-               2 * ρ * advw(a, V, ψ) -
+               2 * ρ * advw(a, V, ψ, n) -
                ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +  # from +∫ ρ [(a·∇)(a·∇)u]·ψ dx
                ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds +
                inner(Σ.T, ε(ψ)) * dx -
@@ -1056,28 +1057,6 @@ class EulerianSolidAlternative:
 
         enable_SUPG_flag = self.stabilizers._SUPG
 
-        def advw(a, p, q):
-            """Advection operator, weak form.
-
-            `a`: advection velocity (assumed divergence-free)
-            `p`: quantity being advected
-            `q`: test function of the quantity `p`
-
-            `p` and `q` must be at least C0.
-            """
-            return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
-                               dot(dot(a, nabla_grad(q)), p)) * dx +
-                               (1 / 2) * dot(n, a) * dot(p, q) * ds)
-        def advs(a, p):
-            """Advection operator, strong form (for SUPG residual).
-
-            `a`: advection velocity (assumed divergence-free)
-            `p`: quantity being advected
-
-            `a` and `p` must be at least C0.
-            """
-            return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
-
         # Define variational problem
         #
         # The strong form of the equations we are discretizing is:
@@ -1099,7 +1078,7 @@ class EulerianSolidAlternative:
         dudt = (u - u_n) / dt
         V = (1 - θ) * v_n + θ * v_  # known ("new" value = latest iterate)
         F_u = (dot(dudt, w) * dx +
-               advw(a, u, w) -
+               advw(a, u, w, n) -
                dot(V, w) * dx)   # skew-symmetric form for improved stability
 
         # SUPG: streamline upwinding Petrov-Galerkin.
@@ -1162,7 +1141,7 @@ class EulerianSolidAlternative:
         V = (1 - θ) * v_n + θ * v   # unknown!
         Σ = (1 - θ) * σ_n + θ * σ_  # known
         F_v = (ρ * dot(dvdt, ψ) * dx +
-               ρ * advw(a, V, ψ) +
+               ρ * advw(a, V, ψ, n) +
                inner(Σ.T, ε(ψ)) * dx -
                dot(dot(n, Σ), ψ) * ds -
                ρ * dot(b, ψ) * dx)
@@ -1452,28 +1431,6 @@ class SteadyStateEulerianSolid:
         α0 = self._α0
 
         enable_SUPG_flag = self.stabilizers._SUPG
-
-        def advw(a, p, q):
-            """Advection operator, weak form.
-
-            `a`: advection velocity (assumed divergence-free)
-            `p`: quantity being advected
-            `q`: test function of the quantity `p`
-
-            `p` and `q` must be at least C0.
-            """
-            return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
-                               dot(dot(a, nabla_grad(q)), p)) * dx +
-                               (1 / 2) * dot(n, a) * dot(p, q) * ds)
-        def advs(a, p):
-            """Advection operator, strong form (for SUPG residual).
-
-            `a`: advection velocity (assumed divergence-free)
-            `p`: quantity being advected
-
-            `a` and `p` must be at least C0.
-            """
-            return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
 
         # Define variational problem
         #
