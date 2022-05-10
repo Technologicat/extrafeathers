@@ -24,7 +24,9 @@ from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
-from extrafeathers.pdes import EulerianSolid, SteadyStateEulerianSolid
+from extrafeathers.pdes import (EulerianSolid,
+                                EulerianSolidAlternative,
+                                SteadyStateEulerianSolid)
 from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, tau, V0, dt, nt,
                      Boundaries,
@@ -45,25 +47,9 @@ mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_f
 V = VectorFunctionSpace(mesh, 'P', 1)  # displacement
 Q = TensorFunctionSpace(mesh, 'P', 2)  # stress
 
-# Function space for strain projection, before inserting the strain into the constitutive law.
-#
-# - Discontinuous strain spaces seem to give rise to oscillations in the stress.
-#   Thus, to stabilize, it is important to choose an appropriate continuous space here.
-#   Which spaces are "appropriate" is left as an exercise to the reader.
-# - It seems a degree-1 space is too small to give correct results.
-#   This is likely related to the requirements for the stress space.
-#
-# P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like old algo without strain projection)
-# P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like old algo without strain projection)
-# P = TensorFunctionSpace(self.mesh, Q.ufl_element().family(), 1)  # results completely wrong
-P = Q  # Q2; just small oscillations near high gradients of `u` and `v`
-
 # for visualization purposes
 Vscalar = V.sub(0).collapse()
 Qscalar = Q.sub(0).collapse()
-
-if my_rank == 0:
-    print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
 
 # --------------------------------------------------------------------------------
 # Choose the solver
@@ -74,7 +60,7 @@ dynamic = True
 
 # for dynamic solver
 nsave_total = 1000  # how many timesteps to save from the whole simulation
-vis_every = 5 / 100  # how often to visualize (plotting is slow)
+vis_every = 2.5 / 100  # how often to visualize (plotting is slow)
 
 enable_SUPG = True
 
@@ -88,15 +74,49 @@ bcu = []  # for steady-state solver
 bcv = []  # for dynamic solver
 bcσ = []  # for both solvers
 if dynamic:
-    solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
+    # Function space for strain projection, before inserting the strain into the constitutive law.
+    #
+    # - Discontinuous strain spaces seem to give rise to oscillations in the stress.
+    #   Thus, to stabilize, it is important to choose an appropriate continuous space here.
+    #   Which spaces are "appropriate" is left as an exercise to the reader.
+    # - It seems a degree-1 space is too small to give correct results.
+    #   This is likely related to the requirements for the stress space.
+    #
+    # P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like old algo without strain projection)
+    # P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like old algo without strain projection)
+    # P = TensorFunctionSpace(self.mesh, Q.ufl_element().family(), 1)  # results completely wrong
+    # P = Q  # Q2; just small oscillations near high gradients of `u` and `v`
+    #
+    # solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
     # solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
+    # # Set plotting labels; this formulation uses v := ∂u/∂t
+    # dlatex = r"\partial"
+    # dtext = "∂"
+
+    # Alternative solver only uses P for visualizing the strains.
+    P = TensorFunctionSpace(mesh, 'DP', 0)
+    solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
+    # Set plotting labels; this formulation uses v := du/dt
+    dlatex = r"\mathrm{d}"
+    dtext = "d"
+
 else:  # steady state
     solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)
+    # Set plotting labels; this formulation uses v := ∂u/∂t
+    dlatex = r"\partial"
+    dtext = "∂"
+
+if my_rank == 0:
+    print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
 
 # --------------------------------------------------------------------------------
 # For dynamic solver
 
 if dynamic:
+    # For `EulerianSolidAlternative`: inflow BCs for `u`
+    bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    bcu.append(bcu_left)
+
     # Top and bottom edges: zero normal stress
     #
     # Need `method="geometric"` to detect boundary DOFs on discontinuous spaces.
@@ -138,23 +158,23 @@ if dynamic:
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
-    # Left and right edges: fixed speed (strain-controlled pull)
-    # Here `u` starts from zero, because the initial field is not specified. This is always a valid initial state.
-    bcv_left = DirichletBC(V, Constant((-1e-2, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    bcv_right = DirichletBC(V, Constant((+1e-2, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
-    bcv.append(bcv_left)
-    bcv.append(bcv_right)
-
-    # # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    # # Here the initial field for `u` is zero, so it does not need to be specified.
-    # bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    # bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
-    # bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
-    # bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+    # # Left and right edges: fixed speed (strain-controlled pull)
+    # # Here `u` starts from zero, because the initial field is not specified. This is always a valid initial state.
+    # bcv_left = DirichletBC(V, Constant((-1e-2, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv_right = DirichletBC(V, Constant((+1e-2, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
     # bcv.append(bcv_left)
-    # bcσ.append(bcσ_right1)
-    # bcσ.append(bcσ_right2)
-    # bcσ.append(bcσ_right3)
+    # bcv.append(bcv_right)
+
+    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+    # Here the initial field for `u` is zero, so it does not need to be specified.
+    bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+    bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+    bcv.append(bcv_left)
+    bcσ.append(bcσ_right1)
+    bcσ.append(bcσ_right2)
+    bcσ.append(bcσ_right3)
 
     # # Left and right edges: constant pull at both ends
     # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
@@ -301,43 +321,47 @@ def kinetic_energy():
     return float(project((1 / 2) * solver._ρ * dot(solver.v_, solver.v_), W))
 
 # Preparation for plotting.
-#
-# Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
-# `u` and `v` both live on `V`, so both can use the same preps.
-if hasattr(solver, "s_"):  # steady-state solver
-    tmp = solver.s_.sub(0)
-else:  # dynamic solver
-    tmp = solver.u_
-prep_V0 = plotmagic.mpiplot_prepare(tmp.sub(0))
-prep_V1 = plotmagic.mpiplot_prepare(tmp.sub(1))
+if my_rank == 0:
+    print("Preparing plotter...")
+with timer() as tim:
+    # Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
+    # `u` and `v` both live on `V`, so both can use the same preps.
+    if hasattr(solver, "s_"):  # steady-state solver
+        tmp = solver.s_.sub(0)
+    else:  # dynamic solver
+        tmp = solver.u_
+    prep_V0 = plotmagic.mpiplot_prepare(tmp.sub(0))
+    prep_V1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 
-if hasattr(solver, "s_"):  # steady-state solver
-    tmp = solver.s_.sub(1)
-else:  # dynamic solver
-    tmp = solver.σ_
-prep_Q0 = plotmagic.mpiplot_prepare(tmp.sub(0))
-prep_Q1 = plotmagic.mpiplot_prepare(tmp.sub(1))
-prep_Q2 = plotmagic.mpiplot_prepare(tmp.sub(2))
-prep_Q3 = plotmagic.mpiplot_prepare(tmp.sub(3))
+    if hasattr(solver, "s_"):  # steady-state solver
+        tmp = solver.s_.sub(1)
+    else:  # dynamic solver
+        tmp = solver.σ_
+    prep_Q0 = plotmagic.mpiplot_prepare(tmp.sub(0))
+    prep_Q1 = plotmagic.mpiplot_prepare(tmp.sub(1))
+    prep_Q2 = plotmagic.mpiplot_prepare(tmp.sub(2))
+    prep_Q3 = plotmagic.mpiplot_prepare(tmp.sub(3))
 
-tmp = Function(solver.QdG0)
-prep_QdG0_0 = plotmagic.mpiplot_prepare(tmp.sub(0))
-prep_QdG0_1 = plotmagic.mpiplot_prepare(tmp.sub(1))
-prep_QdG0_2 = plotmagic.mpiplot_prepare(tmp.sub(2))
-prep_QdG0_3 = plotmagic.mpiplot_prepare(tmp.sub(3))
+    tmp = Function(solver.QdG0)
+    prep_QdG0_0 = plotmagic.mpiplot_prepare(tmp.sub(0))
+    prep_QdG0_1 = plotmagic.mpiplot_prepare(tmp.sub(1))
+    prep_QdG0_2 = plotmagic.mpiplot_prepare(tmp.sub(2))
+    prep_QdG0_3 = plotmagic.mpiplot_prepare(tmp.sub(3))
 
-tmp = Function(solver.P)
-prep_P0 = plotmagic.mpiplot_prepare(tmp.sub(0))
-prep_P1 = plotmagic.mpiplot_prepare(tmp.sub(1))
-prep_P2 = plotmagic.mpiplot_prepare(tmp.sub(2))
-prep_P3 = plotmagic.mpiplot_prepare(tmp.sub(3))
+    tmp = Function(solver.P)
+    prep_P0 = plotmagic.mpiplot_prepare(tmp.sub(0))
+    prep_P1 = plotmagic.mpiplot_prepare(tmp.sub(1))
+    prep_P2 = plotmagic.mpiplot_prepare(tmp.sub(2))
+    prep_P3 = plotmagic.mpiplot_prepare(tmp.sub(3))
 
-tmp = Function(Vscalar)
-prep_Vscalar = plotmagic.mpiplot_prepare(tmp)
+    tmp = Function(Vscalar)
+    prep_Vscalar = plotmagic.mpiplot_prepare(tmp)
 
-QdG0scalar = solver.QdG0.sub(0).collapse()
-tmp = Function(QdG0scalar)
-prep_QdG0scalar = plotmagic.mpiplot_prepare(tmp)
+    QdG0scalar = solver.QdG0.sub(0).collapse()
+    tmp = Function(QdG0scalar)
+    prep_QdG0scalar = plotmagic.mpiplot_prepare(tmp)
+if my_rank == 0:
+    print(f"Plotter preparation completed in {tim.dt:0.6g} seconds.")
 
 # Detect bounding box.
 with timer() as tim:
@@ -468,7 +492,7 @@ def plotit():
 
     # v1
     if my_rank == 0:
-        print("DEBUG: plot v1")
+        print(f"DEBUG: plot v1 ≡ {dtext}u1/{dtext}t")
         ax = axs[1, 0]
         ax.cla()
         plt.sca(ax)  # for `plotmagic.mpiplot`
@@ -478,13 +502,13 @@ def plotit():
     if my_rank == 0:
         print("DEBUG: colorbar")
         colorbars.append(fig.colorbar(theplot, ax=ax))
-        ax.set_title(r"$v_{1}$ [m/s]")
+        ax.set_title(f"$v_{{1}} \\equiv {dlatex} u_{{1}} / {dlatex} t$ [m/s]")
         ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
         ax.set_aspect("equal")
 
     # v2
     if my_rank == 0:
-        print("DEBUG: plot v2")
+        print(f"DEBUG: plot v2 ≡ {dtext}u2/{dtext}t")
         ax = axs[1, 1]
         ax.cla()
         plt.sca(ax)  # for `plotmagic.mpiplot`
@@ -494,14 +518,14 @@ def plotit():
     if my_rank == 0:
         print("DEBUG: colorbar")
         colorbars.append(fig.colorbar(theplot, ax=ax))
-        ax.set_title(r"$v_{2}$ [m/s]")
+        ax.set_title(f"$v_{{2}} \\equiv {dlatex} u_{{2}} / {dlatex} t$ [m/s]")
         ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
         ax.set_aspect("equal")
 
     # ∂ε11/∂t
     ε_ = solver.εv_
     if my_rank == 0:
-        print("DEBUG: plot ∂ε11/∂t")
+        print(f"DEBUG: plot {dtext}ε11/{dtext}t")
         ax = axs[1, 2]
         ax.cla()
         plt.sca(ax)  # for `plotmagic.mpiplot`
@@ -511,13 +535,13 @@ def plotit():
     if my_rank == 0:
         print("DEBUG: colorbar")
         colorbars.append(fig.colorbar(theplot, ax=ax))
-        ax.set_title(r"$\partial \varepsilon_{11} / \partial t$ [1/s]")
+        ax.set_title(f"${dlatex} \\varepsilon_{{11}} / {dlatex} t$ [1/s]")
         ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
         ax.set_aspect("equal")
 
     # ∂ε12/∂t
     if my_rank == 0:
-        print("DEBUG: plot ∂ε12/∂t")
+        print(f"DEBUG: plot {dtext}ε12/{dtext}t")
         ax = axs[1, 3]
         ax.cla()
         plt.sca(ax)  # for `plotmagic.mpiplot`
@@ -527,7 +551,7 @@ def plotit():
     if my_rank == 0:
         print("DEBUG: colorbar")
         colorbars.append(fig.colorbar(theplot, ax=ax))
-        ax.set_title(r"$\partial \varepsilon_{12} / \partial t$ [1/s]")
+        ax.set_title(f"${dlatex} \\varepsilon_{{12}} / {dlatex} t$ [1/s]")
         ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
         ax.set_aspect("equal")
 
@@ -541,13 +565,13 @@ def plotit():
     #                             cmap="RdBu_r", vmin=vmin, vmax=vmax)
     # if my_rank == 0:
     #     colorbars.append(fig.colorbar(theplot, ax=ax))
-    #     ax.set_title(r"$\partial \varepsilon_{21} / \partial t$ [1/s]")
+    #     ax.set_title(f"${dlatex} \\varepsilon_{{21}} / {dlatex} t$ [1/s]")
     #     ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
     #     ax.set_aspect("equal")
 
     # ∂ε22/∂t
     if my_rank == 0:
-        print("DEBUG: plot ∂ε22/∂t")
+        print(f"DEBUG: plot {dtext}ε22/{dtext}t")
         ax = axs[1, 4]
         ax.cla()
         plt.sca(ax)  # for `plotmagic.mpiplot`
@@ -557,7 +581,7 @@ def plotit():
     if my_rank == 0:
         print("DEBUG: colorbar")
         colorbars.append(fig.colorbar(theplot, ax=ax))
-        ax.set_title(r"$\partial \varepsilon_{22} / \partial t$ [1/s]")
+        ax.set_title(f"${dlatex} \\varepsilon_{{22}} / {dlatex} t$ [1/s]")
         ax.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
         ax.set_aspect("equal")
 

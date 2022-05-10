@@ -19,7 +19,9 @@ introduces a third derivative in the strong form (in the mixed form,
 appearing as a spatial derivative of ε in the constitutive equation for σ).
 """
 
-__all__ = ["EulerianSolid", "SteadyStateEulerianSolid"]
+__all__ = ["EulerianSolid",
+           "EulerianSolidAlternative",
+           "SteadyStateEulerianSolid"]
 
 import typing
 
@@ -556,72 +558,109 @@ class EulerianSolid:
         # IMPORTANT NOTE on the formulation.
         #
         # Temporarily, for the sake of explanation, let us denote the material
-        # parcel velocity (i.e. the true physical velocity of the material,
-        # minus the uniform axial motion), by `V`:
+        # parcel velocity in the co-moving frame (i.e. the true physical velocity
+        # of the material, minus the uniform axial motion) by `V`:
         #
         #   V := du/dt
-        #      ≡ ∂u/∂t + (a·∇) u   (*)
         #
-        # The inertia term in the linear momentum balance for a general continuum
-        # is `ρ dV/dt`.
+        # Its Eulerian representation in the laboratory frame is
         #
-        # We have defined our `v` as the Eulerian rate of `u`:
+        #   V = ∂u/∂t + (a·∇) u    (*)
         #
-        #   v := ∂u/∂t
+        # where `a` is the velocity of the co-moving frame, measured against the
+        # laboratory frame, and `u` is the Eulerian displacement as measured in
+        # the co-moving frame (i.e., displacement field parameterized by the
+        # spatial coordinate, with its value measured with respect to the reference
+        # state where the material moves uniformly at the axial velocity `a`).
         #
-        # Here `u` is the Eulerian displacement field, with respect to the reference
-        # state where the material moves uniformly at the axial velocity `a`.
+        # The material derivative (Lagrangean rate) operator `d/dt` itself has
+        # the Eulerian representation
         #
-        # In this formulation, in the inertia term we have
+        #   d/dt = ∂/∂t + (V·∇)
+        #        ≈ ∂/∂t + (a·∇)    (**)
         #
-        #   dV/dt ≡ (∂/∂t + (a·∇)) V
-        #         = (∂/∂t + (a·∇))² u
-        #         = ∂²u/∂t² + 2 (a·∇) ∂u/∂t + (a·∇)² u
-        #         ≡ ∂v/∂t + 2 (a·∇) v + (a·∇)² u
+        # where, on the second line, we have ignored the small motion of the
+        # material with regard to the co-moving frame, `V ≈ a`, used only for
+        # the purposes of approximating this operator in an easily evaluated
+        # form that is first-order accurate.
+        #
+        # Observe that (*) is exact, but (**) is an approximation.
+        #
+        # (Keep in mind this is a model for the small-displacement regime, so when
+        #  we apply this operator to a small quantity, the effects from that small
+        #  motion will be second-order small; thus we may ignore them.)
+        #
+        # Now, recall the linear momentum balance for a general continuum:
+        #
+        #   ρ dV/dt - ∇·σ = ρ b
+        #
+        # We have defined our velocity variable `v` as the Eulerian rate of `u`:
+        #
+        #   v := ∂u/∂t    (***)
+        #
+        # Thus we find the Eulerian representation of `dV/dt`, in the laboratory
+        # frame, as
+        #
+        #   dV/dt = d/dt [(∂/∂t + (a·∇)) u]               [by (*)]
+        #         ≈ (∂/∂t + (a·∇))² u                     [by (**)]
+        #         = ∂²u/∂t² + 2 (a·∇) ∂u/∂t + (a·∇)² u   [expand]
+        #         ≡ ∂v/∂t + 2 (a·∇) v + (a·∇)² u         [by (***)]
         #
         # which is what we have (converted into weak form) below.
         #
-        # The linear momentum balance and the constitutive law take nonstandard
-        # Eulerian forms that account for the uniform axial motion, but `u` can
-        # be updated by simply time-integrating `v`.
+        # In this formulation, the linear momentum balance and the constitutive
+        # law take nonstandard Eulerian forms that account for the uniform
+        # axial motion, but `u` is simply the time integral of `v`.
         #
-        # There is an alternative. If we were to use `V` as our velocity variable
-        # instead of `v`, then in the inertia term, we would have just
         #
-        #   dV/dt = ∂V/∂t + (a·∇) V
+        # An alternative formulation is possible. If we use `V` as our velocity
+        # variable instead of `v`, then we have, in the co-moving frame (exactly,
+        # no approximation)
         #
-        # This leads to the same form of linear momentum balance as in Navier-Stokes,
-        # albeit the constitutive equation is different (because this is a solid),
-        # and to be able to evaluate the stress, we need the displacement field `u`.
+        #   dV/dt = ∂V/∂t + (V·∇) V
         #
-        # In this alternative formulation, the linear momentum balance and the
-        # constitutive equation take their standard (not axially moving) forms,
-        # which are easier to handle numerically, but then for updating `u`,
-        # we need to solve the linear first-order transport PDE (*).
+        # In the laboratory frame, the material parcel velocity is `a + V`:
         #
-        # For example, for the axially moving Kelvin-Voigt material, the full set of
-        # equations is:
+        #   d(a + V)/dt = [∂/∂t + ((a + V)·∇)] (a + V)
+        #               = [∂/∂t + ((a + V)·∇)] V          [`a` is constant]
+        #               ≈ [∂/∂t + (a·∇)] V                [drop 2nd-order small term]
         #
-        #   ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
+        # This leads to a form of linear momentum balance that is very similar
+        # to that of Navier-Stokes, albeit the constitutive equation is different
+        # (because this is a solid), and to be able to evaluate the stress, we
+        # need to track the displacement `u`.
         #
-        #   σ = 2 [μ + μ_visc d/dt] ε + I tr([λ + λ_visc d/dt] ε)
-        #     = [2 μ + λ I tr] ε + [2 μ_visc + λ_visc I tr] d/dt ε
-        #     = [2 μ + λ I tr] (symm ∇u) + [2 μ_visc + λ_visc I tr] d/dt (symm ∇u)
-        #     = [2 μ + λ I tr] (symm ∇u) + [2 μ_visc + λ_visc I tr] (symm ∇) du/dt
-        #     = [2 μ + λ I tr] (symm ∇) u + [2 μ_visc + λ_visc I tr] (symm ∇) V
-        #     = [2 μ + λ I tr] (symm ∇) u + τ [2 μ + λ I tr] (symm ∇) V
-        #     =: ℒ(u) + τ ℒ(V)
+        # In this formulation, the linear momentum balance and the constitutive
+        # equation take their standard (not axially moving) forms, which are
+        # easier to handle numerically, but then for updating `u`, we need to
+        # solve the linear first-order transport PDE (*).
         #
-        #   V = ∂u/∂t + (a·∇) u
+        # For the axially moving Kelvin-Voigt material, the full set of equations
+        # in the alternative formulation is:
+        #
+        #   ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b   [linear momentum balance]
+        #
+        #   σ = E : ε + η : dε/dt
+        #     = E : (symm ∇u) + η : d/dt (symm ∇u)
+        #     = E : (symm ∇) u + η : d/dt (symm ∇) u
+        #     = E : (symm ∇) u + η : (symm ∇) du/dt
+        #     = E : (symm ∇) u + η : (symm ∇) V
+        #     = E : (symm ∇) u + τ E : (symm ∇) V
+        #     =: ℒ(u) + τ ℒ(V)   [constitutive law]
+        #
+        #   V = ∂u/∂t + (a·∇) u   [velocity variable]
         #
         # where we have defined the constitutive linear operator
         #
-        #   ℒ = [2 μ + λ I tr] (symm ∇)
+        #   ℒ(...) = E : (symm ∇) (...)
         #
         # Note that now:
-        #   - The linear momentum balance has the same form as in Navier-Stokes.
-        #   - The constitutive equation does not explicitly mention the axial motion.
-        #   - The axial motion is incorporated by the equation connecting `V` and `u`.
+        #   - The linear momentum balance is similar in form to that of
+        #     Navier-Stokes, but the constitutive equation is different.
+        #   - The constitutive equation does not explicitly mention the axial
+        #     motion (no `a·∇` or `V·∇`); this is absorbed by the `V` on the RHS.
+        #   - The axial motion is incorporated in an extremely simple fashion
+        #     by the equation connecting `V` and `u`.
         #
         # ------------------------------------------------------------
         #
@@ -831,6 +870,433 @@ class EulerianSolid:
         # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))
 
         end()
+
+        it1 = sum(it1s)
+        it2 = sum(it2s)
+        it3 = sum(it3s)
+        return it1, it2, it3, ((_ + 1), e)
+
+    def commit(self) -> None:
+        """Commit the latest computed timestep, preparing for the next one.
+
+        This makes the latest computed solution the "old" solution for
+        the next timestep. The old "old" solution is discarded.
+        """
+        self.u_n.assign(self.u_)
+        self.v_n.assign(self.v_)
+        self.σ_n.assign(self.σ_)
+
+# --------------------------------------------------------------------------------
+
+class EulerianSolidAlternative:
+    """Like `EulerianSolid`, but with different splitting for the equations.
+
+    In this formulation, the velocity variable `v` is the material parcel
+    velocity in the co-moving frame (instead of just the Eulerian rate of
+    `u` as in `EulerianSolid`).
+
+    As in `EulerianSolid`, the primary variables are `v` and `σ`. In general,
+    boundary conditions must be specified for either `v` or `n·σ` on each
+    boundary.
+
+    If `V0 ≠ 0`, additionally `u` needs boundary conditions on the inflow part
+    of the boundary (i.e. on the part for which `(V0, 0) · n < 0`).
+    """
+    def __init__(self, V: VectorFunctionSpace,
+                 Q: TensorFunctionSpace,
+                 P: TensorFunctionSpace,
+                 ρ: float, λ: float, μ: float, τ: float,
+                 V0: float,
+                 bcu: typing.List[DirichletBC],
+                 bcv: typing.List[DirichletBC],
+                 bcσ: typing.List[DirichletBC],
+                 dt: float, θ: float = 0.5):
+        self.mesh = V.mesh()
+        if Q.mesh() is not V.mesh():
+            raise ValueError("V and Q must be defined on the same mesh.")
+
+        u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
+        w = TestFunction(V)
+        v = TrialFunction(V)
+        ψ = TestFunction(V)
+        σ = TrialFunction(Q)
+        φ = TestFunction(Q)
+
+        u_ = Function(V)  # suffix _: latest computed approximation
+        u_n = Function(V)  # suffix _n: old value (end of previous timestep)
+        v_ = Function(V)
+        v_n = Function(V)
+        σ_ = Function(Q)
+        σ_n = Function(Q)
+
+        self.V = V
+        self.Q = Q
+
+        # TODO: These were only used for manual patch-averaging; remove?
+        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)  # "DG" is a handy alias for "DP or DQ dep. on mesh"
+        self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
+
+        # TODO: This algorithm might not need `P`; remove if unused.
+        self.P = P
+        self.q = TestFunction(P)
+        self.εu = TrialFunction(P)
+        self.εv = TrialFunction(P)
+        self.εu_ = Function(P)
+        self.εv_ = Function(P)
+
+        self.u, self.v, self.σ = u, v, σ  # trials
+        self.w, self.ψ, self.φ = w, ψ, φ  # tests
+        self.u_, self.v_, self.σ_ = u_, v_, σ_  # latest computed approximation
+        self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
+
+        # Set up the null space. We'll remove it in the Krylov solver.
+        dim = self.mesh.topology().dim()
+        if dim == 2:
+            fus = [Constant((1, 0)),
+                   Constant((0, 1)),
+                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
+        elif dim == 3:
+            fus = [Constant((1, 0, 0)),
+                   Constant((0, 1, 0)),
+                   Constant((0, 0, 1)),
+                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
+                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
+                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
+        else:
+            raise NotImplementedError(f"dim = {dim}")
+
+        null_space_basis = [interpolate(fu, V).vector() for fu in fus]
+
+        basis = VectorSpaceBasis(null_space_basis)
+        basis.orthonormalize()
+        self.null_space = basis
+
+        # Dirichlet boundary conditions
+        self.bcu = bcu
+        self.bcv = bcv
+        self.bcσ = bcσ
+
+        # Local mesh size (for stabilization terms)
+        self.he = cell_mf_to_expression(meshsize(self.mesh))
+
+        # Velocity of co-moving frame (constant; to generalize,
+        # need to update formulation to include fictitious forces)
+        self.a = Constant((V0, 0))
+
+        # Specific body force (N / kg = m / s²). FEM function for maximum generality.
+        self.b = Function(V)
+        self.b.vector()[:] = 0.0  # placeholder value
+
+        # Parameters.
+        # TODO: use FEM fields, we will need these to be temperature-dependent.
+        # TODO: parameterize using the (rank-4) stiffness/viscosity tensors
+        #       (better for arbitrary symmetry group)
+        self._ρ = Constant(ρ)
+        self._λ = Constant(λ)
+        self._μ = Constant(μ)
+        self._τ = Constant(τ)
+        self._dt = Constant(dt)
+        self._θ = Constant(θ)
+
+        # Numerical stabilizer on/off flags.
+        self.stabilizers = EulerianSolidStabilizerFlags()
+
+        # SUPG stabilizer tuning parameter.
+        self._α0 = Constant(1)
+
+        # PDE system iteration parameters.
+        # User-configurable (`solver.maxit = ...`), but not a major advertised feature.
+        self.maxit = 100  # maximum number of system iterations per timestep
+        self.tol = 1e-8  # system iteration tolerance, ‖v - v_prev‖_H1 (over the whole domain)
+
+        self.compile_forms()
+
+    ρ = ufl_constant_property("ρ", doc="Density [kg / m³]")
+    λ = ufl_constant_property("λ", doc="Lamé's first parameter [Pa]")
+    μ = ufl_constant_property("μ", doc="Shear modulus [Pa]")
+    τ = ufl_constant_property("τ", doc="Kelvin-Voigt retardation time [s]")
+    dt = ufl_constant_property("dt", doc="Timestep [s]")
+    θ = ufl_constant_property("θ", doc="Time integration parameter of θ method")
+    α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
+
+    def compile_forms(self) -> None:
+        n = FacetNormal(self.mesh)
+
+        # Displacement
+        u = self.u      # new (unknown)
+        w = self.w      # test
+        u_ = self.u_    # latest available approximation
+        u_n = self.u_n  # old (end of previous timestep)
+
+        # Material parcel velocity in co-moving frame,  v = ∂u/∂t + (a·∇)u
+        v = self.v
+        ψ = self.ψ
+        v_ = self.v_
+        v_n = self.v_n
+
+        # Stress
+        σ = self.σ
+        φ = self.φ
+        σ_ = self.σ_
+        σ_n = self.σ_n
+
+        # Velocity field for axial motion
+        a = self.a
+
+        # Specific body force
+        b = self.b
+
+        # Local mesh size (for stabilization terms)
+        he = self.he
+
+        # Parameters
+        ρ = self._ρ
+        λ = self._λ
+        μ = self._μ
+        τ = self._τ
+        dt = self._dt
+        θ = self._θ
+        α0 = self._α0
+
+        enable_SUPG_flag = self.stabilizers._SUPG
+
+        def advw(a, p, q):
+            """Advection operator, weak form.
+
+            `a`: advection velocity (assumed divergence-free)
+            `p`: quantity being advected
+            `q`: test function of the quantity `p`
+
+            `p` and `q` must be at least C0.
+            """
+            return ((1 / 2) * (dot(dot(a, nabla_grad(p)), q) -
+                               dot(dot(a, nabla_grad(q)), p)) * dx +
+                               (1 / 2) * dot(n, a) * dot(p, q) * ds)
+        def advs(a, p):
+            """Advection operator, strong form (for SUPG residual).
+
+            `a`: advection velocity (assumed divergence-free)
+            `p`: quantity being advected
+
+            `a` and `p` must be at least C0.
+            """
+            return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
+
+        # Define variational problem
+        #
+        # The strong form of the equations we are discretizing is:
+        #
+        #   V = ∂u/∂t + (a·∇) u   [velocity variable]
+        #
+        #   σ = E : ε + η : dε/dt
+        #     = E : (symm ∇u) + η : d/dt (symm ∇u)
+        #     = E : (symm ∇) u + η : d/dt (symm ∇) u
+        #     = E : (symm ∇) u + η : (symm ∇) du/dt
+        #     = E : (symm ∇) u + η : (symm ∇) V
+        #     = E : (symm ∇) u + τ E : (symm ∇) V
+        #     =: ℒ(u) + τ ℒ(V)   [constitutive law]
+        #
+        #   ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b   [linear momentum balance]
+
+        # Step 1: ∂u/∂t + (a·∇)u = v  ->  obtain `u`
+        #
+        dudt = (u - u_n) / dt
+        V = (1 - θ) * v_n + θ * v_  # known ("new" value = latest iterate)
+        F_u = (dot(dudt, w) * dx +
+               advw(a, u, w) -
+               dot(V, w) * dx)   # skew-symmetric form for improved stability
+
+        # SUPG: streamline upwinding Petrov-Galerkin.
+        def mag(vec):
+            return dot(vec, vec)**(1 / 2)
+        τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s  # TODO: tune value
+        # The residual is evaluated elementwise in strong form, at the end of the timestep.
+        R = ((u - u_n) / dt + advs(a, u) - v_)
+        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
+        F_u += F_SUPG
+
+        # Step 2: solve `σ`, using `u` from step 1 (and the latest available `v`)
+        #
+        # TODO:
+        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
+        #    - Need a FEM field for temperature T, and parameters α and T0
+        #  - Add viscothermal effects, see eq. (768) in report
+        #  - Orthotropic linear elastic
+        #  - Orthotropic Kelvin-Voigt
+        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+
+        # θ integration:
+        U = (1 - θ) * u_n + θ * u_  # known
+        V = (1 - θ) * v_n + θ * v_  # known
+        Σ = (1 - θ) * σ_n + θ * σ   # unknown!
+
+        # VISUALIZATION PURPOSES ONLY
+        #
+        # Step 1½: Project the strains into a C0 space - this makes them once differentiable.
+        εu = self.εu  # unknown
+        εv = self.εv
+        q = self.q
+        F_εu = inner(εu, q) * dx - inner(ε(U), sym(q)) * dx
+        F_εv = inner(εv, q) * dx - inner(ε(V), sym(q)) * dx
+
+        # # After strain projection:
+        # εu_ = self.εu_  # known, at the "θ-point" in time
+        # εv_ = self.εv_
+        # Id = Identity(εu_.geometric_dimension())
+        # K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        # K_inner_εu_ = K_inner_operator(εu_)
+        # K_inner_εv_ = K_inner_operator(εv_)
+
+        # Original definitions for step 2, no projection
+        εu_ = ε(U)
+        εv_ = ε(V)
+        Id = Identity(εu_.geometric_dimension())
+        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        K_inner_εu_ = K_inner_operator(εu_)
+        K_inner_εv_ = K_inner_operator(εv_)
+
+        # Choose constitutive model
+        #
+        # For Kelvin-Voigt:
+        #
+        #   σ = E : ε + η : dε/dt
+        #     = E : (symm ∇u) + η : d/dt (symm ∇u)
+        #     = E : (symm ∇) u + η : d/dt (symm ∇) u
+        #     = E : (symm ∇) u + η : (symm ∇) du/dt
+        #     = E : (symm ∇) u + η : (symm ∇) V
+        #     = E : (symm ∇) u + τ E : (symm ∇) V
+        #     =: ℒ(u) + τ ℒ(V)   [constitutive law]
+        #
+        if self.τ == 0.0:  # Linear elastic (LE)
+            F_σ = (inner(Σ, φ) * dx -
+                   inner(K_inner_εu_, sym(φ)) * dx)
+        else:  # Axially moving Kelvin-Voigt (KV)
+            # No transport term, because `v` already contains the transport effects.
+            F_σ = (inner(Σ, φ) * dx -
+                   inner(K_inner_εu_ + τ * K_inner_εv_, sym(φ)) * dx)
+
+        # Step 3: solve `v` from momentum equation
+        #
+        #   ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
+        #
+        # θ integration:
+        dvdt = (v - v_n) / dt
+        U = (1 - θ) * u_n + θ * u_  # known
+        V = (1 - θ) * v_n + θ * v   # unknown!
+        Σ = (1 - θ) * σ_n + θ * σ_  # known
+        F_v = (ρ * dot(dvdt, ψ) * dx +
+               ρ * advw(a, V, ψ) +
+               inner(Σ.T, ε(ψ)) * dx -
+               dot(dot(n, Σ), ψ) * ds -
+               ρ * dot(b, ψ) * dx)
+
+        # SUPG: streamline upwinding Petrov-Galerkin.
+        def mag(vec):
+            return dot(vec, vec)**(1 / 2)
+        τ_SUPG = (α0 / self.V.ufl_element().degree()) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s  # TODO: tune value
+        # The residual is evaluated elementwise in strong form, at the end of the timestep.
+        R = (ρ * ((v - v_n) / dt + advs(a, v)) - div(σ_) - ρ * b)
+        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
+        F_v += F_SUPG
+
+        self.a_εu = lhs(F_εu)
+        self.L_εu = rhs(F_εu)
+        self.a_εv = lhs(F_εv)
+        self.L_εv = rhs(F_εv)
+
+        self.a_u = lhs(F_u)
+        self.L_u = rhs(F_u)
+        self.a_σ = lhs(F_σ)
+        self.L_σ = rhs(F_σ)
+        self.a_v = lhs(F_v)
+        self.L_v = rhs(F_v)
+
+    def step(self) -> typing.Tuple[int, int, int, typing.Tuple[int, float]]:
+        """Take a timestep of length `self.dt`.
+
+        Updates the latest computed solution.
+        """
+        def errnorm(u, u_prev, norm_type):
+            e = Function(self.V)
+            e.assign(u)
+            e.vector().axpy(-1.0, u_prev.vector())
+            return norm(e, norm_type=norm_type, mesh=self.mesh)
+
+        begin("Solve timestep")
+
+        v_prev = Function(self.V)
+        it1s = []
+        it2s = []
+        it3s = []
+        for _ in range(self.maxit):
+            v_prev.assign(self.v_)  # convergence monitoring
+
+            # Step 1: update `u`
+            A1 = assemble(self.a_u)
+            b1 = assemble(self.L_u)
+            [bc.apply(A1) for bc in self.bcu]
+            [bc.apply(b1) for bc in self.bcu]
+            it1s.append(solve(A1, self.u_.vector(), b1, 'bicgstab', 'hypre_amg'))
+
+            # Step 2: update `σ`
+            #
+            # A2a = assemble(self.a_εu)
+            # b2a = assemble(self.L_εu)
+            # solve(A2a, self.εu_.vector(), b2a, 'bicgstab', 'sor')
+            # A2b = assemble(self.a_εv)
+            # b2b = assemble(self.L_εv)
+            # solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
+
+            A2 = assemble(self.a_σ)
+            b2 = assemble(self.L_σ)
+            [bc.apply(A2) for bc in self.bcσ]
+            [bc.apply(b2) for bc in self.bcσ]
+            it2s.append(solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor'))
+
+            # Step 3: tonight's main event (solve momentum equation for `v`)
+            A3 = assemble(self.a_v)
+            b3 = assemble(self.L_v)
+            [bc.apply(A3) for bc in self.bcv]
+            [bc.apply(b3) for bc in self.bcv]
+            if not self.bcv:
+                A3_PETSc = as_backend_type(A3)
+                A3_PETSc.set_near_nullspace(self.null_space)
+                A3_PETSc.set_nullspace(self.null_space)
+                # TODO: What goes wrong here? Is it that the null space of the other linear models
+                # is subtly different from the null space of the linear elastic model? So telling
+                # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
+                # the load function against the wrong null space corrupts the loading?
+                self.null_space.orthogonalize(b3)
+            it3s.append(solve(A3, self.v_.vector(), b3, 'bicgstab', 'hypre_amg'))
+
+            # e = errornorm(self.v_, v_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
+            e = errnorm(self.v_, v_prev, "h1")
+            if e < self.tol:
+                break
+
+            # # relaxation / over-relaxation to help system iteration converge - does not seem to help here
+            # import dolfin
+            # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
+            #     print(f"After iteration {(_ + 1)}: ‖v - v_prev‖_H1 = {e}")
+            # if e < 1e-3:
+            #     γ = 1.05
+            #     self.v_.vector()[:] = (1 - γ) * v_prev.vector()[:] + γ * self.v_.vector()[:]
+
+        # # DEBUG: do we have enough boundary conditions in the discrete system?
+        # import numpy as np
+        # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
+        # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))
+
+        end()
+
+        # VISUALIZATION PURPOSES ONLY
+        A2a = assemble(self.a_εu)
+        b2a = assemble(self.L_εu)
+        solve(A2a, self.εu_.vector(), b2a, 'bicgstab', 'sor')
+        A2b = assemble(self.a_εv)
+        b2b = assemble(self.L_εv)
+        solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
 
         it1 = sum(it1s)
         it2 = sum(it2s)
