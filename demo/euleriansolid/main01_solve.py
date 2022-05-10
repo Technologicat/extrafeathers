@@ -342,7 +342,8 @@ with timer() as tim:
     prep_Q2 = plotmagic.mpiplot_prepare(tmp.sub(2))
     prep_Q3 = plotmagic.mpiplot_prepare(tmp.sub(3))
 
-    tmp = Function(solver.QdG0)
+    QdG0 = TensorFunctionSpace(mesh, "DG", 0)
+    tmp = Function(QdG0)
     prep_QdG0_0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_QdG0_1 = plotmagic.mpiplot_prepare(tmp.sub(1))
     prep_QdG0_2 = plotmagic.mpiplot_prepare(tmp.sub(2))
@@ -357,7 +358,7 @@ with timer() as tim:
     tmp = Function(Vscalar)
     prep_Vscalar = plotmagic.mpiplot_prepare(tmp)
 
-    QdG0scalar = solver.QdG0.sub(0).collapse()
+    QdG0scalar = QdG0.sub(0).collapse()
     tmp = Function(QdG0scalar)
     prep_QdG0scalar = plotmagic.mpiplot_prepare(tmp)
 if my_rank == 0:

@@ -928,11 +928,7 @@ class EulerianSolidAlternative:
         self.V = V
         self.Q = Q
 
-        # TODO: These were only used for manual patch-averaging; remove?
-        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)  # "DG" is a handy alias for "DP or DQ dep. on mesh"
-        self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
-
-        # TODO: This algorithm might not need `P`; remove if unused.
+        # This algorithm uses `P` only for strain visualization.
         self.P = P
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
