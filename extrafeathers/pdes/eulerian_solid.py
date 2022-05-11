@@ -1163,10 +1163,11 @@ class EulerianSolidAlternative:
         # Step 1: ∂u/∂t + (a·∇)u = v  ->  obtain `u`
         #
         dudt = (u - u_n) / dt
+        U = (1 - θ) * u_n + θ * u   # unknown!
         V = (1 - θ) * v_n + θ * v_  # known ("new" value = latest iterate)
         F_u = (dot(dudt, w) * dx +
-               advw(a, u, w, n) -
-               dot(V, w) * dx)   # skew-symmetric form for improved stability
+               advw(a, U, w, n) -
+               dot(V, w) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
         # The residual is evaluated elementwise in strong form,
