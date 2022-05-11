@@ -1292,8 +1292,10 @@ class EulerianSolidAlternative:
             # Step 1: update `u`
             A1 = assemble(self.a_u)
             b1 = assemble(self.L_u)
-            [bc.apply(A1) for bc in self.bcu]
-            [bc.apply(b1) for bc in self.bcu]
+            # Inflow boundary conditions: only needed in axially moving case
+            if self.V0 != 0:
+                [bc.apply(A1) for bc in self.bcu]
+                [bc.apply(b1) for bc in self.bcu]
             it1s.append(solve(A1, self.u_.vector(), b1, 'bicgstab', 'hypre_amg'))
 
             # Step 2: update `σ`
