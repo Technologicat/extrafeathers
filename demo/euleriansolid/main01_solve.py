@@ -24,7 +24,7 @@ from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
 
-from extrafeathers.pdes import (EulerianSolid,
+from extrafeathers.pdes import (EulerianSolid,  # noqa: F401
                                 EulerianSolidAlternative,
                                 SteadyStateEulerianSolid)
 from extrafeathers.pdes.eulerian_solid import ε
