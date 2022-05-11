@@ -1064,6 +1064,7 @@ class EulerianSolidAlternative:
 
         # Velocity of co-moving frame (constant; to generalize,
         # need to update formulation to include fictitious forces)
+        self.V0 = V0
         self.a = Constant((V0, 0))
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
