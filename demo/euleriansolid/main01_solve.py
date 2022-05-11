@@ -115,10 +115,6 @@ if my_rank == 0:
 u0_expr = None  # needed only in one example case
 u0_func = lambda t: 0.0
 if dynamic:
-    # For `EulerianSolidAlternative`: inflow BCs for `u`
-    bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    bcu.append(bcu_left)
-
     # Top and bottom edges: zero normal stress
     #
     # Need `method="geometric"` to detect boundary DOFs on discontinuous spaces.
@@ -140,11 +136,12 @@ if dynamic:
 
     # # Left and right edges: fixed displacement
     #
-    # # Our mass-lumped formulation takes no BCs for `u` (which is simply the time integral of `v`);
-    # # instead, set an initial condition on `u`, and set `v = 0` at the fixed boundaries.
-    # #
-    # # Note that the solver might not converge, if the initial `u` is far from a valid state.
-    # # Furthermore, for some initial states, Kelvin-Voigt might converge, but linear elastic might not.
+    # # Our mass-lumped formulation takes no BCs for `u` (which is simply the
+    # # time integral of `v`); instead, set an initial condition on `u`, and
+    # # set `v = 0` at the fixed boundaries. Note that the solver might not
+    # # converge, if the initial `u` is far from a valid state. Furthermore,
+    # # for some initial states, Kelvin-Voigt might converge, but linear
+    # # elastic might not.
     # #
     # from fenics import Expression
     # # # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]²
@@ -161,14 +158,28 @@ if dynamic:
     # bcv.append(bcv_right)
 
     # # Left and right edges: fixed speed (strain-controlled pull)
-    # # Here `u` starts from zero, because the initial field is not specified. This is always a valid initial state.
+    # # Here `u` starts from zero, because the initial field is not specified.
+    # # This is always a valid initial state.
+    # #
+    # # For `EulerianSolidAlternative`, we still need inflow BCs for `u`.
+    # # We set `u` consistently with the strain-controlled pull.
+    # #
+    # from fenics import Expression
+    # # u0_func = lambda t: -1e-2 * t
+    # u0_func = lambda t: 0.0
+    # u0_expr = Expression(("u0", "0"), degree=1, u0=u0_func(0.0))
+    # bcu_left = DirichletBC(V, u0_expr, boundary_parts, Boundaries.LEFT.value)
+    # bcu.append(bcu_left)
     # bcv_left = DirichletBC(V, Constant((-1e-2, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
     # bcv_right = DirichletBC(V, Constant((+1e-2, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
     # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    # Here the initial field for `u` is zero, so it does not need to be specified.
+    # Here the initial field for `u` is zero, so it does not need to be specified...
+    # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
+    bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    bcu.append(bcu_left)
     bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
     bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
     bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
@@ -179,6 +190,7 @@ if dynamic:
     bcσ.append(bcσ_right3)
 
     # # Left and right edges: constant pull at both ends
+    # # TODO: does not work yet, rigid-body mode remover needs work
     # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
     # bcσ_left2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ12
     # bcσ_left3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ21 (symm.)
@@ -769,6 +781,10 @@ for n in range(nt):
 
     # Update current time
     t += dt
+
+    # Update value in time-dependent boundary condition
+    if u0_expr:
+        u0_expr.u0 = u0_func(t)
 
     # Solve one timestep
     krylov_it1, krylov_it2, krylov_it3, (system_it, last_diff_H1) = solver.step()
