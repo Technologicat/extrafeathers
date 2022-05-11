@@ -112,6 +112,8 @@ if my_rank == 0:
 # --------------------------------------------------------------------------------
 # For dynamic solver
 
+u0_expr = None  # needed only in one example case
+u0_func = lambda t: 0.0
 if dynamic:
     # For `EulerianSolidAlternative`: inflow BCs for `u`
     bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
