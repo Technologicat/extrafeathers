@@ -2,21 +2,7 @@
 """
 Axially moving solid, Eulerian view, small-displacement regime (on top of axial motion).
 
-  ρ dV/dt - ∇·transpose(σ) = ρ b
-
-where `V` is the material parcel velocity, and `d/dt` is the material derivative.
-This is approximated as
-
-  dV/dt ≈ [∂²u/∂t² + 2 (a·∇) ∂u/∂t + (a·∇)(a·∇)u]
-
-where `a` is the (constant) velocity of the co-moving frame.
-
-`u` is then the displacement in the laboratory frame, on top of the imposed
-constant-velocity axial motion.
-
-We solve in mixed form, because for Kelvin-Voigt and SLS, the axial motion
-introduces a third derivative in the strong form (in the mixed form,
-appearing as a spatial derivative of ε in the constitutive equation for σ).
+Mixed formulation based on standard C0-continuous elements.
 """
 
 __all__ = ["EulerianSolid",
@@ -259,6 +245,50 @@ class EulerianSolid:
 
     For LBB-condition-related reasons, the space `Q` must be much larger than `V`; both
     {V=Q1, Q=Q2} and {V=Q1, Q=Q3} have been tested to work and to yield similar results.
+
+    The formulation used here is perhaps the most straightforward Eulerian formulation
+    for an axially moving continuum. In the momentum balance equation:
+
+        ρ dV/dt - ∇·σ = ρ b
+
+    we use an Eulerian representation for the material parcel acceleration
+    in the laboratory frame:
+
+        dV/dt ≈ [∂²u/∂t² + 2 (a·∇) ∂u/∂t + (a·∇)(a·∇) u]
+
+    This leads to
+
+        ρ ∂²u/∂t² + 2 ρ (a·∇) ∂u/∂t + ρ (a·∇)(a·∇)u - ∇·σ = ρ b
+
+    where, for Kelvin-Voigt (linear elastic as special case τ = 0):
+
+        σ = E : ε + η : dε/dt
+          = E : (symm ∇u) + η : d/dt (symm ∇u)
+          = E : (symm ∇) u + η : d/dt (symm ∇) u
+          = E : (symm ∇) u + η : (symm ∇) du/dt
+          = E : (symm ∇) u + η : (symm ∇) (∂u/∂t + (a·∇)) u
+          = E : (symm ∇) u + η : [(symm ∇) v + (a·∇) u]
+          = E : (symm ∇) u + τ E : [(symm ∇) v + (symm ∇) (a·∇) u]
+          = E : (symm ∇) u + τ E : [(symm ∇) v + (a·∇) (symm ∇) u]
+          = E : ε + τ E : [(symm ∇) v + (a·∇) ε]
+
+    and we have defined
+
+        v := ∂u/∂t
+
+    i.e. our velocity-like variable is the Eulerian rate of displacement.
+
+    The displacement `u` is an Eulerian field, measured with respect to a
+    reference state where the material travels at constant axial velocity.
+
+    This formulation requires integration by parts on the right-hand side of the
+    weak-form constitutive equation to get rid of the second derivative of `u`.
+
+    Also, numerical stability is improved by a practical trick: we project
+    `(symm ∇) u` and `(symm ∇) v` into a C0 continuous space before using
+    the data in the constitutive equation. This allows us to actually integrate
+    by parts in only "half" of the `(a·∇) ε` term, enabling the use of the
+    numerically more stable skew-symmetric advection discretization.
 
     Near-term future plans (when I next have time to work on this project) include
     extending this to support SLS (the standard linear solid); this should be a fairly
@@ -985,7 +1015,45 @@ class EulerianSolidAlternative:
     boundary.
 
     If `V0 ≠ 0`, additionally `u` needs boundary conditions on the inflow part
-    of the boundary (i.e. on the part for which `(V0, 0) · n < 0`).
+    of the boundary (i.e. on the part for which `a·n < 0`, where `a := (V0, 0)`).
+
+    The formulation used here is based on an alternative choice for the
+    velocity-like variable. In the momentum balance for a continuum:
+
+        ρ dV/dt - ∇·σ = ρ b
+
+    we take the material parcel velocity, as measured against the co-moving
+    frame, as our velocity-like variable:
+
+        V := du/dt
+           = ∂u/∂t + (a·∇) u
+
+    In the laboratory frame, this leads to
+
+        ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
+
+    where, for Kelvin-Voigt (linear elastic as special case τ = 0):
+
+        σ = E : ε + η : dε/dt
+          = E : (symm ∇u) + η : d/dt (symm ∇u)
+          = E : (symm ∇) u + η : d/dt (symm ∇) u
+          = E : (symm ∇) u + η : (symm ∇) du/dt
+          = E : (symm ∇) u + η : (symm ∇) V
+          = E : (symm ∇) u + τ E : (symm ∇) V
+          =: ℒ(u) + τ ℒ(V)
+
+    Although the constitutive law has the same form as the standard Lagrangean
+    one, it is actually Eulerian; both `u` and `V` are represented using
+    Eulerian fields, and also the ∇ is taken in spatial coordinates.
+
+    This formulation resembles Navier-Stokes, but for solids. The displacement,
+    needed in the constitutive law, is updated based on the velocity by solving
+    the first-order transport PDE
+
+        ∂u/∂t + (a·∇) u = V
+
+    The displacement `u` is an Eulerian field, measured with respect to a
+    reference state where the material travels at constant axial velocity.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
