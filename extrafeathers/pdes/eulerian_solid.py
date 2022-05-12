@@ -50,57 +50,97 @@ def advw(a, u, v, n, *, mode="divergence-free"):
             This affects the form produced.
 
     Return value is an UFL form representing the advection term.
+
+
+    **Background**:
+
+    Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has
+    become standard to discretize the advection operator in Navier-Stokes
+    in this skew-symmetric weak form:
+
+      (1/2) a · [∇u · v - ∇v · u] dx
+
+    which in the strong form is equivalent with replacing the advection term
+
+      (a·∇) u
+
+    by the modified term
+
+      (a·∇) u  +  (1/2) (∇·a) u
+
+    This is consistent when `div(a) ≡ 0`, and in Navier-Stokes, necessary for
+    unconditional time stability for schemes that are able to provide it.
+
+    To see the equivalence, consider the conversion of the modified term
+    into weak form:
+
+       ((a·∇) u) · v dx  +  (1/2) (∇·a) u · v dx
+
+    Observing that
+
+       ∂i (ai uk vk) = (∂i ai) uk vk + ai ∂i (uk vk)
+       ∇·(a (u · v)) = (∇·a) u · v  +  a · ∇(u · v)
+
+    we use the divergence theorem in the last term of the weak form, obtaining
+
+       (a·∇) u · v dx  -  (1/2) a · ∇(u · v) dx  +  (1/2) n · a (u · v) ds
+
+    Furthermore, noting that
+
+       a · ∇(u · v) = ai ∂i (uk vk)
+                     = ai (∂i uk) vk + ai uk (∂i vk)
+                     = a · ∇u · v  +  a · ∇v · u
+                     = a · [∇u · v + ∇v · u]
+
+    and
+
+       ((a·∇) u) · v = ((ai ∂i) uk) vk = ai (∂i uk) vk = a · ∇u · v
+
+    we have the terms
+
+         a · ∇u · v dx
+       - (1/2) a · [∇u · v + ∇v · u] dx
+       + (1/2) n · a (u · v) ds
+
+    Cleaning up, we obtain
+
+       (1/2) a · [∇u · v - ∇v · u] dx  +  (1/2) n · a (u · v) ds
+
+    as claimed. Keep in mind the boundary term, which contributes on boundaries
+    through which there is flow (i.e. inlets and outlets) - we do not want to
+    introduce an extra boundary condition. This is why this routine returns
+    a UFL **form**; this generates both interior and boundary terms.
+
+    Another way to view the role of the extra term in the skew-symmetric form is to
+    consider the Helmholtz decomposition of the advection velocity `a`:
+
+      a = ∇φ + ∇×A
+
+    where `φ` is a scalar potential (for the irrotational part) and `A` is a
+    vector potential (for the divergence-free part). We have
+
+      (∇·a) = ∇·∇φ + ∇·∇×A = ∇²φ + 0
+
+    so the extra term is proportional to the laplacian of the scalar potential:
+
+      (∇·a) u = (∇²φ) u
+
+
+    If `mode="general"`, i.e. `div(a) ≢ 0` is allowed, this routine uses the form
+
+        [(a·∇) u + (1/2) (∇·a) u] - (1/2) (∇·a) u
+
+    The integration by parts absorbs the first `(1/2) (∇·a) u`; the second one is
+    converted to weak form simply as `∫ (1/2) (∇·a) u v dx`. Thus, in general mode,
+    an extra symmetric term is produced.
+
+
+    References:
+        Jean Donea and Antonio Huerta. 2003. Finite Element Methods
+        for Flow Problems. Wiley. ISBN 0-471-49666-9.
     """
     if mode not in ("general", "divergence-free"):
         raise ValueError(f"Expected `mode` to be one of 'general', 'divergence-free'; got {mode}")
-
-    # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has
-    # become standard to use this skew-symmetric weak form:
-    #   (1/2) a · [∇u · v - ∇v · u] dx
-    # which in the strong form is equivalent with replacing the convective term
-    #   (a·∇) u
-    # by the modified term
-    #   (a·∇) u  +  (1/2) (∇·a) u
-    # This is consistent when `div(a) ≡ 0`, and in Navier-Stokes, necessary for
-    # unconditional time stability for schemes that are able to provide it.
-    #
-    # To see this equivalence, consider the conversion of the modified term
-    # into weak form:
-    #    ((a·∇) u) · v dx  +  (1/2) (∇·a) u · v dx
-    # Observing that
-    #    ∂i (ai uk vk) = (∂i ai) uk vk + ai ∂i (uk vk)
-    #    ∇·(a (u · v)) = (∇·a) u · v  +  a · ∇(u · v)
-    # we use the divergence theorem in the last term of the weak form, obtaining
-    #    (a·∇) u · v dx  -  (1/2) a · ∇(u · v) dx  +  (1/2) n · a (u · v) ds
-    # Furthermore, noting that
-    #    a · ∇(u · v) = ai ∂i (uk vk)
-    #                  = ai (∂i uk) vk + ai uk (∂i vk)
-    #                  = a · ∇u · v  +  a · ∇v · u
-    #                  = a · [∇u · v + ∇v · u]
-    # and
-    #    ((a·∇) u) · v = ((ai ∂i) uk) vk = ai (∂i uk) vk = a · ∇u · v
-    # we have the terms
-    #      a · ∇u · v dx
-    #    - (1/2) a · [∇u · v + ∇v · u] dx
-    #    + (1/2) n · a (u · v) ds
-    # Cleaning up, we obtain
-    #    (1/2) a · [∇u · v - ∇v · u] dx  +  (1/2) n · a (u · v) ds
-    # as claimed. Keep in mind the boundary term, which contributes on boundaries
-    # through which there is flow (i.e. inlets and outlets) - we do not want to
-    # introduce an extra boundary condition.
-    #
-    # Another way to view the role of the extra term in the skew-symmetric form is to
-    # consider the Helmholtz decomposition of the convection velocity `a`:
-    #   a = ∇φ + ∇×A
-    # where φ is a scalar potential (for the irrotational part) and A is a
-    # vector potential (for the divergence-free part). We have
-    #   (∇·a) = ∇·∇φ + ∇·∇×A = ∇²φ + 0
-    # so the extra term is proportional to the laplacian of the scalar potential:
-    #   (∇·a) u = (∇²φ) u
-    #
-    # References:
-    #     Jean Donea and Antonio Huerta. 2003. Finite Element Methods
-    #     for Flow Problems. Wiley. ISBN 0-471-49666-9.
 
     if mode == "general":
         # This is the weak form of `[(a·∇) u + (1/2) (∇·a) u] - (1/2) (∇·a) u`,
