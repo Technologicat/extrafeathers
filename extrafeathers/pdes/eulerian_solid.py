@@ -1169,12 +1169,11 @@ class EulerianSolidAlternative:
                advw(a, U, w, n) -
                dot(V, w) * dx)
 
-        # SUPG: streamline upwinding Petrov-Galerkin.
-        # The residual is evaluated elementwise in strong form,
-        # at the end of the timestep.
+        # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
         deg = Constant(self.V.ufl_element().degree())
         τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
-        R = ((u - u_n) / dt + advs(a, u) - v_)
+        # R = ((u - u_n) / dt + advs(a, u) - v_)  # end of timestep
+        R = ((u - u_n) / dt + advs(a, U) - V)  # consistent (θ-point in time)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
         F_u += F_SUPG
 
@@ -1234,9 +1233,7 @@ class EulerianSolidAlternative:
                inner(Σ.T, ε(ψ)) * dx - dot(dot(n, Σ), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
-        # SUPG: streamline upwinding Petrov-Galerkin.
-        # The residual is evaluated elementwise in strong form,
-        # at the end of the timestep.
+        # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
         deg = Constant(self.V.ufl_element().degree())
         # # Very basic scaling; the resulting τ_SUPG is perhaps too large
         # # (excessive diffusion along streamlines of `a`).
@@ -1248,7 +1245,8 @@ class EulerianSolidAlternative:
         # the representative second-order coefficient.
         moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
         τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
-        R = (ρ * ((v - v_n) / dt + advs(a, v)) - div(σ_) - ρ * b)
+        # R = (ρ * ((v - v_n) / dt + advs(a, v)) - div(σ_) - ρ * b)  # end of timestep
+        R = (ρ * ((v - v_n) / dt + advs(a, V)) - div(Σ) - ρ * b)  # consistent (θ-point in time)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
         F_v += F_SUPG
 
