@@ -47,16 +47,16 @@ def mag(vec):
     """UFL expression for the magnitude of vector `vec`."""
     return dot(vec, vec)**(1 / 2)
 
-def advw(a, p, q, n, *, mode="divergence-free"):
+def advw(a, u, v, n, *, mode="divergence-free"):
     """Advection operator, skew-symmetric weak form.
 
     The skew-symmetric form typically improves numerical stability,
     especially for divergence-free advection velocity fields.
 
     `a`: advection velocity vector field
-    `p`: quantity being advected
-    `q`: test function of the quantity `p`
-         `p` and `q` must be at least C0-continuous.
+    `u`: quantity being advected
+    `v`: test function of the quantity `u`
+         `u` and `v` must be at least C0-continuous.
     `n`: facet normal of mesh
 
     `mode`: one of "general" or "divergence-free".
@@ -68,9 +68,6 @@ def advw(a, p, q, n, *, mode="divergence-free"):
     if mode not in ("general", "divergence-free"):
         raise ValueError(f"Expected `mode` to be one of 'general', 'divergence-free'; got {mode}")
 
-    # TODO: Notation. For now, excuse the `u` and `v` instead of `p` and `q`,
-    # TODO: respectively.
-    #
     # Donea & Huerta (2003, sec. 6.7.1) remark that in the 2000s, it has
     # become standard to use this skew-symmetric weak form:
     #   (1/2) a · [∇u · v - ∇v · u] dx
@@ -120,27 +117,27 @@ def advw(a, p, q, n, *, mode="divergence-free"):
     #     for Flow Problems. Wiley. ISBN 0-471-49666-9.
 
     if mode == "general":
-        # This is the weak form of `[(a·∇) p + (1/2) (∇·a) p] - (1/2) (∇·a) p`,
-        # where the first `(1/2) (∇·a) p` is absorbed by the integration by parts.
-        return (1 / 2) * ((dot(dot(a, nabla_grad(p)), q) -
-                           dot(dot(a, nabla_grad(q)), p)) * dx +
-                          dot(n, a) * dot(p, q) * ds -
-                          div(a) * p * q * dx)  # the second (1/2) (∇·a) p
+        # This is the weak form of `[(a·∇) u + (1/2) (∇·a) u] - (1/2) (∇·a) u`,
+        # where the first `(1/2) (∇·a) u` is absorbed by the integration by parts.
+        return (1 / 2) * ((dot(dot(a, nabla_grad(u)), v) -
+                           dot(dot(a, nabla_grad(v)), u)) * dx +
+                          dot(n, a) * dot(u, v) * ds -
+                          div(a) * u * v * dx)  # the second (1/2) (∇·a) u
     else:  # mode == "divergence-free":
-        # This is the skew-symmetric weak form of `(a·∇) p + (1/2) (∇·a) p`,
+        # This is the skew-symmetric weak form of `(a·∇) u + (1/2) (∇·a) u`,
         # intended to be used when `div(a) ≡ 0`.
-        return (1 / 2) * ((dot(dot(a, nabla_grad(p)), q) -
-                           dot(dot(a, nabla_grad(q)), p)) * dx +
-                           dot(n, a) * dot(p, q) * ds)
+        return (1 / 2) * ((dot(dot(a, nabla_grad(u)), v) -
+                           dot(dot(a, nabla_grad(v)), u)) * dx +
+                           dot(n, a) * dot(u, v) * ds)
 
-def advs(a, p, *, mode="divergence-free"):
+def advs(a, u, *, mode="divergence-free"):
     """Advection operator, strong form (for SUPG residual).
 
     Corresponds to the weak form produced by `advw`, which see.
 
     `a`: advection velocity
-    `p`: quantity being advected
-         `a` and `p` must be at least C0-continuous.
+    `u`: quantity being advected
+         `a` and `u` must be at least C0-continuous.
     `mode`: like `mode` of `advw`.
 
     Return value is an UFL expression representing the advection term.
@@ -150,16 +147,16 @@ def advs(a, p, *, mode="divergence-free"):
 
     if mode == "general":
         # Here the modifications cancel in the strong form;
-        # we both add and subtract `(1/2) (∇·a) p`.
-        return dot(a, nabla_grad(p))
+        # we both add and subtract `(1/2) (∇·a) u`.
+        return dot(a, nabla_grad(u))
     else:  # mode == "divergence-free":
-        # To match `advw`, we must include the `(1/2) (∇·a) p` term that was added,
+        # To match `advw`, we must include the `(1/2) (∇·a) u` term that was added,
         # in case `a` is not actually exactly divergence-free.
         #
         # `advs` is most often used for computing the residual in SUPG
         # stabilization, so it needs to see the numerical error caused
         # by any nonzero values in the field `div(a)`.
-        return dot(a, nabla_grad(p)) + (1 / 2) * div(a) * p
+        return dot(a, nabla_grad(u)) + (1 / 2) * div(a) * u
 
 def ε(u):
     """Symmetric gradient of the displacement `u`, a.k.a. the infinitesimal (Cauchy) strain.
