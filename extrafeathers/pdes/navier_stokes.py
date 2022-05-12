@@ -20,7 +20,7 @@ import typing
 from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     Function, TrialFunction, TestFunction, Expression,
                     Constant, FacetNormal,
-                    dot, inner, sym,
+                    dot, inner,
                     nabla_grad, div, dx, ds,
                     Identity,
                     lhs, rhs, assemble, solve, project,
@@ -28,43 +28,9 @@ from fenics import (FunctionSpace, VectorFunctionSpace, DirichletBC,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
+from .numutil import ε, advw, advs, mag
 from .util import ufl_constant_property, StabilizerFlags
 
-
-def ε(u):
-    """Symmetric gradient of the velocity field `u`.
-
-        (symm ∇)(u) = (1/2) (∇u + transpose(∇u))
-
-    Despite the name "ε", this is the *strain rate*  dε/dt,
-    where `d/dt` denotes the *material derivative*.
-
-    This method returns a UFL expression for the whole symmetric gradient.
-    If you want to plot, extract and interpolate or project what you need.
-    For example, to plot ε11::
-
-        from fenics import interpolate, plot
-
-        # scalar function space
-        W = V.sub(0).collapse()
-        # W = FunctionSpace(mesh, 'P', 2)  # can do this, too
-
-        ε = ε(solver.u_)
-        ε11 = ε.sub(0)
-        plot(interpolate(ε11, W))
-
-    Note in FEniCS the tensor components are indexed linearly,
-    storage is by row. E.g. in 2D::
-
-        ε11 = ε.sub(0)
-        ε12 = ε.sub(1)
-        ε21 = ε.sub(2)
-        ε22 = ε.sub(3)
-
-    See:
-        https://fenicsproject.org/qa/4458/how-can-i-get-two-components-of-a-tensorfunction/
-    """
-    return sym(nabla_grad(u))
 
 def σ(u, p, μ):
     """Stress tensor of isotropic Newtonian fluid.
@@ -419,44 +385,6 @@ class NavierStokes:
         # This is consistent for an incompressible flow, and necessary for
         # unconditional time stability for schemes that are able to provide it.
         #
-        # To see this equivalence, consider the conversion of the modified term
-        # into weak form:
-        #    ((a·∇) u) · v dx  +  (1/2) (∇·a) u · v dx
-        # Observing that
-        #    ∂i (ai uk vk) = (∂i ai) uk vk + ai ∂i (uk vk)
-        #    ∇·(a (u · v)) = (∇·a) u · v  +  a · ∇(u · v)
-        # we use the divergence theorem in the last term of the weak form, obtaining
-        #    (a·∇) u · v dx  -  (1/2) a · ∇(u · v) dx  +  (1/2) n · a (u · v) ds
-        # Furthermore, noting that
-        #    a · ∇(u · v) = ai ∂i (uk vk)
-        #                  = ai (∂i uk) vk + ai uk (∂i vk)
-        #                  = a · ∇u · v  +  a · ∇v · u
-        #                  = a · [∇u · v + ∇v · u]
-        # and
-        #    ((a·∇) u) · v = ((ai ∂i) uk) vk = ai (∂i uk) vk = a · ∇u · v
-        # we have the terms
-        #      a · ∇u · v dx
-        #    - (1/2) a · [∇u · v + ∇v · u] dx
-        #    + (1/2) n · a (u · v) ds
-        # Cleaning up, we obtain
-        #    (1/2) a · [∇u · v - ∇v · u] dx  +  (1/2) n · a (u · v) ds
-        # as claimed. Keep in mind the boundary term, which contributes on boundaries
-        # through which there is flow (i.e. inlets and outlets) - we do not want to
-        # introduce an extra boundary condition.
-        #
-        # Another way to view the role of the extra term in the skew-symmetric form is to
-        # consider the Helmholtz decomposition of the convection velocity `a`:
-        #   a = ∇φ + ∇×A
-        # where φ is a scalar potential (for the irrotational part) and A is a
-        # vector potential (for the divergence-free part). We have
-        #   (∇·a) = ∇·∇φ + ∇·∇×A = ∇²φ + 0
-        # so the extra term is proportional to the laplacian of the scalar potential:
-        #   (∇·a) u = (∇²φ) u
-        #
-        # References:
-        #     Jean Donea and Antonio Huerta. 2003. Finite Element Methods
-        #     for Flow Problems. Wiley. ISBN 0-471-49666-9.
-        #
         U = (1 - θ) * u_n + θ * u
         dudt = (u - u_n) / dt
         # # Original convective term
@@ -492,9 +420,7 @@ class NavierStokes:
         #                  = J / s
         #                  = W
         # so each term in the weak form momentum equation (in 3D) is a virtual power.
-        F1_varying = (ρ * (1 / 2) * (dot(dot(a, nabla_grad(ustar)), v) -
-                                     dot(dot(a, nabla_grad(v)), ustar)) * dx +
-                      ρ * (1 / 2) * dot(n, a) * dot(ustar, v) * ds)
+        F1_varying = (ρ * (1 / 2) * advw(a, ustar, v, n, mode="divergence-free"))
         F1_constant = (ρ * dot(dudt, v) * dx +
                        inner(σ(U, p_n, μ), ε(v)) * dx +
                        dot(p_n * n, v) * ds - dot(μ * nabla_grad(U) * n, v) * ds -
@@ -536,9 +462,6 @@ class NavierStokes:
         # Note we use the unknown `u`, not the `U` used in the θ method; only
         # the solution at the end of the timestep should be penalized for
         # deviation from known properties of the true solution.
-        def mag(vec):
-            return dot(vec, vec)**(1 / 2)
-
         τ_LSIC = mag(a) * he / 2  # [τ_LSIC] = (m / s) * m = m² / s, a kinematic viscosity
         F1_LSIC = enable_LSIC_flag * τ_LSIC * div(u) * div(v) * dx
         F1_varying += F1_LSIC
@@ -559,16 +482,10 @@ class NavierStokes:
         # Donea & Huerta (2003, p. 232), based on Shakib et al. (1991).
         # Donea & Huerta, p. 288: "α₀ = 1 / 3 appears to be optimal for linear elements"
         τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (μ / ρ) / he**2)**-1  # [τ] = s
-        # Strong form of the modified advection operator that yields the
-        # skew-symmetric weak form.
-        def adv(U_):
-            # To be consistent, we use the same advection velocity `a` as the
-            # step 1 equation itself.
-            return dot(a, nabla_grad(U_)) + (1 / 2) * div(a) * U_
         def R(U_, P_):
             # The residual is evaluated elementwise in strong form.
-            return ρ * ((U_ - u_n) / dt + adv(U_)) - div(σ(U_, P_, μ)) - ρ * f
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(adv(v), R(u, p_n)) * dx
+            return ρ * ((U_ - u_n) / dt + advs(a, U_, mode="divergence-free")) - div(σ(U_, P_, μ)) - ρ * f
+        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, v, mode="divergence-free"), R(u, p_n)) * dx
         F1_varying += F_SUPG
 
         self.a1_varying = lhs(F1_varying)

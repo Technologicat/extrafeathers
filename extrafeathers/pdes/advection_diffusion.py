@@ -9,11 +9,12 @@ import typing
 from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, DirichletBC,
                     Function, TrialFunction, TestFunction, Expression,
                     Constant, FacetNormal,
-                    dot, inner, nabla_grad, div, dx, ds,
+                    dot, inner, nabla_grad, div, dx,
                     lhs, rhs, assemble, solve,
                     begin, end)
 
 from ..meshfunction import meshsize, cell_mf_to_expression
+from .numutil import advw, advs, mag
 from .util import ScalarOrTensor, istensor, ufl_constant_property, StabilizerFlags
 
 
@@ -284,31 +285,15 @@ class AdvectionDiffusion:
             # F += (ν * dot(nabla_grad(U), nabla_grad(v)) * dx -
             #       ν * dot(n, nabla_grad(U)) * v * ds)
 
-        if self.advection == "divergence-free":
-            # Skew-symmetric form for divergence-free advection velocity
-            # (see navier_stokes.py).
-            F += ((1 / 2) * (dot(a, nabla_grad(U)) * v -
-                             dot(a, nabla_grad(v)) * U) * dx +
-                  (1 / 2) * dot(n, a) * U * v * ds)
-        elif self.advection == "general":
-            # Skew-symmetric advection, as above; but subtract the contribution from the
-            # extra term (1/2) (∇·a) u, thus producing an extra symmetric term that
-            # accounts for the divergence of `a`.
-            F += ((1 / 2) * (dot(a, nabla_grad(U)) * v -
-                             dot(a, nabla_grad(v)) * U) * dx +
-                  (1 / 2) * dot(n, a) * U * v * ds -
-                  (1 / 2) * div(a) * U * v * dx)
-            # # Just use the asymmetric advection term as-is.
-            # # TODO: which form is better? This has fewer operations, but which gives better stability?
-            # F += dot(a, nabla_grad(U)) * v * dx
+        if self.advection != "off":
+            assert self.advection in ("divergence-free", "general")
+            F += advw(a, U, v, n, mode=self.advection)
 
         if self.use_stress and self.advection != "off":
             F += -inner(σ, nabla_grad(a)) * v * dx
 
         # SUPG: streamline upwinding Petrov-Galerkin.
         #
-        def mag(vec):
-            return dot(vec, vec)**(1 / 2)
         if istensor(self._ν):
             mag_ν = inner(ν, ν)**(1 / 2)
         else:
@@ -317,21 +302,9 @@ class AdvectionDiffusion:
         # [τ] = s
         τ_SUPG = α0 * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag_ν / he**2)**-1
 
-        # We need the strong form of the equation to compute the residual
-        if self.advection == "divergence-free":
-            # Strong form of the modified advection operator that yields the
-            # skew-symmetric weak form.
-            def adv(U_):
-                return dot(a, nabla_grad(U_)) + (1 / 2) * div(a) * U_
-        elif self.advection == "general":
-            def adv(U_):
-                # here the modifications cancel in the strong form
-                return dot(a, nabla_grad(U_))
-        else:  # self.advection == "off":
-            adv = None
-
-        # SUPG only makes sense if advection is enabled
-        if adv:
+        # We need the strong form of the equation to compute the residual.
+        # SUPG only makes sense if advection is enabled.
+        if self.advection != "off":
             if istensor(self._ν):
                 def diffusion(U_):
                     return div(dot(ν, nabla_grad(U_)))
@@ -341,11 +314,11 @@ class AdvectionDiffusion:
 
             def R(U_):
                 # The residual is evaluated elementwise in strong form.
-                residual = (dudt + adv(U_)) - diffusion(U_) - h
+                residual = (dudt + advs(a, U_, mode=self.advection)) - diffusion(U_) - h
                 if self.use_stress:
                     residual += -inner(σ, nabla_grad(a))
                 return residual
-            F_SUPG = enable_SUPG_flag * τ_SUPG * dot(adv(v), R(u)) * dx
+            F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, v, mode=self.advection), R(u)) * dx
             F += F_SUPG
 
         self.aform = lhs(F)
