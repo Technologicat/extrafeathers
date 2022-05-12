@@ -60,8 +60,13 @@ def advw(a, u, v, n, *, mode="divergence-free"):
     `n`: facet normal of mesh
 
     `mode`: one of "general" or "divergence-free".
+
             If "divergence-free", it is assumed that `div(a) ≡ 0`.
-            This affects the form produced.
+            The form produced is only valid for divergence-free `a`.
+
+            If "general", the form produced is valid for any `a`,
+            but beside the skew-symmetric part, includes also a
+            symmetric term.
 
     Return value is an UFL form representing the advection term.
 
