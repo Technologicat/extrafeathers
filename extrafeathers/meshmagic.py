@@ -1822,7 +1822,9 @@ def patch_average(f: dolfin.Function,
 
     which is exactly the Galerkin discretization of the L2 projection onto `W`.
 
-    References:
+
+    **References**:
+
         Thomas J. R. Hughes. 2000. The Finite Element Method: Linear Static and Dynamic
         Finite Element Analysis. Dover. Corrected and updated reprint of the 1987 edition.
         ISBN 978-0-486-41181-1.

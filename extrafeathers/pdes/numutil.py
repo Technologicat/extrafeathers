@@ -149,7 +149,8 @@ def advw(a, u, v, n, *, mode="divergence-free"):
     an extra symmetric term is produced.
 
 
-    References:
+    **References**:
+
         Jean Donea and Antonio Huerta. 2003. Finite Element Methods
         for Flow Problems. Wiley. ISBN 0-471-49666-9.
     """

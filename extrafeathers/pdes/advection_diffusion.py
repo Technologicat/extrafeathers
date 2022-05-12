@@ -125,7 +125,9 @@ class AdvectionDiffusion:
     mesh!). Technically, `h` lives on a `FunctionSpace`, `a` on a `VectorFunctionSpace`,
     and `σ` on a `TensorFunctionSpace` compatible with `V`.
 
-    References:
+
+    **References**:
+
         Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
         Numerical Modeling in Science and Engineering. Wiley Interscience.
     """
@@ -420,7 +422,9 @@ class HeatEquation(AdvectionDiffusion):
     The type is the same as that of `k` (`float` or a rank-2 tensor).
     Writing to `ρ`, `c`, or `k` automatically updates the diffusivity.
 
-    References:
+
+    **References**:
+
         Myron B. Allen, III, Ismael Herrera, and George F. Pinder. 1988.
         Numerical Modeling in Science and Engineering. Wiley Interscience.
     """

@@ -181,7 +181,9 @@ class NavierStokes:
     Classical patch averaging (projecting or interpolating onto dG0 and then averaging
     the resulting piecewise constant field) is also available, as `patch_average`.
 
-    References:
+
+    **References**:
+
         Susanne C. Brenner & L. Ridgway Scott. 2010. The Mathematical Theory
         of Finite Element Methods. 3rd edition. Springer. ISBN 978-1-4419-2611-1.
 
