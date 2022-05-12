@@ -191,6 +191,8 @@ if dynamic:
 
     # # Left and right edges: constant pull at both ends
     # # TODO: does not work yet, rigid-body mode remover needs work
+    # bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu.append(bcu_left)
     # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
     # bcσ_left2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ12
     # bcσ_left3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ21 (symm.)
