@@ -42,6 +42,7 @@ from ..meshfunction import meshsize, cell_mf_to_expression
 from .util import ufl_constant_property, StabilizerFlags
 
 
+# TODO: move these utilities (`mag`, `advw`, `advs`) to `common.py`.
 def mag(vec):
     """UFL expression for the magnitude of vector `vec`."""
     return dot(vec, vec)**(1 / 2)
