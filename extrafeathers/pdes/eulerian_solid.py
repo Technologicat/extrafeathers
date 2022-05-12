@@ -902,8 +902,8 @@ class EulerianSolidAlternative:
 
     **Equations**:
 
-    The formulation used here is based on an alternative choice for the
-    velocity-like variable. Let us denote the material parcel velocity,
+    The formulation used by `EulerianSolidAlternative` is based on an alternative
+    choice for the velocity-like variable. Let us denote the material parcel velocity,
     as measured against the co-moving frame, by `V`:
 
         V := du/dt
