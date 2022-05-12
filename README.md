@@ -25,6 +25,8 @@ The subpackage [`extrafeathers.pdes`](extrafeathers/pdes/) contains some modular
     - [Natural convection (two-way coupled problem)](#natural-convection-two-way-coupled-problem)
     - [Eulerian linear solid mechanics](#eulerian-linear-solid-mechanics)
         - [Constitutive law for linear viscoelastic materials in axial motion](#constitutive-law-for-linear-viscoelastic-materials-in-axial-motion)
+            - [Formulation used in `EulerianSolid`](#formulation-used-in-euleriansolid)
+            - [Formulation used in `EulerianSolidAlternative`](#formulation-used-in-euleriansolidalternative)
         - [Notes on the numerical scheme](#notes-on-the-numerical-scheme)
         - [Running the demo](#running-the-demo)
 - [Questions & answers](#questions--answers)
@@ -457,7 +459,11 @@ To simplify the model (thus also reducing requirements on experimental data we m
 ```
 Physically, `τ` is related to the creep rate. Note in one space dimension, one commonly writes `τ := η / E`, but the above alternative definition works also in 2D and 3D.
 
-Since the constitutive law holds at a material point, in the Eulerian representation we have `d/dt = ∂/∂t + a·∇`, where `a` is the drive velocity field (assumed constant in space) that describes the axial motion. The Eulerian representation of the constitutive law is thus
+Since the constitutive law holds *at a material point*, in the Eulerian representation we have `d/dt = ∂/∂t + a·∇`, where `a` is the drive velocity field (assumed constant in space) that describes the axial motion. Now there are at least two possibilities to handle this, both of which are implemented as alternative solvers; we will describe each of them below.
+
+##### Formulation used in `EulerianSolid`
+
+A straightforward Eulerian representation of the constitutive law is
 ```
 σ = E:ε + η:(∂ε/∂t + a·∇ε)
 ```
@@ -483,11 +489,11 @@ The axial drive velocity field is divergence-free, so the last term vanishes. If
 ```
 ∫ φ:η:[(a·∇)ε] dx = ∫ (a·n) (φ:η:ε) dΓ - ∫ [(a·∇)φ]:η:ε dx
 ```
-which is the form used in the solver. The weak form of the constitutive law becomes
+The weak form of the constitutive law becomes
 ```
 ∫ φ:σ dx = ∫ φ:E:ε dx + ∫ φ:η:∂ε/∂t dx - ∫ [(a·∇)φ]:η:ε dx + ∫ (a·n) (φ:η:ε) dΓ
 ```
-Using the definition `η = τ E`, we obtain the final weak form:
+Using the definition `η = τ E`, we obtain
 ```
 ∫ φ:σ dx = ∫ φ:E:ε dx + τ ∫ φ:E:∂ε/∂t dx - τ ∫ [(a·∇)φ]:E:ε dx + τ ∫ (a·n) (φ:E:ε) dΓ
 ```
@@ -495,43 +501,81 @@ Note we have applied integration by parts *on the right-hand side* of the consti
 
 With this integration by parts, there is no need to spatially differentiate `ε`. All terms are integrable across element boundaries even when `u` is represented by C0-continuous elements. The SLS model can be treated similarly.
 
+In practice, though, it was observed that it is better for numerical stability to project `symm ∇u` and `symm ∇v` into a C0-continuous space before using the data in the constitutive equation. Since the projected fields are once differentiable, this allows us to actually integrate by parts in only "half" of the `(a·∇)ε` term, enabling the use of the numerically more stable skew-symmetric advection discretization.
+
+The stress tensor is then used in the straightforward Eulerian representation of the momentum balance:
+```
+ρ ∂²u/∂t² + 2 ρ (a·∇) ∂u/∂t + ρ (a·∇)(a·∇)u - ∇·σ = ρ b
+```
+which is written in the laboratory frame.
+
+##### Formulation used in `EulerianSolidAlternative`
+
+The alternative formulation takes as its velocity-like variable the material parcel velocity, as measured against the co-moving frame. This choice simplifies the equations somewhat. Let
+```
+V := du/dt
+   = ∂u/∂t + (a·∇) u
+```
+Note we are skipping some important details here; `u` is an Eulerian field in the laboratory frame, whereas `V` - although we write it in a *laboratory*-frame Eulerian description - is the actual physical velocity of the material parcels with respect to the *co-moving* frame.
+
+Conveniently, `V` is also the *Lagrangean displacement rate*, except that it ignores the uniform axial motion. Since the uniform axial motion causes no strains, we can use `V` to derive the Lagrangean strain rate `dε/dt`. The constitutive law becomes
+```
+σ = E : ε + η : dε/dt
+  = E : (symm ∇u) + η : d/dt (symm ∇u)
+  = E : (symm ∇) u + η : d/dt (symm ∇) u
+  = E : (symm ∇) u + η : (symm ∇) du/dt
+  = E : (symm ∇) u + η : (symm ∇) V
+  = E : (symm ∇) u + τ E : (symm ∇) V
+  =: ℒ(u) + τ ℒ(V)
+```
+which is of the same form as the standard Lagrangean constitutive law, but is actually Eulerian. Both `u` and `V` are written using Eulerian descriptions in the laboratory frame, and also the `∇` is taken in spatial coordinates. There is no axial motion term, because it is absorbed by the definition of `V`.
+
+Since we are modeling a viscoelastic solid, we need the displacement `u`. It is obtained by solving the first-order transport PDE
+```
+∂u/∂t + (a·∇) u = V
+```
+or in other words, we use the laboratory-frame Eulerian description of `V` to update the laboratory-frame Eulerian description of `u`.
+
+In this formulation, the Eulerian linear momentum balance in the laboratory frame is just
+```
+ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
+```
+which resembles Navier-Stokes, but now `σ` is the stress tensor for a solid. The advection operator has a different velocity field because in this model, the material parcel velocity with respect to the laboratory frame is `v := a + V`. Here `a` is a constant field, and `V` is a first-order small quantity. Hence in the laboratory frame, we obtain the form above.
+
 #### Notes on the numerical scheme
 
 Time integration is performed with the θ method, defaulting to Crank-Nicolson (`θ = 1/2`).
 
-Each timestep of the dynamic simulation is solved iteratively, in three steps:
+In either formulation, each timestep of the dynamic simulation is solved iteratively:
 
  1. Update `u` using the latest available `v`.
-    - We integrate each DOF independently using the θ method. This results in mass lumping.
-    - It was observed in practice that if we solve for `u` from a consistent-mass representation, the numerical scheme becomes prone to checkerboard oscillations, at least when `u` and `v` use the same basis.
- 2. Solve `σ` from the constitutive law, where the Eulerian strain and strain rate are obtained as `ε = symm ∇u` and `∂ε/∂t = symm ∇v`.
- 3. Solve `v` from the linear momentum balance equation, using `u` and `σ`.
- 
-Iterate until `||v - v_prev||_H1` is small enough.
+ 2. Solve `σ` from the constitutive law.
+ 3. Solve `v` from the linear momentum balance equation, using `σ` and `u`.
+ 4. If `||v - v_prev||_H1 < tol`, the timestep is complete; else jump back to item 1.
 
-Note `u` **does not take boundary conditions** in this scheme, because `u` is just the time integral of `v`. Instead, one should set an initial field for `u`, and then set the boundary conditions for `v` appropriately. If you want a prescribed displacement at a boundary, that should be fed in as the initial condition for `u`.
+In `EulerianSolid`, `u` **does not take boundary conditions**, because `u` is just the time integral of `v`. Instead, one should set an initial field for `u`, and then set the boundary conditions for `v` appropriately. If you want a prescribed displacement at a boundary, that should be fed in as the initial condition for `u`.
+
+In `EulerianSolidAlternative`, when `V0 ≠ 0`, `u` needs boundary conditions on the inflow part of the boundary (defined as those segments of `∂Ω` on which `a·n < 0`, where `a := (V0, 0)`). Of course it is additionally possible to provide an initial field.
 
 The function space for the stress must be sufficiently large compared to that for the displacement. With Q1 displacement, Q2 stress works fine.
 
-It is observed in practice that at moderate axial velocities (~30% of critical), our numerical scheme produces acceptable Eulerian velocity (`v ≡ ∂u/∂t`) and displacement (`u`) fields, but the components of the stress tensor exhibit unphysical oscillations. These however do not seem to affect `v` or `u` adversely. When the axial velocity is zero (`a = 0`), the extra term vanishes, as do the numerical oscillations.
+Many more technical details are documented in the docstrings and in source code comments.
 
 #### Running the demo
 
 The recommended way to run the demo is
-
 ```bash
 python -m demo.euleriansolid.main00_alternative_mesh  # generate quad mesh
 mpirun python -m demo.euleriansolid.main01_solve
 ```
-
 Then load up the results in ParaView. Displacement, stress tensor, and the von Mises stress are exported.
 
 Can also run using an unstructured triangle mesh (generated from [`demo/meshes/box.geo`](demo/meshes/box.geo)):
-
 ```bash
 python -m demo.euleriansolid.main00_mesh  # import Gmsh mesh
 mpirun python -m demo.euleriansolid.main01_solve
 ```
+However, as one may generally expect, the regular quad mesh does give better accuracy when the domain is the unit square.
 
 **References**:
 
