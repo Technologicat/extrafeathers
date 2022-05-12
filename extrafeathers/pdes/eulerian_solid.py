@@ -119,17 +119,29 @@ class EulerianSolid:
     For LBB-condition-related reasons, the space `Q` must be much larger than `V`; both
     {V=Q1, Q=Q2} and {V=Q1, Q=Q3} have been tested to work and to yield similar results.
 
-    The formulation used here is perhaps the most straightforward Eulerian formulation
-    for an axially moving continuum. In the momentum balance equation:
+    Near-term future plans (when I next have time to work on this project) include
+    extending this to support SLS (the standard linear solid); this should be a fairly
+    minor modification, just replacing the equation for `σ` by a PDE; no infra changes.
+    Far-future plans include a viscoplastic model of the Chaboche family (of which a
+    Lagrangean formulation is available in the Julia package `Materials.jl`).
+
+
+    **Equations**:
+
+    The formulation used by `EulerianSolid` is perhaps the most straightforward
+    Eulerian formulation for an axially moving continuum. The momentum balance
+    for a continuum is
 
         ρ dV/dt - ∇·σ = ρ b
 
-    we use an Eulerian representation for the material parcel acceleration
-    in the laboratory frame:
+    where `V` is the material parcel velocity in an inertial frame of our
+    choice (the law is postulated to be Galilean invariant).
+
+    Let us choose the laboratory frame. We have
 
         dV/dt ≈ [∂²u/∂t² + 2 (a·∇) ∂u/∂t + (a·∇)(a·∇) u]
 
-    This leads to
+    Thus the Eulerian description of the momentum balance becomes
 
         ρ ∂²u/∂t² + 2 ρ (a·∇) ∂u/∂t + ρ (a·∇)(a·∇)u - ∇·σ = ρ b
 
@@ -153,6 +165,7 @@ class EulerianSolid:
 
     The displacement `u` is an Eulerian field, measured with respect to a
     reference state where the material travels at constant axial velocity.
+    It is parameterized by the laboratory coordinate `x`.
 
     This formulation requires integration by parts on the right-hand side of the
     weak-form constitutive equation to get rid of the second derivative of `u`.
@@ -163,13 +176,9 @@ class EulerianSolid:
     by parts in only "half" of the `(a·∇) ε` term, enabling the use of the
     numerically more stable skew-symmetric advection discretization.
 
-    Near-term future plans (when I next have time to work on this project) include
-    extending this to support SLS (the standard linear solid); this should be a fairly
-    minor modification, just replacing the equation for `σ` by a PDE; no infra changes.
-    Far-future plans include a viscoplastic model of the Chaboche family (of which a
-    Lagrangean formulation is available in the Julia package `Materials.jl`).
 
-    References:
+    **References**:
+
         Robert C. Kirby and Lawrence Mitchell. 2019. Code generation for generally
         mapped finite elements. ACM Transactions on Mathematical Software 45(41):1-23.
         https://doi.org/10.1145/3361745
@@ -890,22 +899,37 @@ class EulerianSolidAlternative:
     If `V0 ≠ 0`, additionally `u` needs boundary conditions on the inflow part
     of the boundary (i.e. on the part for which `a·n < 0`, where `a := (V0, 0)`).
 
+
+    **Equations**:
+
     The formulation used here is based on an alternative choice for the
-    velocity-like variable. In the momentum balance for a continuum:
-
-        ρ dV/dt - ∇·σ = ρ b
-
-    we take the material parcel velocity, as measured against the co-moving
-    frame, as our velocity-like variable:
+    velocity-like variable. Let us denote the material parcel velocity,
+    as measured against the co-moving frame, by `V`:
 
         V := du/dt
-           = ∂u/∂t + (a·∇) u
 
-    In the laboratory frame, this leads to
+    Consider the momentum balance for a continuum:
+
+        ρ dv/dt - ∇·σ = ρ b
+
+    where `v` is the material parcel velocity in an inertial frame of our
+    choice (the law is postulated to be Galilean invariant).
+
+    Let us choose the laboratory frame. The material parcel velocity with
+    respect to the laboratory is
+
+        v := a + V
+
+    where `a` is the axial drive velocity. The Eulerian description of the
+    momentum balance becomes
 
         ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
 
-    where, for Kelvin-Voigt (linear elastic as special case τ = 0):
+    where we have used the fact that `a` is constant, and dropped the
+    second-order small term `ρ (V·∇) V` (since in the small-displacement
+    regime, `V` is taken to be small).
+
+    For Kelvin-Voigt (linear elastic as special case τ = 0):
 
         σ = E : ε + η : dε/dt
           = E : (symm ∇u) + η : d/dt (symm ∇u)
@@ -919,14 +943,26 @@ class EulerianSolidAlternative:
     one, it is actually Eulerian; both `u` and `V` are represented using
     Eulerian fields, and also the ∇ is taken in spatial coordinates.
 
+    In the constitutive law, we can use our Eulerian `u` and `V`, although they
+    have the uniform axial motion abstracted out, because the uniform motion
+    causes no strain.
+
     This formulation resembles Navier-Stokes, but for solids. The displacement,
-    needed in the constitutive law, is updated based on the velocity by solving
-    the first-order transport PDE
+    needed in the constitutive law, is obtained by considering our definition
+    of `V`:
+
+        V ≡ du/dt
+          = ∂u/∂t + ((a + V)·∇) u    [based on laboratory-frame Eulerian `u`]
+          ≈ ∂u/∂t + (a·∇) u          [drop 2nd order small term]
+
+    so up to first order in the small quantities, the displacement can be
+    updated by solving the linear first-order transport PDE
 
         ∂u/∂t + (a·∇) u = V
 
     The displacement `u` is an Eulerian field, measured with respect to a
     reference state where the material travels at constant axial velocity.
+    Both `u` and `V` are parameterized by the laboratory coordinate `x`.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
