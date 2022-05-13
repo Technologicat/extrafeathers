@@ -821,6 +821,7 @@ if not dynamic:
         fig.suptitle(msg)
         plt.tight_layout()
         plotmagic.pause(0.001)
+        plt.savefig(f"{fig_output_dir}{fig_basename}_steadystate.{fig_format}")
         plt.ioff()
         print("All done, showing figure.")
         plt.show()
