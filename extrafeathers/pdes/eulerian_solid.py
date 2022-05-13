@@ -1331,14 +1331,6 @@ class EulerianSolidAlternative:
 
         end()
 
-        # VISUALIZATION PURPOSES ONLY
-        A2a = assemble(self.a_εu)
-        b2a = assemble(self.L_εu)
-        solve(A2a, self.εu_.vector(), b2a, 'bicgstab', 'sor')
-        A2b = assemble(self.a_εv)
-        b2b = assemble(self.L_εv)
-        solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
-
         it1 = sum(it1s)
         it2 = sum(it2s)
         it3 = sum(it3s)
@@ -1349,7 +1341,18 @@ class EulerianSolidAlternative:
 
         This makes the latest computed solution the "old" solution for
         the next timestep. The old "old" solution is discarded.
+
+        This also computes the strain fields (available for visualization
+        purposes).
         """
+        # VISUALIZATION PURPOSES ONLY
+        A2a = assemble(self.a_εu)
+        b2a = assemble(self.L_εu)
+        solve(A2a, self.εu_.vector(), b2a, 'bicgstab', 'sor')
+        A2b = assemble(self.a_εv)
+        b2b = assemble(self.L_εv)
+        solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
+
         self.u_n.assign(self.u_)
         self.v_n.assign(self.v_)
         self.σ_n.assign(self.σ_)
