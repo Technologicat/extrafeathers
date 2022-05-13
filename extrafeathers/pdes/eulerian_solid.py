@@ -1593,8 +1593,11 @@ class EulerianSolidAlternative:
 
 # --------------------------------------------------------------------------------
 
+# TODO: `EulerianSolidPrimal` does not work yet
 class EulerianSolidPrimal:
     """Like `EulerianSolidAlternative`, but using only `u` and `v`.
+
+    NOTE: This does not work yet. Use `EulerianSolidAlternative`, which works.
 
     Boundary stresses are enforced using a Neumann BC. `bcσ` is a single expression
     that will be evaluated at boundaries that do not have a boundary condition for
@@ -1614,19 +1617,20 @@ class EulerianSolidPrimal:
         if Q.mesh() is not V.mesh():
             raise ValueError("V and Q must be defined on the same mesh.")
 
-        u = TrialFunction(V)  # no suffix: UFL symbol for unknown quantity
-        w = TestFunction(V)
-        v = TrialFunction(V)
-        ψ = TestFunction(V)
+        e = MixedElement(V.ufl_element(), V.ufl_element())
+        S = FunctionSpace(self.mesh, e)
+        u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
+        w, ψ = TestFunctions(S)
+        s_ = Function(S)  # suffix _: latest computed approximation
+        u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
+        # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
+        s_n = Function(S)  # suffix _n: old value (end of previous timestep)
+        u_n, v_n = split(s_n)
+
+        # For separate equation, for stress visualization
         σ = TrialFunction(Q)
         φ = TestFunction(Q)
-
-        u_ = Function(V)  # suffix _: latest computed approximation
-        u_n = Function(V)  # suffix _n: old value (end of previous timestep)
-        v_ = Function(V)
-        v_n = Function(V)
         σ_ = Function(Q)
-        σ_n = Function(Q)
 
         self.V = V
         self.Q = Q
@@ -1642,7 +1646,11 @@ class EulerianSolidPrimal:
         self.u, self.v, self.σ = u, v, σ  # trials
         self.w, self.ψ, self.φ = w, ψ, φ  # tests
         self.u_, self.v_, self.σ_ = u_, v_, σ_  # latest computed approximation
-        self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
+        self.u_n, self.v_n = u_n, v_n  # old value (end of previous timestep)
+
+        self.S = S
+        self.s_ = s_
+        self.s_n = s_n
 
         # Set up the null space. We'll remove it in the Krylov solver.
         dim = self.mesh.topology().dim()
@@ -1660,7 +1668,20 @@ class EulerianSolidPrimal:
         else:
             raise NotImplementedError(f"dim = {dim}")
 
-        null_space_basis = [interpolate(fu, V).vector() for fu in fus]
+        # In a mixed formulation, we must insert zero functions for the other fields:
+        zeroV = Function(V)
+        zeroV.vector()[:] = 0.0
+        # zeroQ = Function(Q)
+        # zeroQ.vector()[:] = 0.0
+        # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
+        assigner = FunctionAssigner(S, [V, V])  # receiving space, assigning space
+        fssu = [Function(S) for _ in range(len(fus))]
+        for fs, fu in zip(fssu, fus):
+            assigner.assign(fs, [project(fu, V), zeroV])
+        fssv = [Function(S) for _ in range(len(fus))]
+        for fs, fu in zip(fssv, fus):
+            assigner.assign(fs, [zeroV, project(fu, V)])
+        null_space_basis = [fs.vector() for fs in fssu + fssv]
 
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
@@ -1701,10 +1722,7 @@ class EulerianSolidPrimal:
         # SUPG stabilizer tuning parameter.
         self._α0 = Constant(1)
 
-        # PDE system iteration parameters.
-        # User-configurable (`solver.maxit = ...`), but not a major advertised feature.
-        self.maxit = 100  # maximum number of system iterations per timestep
-        self.tol = 1e-8  # system iteration tolerance, ‖v - v_prev‖_H1 (over the whole domain)
+        self.tol = 1e-8  # TODO: unused, but the main script expects to have it because other solvers here do.
 
         self.compile_forms()
 
@@ -1734,7 +1752,6 @@ class EulerianSolidPrimal:
         # Stress
         σ = self.σ
         φ = self.φ
-        σ_n = self.σ_n
 
         # Velocity field for axial motion
         a = self.a
@@ -1772,22 +1789,14 @@ class EulerianSolidPrimal:
         #
         #   ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b   [linear momentum balance]
 
-        # Step 1: v = ∂u/∂t + (a·∇)u  ->  obtain `v`
-        #
+        # Monolithic equation system.
+        U = (1 - θ) * u_n + θ * u
+        V = (1 - θ) * v_n + θ * v
         dudt = (u - u_n) / dt
-        U = (1 - θ) * u_n + θ * u_  # known
-        V = (1 - θ) * v_n + θ * v   # unknown
-        F_v = (dot(V, ψ) * dx -
-               (dot(dudt, ψ) * dx + advw(a, U, ψ, n)))
+        dvdt = (v - v_n) / dt
+        Σ0 = self.bcσ  # Neumann BC for stress
 
-        # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
-        deg = Constant(self.V.ufl_element().degree())
-        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
-        R = (V - (dudt + advs(a, U)))
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
-        F_v += F_SUPG
-
-        # Step 2: prepare `σ`, using `v` from step 1 and the unknown `u`
+        # `σ`, using unknown `u` and `v`
         #
         # TODO:
         #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
@@ -1798,78 +1807,46 @@ class EulerianSolidPrimal:
         #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
         #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
 
-        # θ integration:
-        U = (1 - θ) * u_n + θ * u_  # known
-        V = (1 - θ) * v_n + θ * v_  # known
-        Σ = (1 - θ) * σ_n + θ * σ   # unknown!
-        εu_ = ε(U)
-        εv_ = ε(V)
-
+        # Constitutive model
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-
-        # Choose constitutive model
-        #
-        # For Kelvin-Voigt:
-        #
-        #   σ = E : ε + η : dε/dt
-        #     = E : (symm ∇u) + η : d/dt (symm ∇u)
-        #     = E : (symm ∇) u + η : d/dt (symm ∇) u
-        #     = E : (symm ∇) u + η : (symm ∇) du/dt
-        #     = E : (symm ∇) u + η : (symm ∇) V
-        #     = E : (symm ∇) u + τ E : (symm ∇) V
-        #     =: ℒ(u) + τ ℒ(V)   [constitutive law]
-        #
         if self.τ == 0.0:  # Linear elastic (LE)
-            F_σ = (inner(Σ, φ) * dx -
-                   inner(K_inner(εu_), sym(φ)) * dx)
-
-            U = (1 - θ) * u_n + θ * u  # unknown
+            # for equation
             Σ = K_inner(ε(U))
+            # for visualization
+            F_σ = (inner(σ, φ) * dx -
+                   inner(K_inner(ε(u_)), sym(φ)) * dx)
         else:  # Axially moving Kelvin-Voigt (KV)
-            # No transport term, because `v` already contains the transport effects.
-            F_σ = (inner(Σ, φ) * dx -
-                   inner(K_inner(εu_) + τ * K_inner(εv_), sym(φ)) * dx)
-
-            U = (1 - θ) * u_n + θ * u   # unknown
-            V = (1 - θ) * v_n + θ * v_  # known
             Σ = K_inner(ε(U)) + τ * K_inner(ε(V))
+            F_σ = (inner(σ, φ) * dx -
+                   inner(K_inner(ε(u_)) + τ * K_inner(ε(v_)), sym(φ)) * dx)
 
-        # Step 3: solve `u` from momentum equation
-        #
-        #   ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
-        #
-        # θ integration:
-        dvdt = (v_ - v_n) / dt
-        U = (1 - θ) * u_n + θ * u   # unknown
-        V = (1 - θ) * v_n + θ * v_  # known
-        Σ0 = self.bcσ  # Neumann BC for stress
         F_u = (ρ * (dot(dvdt, w) * dx + advw(a, V, w, n)) +
-               inner(Σ.T, ε(w)) * dx - dot(dot(n, Σ0), w) * ds -
+               inner(Σ, ε(w)) * dx - dot(dot(n, Σ0), w) * ds -
                ρ * dot(b, w) * dx)
+        F_v = (dot(V, ψ) * dx -
+               (dot(dudt, ψ) * dx + advw(a, U, ψ, n)))
 
-        # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
-        deg = Constant(self.V.ufl_element().degree())
-        # # Very basic scaling; the resulting τ_SUPG is perhaps too large
-        # # (excessive diffusion along streamlines of `a`).
-        # τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * mag(a)**2 / he**2)**-1  # [τ] = s
+        # # SUPG   # TODO: enable when the rest of this class works properly.
         #
-        # Navier-Stokes uses 4 * (μ / ρ) / he² in the second-order part.
-        # Since we have both elastic and viscous effects, with both shear
-        # and volumetric contributions, take the largest one of these as
-        # the representative second-order coefficient.
-        moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
-        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
-        R = (ρ * (dvdt + advs(a, V)) - div(Σ) - ρ * b)
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
-        F_u += F_SUPG
+        # deg = Constant(self.V.ufl_element().degree())
+        # moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
+        # τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
+        # R = (ρ * (dvdt + advs(a, V)) - div(Σ) - ρ * b)
+        # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
+        # F_u += F_SUPG
+        #
+        # deg = Constant(self.V.ufl_element().degree())
+        # τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
+        # R = (V - (dudt + advs(a, U)))
+        # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
+        # F_v += F_SUPG
 
-        self.a_v = lhs(F_v)
-        self.L_v = rhs(F_v)
-        self.a_u = lhs(F_u)
-        self.L_u = rhs(F_u)
+        F = F_u + F_v
+        self.a = lhs(F)
+        self.L = rhs(F)
 
-        # Strains at end of timestep, for visualization only.
+        # For visualization only.
         εu = self.εu  # unknown
         εv = self.εv
         q = self.q
@@ -1888,66 +1865,26 @@ class EulerianSolidPrimal:
 
         Updates the latest computed solution.
         """
-        def errnorm(u, u_prev, norm_type):
-            e = Function(self.V)
-            e.assign(u)
-            e.vector().axpy(-1.0, u_prev.vector())
-            return norm(e, norm_type=norm_type, mesh=self.mesh)
-
         begin("Solve timestep")
 
-        u_prev = Function(self.V)
-        it1s = []
-        it2s = []
-        it3s = []
-        for sysit in range(self.maxit):
-            u_prev.assign(self.u_)  # convergence monitoring
-
-            # Step 1: update `v`
-            A1 = assemble(self.a_v)
-            b1 = assemble(self.L_v)
-            it1s.append(solve(A1, self.v_.vector(), b1, 'bicgstab', 'hypre_amg'))
-
-            # Step 3: tonight's main event (solve momentum equation for `u`)
-            A3 = assemble(self.a_u)
-            b3 = assemble(self.L_u)
-            [bc.apply(A3) for bc in self.bcu]
-            [bc.apply(b3) for bc in self.bcu]
-            if not self.bcu:
-                A3_PETSc = as_backend_type(A3)
-                A3_PETSc.set_near_nullspace(self.null_space)
-                A3_PETSc.set_nullspace(self.null_space)
-                # TODO: What goes wrong here? Is it that the null space of the other linear models
-                # is subtly different from the null space of the linear elastic model? So telling
-                # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
-                # the load function against the wrong null space corrupts the loading?
-                self.null_space.orthogonalize(b3)
-            it3s.append(solve(A3, self.u_.vector(), b3, 'bicgstab', 'hypre_amg'))
-
-            # e = errornorm(self.u_, u_prev, 'h1', 0, self.mesh)  # u, u_h, kind, degree_rise, optional_mesh
-            e = errnorm(self.u_, u_prev, "h1")
-            if e < self.tol:
-                break
-
-            # # relaxation / over-relaxation to help system iteration converge - does not seem to help here
-            # import dolfin
-            # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
-            #     print(f"After iteration {(_ + 1)}: ‖v - v_prev‖_H1 = {e}")
-            # if e < 1e-3:
-            #     γ = 1.05
-            #     self.v_.vector()[:] = (1 - γ) * v_prev.vector()[:] + γ * self.v_.vector()[:]
-
-        # # DEBUG: do we have enough boundary conditions in the discrete system?
-        # import numpy as np
-        # print(np.linalg.matrix_rank(A.array()), np.linalg.norm(A.array()))
-        # print(sum(np.array(b) != 0.0), np.linalg.norm(np.array(b)), np.array(b))
+        A = assemble(self.a)
+        b = assemble(self.L)
+        [bc.apply(A) for bc in self.bcu]
+        [bc.apply(b) for bc in self.bcu]
+        if not self.bcu:
+            A3_PETSc = as_backend_type(A)
+            A3_PETSc.set_near_nullspace(self.null_space)
+            A3_PETSc.set_nullspace(self.null_space)
+            # TODO: What goes wrong here? Is it that the null space of the other linear models
+            # is subtly different from the null space of the linear elastic model? So telling
+            # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
+            # the load function against the wrong null space corrupts the loading?
+            self.null_space.orthogonalize(b)
+        it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
 
         end()
 
-        it1 = sum(it1s)
-        it2 = sum(it2s)
-        it3 = sum(it3s)
-        return it1, it2, it3, (1 + sysit, e)  # e = final error
+        return 0, 0, it, (1, 0.0)
 
     def commit(self) -> None:
         """Commit the latest computed timestep, preparing for the next one.
@@ -1970,9 +1907,7 @@ class EulerianSolidPrimal:
         b2 = assemble(self.L_σ)
         solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor')
 
-        self.u_n.assign(self.u_)
-        self.v_n.assign(self.v_)
-        self.σ_n.assign(self.σ_)
+        self.s_n.assign(self.s_)
 
 # --------------------------------------------------------------------------------
 
