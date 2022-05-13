@@ -555,7 +555,7 @@ In either formulation, each timestep of the dynamic simulation is solved iterati
 
 In `EulerianSolid`, `u` **does not take boundary conditions**, because `u` is just the time integral of `v`. Instead, one should set an initial field for `u`, and then set the boundary conditions for `v` appropriately. If you want a prescribed displacement at a boundary, that should be fed in as the initial condition for `u`.
 
-In `EulerianSolidAlternative`, when `V0 ≠ 0`, `u` needs boundary conditions on the inflow part of the boundary (defined as those segments of `∂Ω` on which `a·n < 0`, where `a := (V0, 0)`). Of course it is additionally possible to provide an initial field.
+In `EulerianSolidAlternative`, when `V0 ≠ 0`, `u` needs boundary conditions on the inflow part of the boundary (defined as those segments of `∂Ω` on which `a·n < 0`, where `a := (V0, 0)`). Of course it is additionally possible to provide an initial field for `u`.
 
 The function space for the stress must be sufficiently large compared to that for the displacement. With Q1 displacement, Q2 stress works fine.
 
