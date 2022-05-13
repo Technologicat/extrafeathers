@@ -6,7 +6,8 @@ Mixed formulation based on standard C0-continuous elements.
 """
 
 __all__ = ["EulerianSolid", "SteadyStateEulerianSolid",
-           "EulerianSolidAlternative", "SteadyStateEulerianSolidAlternative",
+           "EulerianSolidAlternative",
+           "EulerianSolidPrimal", "SteadyStateEulerianSolidPrimal",
            "step_adaptive"]
 
 from contextlib import contextmanager
@@ -886,17 +887,22 @@ class EulerianSolid:
 
 # --------------------------------------------------------------------------------
 
-# TODO: The steady-state solver does not work yet. Essentially, the equations have the wrong roles
-# TODO: when we look at which quantities appear in each of them. Consider the classical (not axially moving)
-# TODO: case. The linear momentum balance has just `σ`, no `u`, although it is tested by the test function
-# TODO: of `u`. So it is "the equation of `u`", but we cannot solve `u` from it; `σ` could be solved from
-# TODO: it just fine. `u` should be solved from the constitutive law, which is currently tested by the test
-# TODO: function of `σ`. The tests are nontrivial to swap (to switch the roles), because their tensor ranks
-# TODO: are different.
+# TODO: This steady-state solver does not work yet. See `SteadyStateEulerianSolidPrimal`, which works.
+#
+# Essentially, here the equations have the wrong roles when we look at which quantities appear in each
+# of them. Consider the classical (not axially moving) case. The linear momentum balance has just `σ`,
+# no `u`, although it is tested by the test function of `u`. So it is "the equation of `u`", but we
+# cannot solve `u` from it; `σ` could be solved from it just fine. `u` should be solved from the
+# constitutive law, which is currently tested by the test function of `σ`. The tests are nontrivial to
+# swap (to switch the roles), because their tensor ranks are different.
+#
 class SteadyStateEulerianSolid:
     """Axially moving linear solid, small-displacement Eulerian formulation.
 
     Like `EulerianSolid`, but steady state.
+
+    NOTE: WORK IN PROGRESS, does not work correctly yet.
+    See `SteadyStateEulerianSolidPrimal`, which works.
 
     Diriclet BCs are now given for `u` (NOTE!) and `σ`.
 
@@ -1587,12 +1593,22 @@ class EulerianSolidAlternative:
 
 # --------------------------------------------------------------------------------
 
-class SteadyStateEulerianSolidAlternative:
+class SteadyStateEulerianSolidPrimal:
     """Axially moving linear solid, small-displacement Eulerian formulation.
 
     Like `EulerianSolidAlternative`, but steady state.
 
     Note `v = du/dt = (a·∇) u`, because we are in an Eulerian steady state.
+
+    Since in this formulation we do not need to differentiate strains, this
+    solver uses a primal formulation in terms of `u` and `v` (the constitutive
+    law is inserted into the linear momentum balance).
+
+    Boundary stresses are enforced using a Neumann BC. `bcσ` is a single expression
+    that will be evaluated at boundaries that do not have a boundary condition for
+    `u`.
+
+    Stresses are computed for visualization only.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
@@ -1601,7 +1617,7 @@ class SteadyStateEulerianSolidAlternative:
                  V0: float,
                  bcu: typing.List[DirichletBC],
                  bcv: typing.List[DirichletBC],
-                 bcσ: typing.List[DirichletBC]):
+                 bcσ: Expression):
         self.mesh = V.mesh()
         if Q.mesh() is not V.mesh():
             raise ValueError("V and Q must be defined on the same mesh.")
@@ -1614,13 +1630,18 @@ class SteadyStateEulerianSolidAlternative:
         # `S.sub(j)` (those may also have their own second-level `.sub(k)` if they are
         # vector/tensor fields).
         #
-        e = MixedElement(V.ufl_element(), V.ufl_element(), Q.ufl_element())
+        e = MixedElement(V.ufl_element(), V.ufl_element())
         S = FunctionSpace(self.mesh, e)
-        u, v, σ = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
-        w, ψ, φ = TestFunctions(S)
+        u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
+        w, ψ = TestFunctions(S)
         s_ = Function(S)
-        u_, v_, σ_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
-        # u_, v_, σ_ = s_.sub(0), s_.sub(1), s_.sub(2)  # if you want the `Function` (for plotting etc.)
+        u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
+        # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
+
+        # For separate equation, for stress visualization
+        σ = TrialFunction(Q)
+        φ = TestFunction(Q)
+        σ_ = Function(Q)
 
         self.V = V
         self.Q = Q
@@ -1663,13 +1684,13 @@ class SteadyStateEulerianSolidAlternative:
         zeroQ = Function(Q)
         zeroQ.vector()[:] = 0.0
         # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
-        assigner = FunctionAssigner(S, [V, V, Q])  # receiving space, assigning space
+        assigner = FunctionAssigner(S, [V, V])  # receiving space, assigning space
         fssu = [Function(S) for _ in range(len(fus))]
         for fs, fu in zip(fssu, fus):
-            assigner.assign(fs, [project(fu, V), zeroV, zeroQ])
+            assigner.assign(fs, [project(fu, V), zeroV])
         fssv = [Function(S) for _ in range(len(fus))]
         for fs, fu in zip(fssv, fus):
-            assigner.assign(fs, [zeroV, project(fu, V), zeroQ])
+            assigner.assign(fs, [zeroV, project(fu, V)])
         null_space_basis = [fs.vector() for fs in fssu + fssv]
 
         basis = VectorSpaceBasis(null_space_basis)
@@ -1768,46 +1789,58 @@ class SteadyStateEulerianSolidAlternative:
         #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
         #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
 
-        εu = ε(u)  # NOTE: Based on the *unknown* `u`.
-        εv = ε(v)
-        Id = Identity(εu.geometric_dimension())
-        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        K_inner_εu = K_inner_operator(εu)
-        K_inner_εv = K_inner_operator(εv)
+        Id = Identity(ε(u).geometric_dimension())
+        K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
 
         # Choose constitutive model
         if self.τ == 0.0:  # Linear elastic (LE)
+            # for equation
+            Σ = K_inner(ε(u))
+            # for visualization
             F_σ = (inner(σ, φ) * dx -
-                   inner(K_inner_εu, sym(φ)) * dx)
+                   inner(K_inner(ε(self.u_)), sym(φ)) * dx)
         else:  # Axially moving Kelvin-Voigt (KV)
+            Σ = K_inner(ε(u)) + τ * K_inner(ε(v))
             F_σ = (inner(σ, φ) * dx -
-                   inner(K_inner_εu + τ * K_inner_εv, sym(φ)) * dx)
+                   inner(K_inner(ε(self.u_)) + τ * K_inner(ε(self.v_)), sym(φ)) * dx)
 
-        F_u = (advw(a, u, w, n) - dot(v, w) * dx)
-        F_v = (ρ * advw(a, v, ψ, n) +
-               inner(σ.T, ε(ψ)) * dx - dot(dot(n, σ), ψ) * ds -
-               ρ * dot(b, ψ) * dx)
+        # HACK: Primal formulation allows using a Neumann BC for stress.
+        # An expression for the stress on the boundary is given as the only element of bcσ.
+        assert len(self.bcσ) == 1
+        Σ0 = self.bcσ[0]
 
-        # # TODO: why does stabilizing `u` crash the solver even if the term is not in use?
-        # # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
+        F_u = (ρ * advw(a, v, w, n) +
+               inner(Σ.T, ε(w)) * dx - dot(dot(n, Σ0), w) * ds -
+               ρ * dot(b, w) * dx)
+        F_v = (dot(v, ψ) * dx - advw(a, u, ψ, n))
+
+        # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
+        #
+        # Seems that for this equation system, the skew-symmetric advection already stabilizes enough;
+        # for some reason, adding in SUPG makes these equations more unstable. Tuning doesn't help.
+        #
         # deg = Constant(self.V.ufl_element().degree())
-        # τ_SUPG = (α0 / deg) * (2 * mag(a) / he)**-1  # [τ] = s
-        # R = (advs(a, u) - v)
+        # moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
+        # τ_SUPG = (α0 / deg) * (2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
+        # R = (ρ * advs(a, v) - div(Σ) - ρ * b)
         # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
         # F_u += F_SUPG
+        #
+        # # Especially this seems to destabilize significantly.
+        # deg = Constant(self.V.ufl_element().degree())
+        # τ_SUPG = (α0 / deg) * (2 * mag(a) / he)**-1  # [τ] = s
+        # R = (v - advs(a, u))
+        # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
+        # F_v += F_SUPG
 
-        deg = Constant(self.V.ufl_element().degree())
-        moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
-        τ_SUPG = (α0 / deg) * (2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
-        R = (ρ * advs(a, v) - div(σ) - ρ * b)
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
-        F_v += F_SUPG
-
-        F = F_u + F_v + F_σ
+        F = F_u + F_v
         self.a = lhs(F)
         self.L = rhs(F)
 
-        # Strains, for visualization only.
+        # For visualization only.
+        self.a_σ = lhs(F_σ)
+        self.L_σ = rhs(F_σ)
+
         εu = self.εu  # unknown
         εv = self.εv
         q = self.q
@@ -1830,8 +1863,6 @@ class SteadyStateEulerianSolidAlternative:
         [bc.apply(b) for bc in self.bcu]
         [bc.apply(A) for bc in self.bcv]
         [bc.apply(b) for bc in self.bcv]
-        [bc.apply(A) for bc in self.bcσ]
-        [bc.apply(b) for bc in self.bcσ]
         if not self.bcu:
             A_PETSc = as_backend_type(A)
             A_PETSc.set_near_nullspace(self.null_space)
@@ -1846,6 +1877,9 @@ class SteadyStateEulerianSolidAlternative:
         A2b = assemble(self.a_εv)
         b2b = assemble(self.L_εv)
         solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
+        A2c = assemble(self.a_σ)
+        b2c = assemble(self.L_σ)
+        solve(A2c, self.σ_.vector(), b2c, 'bicgstab', 'sor')
 
         end()
         return it
