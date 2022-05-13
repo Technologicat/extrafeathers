@@ -410,17 +410,17 @@ class EulerianSolid:
         εu_ = self.εu_  # known, at the "θ-point" in time
         εv_ = self.εv_
         Id = Identity(εu_.geometric_dimension())
-        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        K_inner_εu_ = K_inner_operator(εu_)
-        K_inner_εv_ = K_inner_operator(εv_)
+        K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        K_inner_εu_ = K_inner(εu_)
+        K_inner_εv_ = K_inner(εv_)
 
         # # Original definitions for step 2, no projection
         # εu_ = ε(U)
         # εv_ = ε(V)
         # Id = Identity(εu_.geometric_dimension())
-        # K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        # K_inner_εu_ = K_inner_operator(εu_)
-        # K_inner_εv_ = K_inner_operator(εv_)
+        # K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        # K_inner_εu_ = K_inner(εu_)
+        # K_inner_εv_ = K_inner(εv_)
 
         # Choose constitutive model
         if self.τ == 0.0:  # Linear elastic (LE)
@@ -496,14 +496,14 @@ class EulerianSolid:
             # # Look, ma, no integration by parts.
             # F_σ = (inner(Σ, φ) * dx -
             #        (inner(K_inner_εu_ + τ * K_inner_εv_, sym(φ)) * dx +  # linear elastic and τ ∂/∂t (...)
-            #         τ * inner(K_inner_operator(advs(a, εu_)), sym(φ)) * dx))  # ∫ (φ:Kη):(a·∇)ε dx
+            #         τ * inner(K_inner(advs(a, εu_)), sym(φ)) * dx))  # ∫ (φ:Kη):(a·∇)ε dx
 
             # "Symmetrized": half integrated by parts, half not.
             # The `a·∇` operates on both the quantity and test parts. This is most similar to the
             # skew-symmetric advection operator used in modern FEM discretizations of Navier-Stokes.
             F_σ = (inner(Σ, φ) * dx -
                    (inner(K_inner_εu_ + τ * K_inner_εv_, sym(φ)) * dx +  # linear elastic and τ ∂/∂t (...)
-                    0.5 * τ * inner(K_inner_operator(advs(a, εu_)), sym(φ)) * dx -  # 1/2 ∫ (φ:Kη):(a·∇)ε dx
+                    0.5 * τ * inner(K_inner(advs(a, εu_)), sym(φ)) * dx -  # 1/2 ∫ (φ:Kη):(a·∇)ε dx
                     0.5 * τ * inner(K_inner_εu_, advs(a, sym(φ))) * dx +  # 1/2 ∫ (φ:Kη):(a·∇)ε dx
                     0.5 * τ * dot(a, n) * inner(K_inner_εu_, sym(φ)) * ds))  # generated, 1/2 ∫ (φ:Kη):(a·∇)ε dx
 
@@ -516,14 +516,14 @@ class EulerianSolid:
             # # The residual is evaluated elementwise in strong form, at the end of the timestep.
             # εu_ = ε(u_)  # at end of timestep
             # εv_ = ε(v_)
-            # K_inner_εu_ = K_inner_operator(εu_)
-            # K_inner_εv_ = K_inner_operator(εv_)
+            # K_inner_εu_ = K_inner(εu_)
+            # K_inner_εv_ = K_inner(εv_)
             # # # We need advs(a, εu_), but if `u` uses a degree-1 basis, ∇εu_ = 0. Thus, we need to
             # # # project εu_ into Q before differentiating to get a useful derivative in the element interiors.
             # # # Use a temporary storage (εtmp) for that; the iteration loop fills in the actual data.
-            # # R = σ - (K_inner_εu_ + τ * (K_inner_εv_ + K_inner_operator(advs(a, self.εtmp))))
+            # # R = σ - (K_inner_εu_ + τ * (K_inner_εv_ + K_inner(advs(a, self.εtmp))))
             # # OTOH, in Navier-Stokes, some of the terms may be zero and SUPG works just fine.
-            # R = σ - (K_inner_εu_ + τ * (K_inner_εv_ + K_inner_operator(advs(a, εu_))))
+            # R = σ - (K_inner_εu_ + τ * (K_inner_εv_ + K_inner(advs(a, εu_))))
             # # Same here; the RHS is symmetric, so symmetrize the test function.
             # F_SUPG = enable_SUPG_flag * τ_SUPG * inner(advs(a, sym(φ)), R) * dx
             # F_σ += F_SUPG
@@ -1067,8 +1067,8 @@ class SteadyStateEulerianSolid:
 
         εu = ε(u)  # NOTE: Based on the *unknown* `u`.
         Id = Identity(εu.geometric_dimension())
-        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        K_inner_εu_ = K_inner_operator(εu)
+        K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        K_inner_εu_ = K_inner(εu)
 
         # Choose constitutive model
         if self.τ == 0.0:  # Linear elastic (LE)
@@ -1413,9 +1413,9 @@ class EulerianSolidAlternative:
         εu_ = ε(U)
         εv_ = ε(V)
         Id = Identity(εu_.geometric_dimension())
-        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        K_inner_εu_ = K_inner_operator(εu_)
-        K_inner_εv_ = K_inner_operator(εv_)
+        K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        K_inner_εu_ = K_inner(εu_)
+        K_inner_εv_ = K_inner(εv_)
 
         # Choose constitutive model
         #
