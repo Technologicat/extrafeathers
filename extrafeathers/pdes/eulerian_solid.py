@@ -2064,8 +2064,8 @@ class SteadyStateEulerianSolidPrimal:
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
-        zeroQ = Function(Q)
-        zeroQ.vector()[:] = 0.0
+        # zeroQ = Function(Q)
+        # zeroQ.vector()[:] = 0.0
         # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
         assigner = FunctionAssigner(S, [V, V])  # receiving space, assigning space
         fssu = [Function(S) for _ in range(len(fus))]
