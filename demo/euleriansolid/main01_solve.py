@@ -167,8 +167,8 @@ if dynamic:
     # # We set `u` consistently with the strain-controlled pull.
     # #
     # from fenics import Expression
-    # # u0_func = lambda t: -1e-2 * t
-    # u0_func = lambda t: 0.0
+    # u0_func = lambda t: -1e-2 * t
+    # # u0_func = lambda t: 0.0
     # u0_expr = Expression(("u0", "0"), degree=1, u0=u0_func(0.0))
     # bcu_left = DirichletBC(V, u0_expr, boundary_parts, Boundaries.LEFT.value)
     # bcu.append(bcu_left)
