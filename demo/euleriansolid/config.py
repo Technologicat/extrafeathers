@@ -36,7 +36,7 @@ V0 = 5e-2  # Typical L-PBF 3D printer laser velocity
 
 # For 316L steel
 #
-# Simulation end time [s]
+# Dynamic simulation end time [s]
 T = 0.01
 # Number of timesteps
 nt = 6000  # for τ = 1e-5
