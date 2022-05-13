@@ -99,17 +99,24 @@ if dynamic:
 
     # Alternative solver only uses P for visualizing the strains.
     P = TensorFunctionSpace(mesh, 'DP', 0)
-    # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
+    solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
     # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
-    boundary_stress = Constant(((1e6, 0), (0, 0)))
-    solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, boundary_stress, dt)
     # Set plotting labels; this formulation uses v := du/dt
     dlatex = r"\mathrm{d}"
     dtext = "d"
 
+    # # NOTE: This algorithm does not work yet.
+    # P = TensorFunctionSpace(mesh, 'DP', 0)  # strain visualization only
+    # boundary_stress = Constant(((1e6, 0), (0, 0)))
+    # solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, boundary_stress, dt)
+    # # Set plotting labels; this formulation uses v := du/dt
+    # dlatex = r"\mathrm{d}"
+    # dtext = "d"
+
 else:  # steady state
     P = TensorFunctionSpace(mesh, 'DP', 0)  # Only for visualizing the strains.
 
+    # # NOTE: This algorithm does not work yet.
     # solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)
     # Set plotting labels; this formulation uses v := ∂u/∂t
     # dlatex = r"\partial"
@@ -122,10 +129,16 @@ else:  # steady state
     dtext = "d"
 
 if my_rank == 0:
-    if dynamic:
-        print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
-    else:
-        print(f"Number of DOFs: velocity {V.dim()}, stress {Q.dim()}")
+    print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
+
+# Extract the subspaces for the fields from the monolithic mixed space, if needed.
+# Note the primal solvers, which use the mixed space, do not use Dirichlet BCs for σ.
+if hasattr(solver, "S"):
+    Usubspace = solver.S.sub(0)
+    Vsubspace = solver.S.sub(1)
+else:
+    Usubspace = V
+    Vsubspace = V
 
 # --------------------------------------------------------------------------------
 # For dynamic solver
@@ -170,8 +183,8 @@ if dynamic:
     # # #              V)  # [-0.5, 0.5]²
     # solver.u_n.assign(u0)
     # solver.u_.assign(u0)
-    # bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    # bcv_right = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
@@ -186,31 +199,31 @@ if dynamic:
     # u0_func = lambda t: -1e-2 * t
     # # u0_func = lambda t: 0.0
     # u0_expr = Expression(("u0", "0"), degree=1, u0=u0_func(0.0))
-    # bcu_left = DirichletBC(V, u0_expr, boundary_parts, Boundaries.LEFT.value)
+    # bcu_left = DirichletBC(Usubspace, u0_expr, boundary_parts, Boundaries.LEFT.value)
     # bcu.append(bcu_left)
-    # bcv_left = DirichletBC(V, Constant((-1e-6, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    # bcv_right = DirichletBC(V, Constant((+1e-6, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+    # bcv_left = DirichletBC(Vsubspace, Constant((-1e-6, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv_right = DirichletBC(Vsubspace, Constant((+1e-6, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
     # # Left and right edges: fixed left end, strain-controlled pull at right end
-    # bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     # bcu.append(bcu_left)
-    # bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    # bcv_right = DirichletBC(V, Constant((0.000003, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv_right = DirichletBC(Vsubspace, Constant((0.000003, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
     # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
     # Here the initial field for `u` is zero, so it does not need to be specified...
     # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
-    bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
-    bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    bcv.append(bcv_left)
     bcσ_right1 = DirichletBC(Q.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
     bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
     bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
-    bcv.append(bcv_left)
     bcσ.append(bcσ_right1)
     bcσ.append(bcσ_right2)
     bcσ.append(bcσ_right3)
@@ -236,11 +249,6 @@ if dynamic:
 # For steady-state solver
 
 if not dynamic:
-    # Extract the subspaces for the fields from the monolithic mixed space:
-    Usubspace = solver.S.sub(0)
-    Vsubspace = solver.S.sub(1)
-    # Qsubspace = solver.S.sub(2)
-
     # # Set nonzero initial guess for `u`
     # from fenics import Expression
     # from .config import ν
@@ -857,29 +865,38 @@ for n in range(nt):
     # substeps = 1  # for message
     krylov_it1, krylov_it2, krylov_it3, (system_it, last_diff_H1), (substeps, subdt) = step_adaptive(solver)
 
+    if hasattr(solver, "S"):
+        u_ = solver.s_.sub(0)
+        v_ = solver.s_.sub(1)
+        σ_ = solver.σ_  # not part of the monolithic space
+    else:
+        u_ = solver.u_
+        v_ = solver.v_
+        σ_ = solver.σ_
+
     if n % nsavemod == 0 or n == nt - 1:
         begin("Saving")
 
         if highres_export_V:
             # Save the displacement visualization at full nodal resolution.
-            solver.u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
+            u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
             v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
             xdmffile_u.write(v_P1, t)
 
             # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
-            solver.v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
+            v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
             v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
             xdmffile_v.write(v_P1, t)
         else:  # save at P1 resolution
-            xdmffile_u.write(solver.u_, t)
-            xdmffile_v.write(solver.v_, t)
+            xdmffile_u.write(u_, t)
+            xdmffile_v.write(v_, t)
 
         if highres_export_Q:
-            solver.σ_.vector().gather(q_vec_copy, all_Q_dofs)
+            σ_.vector().gather(q_vec_copy, all_Q_dofs)
             q_P1.vector()[:] = q_vec_copy[my_Q_dofs]
             xdmffile_σ.write(q_P1, t)
         else:  # save at P1 resolution
-            xdmffile_σ.write(solver.σ_, t)
+            xdmffile_σ.write(σ_, t)
 
         # compute von Mises stress for visualization in ParaView
         # TODO: export von Mises stress at full nodal resolution, too
@@ -918,7 +935,7 @@ for n in range(nt):
             """
             d = T.geometric_dimension()
             return T - (1 / d) * tr(T) * Identity(d)
-        s = dev(solver.σ_)
+        s = dev(σ_)
         d = s.geometric_dimension()
         dim_to_scale_factor = {3: sqrt(3 / 2), 2: sqrt(2)}
         scale = dim_to_scale_factor[d]
@@ -926,9 +943,9 @@ for n in range(nt):
         vonMises.assign(project(vonMises_expr, Qscalar))
         xdmffile_vonMises.write(vonMises, t)
 
-        timeseries_u.store(solver.u_.vector(), t)  # the timeseries saves the original data
-        timeseries_v.store(solver.v_.vector(), t)
-        timeseries_σ.store(solver.σ_.vector(), t)
+        timeseries_u.store(u_.vector(), t)  # the timeseries saves the original data
+        timeseries_v.store(v_.vector(), t)
+        timeseries_σ.store(σ_.vector(), t)
         end()
 
     # Accept the timestep, updating the "old" solution
@@ -949,7 +966,7 @@ for n in range(nt):
             # #  - `dolfin.interpolate` doesn't work (point/cell intersection only implemented for simplices),
             # #  - `dolfin.project` doesn't work for `dolfin.Expression`, either; same reason.
             # magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)", degree=V.ufl_element().degree(),
-            #                        u0=solver.u_.sub(0), u1=solver.u_.sub(1))
+            #                        u0=u_.sub(0), u1=u_.sub(1))
             # magu = interpolate(magu_expr, Vscalar)
             # uvec = np.array(magu.vector())
             #
@@ -962,7 +979,7 @@ for n in range(nt):
             # maxu = max(maxu_global)
 
             # So let's do this manually. We can operate on the nodal values directly.
-            minu, maxu = common.minmax(solver.u_, mode="l2")
+            minu, maxu = common.minmax(u_, mode="l2")
         last_plot_walltime_local = tim.dt
         last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
         last_plot_walltime = max(last_plot_walltime_global)
