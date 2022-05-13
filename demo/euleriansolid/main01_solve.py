@@ -104,12 +104,19 @@ if dynamic:
     dtext = "d"
 
 else:  # steady state
-    P = TensorFunctionSpace(mesh, 'DP', 0)
+    P = TensorFunctionSpace(mesh, 'DP', 0)  # Only for visualizing the strains.
+
     # solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)
-    solver = SteadyStateEulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
     # Set plotting labels; this formulation uses v := ∂u/∂t
-    dlatex = r"\partial"
-    dtext = "∂"
+    # dlatex = r"\partial"
+    # dtext = "∂"
+
+    boundary_stress = Constant(((1e6, 0), (0, 0)))
+    bcσ.append(boundary_stress)
+    solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
+    # Set plotting labels; this formulation uses v := du/dt
+    dlatex = r"\mathrm{d}"
+    dtext = "d"
 
 if my_rank == 0:
     if dynamic:
@@ -229,7 +236,7 @@ if not dynamic:
     # Extract the subspaces for the fields from the monolithic mixed space:
     Usubspace = solver.S.sub(0)
     Vsubspace = solver.S.sub(1)
-    Qsubspace = solver.S.sub(2)
+    # Qsubspace = solver.S.sub(2)
 
     # # Set nonzero initial guess for `u`
     # from fenics import Expression
@@ -240,40 +247,48 @@ if not dynamic:
     #              V)  # [-0.5, 0.5]²
     # solver.s_.sub(0).assign(u0)
 
-    # Top and bottom edges: zero normal stress
-    bcσ_top1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ12 (symm.)
-    bcσ_top2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ21
-    bcσ_top3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ22
-    bcσ_bottom1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ12
-    bcσ_bottom2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ21
-    bcσ_bottom3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ22
-    bcσ.append(bcσ_top1)
-    bcσ.append(bcσ_top2)
-    bcσ.append(bcσ_top3)
-    bcσ.append(bcσ_bottom1)
-    bcσ.append(bcσ_bottom2)
-    bcσ.append(bcσ_bottom3)
+    # # Top and bottom edges: zero normal stress
+    # bcσ_top1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ12 (symm.)
+    # bcσ_top2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ21
+    # bcσ_top3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ22
+    # bcσ_bottom1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ12
+    # bcσ_bottom2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ21
+    # bcσ_bottom3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ22
+    # bcσ.append(bcσ_top1)
+    # bcσ.append(bcσ_top2)
+    # bcσ.append(bcσ_top3)
+    # bcσ.append(bcσ_bottom1)
+    # bcσ.append(bcσ_bottom2)
+    # bcσ.append(bcσ_bottom3)
 
-    # TODO: update this
     # # Left and right edges: fixed displacement
-    # bcu_left = DirichletBC(Vsubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcu_right = DirichletBC(Vsubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
+    # bcu_left = DirichletBC(Usubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu_right = DirichletBC(Usubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
+    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)
     # bcu.append(bcu_left)
     # bcu.append(bcu_right)
+    # bcv.append(bcv_left)
+    # bcv.append(bcv_right)
 
-    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    # Here the initial field for `u` is zero, so it does not need to be specified...
-    # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
+    # # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+    # # Here the initial field for `u` is zero, so it does not need to be specified...
+    # # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
+    # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu.append(bcu_left)
+    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv.append(bcv_left)
+    # bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    # bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+    # bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+    # bcσ.append(bcσ_right1)
+    # bcσ.append(bcσ_right2)
+    # bcσ.append(bcσ_right3)
+
     bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
     bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
-    bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
-    bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
     bcv.append(bcv_left)
-    bcσ.append(bcσ_right1)
-    bcσ.append(bcσ_right2)
-    bcσ.append(bcσ_right3)
 
 # --------------------------------------------------------------------------------
 
@@ -373,17 +388,24 @@ if my_rank == 0:
     print("Preparing plotter...")
 with timer() as tim:
     # Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
-    # `u` and `v` both live on `V`, so both can use the same preps.
     if hasattr(solver, "s_"):  # steady-state solver
         tmp = solver.s_.sub(0)
     else:  # dynamic solver
         tmp = solver.u_
+    prep_U0 = plotmagic.mpiplot_prepare(tmp.sub(0))
+    prep_U1 = plotmagic.mpiplot_prepare(tmp.sub(1))
+
+    if hasattr(solver, "s_"):  # steady-state solver
+        tmp = solver.s_.sub(1)  # different subspace, need new prep
+    else:  # dynamic solver
+        tmp = solver.v_  # same space, could use the same preps
     prep_V0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_V1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 
     if hasattr(solver, "s_"):  # steady-state solver
         # tmp = solver.s_.sub(1)  # SteadyStateEulerianSolid
-        tmp = solver.s_.sub(2)  # SteadyStateEulerianSolidAlternative
+        # tmp = solver.s_.sub(2)  # SteadyStateEulerianSolidPrimal
+        tmp = solver.σ_
     else:  # dynamic solver
         tmp = solver.σ_
     prep_Q0 = plotmagic.mpiplot_prepare(tmp.sub(0))
@@ -432,10 +454,11 @@ def plotit():
         # u_ = solver.s_.sub(0)
         # v_ = Function(solver.S).sub(0)  # all zeros
         # σ_ = solver.s_.sub(1)
-        # SteadyStateEulerianSolidAlternative
+        # SteadyStateEulerianSolidPrimal
         u_ = solver.s_.sub(0)
         v_ = solver.s_.sub(1)
-        σ_ = solver.s_.sub(2)
+        # σ_ = solver.s_.sub(2)
+        σ_ = solver.σ_
     else:
         u_ = solver.u_
         v_ = solver.v_
@@ -458,7 +481,7 @@ def plotit():
         ax.cla()
         plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(u_.sub(0))
-    theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_V0, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(u_.sub(0), prep=prep_U0, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         print("DEBUG: colorbar")
@@ -474,7 +497,7 @@ def plotit():
         ax.cla()
         plt.sca(ax)  # for `plotmagic.mpiplot`
     vmin, vmax = symmetric_vrange(u_.sub(1))
-    theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_V1, show_mesh=show_mesh,
+    theplot = plotmagic.mpiplot(u_.sub(1), prep=prep_U1, show_mesh=show_mesh,
                                 cmap="RdBu_r", vmin=vmin, vmax=vmax)
     if my_rank == 0:
         print("DEBUG: colorbar")
@@ -749,11 +772,11 @@ def plotit():
 if not dynamic:
     if my_rank == 0:
         print("Solving steady state...")
-    with timer() as tim:
+    with timer() as solve_tim:
         krylov_it = solver.solve()
     E = elastic_strain_energy()
     if my_rank == 0:  # DEBUG
-        print(f"Krylov {krylov_it}; E = ∫ (1/2) σ:ε dΩ = {E:0.3g}; solve wall time {tim.dt:0.3g}s")
+        print(f"Krylov {krylov_it}; E = ∫ (1/2) σ:ε dΩ = {E:0.3g}; solve wall time {solve_tim.dt:0.3g}s")
 
     if my_rank == 0:
         print("Opening figure window...")
@@ -773,15 +796,15 @@ if not dynamic:
     if my_rank == 0:
         print("Plotting...")
     msg = "Plotting..."
-    with timer() as tim:
+    with timer() as plot_tim:
         plotit()
 
     minu, maxu = common.minmax(solver.s_.sub(0), mode="l2")
 
-    last_plot_walltime_local = tim.dt
+    last_plot_walltime_local = plot_tim.dt
     last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
     last_plot_walltime = max(last_plot_walltime_global)
-    msg = f"{SUPG_str}; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; plot {last_plot_walltime:0.2g} s"
+    msg = f"{SUPG_str}; V₀ = {V0} m/s; τ = {tau:0.3g} s; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; solved in {solve_tim.dt:0.2g} s; plot {last_plot_walltime:0.2g} s"
     # Draw one more time to update title.
     if my_rank == 0:
         fig.suptitle(msg)
