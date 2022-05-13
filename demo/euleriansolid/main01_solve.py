@@ -27,7 +27,8 @@ from extrafeathers import plotmagic
 from extrafeathers.pdes import (EulerianSolid,  # noqa: F401
                                 EulerianSolidAlternative,
                                 step_adaptive,
-                                SteadyStateEulerianSolid)
+                                SteadyStateEulerianSolid,
+                                SteadyStateEulerianSolidAlternative)
 from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, tau, V0, dt, nt,
                      Boundaries,
@@ -103,13 +104,18 @@ if dynamic:
     dtext = "d"
 
 else:  # steady state
-    solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)
+    P = TensorFunctionSpace(mesh, 'DP', 0)
+    # solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)
+    solver = SteadyStateEulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
     # Set plotting labels; this formulation uses v := ∂u/∂t
     dlatex = r"\partial"
     dtext = "∂"
 
 if my_rank == 0:
-    print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
+    if dynamic:
+        print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
+    else:
+        print(f"Number of DOFs: velocity {V.dim()}, stress {Q.dim()}")
 
 # --------------------------------------------------------------------------------
 # For dynamic solver
@@ -221,8 +227,9 @@ if dynamic:
 
 if not dynamic:
     # Extract the subspaces for the fields from the monolithic mixed space:
-    Vsubspace = solver.S.sub(0)
-    Qsubspace = solver.S.sub(1)
+    Usubspace = solver.S.sub(0)
+    Vsubspace = solver.S.sub(1)
+    Qsubspace = solver.S.sub(2)
 
     # # Set nonzero initial guess for `u`
     # from fenics import Expression
@@ -247,11 +254,26 @@ if not dynamic:
     bcσ.append(bcσ_bottom2)
     bcσ.append(bcσ_bottom3)
 
-    # Left and right edges: fixed displacement
-    bcu_left = DirichletBC(Vsubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
-    bcu_right = DirichletBC(Vsubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
+    # TODO: update this
+    # # Left and right edges: fixed displacement
+    # bcu_left = DirichletBC(Vsubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu_right = DirichletBC(Vsubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
+    # bcu.append(bcu_left)
+    # bcu.append(bcu_right)
+
+    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+    # Here the initial field for `u` is zero, so it does not need to be specified...
+    # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
+    bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
-    bcu.append(bcu_right)
+    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+    bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+    bcv.append(bcv_left)
+    bcσ.append(bcσ_right1)
+    bcσ.append(bcσ_right2)
+    bcσ.append(bcσ_right3)
 
 # --------------------------------------------------------------------------------
 
@@ -360,7 +382,8 @@ with timer() as tim:
     prep_V1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 
     if hasattr(solver, "s_"):  # steady-state solver
-        tmp = solver.s_.sub(1)
+        # tmp = solver.s_.sub(1)  # SteadyStateEulerianSolid
+        tmp = solver.s_.sub(2)  # SteadyStateEulerianSolidAlternative
     else:  # dynamic solver
         tmp = solver.σ_
     prep_Q0 = plotmagic.mpiplot_prepare(tmp.sub(0))
@@ -405,9 +428,14 @@ if my_rank == 0:
 def plotit():
     # Plot the current solution
     if hasattr(solver, "s_"):  # steady-state solver
+        # # SteadyStateEulerianSolid
+        # u_ = solver.s_.sub(0)
+        # v_ = Function(solver.S).sub(0)  # all zeros
+        # σ_ = solver.s_.sub(1)
+        # SteadyStateEulerianSolidAlternative
         u_ = solver.s_.sub(0)
-        v_ = Function(solver.S).sub(0)  # all zeros
-        σ_ = solver.s_.sub(1)
+        v_ = solver.s_.sub(1)
+        σ_ = solver.s_.sub(2)
     else:
         u_ = solver.u_
         v_ = solver.v_
