@@ -28,6 +28,7 @@ mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 #
 # To remain subcritical:  V0 < √(E / rho)    (longitudinal elastic wave speed)
 #                         V0 < √(mu / rho)?  (shear wave speed)
+# 316L steel: √(E / rho) = 4681.08952641054
 V0 = 5e-2  # Typical L-PBF 3D printer laser velocity
 # V0 = 0.0  # Classical case (no axial motion), for debugging and comparison.
 
