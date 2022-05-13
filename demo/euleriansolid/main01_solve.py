@@ -815,7 +815,7 @@ if not dynamic:
     last_plot_walltime_local = plot_tim.dt
     last_plot_walltime_global = MPI.comm_world.allgather(last_plot_walltime_local)
     last_plot_walltime = max(last_plot_walltime_global)
-    msg = f"{SUPG_str}; V₀ = {V0} m/s; τ = {tau:0.3g} s; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; solved in {solve_tim.dt:0.2g} s; plot {last_plot_walltime:0.2g} s"
+    msg = f"{SUPG_str}V₀ = {V0} m/s; τ = {tau:0.3g} s; |u| ∈ [{minu:0.6g}, {maxu:0.6g}]; solved in {solve_tim.dt:0.2g} s; plot {last_plot_walltime:0.2g} s"
     # Draw one more time to update title.
     if my_rank == 0:
         fig.suptitle(msg)
