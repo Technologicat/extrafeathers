@@ -5,9 +5,8 @@ Axially moving solid, Eulerian view, small-displacement regime (on top of axial 
 Mixed formulation based on standard C0-continuous elements.
 """
 
-__all__ = ["EulerianSolid",
+__all__ = ["EulerianSolid", "SteadyStateEulerianSolid",
            "EulerianSolidAlternative",
-           "SteadyStateEulerianSolid",
            "step_adaptive"]
 
 from contextlib import contextmanager
@@ -887,6 +886,233 @@ class EulerianSolid:
 
 # --------------------------------------------------------------------------------
 
+# TODO: The steady-state solver does not work yet. Essentially, the equations have the wrong roles
+# TODO: when we look at which quantities appear in each of them. Consider the classical (not axially moving)
+# TODO: case. The linear momentum balance has just `σ`, no `u`, although it is tested by the test function
+# TODO: of `u`. So it is "the equation of `u`", but we cannot solve `u` from it; `σ` could be solved from
+# TODO: it just fine. `u` should be solved from the constitutive law, which is currently tested by the test
+# TODO: function of `σ`. The tests are nontrivial to swap (to switch the roles), because their tensor ranks
+# TODO: are different.
+class SteadyStateEulerianSolid:
+    """Axially moving linear solid, small-displacement Eulerian formulation.
+
+    Like `EulerianSolid`, but steady state.
+
+    Diriclet BCs are now given for `u` (NOTE!) and `σ`.
+
+    Note `v = ∂u/∂t ≡ 0`, because we are in an Eulerian steady state.
+    """
+    def __init__(self, V: VectorFunctionSpace, Q: TensorFunctionSpace,
+                 ρ: float, λ: float, μ: float, τ: float,
+                 V0: float,
+                 bcu: typing.List[DirichletBC],
+                 bcσ: typing.List[DirichletBC]):
+        self.mesh = V.mesh()
+        if Q.mesh() is not V.mesh():
+            raise ValueError("V and Q must be defined on the same mesh.")
+
+        # Monolithic formulation.
+        #
+        # Using a `MixedFunctionSpace` fails for some reason. Instead, the way to
+        # do this is to set up a `MixedElement` and a garden-variety `FunctionSpace`
+        # on that, and then split as needed. Then set Dirichlet BCs on the appropriate
+        # `S.sub(j)` (those may also have their own second-level `.sub(k)` if they are
+        # vector/tensor fields).
+        #
+        e = MixedElement(V.ufl_element(), Q.ufl_element())
+        S = FunctionSpace(self.mesh, e)
+        u, σ = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
+        ψ, φ = TestFunctions(S)
+        s_ = Function(S)
+        u_, σ_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
+        # u_, σ_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
+
+        self.V = V
+        self.Q = Q
+        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)
+        self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
+
+        self.u, self.σ = u, σ  # trials
+        self.ψ, self.φ = ψ, φ  # tests
+        self.u_, self.σ_ = u_, σ_  # solution
+
+        self.S = S
+        self.s_ = s_
+
+        # Strictly, this is the null space of linear elasticity, but the physics shouldn't
+        # be that much different for the other linear models.
+        dim = self.mesh.topology().dim()
+        if dim == 2:
+            fus = [Constant((1, 0)),
+                   Constant((0, 1)),
+                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
+        elif dim == 3:
+            fus = [Constant((1, 0, 0)),
+                   Constant((0, 1, 0)),
+                   Constant((0, 0, 1)),
+                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
+                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
+                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
+        else:
+            raise NotImplementedError(f"dim = {dim}")
+
+        # In a mixed formulation, we must insert zero functions for the other fields:
+        zeroV = Function(V)
+        zeroV.vector()[:] = 0.0
+        zeroQ = Function(Q)
+        zeroQ.vector()[:] = 0.0
+        # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
+        assigner = FunctionAssigner(S, [V, Q])  # receiving space, assigning space
+        fss = [Function(S) for _ in range(len(fus))]
+        for fs, fu in zip(fss, fus):
+            assigner.assign(fs, [project(fu, V), zeroQ])
+        null_space_basis = [fs.vector() for fs in fss]
+
+        basis = VectorSpaceBasis(null_space_basis)
+        basis.orthonormalize()
+        self.null_space = basis
+
+        # Dirichlet boundary conditions
+        self.bcu = bcu
+        self.bcσ = bcσ
+
+        # Local mesh size (for stabilization terms)
+        self.he = cell_mf_to_expression(meshsize(self.mesh))
+
+        # Velocity of co-moving frame (constant; to generalize,
+        # need to update formulation to include fictitious forces)
+        self.a = Constant((V0, 0))
+
+        # Specific body force (N / kg = m / s²). FEM function for maximum generality.
+        self.b = Function(V)
+        self.b.vector()[:] = 0.0  # placeholder value
+
+        # Parameters.
+        # TODO: use FEM fields, we will need these to be temperature-dependent.
+        # TODO: parameterize using the (rank-4) stiffness/viscosity tensors
+        #       (better for arbitrary symmetry group)
+        self._ρ = Constant(ρ)
+        self._λ = Constant(λ)
+        self._μ = Constant(μ)
+        self._τ = Constant(τ)
+
+        # Numerical stabilizer on/off flags.
+        self.stabilizers = EulerianSolidStabilizerFlags()
+
+        # SUPG stabilizer tuning parameter.
+        self._α0 = Constant(1)
+
+        # PDE system iteration parameters.
+        # User-configurable (`solver.maxit = ...`), but not a major advertised feature.
+        self.maxit = 100  # maximum number of system iterations per timestep
+        self.tol = 1e-8  # system iteration tolerance, ‖v - v_prev‖_H1 (over the whole domain)
+
+        self.compile_forms()
+
+    ρ = ufl_constant_property("ρ", doc="Density [kg / m³]")
+    λ = ufl_constant_property("λ", doc="Lamé's first parameter [Pa]")
+    μ = ufl_constant_property("μ", doc="Shear modulus [Pa]")
+    τ = ufl_constant_property("τ", doc="Kelvin-Voigt retardation time [s]")
+    α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
+
+    def compile_forms(self) -> None:
+        n = FacetNormal(self.mesh)
+
+        # Displacement
+        u = self.u      # unknown
+        ψ = self.ψ      # test
+
+        # Stress
+        σ = self.σ
+        φ = self.φ
+
+        # Velocity field for axial motion
+        a = self.a
+
+        # Specific body force
+        b = self.b
+
+        # Local mesh size (for stabilization terms)
+        he = self.he
+
+        # Parameters
+        ρ = self._ρ
+        λ = self._λ
+        μ = self._μ
+        τ = self._τ
+        α0 = self._α0
+
+        enable_SUPG_flag = self.stabilizers._SUPG
+
+        # Define variational problem
+        #
+        # We build one monolithic equation.
+
+        # Constitutive equation
+        #
+        # TODO:
+        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
+        #    - Need a FEM field for temperature T, and parameters α and T0
+        #  - Add viscothermal effects, see eq. (768) in report
+        #  - Orthotropic linear elastic
+        #  - Orthotropic Kelvin-Voigt
+        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+
+        εu = ε(u)  # NOTE: Based on the *unknown* `u`.
+        Id = Identity(εu.geometric_dimension())
+        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        K_inner_εu_ = K_inner_operator(εu)
+
+        # Choose constitutive model
+        if self.τ == 0.0:  # Linear elastic (LE)
+            F_σ = (inner(σ, φ) * dx -
+                   inner(K_inner_εu_, sym(φ)) * dx)
+        else:  # Axially moving Kelvin-Voigt (KV)
+            # TODO: This equation may need SUPG when τ ≠ 0, a ≠ 0.
+            F_σ = (inner(σ, φ) * dx -
+                   (inner(K_inner_εu_, sym(φ)) * dx +  # linear elastic
+                    τ * dot(a, n) * inner(K_inner_εu_, sym(φ)) * ds -  # generated by ∫ (φ:Kη):(a·∇)ε dx
+                    τ * inner(K_inner_εu_, advs(a, sym(φ))) * dx))  # generated by ∫ (φ:Kη):(a·∇)ε dx
+
+        # Linear momentum balance
+        #
+        # This equation has no `u` when `a = 0`, so we use a monolithic formulation
+        # (both equations solved as one system); this allows the solver to see the
+        # dependence `σ = σ(u)`.
+        F_u = (-ρ * dot(dot(a, nabla_grad(u)), dot(a, nabla_grad(ψ))) * dx +  # from +∫ ρ [(a·∇)(a·∇)u]·ψ dx
+               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(u)), ψ)) * ds +
+               inner(σ.T, ε(ψ)) * dx -
+               dot(dot(n, σ), ψ) * ds -
+               ρ * dot(b, ψ) * dx)
+
+        F = F_σ + F_u
+        self.a = lhs(F)
+        self.L = rhs(F)
+
+    def solve(self) -> typing.Tuple[int, int, typing.Tuple[int, float]]:
+        """Solve the steady state.
+
+        The solution becomes available in `self.s_`.
+        """
+        begin("Solve steady state")
+        A = assemble(self.a)
+        b = assemble(self.L)
+        [bc.apply(A) for bc in self.bcσ]
+        [bc.apply(b) for bc in self.bcσ]
+        [bc.apply(A) for bc in self.bcu]
+        [bc.apply(b) for bc in self.bcu]
+        if not self.bcu:
+            A_PETSc = as_backend_type(A)
+            A_PETSc.set_near_nullspace(self.null_space)
+            A_PETSc.set_nullspace(self.null_space)
+            self.null_space.orthogonalize(b)
+        it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
+        end()
+        return it
+
+# --------------------------------------------------------------------------------
+
 class EulerianSolidAlternative:
     """Like `EulerianSolid`, but with different splitting for the equations.
 
@@ -1360,232 +1586,6 @@ class EulerianSolidAlternative:
         self.σ_n.assign(self.σ_)
 
 # --------------------------------------------------------------------------------
-
-# TODO: The steady-state solver does not work yet. Essentially, the equations have the wrong roles
-# TODO: when we look at which quantities appear in each of them. Consider the classical (not axially moving)
-# TODO: case. The linear momentum balance has just `σ`, no `u`, although it is tested by the test function
-# TODO: of `u`. So it is "the equation of `u`", but we cannot solve `u` from it; `σ` could be solved from
-# TODO: it just fine. `u` should be solved from the constitutive law, which is currently tested by the test
-# TODO: function of `σ`. The tests are nontrivial to swap (to switch the roles), because their tensor ranks
-# TODO: are different.
-class SteadyStateEulerianSolid:
-    """Axially moving linear solid, small-displacement Eulerian formulation.
-
-    Like `EulerianSolid`, but steady state.
-
-    Diriclet BCs are now given for `u` (NOTE!) and `σ`.
-
-    Note `v = ∂u/∂t ≡ 0`, because we are in an Eulerian steady state.
-    """
-    def __init__(self, V: VectorFunctionSpace, Q: TensorFunctionSpace,
-                 ρ: float, λ: float, μ: float, τ: float,
-                 V0: float,
-                 bcu: typing.List[DirichletBC],
-                 bcσ: typing.List[DirichletBC]):
-        self.mesh = V.mesh()
-        if Q.mesh() is not V.mesh():
-            raise ValueError("V and Q must be defined on the same mesh.")
-
-        # Monolithic formulation.
-        #
-        # Using a `MixedFunctionSpace` fails for some reason. Instead, the way to
-        # do this is to set up a `MixedElement` and a garden-variety `FunctionSpace`
-        # on that, and then split as needed. Then set Dirichlet BCs on the appropriate
-        # `S.sub(j)` (those may also have their own second-level `.sub(k)` if they are
-        # vector/tensor fields).
-        #
-        e = MixedElement(V.ufl_element(), Q.ufl_element())
-        S = FunctionSpace(self.mesh, e)
-        u, σ = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
-        ψ, φ = TestFunctions(S)
-        s_ = Function(S)
-        u_, σ_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
-        # u_, σ_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
-
-        self.V = V
-        self.Q = Q
-        self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)
-        self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
-
-        self.u, self.σ = u, σ  # trials
-        self.ψ, self.φ = ψ, φ  # tests
-        self.u_, self.σ_ = u_, σ_  # solution
-
-        self.S = S
-        self.s_ = s_
-
-        # Strictly, this is the null space of linear elasticity, but the physics shouldn't
-        # be that much different for the other linear models.
-        dim = self.mesh.topology().dim()
-        if dim == 2:
-            fus = [Constant((1, 0)),
-                   Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
-        elif dim == 3:
-            fus = [Constant((1, 0, 0)),
-                   Constant((0, 1, 0)),
-                   Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
-        else:
-            raise NotImplementedError(f"dim = {dim}")
-
-        # In a mixed formulation, we must insert zero functions for the other fields:
-        zeroV = Function(V)
-        zeroV.vector()[:] = 0.0
-        zeroQ = Function(Q)
-        zeroQ.vector()[:] = 0.0
-        # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
-        assigner = FunctionAssigner(S, [V, Q])  # receiving space, assigning space
-        fss = [Function(S) for _ in range(len(fus))]
-        for fs, fu in zip(fss, fus):
-            assigner.assign(fs, [project(fu, V), zeroQ])
-        null_space_basis = [fs.vector() for fs in fss]
-
-        basis = VectorSpaceBasis(null_space_basis)
-        basis.orthonormalize()
-        self.null_space = basis
-
-        # Dirichlet boundary conditions
-        self.bcu = bcu
-        self.bcσ = bcσ
-
-        # Local mesh size (for stabilization terms)
-        self.he = cell_mf_to_expression(meshsize(self.mesh))
-
-        # Velocity of co-moving frame (constant; to generalize,
-        # need to update formulation to include fictitious forces)
-        self.a = Constant((V0, 0))
-
-        # Specific body force (N / kg = m / s²). FEM function for maximum generality.
-        self.b = Function(V)
-        self.b.vector()[:] = 0.0  # placeholder value
-
-        # Parameters.
-        # TODO: use FEM fields, we will need these to be temperature-dependent.
-        # TODO: parameterize using the (rank-4) stiffness/viscosity tensors
-        #       (better for arbitrary symmetry group)
-        self._ρ = Constant(ρ)
-        self._λ = Constant(λ)
-        self._μ = Constant(μ)
-        self._τ = Constant(τ)
-
-        # Numerical stabilizer on/off flags.
-        self.stabilizers = EulerianSolidStabilizerFlags()
-
-        # SUPG stabilizer tuning parameter.
-        self._α0 = Constant(1)
-
-        # PDE system iteration parameters.
-        # User-configurable (`solver.maxit = ...`), but not a major advertised feature.
-        self.maxit = 100  # maximum number of system iterations per timestep
-        self.tol = 1e-8  # system iteration tolerance, ‖v - v_prev‖_H1 (over the whole domain)
-
-        self.compile_forms()
-
-    ρ = ufl_constant_property("ρ", doc="Density [kg / m³]")
-    λ = ufl_constant_property("λ", doc="Lamé's first parameter [Pa]")
-    μ = ufl_constant_property("μ", doc="Shear modulus [Pa]")
-    τ = ufl_constant_property("τ", doc="Kelvin-Voigt retardation time [s]")
-    α0 = ufl_constant_property("α0", doc="SUPG stabilizer tuning parameter")
-
-    def compile_forms(self) -> None:
-        n = FacetNormal(self.mesh)
-
-        # Displacement
-        u = self.u      # unknown
-        ψ = self.ψ      # test
-
-        # Stress
-        σ = self.σ
-        φ = self.φ
-
-        # Velocity field for axial motion
-        a = self.a
-
-        # Specific body force
-        b = self.b
-
-        # Local mesh size (for stabilization terms)
-        he = self.he
-
-        # Parameters
-        ρ = self._ρ
-        λ = self._λ
-        μ = self._μ
-        τ = self._τ
-        α0 = self._α0
-
-        enable_SUPG_flag = self.stabilizers._SUPG
-
-        # Define variational problem
-        #
-        # We build one monolithic equation.
-
-        # Constitutive equation
-        #
-        # TODO:
-        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
-        #    - Need a FEM field for temperature T, and parameters α and T0
-        #  - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic linear elastic
-        #  - Orthotropic Kelvin-Voigt
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-
-        εu = ε(u)  # NOTE: Based on the *unknown* `u`.
-        Id = Identity(εu.geometric_dimension())
-        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        K_inner_εu_ = K_inner_operator(εu)
-
-        # Choose constitutive model
-        if self.τ == 0.0:  # Linear elastic (LE)
-            F_σ = (inner(σ, φ) * dx -
-                   inner(K_inner_εu_, sym(φ)) * dx)
-        else:  # Axially moving Kelvin-Voigt (KV)
-            # TODO: This equation may need SUPG when τ ≠ 0, a ≠ 0.
-            F_σ = (inner(σ, φ) * dx -
-                   (inner(K_inner_εu_, sym(φ)) * dx +  # linear elastic
-                    τ * dot(a, n) * inner(K_inner_εu_, sym(φ)) * ds -  # generated by ∫ (φ:Kη):(a·∇)ε dx
-                    τ * inner(K_inner_εu_, advs(a, sym(φ))) * dx))  # generated by ∫ (φ:Kη):(a·∇)ε dx
-
-        # Linear momentum balance
-        #
-        # This equation has no `u` when `a = 0`, so we use a monolithic formulation
-        # (both equations solved as one system); this allows the solver to see the
-        # dependence `σ = σ(u)`.
-        F_u = (-ρ * dot(dot(a, nabla_grad(u)), dot(a, nabla_grad(ψ))) * dx +  # from +∫ ρ [(a·∇)(a·∇)u]·ψ dx
-               ρ * dot(n, dot(dot(outer(a, a), nabla_grad(u)), ψ)) * ds +
-               inner(σ.T, ε(ψ)) * dx -
-               dot(dot(n, σ), ψ) * ds -
-               ρ * dot(b, ψ) * dx)
-
-        F = F_σ + F_u
-        self.a = lhs(F)
-        self.L = rhs(F)
-
-    def solve(self) -> typing.Tuple[int, int, typing.Tuple[int, float]]:
-        """Solve the steady state.
-
-        The solution becomes available in `self.s_`.
-        """
-        begin("Solve steady state")
-        A = assemble(self.a)
-        b = assemble(self.L)
-        [bc.apply(A) for bc in self.bcσ]
-        [bc.apply(b) for bc in self.bcσ]
-        [bc.apply(A) for bc in self.bcu]
-        [bc.apply(b) for bc in self.bcu]
-        if not self.bcu:
-            A_PETSc = as_backend_type(A)
-            A_PETSc.set_near_nullspace(self.null_space)
-            A_PETSc.set_nullspace(self.null_space)
-            self.null_space.orthogonalize(b)
-        it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
-        end()
-        return it
-
 
 def step_adaptive(solver: typing.Union[EulerianSolid, EulerianSolidAlternative],
                   max_substeps: int = 16):
