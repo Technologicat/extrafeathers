@@ -26,9 +26,10 @@ from extrafeathers import plotmagic
 
 from extrafeathers.pdes import (EulerianSolid,  # noqa: F401
                                 EulerianSolidAlternative,
+                                EulerianSolidPrimal,
                                 step_adaptive,
                                 SteadyStateEulerianSolid,
-                                SteadyStateEulerianSolidAlternative)
+                                SteadyStateEulerianSolidPrimal)
 from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, tau, V0, dt, nt,
                      Boundaries,
@@ -98,8 +99,10 @@ if dynamic:
 
     # Alternative solver only uses P for visualizing the strains.
     P = TensorFunctionSpace(mesh, 'DP', 0)
-    solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
+    # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
     # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
+    boundary_stress = Constant(((1e6, 0), (0, 0)))
+    solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, boundary_stress, dt)
     # Set plotting labels; this formulation uses v := du/dt
     dlatex = r"\mathrm{d}"
     dtext = "d"
@@ -113,8 +116,7 @@ else:  # steady state
     # dtext = "∂"
 
     boundary_stress = Constant(((1e6, 0), (0, 0)))
-    bcσ.append(boundary_stress)
-    solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
+    solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress)
     # Set plotting labels; this formulation uses v := du/dt
     dlatex = r"\mathrm{d}"
     dtext = "d"
