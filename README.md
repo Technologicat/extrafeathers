@@ -559,6 +559,8 @@ In `EulerianSolidAlternative`, when `V0 ≠ 0`, `u` needs boundary conditions on
 
 The function space for the stress must be sufficiently large compared to that for the displacement. With Q1 displacement, Q2 stress works fine.
 
+The steady-state problem seems most readily solved using a primal formulation, where only `u` and `v` appear as variables. This is implemented in `SteadyStateEulerianSolidPrimal`.
+
 Many more technical details are documented in the docstrings and in source code comments.
 
 #### Running the demo
