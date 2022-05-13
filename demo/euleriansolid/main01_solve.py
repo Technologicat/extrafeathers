@@ -26,6 +26,7 @@ from extrafeathers import plotmagic
 
 from extrafeathers.pdes import (EulerianSolid,  # noqa: F401
                                 EulerianSolidAlternative,
+                                step_adaptive,
                                 SteadyStateEulerianSolid)
 from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, tau, V0, dt, nt,
@@ -790,7 +791,9 @@ for n in range(nt):
         u0_expr.u0 = u0_func(t)
 
     # Solve one timestep
-    krylov_it1, krylov_it2, krylov_it3, (system_it, last_diff_H1) = solver.step()
+    # krylov_it1, krylov_it2, krylov_it3, (system_it, last_diff_H1) = solver.step()
+    # substeps = 1  # for message
+    krylov_it1, krylov_it2, krylov_it3, (system_it, last_diff_H1), (substeps, subdt) = step_adaptive(solver)
 
     if n % nsavemod == 0 or n == nt - 1:
         begin("Saving")
@@ -917,6 +920,8 @@ for n in range(nt):
     K = kinetic_energy()
     if my_rank == 0:  # DEBUG
         print(f"Timestep {n + 1}/{nt}: Krylov {krylov_it1}, {krylov_it2}, {krylov_it3}; system {system_it}; ‖v - v_prev‖_H1 = {last_diff_H1:0.6g}; E = ∫ (1/2) σ:ε dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; K + E = {K + E:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
+        if substeps > 1:
+            print(f"    step_adaptive took {substeps} substeps at dt={subdt:0.6g} s")
 
     # In MPI mode, one of the worker processes may have a larger slice of the domain
     # (or require more Krylov iterations to converge) than the root process.
