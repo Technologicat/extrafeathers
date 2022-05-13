@@ -918,10 +918,18 @@ class EulerianSolidAlternative:
     Let us choose the laboratory frame. The material parcel velocity with
     respect to the laboratory is
 
-        v := a + V
+        v := a + V    (*)
 
     where `a` is the axial drive velocity. The Eulerian description of the
-    momentum balance becomes
+    momentum balance is
+
+        ρ ∂v/∂t + ρ (v·∇) v - ∇·σ = ρ b
+
+    Inserting (*), we have
+
+        ρ ∂(a + V)/∂t + ρ ((a + V)·∇) (a + V) - ∇·σ = ρ b
+
+    which simplifies to
 
         ρ ∂V/∂t + ρ (a·∇) V - ∇·σ = ρ b
 
