@@ -1268,7 +1268,7 @@ class EulerianSolidAlternative:
         it1s = []
         it2s = []
         it3s = []
-        for _ in range(self.maxit):
+        for sysit in range(self.maxit):
             v_prev.assign(self.v_)  # convergence monitoring
 
             # Step 1: update `u`
@@ -1334,7 +1334,7 @@ class EulerianSolidAlternative:
         it1 = sum(it1s)
         it2 = sum(it2s)
         it3 = sum(it3s)
-        return it1, it2, it3, ((_ + 1), e)
+        return it1, it2, it3, (1 + sysit, e)  # e = final error
 
     def commit(self) -> None:
         """Commit the latest computed timestep, preparing for the next one.
