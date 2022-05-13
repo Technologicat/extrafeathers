@@ -57,6 +57,7 @@ Qscalar = Q.sub(0).collapse()
 # Choose the solver
 
 # TODO: Fix multi-headed hydra (dynamic and steady-state cases currently interleaved in one script).
+# TODO: The mess is even worse now that we have several alternative algorithms available for each case.
 
 dynamic = True
 
