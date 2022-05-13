@@ -172,8 +172,16 @@ if dynamic:
     # u0_expr = Expression(("u0", "0"), degree=1, u0=u0_func(0.0))
     # bcu_left = DirichletBC(V, u0_expr, boundary_parts, Boundaries.LEFT.value)
     # bcu.append(bcu_left)
-    # bcv_left = DirichletBC(V, Constant((-1e-2, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    # bcv_right = DirichletBC(V, Constant((+1e-2, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+    # bcv_left = DirichletBC(V, Constant((-1e-6, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv_right = DirichletBC(V, Constant((+1e-6, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
+    # bcv.append(bcv_left)
+    # bcv.append(bcv_right)
+
+    # # Left and right edges: fixed left end, strain-controlled pull at right end
+    # bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu.append(bcu_left)
+    # bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv_right = DirichletBC(V, Constant((0.000003, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
@@ -183,7 +191,7 @@ if dynamic:
     bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
     bcv_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    bcσ_right1 = DirichletBC(Q.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
     bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
     bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
     bcv.append(bcv_left)
@@ -195,10 +203,10 @@ if dynamic:
     # # TODO: does not work yet, rigid-body mode remover needs work
     # bcu_left = DirichletBC(V, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     # bcu.append(bcu_left)
-    # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
+    # bcσ_left1 = DirichletBC(Q.sub(0), Constant(1e6), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
     # bcσ_left2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ12
     # bcσ_left3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ21 (symm.)
-    # bcσ_right1 = DirichletBC(Q.sub(0), Constant(1), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    # bcσ_right1 = DirichletBC(Q.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
     # bcσ_right2 = DirichletBC(Q.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
     # bcσ_right3 = DirichletBC(Q.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
     # bcσ.append(bcσ_left1)

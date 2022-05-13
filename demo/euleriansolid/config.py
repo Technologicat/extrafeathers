@@ -10,47 +10,46 @@ from enum import IntEnum
 # Physical
 
 # 316L steel
-#rho = 7581.62      # density [kg/m³]
-#E = 1.66133e+11    # Young's modulus [Pa]
-rho = 1
-E = 10
+rho = 7581.62      # Density [kg/m³]
+E = 1.66133e+11    # Young's modulus [Pa]
 ν = 0.3            # Poisson ratio [nondimensional]  # TODO: check exact value for 316L
+tau = 1e-5         # Kelvin-Voigt retardation time [s], defined by  η = tau E
+# tau = 0          # Set tau to zero when instantiating solver to use the linear elastic model.
+
+# # Debug test material (numerical scaling close to unity)
+# rho = 1
+# E = 10
+# tau = 0.1
 
 lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
 mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 
-# tau = 0.1  # Kelvin-Voigt retardation time [s], defined as  tau := η / E
-tau = 0  # set tau to zero when instantiating solver to use the linear elastic model
-
+# Velocity of co-moving frame in +x direction (constant) [m/s]
+#
 # To remain subcritical:  V0 < √(E / rho)    (longitudinal elastic wave speed)
 #                         V0 < √(mu / rho)?  (shear wave speed)
-#
-# sqrt(10 / 1) ≈ 3.16
-# sqrt((10 / (2 * 1.3)) / 1) ≈ 1.96
-#
-# It seems 1.75 is near the limit of this numerical scheme.
-#
-# TODO: The following is just speculation.
-# Possible reason (linear elastic case): Courant number? Let Δt = 0.005 s.
-#   N = 16  ->  L_elem = 1/16 m = 0.0625 m
-# And since we use Q2 elements for the stress, the DOF spacing is actually
-#   1/32 m = 0.03125 m
-# On the other hand,
-#   Eulerian wave speed in +x direction = V0 + sqrt(E / rho)
-# Now if we set V0 = 1.75 m/s,
-#   1/32 m / ((1.75 + 3.16) m/s) ≈ 0.00636 s
-# is the time it takes a longitudinal wave to travel one DOF spacing in the +x direction.
-#
-V0 = 0.0           # velocity of co-moving frame in +x direction (constant) [m/s]
+V0 = 5e-2  # Typical L-PBF 3D printer laser velocity
+# V0 = 0.0  # Classical case (no axial motion), for debugging and comparison.
 
 # --------------------------------------------------------------------------------
 # Numerical
 
-T = 5.0           # final time [s]
+# For 316L steel
+#
+# Simulation end time [s]
+T = 0.01
+# Number of timesteps
+nt = 6000  # for τ = 1e-5
+# nt = 5000  # for τ = 1e-5, possible with step_adaptive
+# nt = 2000  # for τ = 0
 
-# With T = 5.0, and a uniform mesh of 16×16 quads, V=Q1, Q=Q2;
-# then for linear elastic nt=1e3 works, but Kelvin-Voigt needs 1.25e4.
-nt = 1000          # number of timesteps
+# For debug test material:
+# T = 5.0
+#   With T = 5.0, and a uniform mesh of 16×16 quads, V=Q1, Q=Q2;
+#   then for linear elastic nt=1e3 works, but Kelvin-Voigt needs 1.25e4.
+# nt = 12500
+# nt = 1000
+
 dt = T / nt        # timestep size [s]
 
 # --------------------------------------------------------------------------------
