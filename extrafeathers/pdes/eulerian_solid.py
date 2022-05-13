@@ -7,8 +7,10 @@ Mixed formulation based on standard C0-continuous elements.
 
 __all__ = ["EulerianSolid",
            "EulerianSolidAlternative",
-           "SteadyStateEulerianSolid"]
+           "SteadyStateEulerianSolid",
+           "step_adaptive"]
 
+from contextlib import contextmanager
 import typing
 
 from fenics import (VectorFunctionSpace, TensorFunctionSpace,
@@ -1583,3 +1585,110 @@ class SteadyStateEulerianSolid:
         it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
         end()
         return it
+
+
+def step_adaptive(solver: typing.Union[EulerianSolid, EulerianSolidAlternative],
+                  max_substeps: int = 16):
+    """Simple adaptive timestepping for `EulerianSolid` and `EulerianSolidAlternative`.
+
+    If the solver does not converge at the original `solver.dt`, halve the timestep size
+    (and double the number of substeps) until it converges, or until `max_substeps` is
+    exceeded.
+
+    The results are always reported at the end of the original `solver.dt`, so to the outside,
+    the result looks as if the solver succeeded at the original timestep size.
+
+    This is mainly useful as a workaround for temporary convergence issues during a simulation,
+    or when the first few timesteps at the very beginning of a simulation need to be smaller
+    (so that the wall time gain from the larger timestep outweighs the amortized cost of the
+    slow start).
+
+    In case the solver always fails to converge at the original dt, this is much slower than
+    just using a smaller dt to begin with. This will always try solving with the original dt
+    first; running the maximum number of system iterations to detect a convergence failure
+    is very slow.
+    """
+    # import dolfin  # DEBUG
+
+    @contextmanager
+    def timestep_temporarily_changed_to(dt):
+        old_dt = solver.dt
+        old_un = Function(solver.V)
+        old_vn = Function(solver.V)
+        old_σn = Function(solver.Q)
+        old_un.assign(solver.u_n)
+        old_vn.assign(solver.v_n)
+        old_σn.assign(solver.σ_n)
+        try:
+            solver.dt = dt
+            yield
+        finally:
+            solver.dt = old_dt
+            solver.u_n.assign(old_un)
+            solver.v_n.assign(old_vn)
+            solver.σ_n.assign(old_σn)
+
+    def solve_in_n_substeps(n):
+        substep_sysits = []
+        substep_it1s = []
+        substep_it2s = []
+        substep_it3s = []
+        for k in range(n):
+            it1, it2, it3, (sysit, e) = solver.step()
+            substep_it1s.append(it1)
+            substep_it2s.append(it2)
+            substep_it3s.append(it3)
+            substep_sysits.append(sysit)
+            # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
+            #     print(f"substep {k}, sysit = {sysit}, e = {e:0.6g}")
+            if e >= solver.tol:  # timestep still too large; cancel
+                return sum(substep_it1s), sum(substep_it2s), sum(substep_it3s), (sum(substep_sysits), e)
+            solver.commit()  # temporarily; the context manager rolls this back
+        return sum(substep_it1s), sum(substep_it2s), sum(substep_it3s), (sum(substep_sysits), e)
+
+    class Converged(Exception):
+        pass
+
+    # Try first with the original dt
+    n = 1
+    dt = solver.dt
+    sysits = []
+    it1s = []
+    it2s = []
+    it3s = []
+    it1, it2, it3, (sysit, e) = solver.step()
+    it1s.append(it1)
+    it2s.append(it2)
+    it3s.append(it3)
+    sysits.append(sysit)
+
+    if e > solver.tol:
+        try:
+            n = 2
+            dt = solver.dt / n
+            min_dt = solver.dt / 16
+            while e > solver.tol:
+                # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
+                #     print(f"No convergence at {int(n / 2)} substeps at dt={2 * dt:0.6g} s (e = {e:0.6g} > tol = {self.tol:0.6g}); trying again with {n} substeps at dt={dt:0.6g} s")
+
+                # IMPORTANT: After failed attempt, restore the initial guess to the original old field
+                solver.u_.assign(solver.u_n)
+                solver.v_.assign(solver.v_n)
+                solver.σ_.assign(solver.σ_n)
+
+                with timestep_temporarily_changed_to(dt):
+                    it1, it2, it3, (sysit, e) = solve_in_n_substeps(n)
+                    it1s.append(it1)
+                    it2s.append(it2)
+                    it3s.append(it3)
+                    sysits.append(sysit)
+                    if e < solver.tol:
+                        raise Converged
+                    if dt <= min_dt:
+                        raise RuntimeError(f"No convergence at smallest allowed adaptive timestep {min_dt:0.6g} s (e = {e:0.6g} > tol = {solver.tol:0.6g})")
+                    n *= 2
+                    dt /= 2
+        except Converged:
+            pass
+
+    return sum(it1s), sum(it2s), sum(it3s), (sum(sysits), e), (n, dt)
