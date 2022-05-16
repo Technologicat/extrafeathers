@@ -1825,10 +1825,10 @@ class SteadyStateEulerianSolidAlternative:
             F_σ = (inner(σ, φ) * dx -
                    inner(K_inner(εu) + τ * K_inner(εv), sym(φ)) * dx)
 
-        F_u = (advw(a, u, w, n) - dot(v, w) * dx)
-        F_v = (ρ * advw(a, v, ψ, n) +
-               inner(σ.T, ε(ψ)) * dx - dot(dot(n, σ), ψ) * ds -
-               ρ * dot(b, ψ) * dx)
+        F_u = (ρ * advw(a, v, w, n) +
+               inner(σ.T, ε(w)) * dx - dot(dot(n, σ), w) * ds -
+               ρ * dot(b, w) * dx)
+        F_v = (advw(a, u, ψ, n) - dot(v, ψ) * dx)
 
         # # TODO: why does stabilizing `u` crash the solver even if the term is not in use?
         # # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
