@@ -5,9 +5,11 @@ Axially moving solid, Eulerian view, small-displacement regime (on top of axial 
 Mixed formulation based on standard C0-continuous elements.
 """
 
-__all__ = ["EulerianSolid", "SteadyStateEulerianSolid",
-           "EulerianSolidAlternative",
-           "EulerianSolidPrimal", "SteadyStateEulerianSolidPrimal",
+__all__ = ["EulerianSolid",  # works fine
+           "SteadyStateEulerianSolid",  # does not work yet
+           "EulerianSolidAlternative",  # works fine
+           "EulerianSolidPrimal",  # does not work yet
+           "SteadyStateEulerianSolidPrimal",  # works fine
            "step_adaptive"]
 
 from contextlib import contextmanager
