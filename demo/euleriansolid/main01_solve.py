@@ -307,16 +307,43 @@ if not dynamic:
     #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
     #                         degree=1),
     #              Usubspace)  # [-0.5, 0.5]²
-    # fields[type(solver)]["u"](solver).assign(u0)
+    # # fields[type(solver)]["u"](solver).assign(u0)
 
-    # from fenics import Expression
-    # # fields[type(solver)]["σ"](solver).assign(project(Expression((("1e6 * cos(2 * pi * x[0])", 0), (0, 0)), degree=2), Qsubspace.collapse()))  # DEBUG testing
-    # fields[type(solver)]["σ"](solver).assign(project(Constant(((1e6, 0), (0, 0))), Qsubspace.collapse()))
-    # # fields[type(solver)]["σ"](solver).sub(0).assign(project(Constant(1e6), Qsubspace.sub(0).collapse()))  # no effect?
-    # theplot = plotmagic.mpiplot(fields[type(solver)]["σ"].sub(0))
-    # plt.colorbar(theplot)
-    # plt.show()
-    # crash
+    # # Nonzero initial guess for `σ`
+    # σ = fields[type(solver)]["σ"](solver)  # each call to `.sub(j)` seems to create a new copy
+    # σ11 = σ.sub(0)
+    # # from fenics import Expression
+    # # σ.assign(project(Expression((("1e6 * cos(2 * pi * x[0])", 0), (0, 0)), degree=2), Qsubspace.collapse()))  # DEBUG testing
+    # # σ.assign(project(Constant(((1e6, 0), (0, 0))), Qsubspace.collapse()))
+    # # σ.assign(project(Constant(((1.0, 2.0), (3.0, 4.0))), Qsubspace.collapse()))
+    # σ11.assign(project(Constant(1e6), Qsubspace.sub(0).collapse()))
+    # # theplot = plotmagic.mpiplot(σ11)
+    # # plt.colorbar(theplot)
+    # # plt.show()
+    # # crash
+
+    # # To set the IG reliably in the monolithic case, maybe we need to use a `FunctionAssigner`?
+    # # (so that the field doesn't vanish into a copy that's not used by the solver)
+    # from fenics import Expression, FunctionAssigner
+    # from .config import ν
+    # # usage: assigner = FunctionAssigner(receiving_space, assigning_space)
+    # assigner = FunctionAssigner(solver.S, [V, V, Q])  # `SteadyStateEulerianSolidAlternative`
+    # # assigner = FunctionAssigner(solver.S, [V, Q])  # `SteadyStateEulerianSolid`
+    # zeroV = Function(V)
+    # # u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]²
+    # u0 = project(Expression(("1e-3 * 2.0 * x[0]",
+    #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
+    #                         degree=1),
+    #              V)  # [-0.5, 0.5]²
+    # σ0 = project(Constant(((1e9, 0), (0, 0))), Q)
+    # assigner.assign(solver.s_, [u0, zeroV, σ0])  # `SteadyStateEulerianSolidAlternative`
+    # # assigner.assign(solver.s_, [u0, σ0])  # `SteadyStateEulerianSolid`
+    # # σ = fields[type(solver)]["σ"](solver)
+    # # σ11 = σ.sub(0)
+    # # theplot = plotmagic.mpiplot(σ11)
+    # # plt.colorbar(theplot)
+    # # plt.show()
+    # # crash
 
     # Top and bottom edges: zero normal stress
     bcσ_top1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ12 (symm.)
