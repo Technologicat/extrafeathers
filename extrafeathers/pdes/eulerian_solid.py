@@ -1762,6 +1762,7 @@ class SteadyStateEulerianSolidAlternative:
         u = self.u      # unknown
         w = self.w      # test
 
+        # Material parcel velocity in co-moving frame
         v = self.v
         ψ = self.ψ
 
