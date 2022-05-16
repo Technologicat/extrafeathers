@@ -111,7 +111,7 @@ if dynamic:
     # # Primal formulation (`u` and `v` only), with `v := du/dt`.
     # # Only uses the space `P` for visualizing the strains.
     # # The stress uses a Neumann BC, with the boundary stress field set here.
-    # # NOTE: This algorithm does not work yet.
+    # # NOTE: This algorithm does not work yet. Numerically unstable?
     # P = TensorFunctionSpace(mesh, 'DP', 0)
     # boundary_stress = Constant(((1e6, 0), (0, 0)))
     # solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, boundary_stress, dt)
