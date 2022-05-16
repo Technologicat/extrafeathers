@@ -126,7 +126,7 @@ else:  # steady state
     # # Straightforward Eulerian formulation.
     # # NOTE: This algorithm does not work yet.
     # solver = SteadyStateEulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcσ)
-    # Set plotting labels; this formulation uses v := ∂u/∂t
+    # # Set plotting labels; this formulation uses v := ∂u/∂t
     # dlatex = r"\partial"
     # dtext = "∂"
 
