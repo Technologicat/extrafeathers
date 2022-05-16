@@ -1830,18 +1830,17 @@ class SteadyStateEulerianSolidAlternative:
                ρ * dot(b, w) * dx)
         F_v = (advw(a, u, ψ, n) - dot(v, ψ) * dx)
 
-        # # TODO: why does stabilizing `u` crash the solver even if the term is not in use?
-        # # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
-        # deg = Constant(self.V.ufl_element().degree())
-        # τ_SUPG = (α0 / deg) * (2 * mag(a) / he)**-1  # [τ] = s
-        # R = (advs(a, u) - v)
-        # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
-        # F_u += F_SUPG
-
+        # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
         deg = Constant(self.V.ufl_element().degree())
         moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
         τ_SUPG = (α0 / deg) * (2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
         R = (ρ * advs(a, v) - div(σ) - ρ * b)
+        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
+        F_u += F_SUPG
+
+        deg = Constant(self.V.ufl_element().degree())
+        τ_SUPG = (α0 / deg) * (2 * mag(a) / he)**-1  # [τ] = s
+        R = (advs(a, u) - v)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
         F_v += F_SUPG
 
