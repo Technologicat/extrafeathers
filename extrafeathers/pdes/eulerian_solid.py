@@ -1593,7 +1593,7 @@ class EulerianSolidAlternative:
 
 # --------------------------------------------------------------------------------
 
-# TODO: `EulerianSolidPrimal` does not work yet
+# TODO: `EulerianSolidPrimal` does not work yet. Numerically unstable?
 class EulerianSolidPrimal:
     """Like `EulerianSolidAlternative`, but using only `u` and `v`.
 
