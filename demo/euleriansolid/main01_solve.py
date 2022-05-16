@@ -130,20 +130,20 @@ else:  # steady state
     # dlatex = r"\partial"
     # dtext = "∂"
 
-    # Alternative formulation, with `v := du/dt = (a·∇)u` (last equality holds because steady state).
-    # NOTE: This algorithm does not work yet.
-    solver = SteadyStateEulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
-    # Set plotting labels; this formulation uses v := du/dt
-    dlatex = r"\mathrm{d}"
-    dtext = "d"
-
-    # # Primal formulation (`u` and `v` only), with `v := du/dt = (a·∇)u` (last equality because steady state).
-    # # The stress uses a Neumann BC, with the boundary stress field set here.
-    # boundary_stress = Constant(((1e6, 0), (0, 0)))
-    # solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress)
+    # # Alternative formulation, with `v := du/dt = (a·∇)u` (last equality holds because steady state).
+    # # NOTE: This algorithm does not work yet.
+    # solver = SteadyStateEulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
     # # Set plotting labels; this formulation uses v := du/dt
     # dlatex = r"\mathrm{d}"
     # dtext = "d"
+
+    # Primal formulation (`u` and `v` only), with `v := du/dt = (a·∇)u` (last equality because steady state).
+    # The stress uses a Neumann BC, with the boundary stress field set here.
+    boundary_stress = Constant(((1e6, 0), (0, 0)))
+    solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress)
+    # Set plotting labels; this formulation uses v := du/dt
+    dlatex = r"\mathrm{d}"
+    dtext = "d"
 
 if my_rank == 0:
     print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
@@ -155,39 +155,39 @@ if my_rank == 0:
 # constructor).
 #
 # Adapter: where each solver stores its solution fields
-fields = {EulerianSolid: {"u": solver.u_,
-                          "v": solver.v_,
-                          "σ": solver.σ_},
-          SteadyStateEulerianSolid: {"u": solver.s_.sub(0),
-                                     "v": solver.v_,  # unused, all zeros
-                                     "σ": solver.s_.sub(1)},
-          EulerianSolidAlternative: {"u": solver.u_,
-                                     "v": solver.v_,
-                                     "σ": solver.σ_},
-          SteadyStateEulerianSolidAlternative: {"u": solver.s_.sub(0),
-                                                "v": solver.s_.sub(1),
-                                                "σ": solver.s_.sub(2)},
-          EulerianSolidPrimal: {"u": solver.s_.sub(0),
-                                "v": solver.s_.sub(1),
-                                "σ": solver.σ_},
-          SteadyStateEulerianSolidPrimal: {"u": solver.s_.sub(0),
-                                           "v": solver.s_.sub(1),
-                                           "σ": solver.σ_}}
-Usubspace = fields[type(solver)]["u"].function_space()
-Vsubspace = fields[type(solver)]["v"].function_space()
-Qsubspace = fields[type(solver)]["σ"].function_space()
+fields = {EulerianSolid: {"u": lambda solver: solver.u_,
+                          "v": lambda solver: solver.v_,
+                          "σ": lambda solver: solver.σ_},
+          SteadyStateEulerianSolid: {"u": lambda solver: solver.s_.sub(0),
+                                     "v": lambda solver: solver.v_,  # unused, all zeros
+                                     "σ": lambda solver: solver.s_.sub(1)},
+          EulerianSolidAlternative: {"u": lambda solver: solver.u_,
+                                     "v": lambda solver: solver.v_,
+                                     "σ": lambda solver: solver.σ_},
+          SteadyStateEulerianSolidAlternative: {"u": lambda solver: solver.s_.sub(0),
+                                                "v": lambda solver: solver.s_.sub(1),
+                                                "σ": lambda solver: solver.s_.sub(2)},
+          EulerianSolidPrimal: {"u": lambda solver: solver.s_.sub(0),
+                                "v": lambda solver: solver.s_.sub(1),
+                                "σ": lambda solver: solver.σ_},
+          SteadyStateEulerianSolidPrimal: {"u": lambda solver: solver.s_.sub(0),
+                                           "v": lambda solver: solver.s_.sub(1),
+                                           "σ": lambda solver: solver.σ_}}
+Usubspace = fields[type(solver)]["u"](solver).function_space()
+Vsubspace = fields[type(solver)]["v"](solver).function_space()
+Qsubspace = fields[type(solver)]["σ"](solver).function_space()
 
 # For setting initial fields in dynamic solvers only
 if dynamic:
-    oldfields = {EulerianSolid: {"u": solver.u_n,
-                                 "v": solver.v_n,
-                                 "σ": solver.σ_n},
-                 EulerianSolidAlternative: {"u": solver.u_n,
-                                            "v": solver.v_n,
-                                            "σ": solver.σ_n},
-                 EulerianSolidPrimal: {"u": solver.s_n.sub(0),
-                                       "v": solver.s_n.sub(1),
-                                       "σ": NotImplemented}}
+    oldfields = {EulerianSolid: {"u": lambda solver: solver.u_n,
+                                 "v": lambda solver: solver.v_n,
+                                 "σ": lambda solver: solver.σ_n},
+                 EulerianSolidAlternative: {"u": lambda solver: solver.u_n,
+                                            "v": lambda solver: solver.v_n,
+                                            "σ": lambda solver: solver.σ_n},
+                 EulerianSolidPrimal: {"u": lambda solver: solver.s_n.sub(0),
+                                       "v": lambda solver: solver.s_n.sub(1),
+                                       "σ": lambda solver: NotImplemented}}
 else:
     oldfields = None
 
@@ -232,8 +232,8 @@ if dynamic:
     # # #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
     # # #                         degree=1),
     # # #              V)  # [-0.5, 0.5]²
-    # oldfields[type(solver)]["u"].assign(u0)
-    # fields[type(solver)]["u"].assign(u0)
+    # oldfields[type(solver)]["u"](solver).assign(u0)
+    # fields[type(solver)]["u"](solver).assign(u0)
     # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
     # bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)  # ∂u/∂t
     # bcv.append(bcv_left)
@@ -307,12 +307,12 @@ if not dynamic:
     #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
     #                         degree=1),
     #              Usubspace)  # [-0.5, 0.5]²
-    # fields[type(solver)]["u"].assign(u0)
+    # fields[type(solver)]["u"](solver).assign(u0)
 
     # from fenics import Expression
-    # # fields[type(solver)]["σ"].assign(project(Expression((("1e6 * cos(2 * pi * x[0])", 0), (0, 0)), degree=2), Qsubspace.collapse()))  # DEBUG testing
-    # fields[type(solver)]["σ"].assign(project(Constant(((1e6, 0), (0, 0))), Qsubspace.collapse()))
-    # # fields[type(solver)]["σ"].sub(0).assign(project(Constant(1e6), Qsubspace.sub(0).collapse()))  # no effect?
+    # # fields[type(solver)]["σ"](solver).assign(project(Expression((("1e6 * cos(2 * pi * x[0])", 0), (0, 0)), degree=2), Qsubspace.collapse()))  # DEBUG testing
+    # fields[type(solver)]["σ"](solver).assign(project(Constant(((1e6, 0), (0, 0))), Qsubspace.collapse()))
+    # # fields[type(solver)]["σ"](solver).sub(0).assign(project(Constant(1e6), Qsubspace.sub(0).collapse()))  # no effect?
     # theplot = plotmagic.mpiplot(fields[type(solver)]["σ"].sub(0))
     # plt.colorbar(theplot)
     # plt.show()
@@ -452,15 +452,15 @@ if my_rank == 0:
     print("Preparing plotter...")
 with timer() as tim:
     # Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
-    tmp = fields[type(solver)]["u"]
+    tmp = fields[type(solver)]["u"](solver)
     prep_U0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_U1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 
-    tmp = fields[type(solver)]["v"]
+    tmp = fields[type(solver)]["v"](solver)
     prep_V0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_V1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 
-    tmp = fields[type(solver)]["σ"]
+    tmp = fields[type(solver)]["σ"](solver)
     prep_Q0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_Q1 = plotmagic.mpiplot_prepare(tmp.sub(1))
     prep_Q2 = plotmagic.mpiplot_prepare(tmp.sub(2))
@@ -502,9 +502,9 @@ if my_rank == 0:
 
 def plotit():
     # Plot the current solution
-    u_ = fields[type(solver)]["u"]
-    v_ = fields[type(solver)]["v"]
-    σ_ = fields[type(solver)]["σ"]
+    u_ = fields[type(solver)]["u"](solver)
+    v_ = fields[type(solver)]["v"](solver)
+    σ_ = fields[type(solver)]["σ"](solver)
 
     def symmetric_vrange(p):
         ignored_minp, maxp = common.minmax(p, take_abs=True, mode="raw")
