@@ -1914,13 +1914,13 @@ class EulerianSolidPrimal:
 class SteadyStateEulerianSolidPrimal:
     """Axially moving linear solid, small-displacement Eulerian formulation.
 
-    Like `EulerianSolidAlternative`, but steady state.
+    Like `EulerianSolidPrimal`, but steady state.
 
     Note `v = du/dt = (a·∇) u`, because we are in an Eulerian steady state.
 
-    Since in this formulation we do not need to differentiate strains, this
-    solver uses a primal formulation in terms of `u` and `v` (the constitutive
-    law is inserted into the linear momentum balance).
+    In this formulation we do not need to differentiate strains. This solver
+    uses a primal formulation in terms of `u` and `v` (the constitutive law
+    is inserted into the linear momentum balance).
 
     Boundary stresses are enforced using a Neumann BC. `bcσ` is a single expression
     that will be evaluated at boundaries that do not have a boundary condition for
