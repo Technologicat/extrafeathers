@@ -29,6 +29,7 @@ from extrafeathers.pdes import (EulerianSolid,  # noqa: F401
                                 EulerianSolidPrimal,
                                 step_adaptive,
                                 SteadyStateEulerianSolid,
+                                SteadyStateEulerianSolidAlternative,
                                 SteadyStateEulerianSolidPrimal)
 from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, tau, V0, dt, nt,
@@ -122,11 +123,17 @@ else:  # steady state
     # dlatex = r"\partial"
     # dtext = "∂"
 
-    boundary_stress = Constant(((1e6, 0), (0, 0)))
-    solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress)
+    # NOTE: This algorithm does not work yet.
+    solver = SteadyStateEulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
     # Set plotting labels; this formulation uses v := du/dt
     dlatex = r"\mathrm{d}"
     dtext = "d"
+
+    # boundary_stress = Constant(((1e6, 0), (0, 0)))
+    # solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress)
+    # # Set plotting labels; this formulation uses v := du/dt
+    # dlatex = r"\mathrm{d}"
+    # dtext = "d"
 
 if my_rank == 0:
     print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
@@ -398,27 +405,36 @@ def kinetic_energy():
 if my_rank == 0:
     print("Preparing plotter...")
 with timer() as tim:
+    # Adapter: where each solver stores its solution fields
+    fields = {EulerianSolid: {"u": solver.u_,
+                              "v": solver.v_,
+                              "σ": solver.σ_},
+              SteadyStateEulerianSolid: {"u": solver.s_.sub(0),
+                                         "v": solver.v_,  # unused, all zeros
+                                         "σ": solver.s_.sub(1)},
+              EulerianSolidAlternative: {"u": solver.u_,
+                                         "v": solver.v_,
+                                         "σ": solver.σ_},
+              SteadyStateEulerianSolidAlternative: {"u": solver.s_.sub(0),
+                                                    "v": solver.s_.sub(1),
+                                                    "σ": solver.s_.sub(2)},
+              EulerianSolidPrimal: {"u": solver.s_.sub(0),
+                                    "v": solver.s_.sub(1),
+                                    "σ": solver.σ_},
+              SteadyStateEulerianSolidPrimal: {"u": solver.s_.sub(0),
+                                               "v": solver.s_.sub(1),
+                                               "σ": solver.σ_}}
+
     # Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
-    if hasattr(solver, "s_"):  # steady-state solver
-        tmp = solver.s_.sub(0)
-    else:  # dynamic solver
-        tmp = solver.u_
+    tmp = fields[type(solver)]["u"]
     prep_U0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_U1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 
-    if hasattr(solver, "s_"):  # steady-state solver
-        tmp = solver.s_.sub(1)  # different subspace, need new prep
-    else:  # dynamic solver
-        tmp = solver.v_  # same space, could use the same preps
+    tmp = fields[type(solver)]["v"]
     prep_V0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_V1 = plotmagic.mpiplot_prepare(tmp.sub(1))
 
-    if hasattr(solver, "s_"):  # steady-state solver
-        # tmp = solver.s_.sub(1)  # SteadyStateEulerianSolid
-        # tmp = solver.s_.sub(2)  # SteadyStateEulerianSolidPrimal
-        tmp = solver.σ_
-    else:  # dynamic solver
-        tmp = solver.σ_
+    tmp = fields[type(solver)]["σ"]
     prep_Q0 = plotmagic.mpiplot_prepare(tmp.sub(0))
     prep_Q1 = plotmagic.mpiplot_prepare(tmp.sub(1))
     prep_Q2 = plotmagic.mpiplot_prepare(tmp.sub(2))
@@ -460,20 +476,9 @@ if my_rank == 0:
 
 def plotit():
     # Plot the current solution
-    if hasattr(solver, "s_"):  # steady-state solver
-        # # SteadyStateEulerianSolid
-        # u_ = solver.s_.sub(0)
-        # v_ = Function(solver.S).sub(0)  # all zeros
-        # σ_ = solver.s_.sub(1)
-        # SteadyStateEulerianSolidPrimal
-        u_ = solver.s_.sub(0)
-        v_ = solver.s_.sub(1)
-        # σ_ = solver.s_.sub(2)
-        σ_ = solver.σ_
-    else:
-        u_ = solver.u_
-        v_ = solver.v_
-        σ_ = solver.σ_
+    u_ = fields[type(solver)]["u"]
+    v_ = fields[type(solver)]["v"]
+    σ_ = fields[type(solver)]["σ"]
 
     def symmetric_vrange(p):
         ignored_minp, maxp = common.minmax(p, take_abs=True, mode="raw")
