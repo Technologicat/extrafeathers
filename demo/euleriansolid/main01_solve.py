@@ -178,15 +178,18 @@ Vsubspace = fields[type(solver)]["v"].function_space()
 Qsubspace = fields[type(solver)]["σ"].function_space()
 
 # For setting initial fields in dynamic solvers only
-oldfields = {EulerianSolid: {"u": solver.u_n,
-                             "v": solver.v_n,
-                             "σ": solver.σ_n},
-             EulerianSolidAlternative: {"u": solver.u_n,
-                                        "v": solver.v_n,
-                                        "σ": solver.σ_n},
-             EulerianSolidPrimal: {"u": solver.s_n.sub(0),
-                                   "v": solver.s_n.sub(1),
-                                   "σ": NotImplemented}}
+if dynamic:
+    oldfields = {EulerianSolid: {"u": solver.u_n,
+                                 "v": solver.v_n,
+                                 "σ": solver.σ_n},
+                 EulerianSolidAlternative: {"u": solver.u_n,
+                                            "v": solver.v_n,
+                                            "σ": solver.σ_n},
+                 EulerianSolidPrimal: {"u": solver.s_n.sub(0),
+                                       "v": solver.s_n.sub(1),
+                                       "σ": NotImplemented}}
+else:
+    oldfields = None
 
 # --------------------------------------------------------------------------------
 # For dynamic solver
@@ -303,8 +306,17 @@ if not dynamic:
     # u0 = project(Expression(("1e-3 * 2.0 * x[0]",
     #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
     #                         degree=1),
-    #              V)  # [-0.5, 0.5]²
+    #              Usubspace)  # [-0.5, 0.5]²
     # fields[type(solver)]["u"].assign(u0)
+
+    # from fenics import Expression
+    # # fields[type(solver)]["σ"].assign(project(Expression((("1e6 * cos(2 * pi * x[0])", 0), (0, 0)), degree=2), Qsubspace.collapse()))  # DEBUG testing
+    # fields[type(solver)]["σ"].assign(project(Constant(((1e6, 0), (0, 0))), Qsubspace.collapse()))
+    # # fields[type(solver)]["σ"].sub(0).assign(project(Constant(1e6), Qsubspace.sub(0).collapse()))  # no effect?
+    # theplot = plotmagic.mpiplot(fields[type(solver)]["σ"].sub(0))
+    # plt.colorbar(theplot)
+    # plt.show()
+    # crash
 
     # Top and bottom edges: zero normal stress
     bcσ_top1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ12 (symm.)
@@ -320,27 +332,27 @@ if not dynamic:
     bcσ.append(bcσ_bottom2)
     bcσ.append(bcσ_bottom3)
 
-    # # Left and right edges: fixed displacement
-    # bcu_left = DirichletBC(Usubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcu_right = DirichletBC(Usubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
-    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)
-    # bcu.append(bcu_left)
-    # bcu.append(bcu_right)
-    # bcv.append(bcv_left)
-    # bcv.append(bcv_right)
-
-    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # Left and right edges: fixed displacement
+    bcu_left = DirichletBC(Usubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+    bcu_right = DirichletBC(Usubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
+    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)
     bcu.append(bcu_left)
-    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    bcu.append(bcu_right)
     bcv.append(bcv_left)
-    bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
-    bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
-    bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
-    bcσ.append(bcσ_right1)
-    bcσ.append(bcσ_right2)
-    bcσ.append(bcσ_right3)
+    bcv.append(bcv_right)
+
+    # # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+    # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu.append(bcu_left)
+    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
+    # bcv.append(bcv_left)
+    # bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    # bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+    # bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+    # bcσ.append(bcσ_right1)
+    # bcσ.append(bcσ_right2)
+    # bcσ.append(bcσ_right3)
 
 # --------------------------------------------------------------------------------
 
