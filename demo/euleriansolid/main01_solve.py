@@ -320,8 +320,6 @@ if not dynamic:
     # bcv.append(bcv_right)
 
     # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    # Here the initial field for `u` is zero, so it does not need to be specified...
-    # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
     bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
     bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
