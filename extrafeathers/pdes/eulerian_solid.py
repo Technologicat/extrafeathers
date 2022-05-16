@@ -1815,17 +1815,15 @@ class SteadyStateEulerianSolidAlternative:
         εu = ε(u)  # NOTE: Based on the *unknown* `u`.
         εv = ε(v)
         Id = Identity(εu.geometric_dimension())
-        K_inner_operator = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-        K_inner_εu = K_inner_operator(εu)
-        K_inner_εv = K_inner_operator(εv)
+        K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
 
         # Choose constitutive model
         if self.τ == 0.0:  # Linear elastic (LE)
             F_σ = (inner(σ, φ) * dx -
-                   inner(K_inner_εu, sym(φ)) * dx)
+                   inner(K_inner(εu), sym(φ)) * dx)
         else:  # Axially moving Kelvin-Voigt (KV)
             F_σ = (inner(σ, φ) * dx -
-                   inner(K_inner_εu + τ * K_inner_εv, sym(φ)) * dx)
+                   inner(K_inner(εu) + τ * K_inner(εv), sym(φ)) * dx)
 
         F_u = (advw(a, u, w, n) - dot(v, w) * dx)
         F_v = (ρ * advw(a, v, ψ, n) +
