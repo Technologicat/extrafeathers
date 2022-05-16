@@ -1630,6 +1630,7 @@ class EulerianSolidAlternative:
 
 # --------------------------------------------------------------------------------
 
+# NOTE: This algorithm does not work yet.
 class SteadyStateEulerianSolidAlternative:
     """Axially moving linear solid, small-displacement Eulerian formulation.
 
