@@ -911,7 +911,9 @@ class SteadyStateEulerianSolid:
 
     Note `v = ∂u/∂t ≡ 0`, because we are in an Eulerian steady state.
     """
-    def __init__(self, V: VectorFunctionSpace, Q: TensorFunctionSpace,
+    def __init__(self, V: VectorFunctionSpace,
+                 Q: TensorFunctionSpace,
+                 P: TensorFunctionSpace,
                  ρ: float, λ: float, μ: float, τ: float,
                  V0: float,
                  bcu: typing.List[DirichletBC],
@@ -940,6 +942,14 @@ class SteadyStateEulerianSolid:
         self.Q = Q
         self.VdG0 = VectorFunctionSpace(self.mesh, "DG", 0)
         self.QdG0 = TensorFunctionSpace(self.mesh, "DG", 0)
+
+        # This algorithm uses `P` only for strain visualization.
+        self.P = P
+        self.q = TestFunction(P)
+        self.εu = TrialFunction(P)
+        self.εv = TrialFunction(P)
+        self.εu_ = Function(P)
+        self.εv_ = Function(P)
 
         self.u, self.σ = u, σ  # trials
         self.ψ, self.φ = ψ, φ  # tests
@@ -1103,6 +1113,17 @@ class SteadyStateEulerianSolid:
         self.a = lhs(F)
         self.L = rhs(F)
 
+        # Strains, for visualization only.
+        εu = self.εu  # unknown
+        εv = self.εv
+        q = self.q
+        F_εu = inner(εu, q) * dx - inner(ε(self.u_), sym(q)) * dx
+        F_εv = inner(εv, q) * dx - inner(ε(self.v_), sym(q)) * dx
+        self.a_εu = lhs(F_εu)
+        self.L_εu = rhs(F_εu)
+        self.a_εv = lhs(F_εv)
+        self.L_εv = rhs(F_εv)
+
     def solve(self) -> typing.Tuple[int, int, typing.Tuple[int, float]]:
         """Solve the steady state.
 
@@ -1122,6 +1143,15 @@ class SteadyStateEulerianSolid:
             self.null_space.orthogonalize(b)
         it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
         end()
+
+        # VISUALIZATION PURPOSES ONLY
+        A2a = assemble(self.a_εu)
+        b2a = assemble(self.L_εu)
+        solve(A2a, self.εu_.vector(), b2a, 'bicgstab', 'sor')
+        A2b = assemble(self.a_εv)
+        b2b = assemble(self.L_εv)
+        solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
+
         return it
 
 # --------------------------------------------------------------------------------

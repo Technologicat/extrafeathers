@@ -77,28 +77,30 @@ show_mesh = True
 
 bcu = []  # for steady-state solver
 bcv = []  # for dynamic solver
-bcσ = []  # for both solvers
+bcσ = []  # for both solvers (except primal solvers, which use a Neumann BC for the stress)
 if dynamic:
-    # Function space for strain projection, before inserting the strain into the constitutive law.
+    # Straightforward Eulerian formulation, with `v := ∂u/∂t`.
     #
-    # - Discontinuous strain spaces seem to give rise to oscillations in the stress.
+    # `P`: function space for strain projection, before inserting the strain into the constitutive law.
+    #
+    # - Discontinuous strain spaces seem to give rise to numerical oscillations in the stress.
     #   Thus, to stabilize, it is important to choose an appropriate continuous space here.
     #   Which spaces are "appropriate" is left as an exercise to the reader.
     # - It seems a degree-1 space is too small to give correct results.
-    #   This is likely related to the requirements for the stress space.
+    #   This is likely related to the size requirements for the stress space.
     #
-    # P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like old algo without strain projection)
-    # P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like old algo without strain projection)
-    # P = TensorFunctionSpace(self.mesh, Q.ufl_element().family(), 1)  # results completely wrong
+    # # P = TensorFunctionSpace(self.mesh, "DG", 1)  # oscillations along `a` (like old algo without strain projection)
+    # # P = TensorFunctionSpace(self.mesh, "DG", 2)  # oscillations along `a` (like old algo without strain projection)
+    # # P = TensorFunctionSpace(self.mesh, Q.ufl_element().family(), 1)  # results completely wrong
     # P = Q  # Q2; just small oscillations near high gradients of `u` and `v`
-    #
     # solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt)  # Crank-Nicolson (default)
-    # solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
+    # # solver = EulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcv, bcσ, dt, θ=1.0)  # backward Euler
     # # Set plotting labels; this formulation uses v := ∂u/∂t
     # dlatex = r"\partial"
     # dtext = "∂"
 
-    # Alternative solver only uses P for visualizing the strains.
+    # Alternative formulation, with `v := du/dt`.
+    # Only uses the space `P` for visualizing the strains.
     P = TensorFunctionSpace(mesh, 'DP', 0)
     solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
     # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
@@ -106,8 +108,11 @@ if dynamic:
     dlatex = r"\mathrm{d}"
     dtext = "d"
 
+    # # Primal formulation (`u` and `v` only), with `v := du/dt`.
+    # # Only uses the space `P` for visualizing the strains.
+    # # The stress uses a Neumann BC, with the boundary stress field set here.
     # # NOTE: This algorithm does not work yet.
-    # P = TensorFunctionSpace(mesh, 'DP', 0)  # strain visualization only
+    # P = TensorFunctionSpace(mesh, 'DP', 0)
     # boundary_stress = Constant(((1e6, 0), (0, 0)))
     # solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, boundary_stress, dt)
     # # Set plotting labels; this formulation uses v := du/dt
@@ -115,20 +120,25 @@ if dynamic:
     # dtext = "d"
 
 else:  # steady state
-    P = TensorFunctionSpace(mesh, 'DP', 0)  # Only for visualizing the strains.
+    # The steady-state solvers only use the space `P` for visualizing the strains.
+    P = TensorFunctionSpace(mesh, 'DP', 0)
 
+    # # Straightforward Eulerian formulation.
     # # NOTE: This algorithm does not work yet.
-    # solver = SteadyStateEulerianSolid(V, Q, rho, lamda, mu, tau, V0, bcu, bcσ)
+    # solver = SteadyStateEulerianSolid(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcσ)
     # Set plotting labels; this formulation uses v := ∂u/∂t
     # dlatex = r"\partial"
     # dtext = "∂"
 
+    # Alternative formulation, with `v := du/dt = (a·∇)u` (last equality holds because steady state).
     # NOTE: This algorithm does not work yet.
     solver = SteadyStateEulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ)
     # Set plotting labels; this formulation uses v := du/dt
     dlatex = r"\mathrm{d}"
     dtext = "d"
 
+    # # Primal formulation (`u` and `v` only), with `v := du/dt = (a·∇)u` (last equality because steady state).
+    # # The stress uses a Neumann BC, with the boundary stress field set here.
     # boundary_stress = Constant(((1e6, 0), (0, 0)))
     # solver = SteadyStateEulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress)
     # # Set plotting labels; this formulation uses v := du/dt
@@ -139,13 +149,33 @@ if my_rank == 0:
     print(f"Number of DOFs: velocity {V.dim()}, strain {P.dim()}, stress {Q.dim()}")
 
 # Extract the subspaces for the fields from the monolithic mixed space, if needed.
-# Note the primal solvers, which use the mixed space, do not use Dirichlet BCs for σ.
-if hasattr(solver, "S"):
-    Usubspace = solver.S.sub(0)
-    Vsubspace = solver.S.sub(1)
-else:
-    Usubspace = V
-    Vsubspace = V
+#
+# Note the primal solvers, which use the mixed space, do not use Dirichlet BCs for σ,
+# but instead use a Neumann BC (which we set up as `boundary_stress` when calling the
+# constructor).
+#
+# Adapter: where each solver stores its solution fields
+fields = {EulerianSolid: {"u": solver.u_,
+                          "v": solver.v_,
+                          "σ": solver.σ_},
+          SteadyStateEulerianSolid: {"u": solver.s_.sub(0),
+                                     "v": solver.v_,  # unused, all zeros
+                                     "σ": solver.s_.sub(1)},
+          EulerianSolidAlternative: {"u": solver.u_,
+                                     "v": solver.v_,
+                                     "σ": solver.σ_},
+          SteadyStateEulerianSolidAlternative: {"u": solver.s_.sub(0),
+                                                "v": solver.s_.sub(1),
+                                                "σ": solver.s_.sub(2)},
+          EulerianSolidPrimal: {"u": solver.s_.sub(0),
+                                "v": solver.s_.sub(1),
+                                "σ": solver.σ_},
+          SteadyStateEulerianSolidPrimal: {"u": solver.s_.sub(0),
+                                           "v": solver.s_.sub(1),
+                                           "σ": solver.σ_}}
+Usubspace = fields[type(solver)]["u"].function_space()
+Vsubspace = fields[type(solver)]["v"].function_space()
+Qsubspace = fields[type(solver)]["σ"].function_space()
 
 # --------------------------------------------------------------------------------
 # For dynamic solver
@@ -265,19 +295,19 @@ if not dynamic:
     #              V)  # [-0.5, 0.5]²
     # solver.s_.sub(0).assign(u0)
 
-    # # Top and bottom edges: zero normal stress
-    # bcσ_top1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ12 (symm.)
-    # bcσ_top2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ21
-    # bcσ_top3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ22
-    # bcσ_bottom1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ12
-    # bcσ_bottom2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ21
-    # bcσ_bottom3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ22
-    # bcσ.append(bcσ_top1)
-    # bcσ.append(bcσ_top2)
-    # bcσ.append(bcσ_top3)
-    # bcσ.append(bcσ_bottom1)
-    # bcσ.append(bcσ_bottom2)
-    # bcσ.append(bcσ_bottom3)
+    # Top and bottom edges: zero normal stress
+    bcσ_top1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ12 (symm.)
+    bcσ_top2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ21
+    bcσ_top3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ22
+    bcσ_bottom1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ12
+    bcσ_bottom2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ21
+    bcσ_bottom3 = DirichletBC(Qsubspace.sub(3), Constant(0), boundary_parts, Boundaries.BOTTOM.value, "geometric")  # σ22
+    bcσ.append(bcσ_top1)
+    bcσ.append(bcσ_top2)
+    bcσ.append(bcσ_top3)
+    bcσ.append(bcσ_bottom1)
+    bcσ.append(bcσ_bottom2)
+    bcσ.append(bcσ_bottom3)
 
     # # Left and right edges: fixed displacement
     # bcu_left = DirichletBC(Usubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
@@ -289,24 +319,19 @@ if not dynamic:
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
-    # # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    # # Here the initial field for `u` is zero, so it does not need to be specified...
-    # # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
-    # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcu.append(bcu_left)
-    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
-    # bcv.append(bcv_left)
-    # bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
-    # bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
-    # bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
-    # bcσ.append(bcσ_right1)
-    # bcσ.append(bcσ_right2)
-    # bcσ.append(bcσ_right3)
-
+    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+    # Here the initial field for `u` is zero, so it does not need to be specified...
+    # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
     bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
     bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)  # ∂u/∂t
     bcv.append(bcv_left)
+    bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+    bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+    bcσ.append(bcσ_right1)
+    bcσ.append(bcσ_right2)
+    bcσ.append(bcσ_right3)
 
 # --------------------------------------------------------------------------------
 
@@ -405,26 +430,6 @@ def kinetic_energy():
 if my_rank == 0:
     print("Preparing plotter...")
 with timer() as tim:
-    # Adapter: where each solver stores its solution fields
-    fields = {EulerianSolid: {"u": solver.u_,
-                              "v": solver.v_,
-                              "σ": solver.σ_},
-              SteadyStateEulerianSolid: {"u": solver.s_.sub(0),
-                                         "v": solver.v_,  # unused, all zeros
-                                         "σ": solver.s_.sub(1)},
-              EulerianSolidAlternative: {"u": solver.u_,
-                                         "v": solver.v_,
-                                         "σ": solver.σ_},
-              SteadyStateEulerianSolidAlternative: {"u": solver.s_.sub(0),
-                                                    "v": solver.s_.sub(1),
-                                                    "σ": solver.s_.sub(2)},
-              EulerianSolidPrimal: {"u": solver.s_.sub(0),
-                                    "v": solver.s_.sub(1),
-                                    "σ": solver.σ_},
-              SteadyStateEulerianSolidPrimal: {"u": solver.s_.sub(0),
-                                               "v": solver.s_.sub(1),
-                                               "σ": solver.σ_}}
-
     # Analyze mesh and dofmap for plotting (static mesh, only need to do this once)
     tmp = fields[type(solver)]["u"]
     prep_U0 = plotmagic.mpiplot_prepare(tmp.sub(0))
