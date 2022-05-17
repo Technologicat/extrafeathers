@@ -206,9 +206,14 @@ else:
 # --------------------------------------------------------------------------------
 # For dynamic solver
 
-u0_expr = None  # needed only in one example case
+# These are needed only by cases with a time-dependent boundary condition on `u`.
+u0_left = None
+u0_right = None
 u0_func = lambda t: 0.0
+
 if dynamic:
+    # In all of the examples, we set the top and bottom edges the same way:
+
     # Top and bottom edges: zero normal stress
     #
     # Need `method="geometric"` to detect boundary DOFs on discontinuous spaces.
@@ -241,13 +246,16 @@ if dynamic:
     bcσ.append(bcσ_bottom3)
 
     # # Left and right edges: fixed displacement
-    #
-    # # The mass-lumped formulation of `EulerianSolid` takes no BCs for `u` (which is
-    # # simply the time integral of `v`); instead, set an initial condition on `u`,
-    # # and set `v = 0` at the fixed boundaries. Note that the solver might not
-    # # converge, if the initial `u` is far from a valid state. Furthermore,
-    # # for some initial states, Kelvin-Voigt might converge, but linear
-    # # elastic might not.
+    # #
+    # # `EulerianSolid` takes no BCs for `u` (which is simply the time integral of `v`);
+    # # instead, set an initial condition on `u`, and set `v = 0` at the fixed boundaries.
+    # #
+    # # The other algorithms expect BCs on `u` instead of `v`.
+    # #
+    # # Note that a sudden nonzero fixed displacement at the edges comes as quite a shock.
+    # # The solver might not converge, if the initial condition for `u` is far from a physically
+    # # valid state. Furthermore, for some initial states, Kelvin-Voigt might converge, but
+    # # linear elastic might not.
     # #
     # from fenics import Expression
     # # # u0 = project(Expression(("1e-3 * 2.0 * (x[0] - 0.5)", "0"), degree=1), V)  # [0, 1]²
@@ -256,7 +264,7 @@ if dynamic:
     # # #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
     # # #                         degree=1),
     # # #              V)  # [-0.5, 0.5]²
-    # # TODO: monolithic space needs a `FunctionAssigner` to avoid assigning to an unused copy.
+    # # TODO: monolithic variants need a `FunctionAssigner` to avoid assigning to an unused copy.
     # oldfields[type(solver)]["u"](solver).assign(u0)
     # fields[type(solver)]["u"](solver).assign(u0)
     # # NOTE: `v` is defined as either `∂u/∂t` or `du/dt`, depending on the solver used.
@@ -265,39 +273,48 @@ if dynamic:
     # bcv.append(bcv_left)
     # bcv.append(bcv_right)
 
-    # # Left and right edges: fixed speed (strain-controlled pull)
-    # # Here `u` starts from zero, because the initial field is not specified.
-    # # This is always a valid initial state.
-    # #
-    # # For `EulerianSolidAlternative`, we still need inflow BCs for `u`.
-    # # We set `u` consistently with the strain-controlled pull.
-    # #
+    # The following examples are designed for `EulerianSolidAlternative` and `EulerianSolidPrimal`,
+    # as these algorithms in general perform better. Especially recommended is `EulerianSolidPrimal`,
+    # which is the fastest of the provided dynamic solvers.
+    #
+    # In these examples the initial field for `u` is zero, so it does not need to be specified.
+
+    # # Left and right edges: fixed left end, displacement-controlled pull at right end
     # from fenics import Expression
-    # u0_func = lambda t: -1e-2 * t
-    # # u0_func = lambda t: 0.0
-    # u0_expr = Expression(("u0", "0"), degree=1, u0=u0_func(0.0))
-    # bcu_left = DirichletBC(Usubspace, u0_expr, boundary_parts, Boundaries.LEFT.value)
-    # bcu.append(bcu_left)
-    # bcv_left = DirichletBC(Vsubspace, Constant((-1e-6, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcv_right = DirichletBC(Vsubspace, Constant((+1e-6, 0)), boundary_parts, Boundaries.RIGHT.value)
-    # bcv.append(bcv_left)
-    # bcv.append(bcv_right)
-
-    # # Left and right edges: fixed left end, strain-controlled pull at right end
+    # u0_func = lambda t: 1e-2 * t
     # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # u0_right = Expression(("u0", "0"), degree=1, u0=u0_func(0.0))
+    # bcu_right = DirichletBC(Usubspace, u0_right, boundary_parts, Boundaries.RIGHT.value)
     # bcu.append(bcu_left)
-    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcv_right = DirichletBC(Vsubspace, Constant((0.000003, 0)), boundary_parts, Boundaries.RIGHT.value)
-    # bcv.append(bcv_left)
-    # bcv.append(bcv_right)
+    # bcu.append(bcu_right)
 
-    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    # Here the initial field for `u` is zero, so it does not need to be specified...
-    # but for `EulerianSolidAlternative`, we still need inflow BCs for `u`.
+    # # Left and right edges: fixed left end, displacement-controlled *u1 only* at right end
+    # # TODO: For now, this example needs the primal solver. Figure out which components of `σ`
+    # # TODO: should be set at the right. Maybe just `σ12` and `σ21`?
+    # from fenics import Expression
+    # u0_func = lambda t: 1e-2 * t
+    # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # u0_right = Expression("u0", degree=1, u0=u0_func(0.0))
+    # bcu_right = DirichletBC(Usubspace.sub(0), u0_right, boundary_parts, Boundaries.RIGHT.value)  # u1
+    # bcu.append(bcu_left)
+    # bcu.append(bcu_right)
+
+    # # Left and right edges: displacement-controlled pull
+    # from fenics import Expression
+    # u0_func = lambda t: 1e-2 * t
+    # # `dolfin.Expression` compiles to C++, so we must define these separately. Trying to flip the sign
+    # # of an `Expression` and setting that to a `DirichletBC` causes a one-time `project` to take place.
+    # # That won't even work here, but even if it did, it wouldn't give us an updatable.
+    # u0_left = Expression(("-u0", "0"), degree=1, u0=u0_func(0.0))
+    # u0_right = Expression(("+u0", "0"), degree=1, u0=u0_func(0.0))
+    # bcu_left = DirichletBC(Usubspace, u0_left, boundary_parts, Boundaries.LEFT.value)
+    # bcu_right = DirichletBC(Usubspace, u0_right, boundary_parts, Boundaries.RIGHT.value)
+    # bcu.append(bcu_left)
+    # bcu.append(bcu_right)
+
+    # Left and right edges: fixed left end, stress-controlled pull at right end (Kurki et al. 2016).
     bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
-    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    bcv.append(bcv_left)
     bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
     bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
     bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
@@ -305,10 +322,8 @@ if dynamic:
     bcσ.append(bcσ_right2)
     bcσ.append(bcσ_right3)
 
-    # # Left and right edges: constant pull at both ends
-    # # TODO: does not work yet, rigid-body mode remover needs work
-    # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcu.append(bcu_left)
+    # # Left and right edges: stress-controlled pull at both ends
+    # # TODO: does not work yet as-is, rigid-body mode remover needs work
     # bcσ_left1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
     # bcσ_left2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ12
     # bcσ_left3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ21 (symm.)
@@ -321,11 +336,28 @@ if dynamic:
     # bcσ.append(bcσ_right1)
     # bcσ.append(bcσ_right2)
     # bcσ.append(bcσ_right3)
+    # # TODO: Obviously, this works if we fix the displacement somewhere...
+    # # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # # bcu.append(bcu_left)
+    # # TODO: ...so let's fix the displacement at the center. Note this needs the regular grid
+    # # TODO: to work properly, because we need to have DOFs on the center line.
+    # # https://fenicsproject.org/qa/10273/pointwise-bc/
+    # from fenics import CompiledSubDomain
+    # xmid = (xmin + xmax) / 2
+    # ymid = (ymin + ymax) / 2
+    # center_vline = CompiledSubDomain(f"near(x[0], {xmid})")
+    # # center_hline = CompiledSubDomain(f"near(x[1], {ymid})")
+    # center_point = CompiledSubDomain(f"near(x[0], {xmid}) && near(x[1], {ymid})")
+    # bcu_center1 = DirichletBC(Usubspace.sub(0), Constant(0), center_vline, method="pointwise")  # u1(0, y) = 0
+    # bcu_center2 = DirichletBC(Usubspace.sub(1), Constant(0), center_point, method="pointwise")  # u2(0, 0) = 0
+    # bcu.append(bcu_center1)
+    # bcu.append(bcu_center2)
 
 # --------------------------------------------------------------------------------
 # For steady-state solver
 
 if not dynamic:
+    # TODO: update this
     # # Set nonzero initial guess for `u`
     # from fenics import Expression
     # from .config import ν
@@ -335,6 +367,7 @@ if not dynamic:
     #              Usubspace)  # [-0.5, 0.5]²
     # # fields[type(solver)]["u"](solver).assign(u0)
 
+    # TODO: update this
     # # Set nonzero initial guess for `σ`
     # σ = fields[type(solver)]["σ"](solver)  # each call seems to create a new copy?
     # σ11 = σ.sub(0)
@@ -348,6 +381,7 @@ if not dynamic:
     # # plt.show()
     # # crash
 
+    # TODO: update this
     # # To set the IG reliably in the monolithic case:
     # # Each call to `.sub(j)` of a `Function` on a `MixedElement` seems to create a new copy.
     # # We need `FunctionAssigner` to set values on the original `Function`, so that the field
@@ -374,6 +408,8 @@ if not dynamic:
     # # plt.show()
     # # crash
 
+    # In all of the examples, we set the top and bottom edges the same way:
+
     # Top and bottom edges: zero normal stress
     bcσ_top1 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ12 (symm.)
     bcσ_top2 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.TOP.value, "geometric")  # σ21
@@ -390,24 +426,28 @@ if not dynamic:
 
     # # Left and right edges: fixed displacement
     # #
-    # # NOTE: In `SteadyStateEulerianSolidPrimal`, since `v = du/dt` is governed by the linear first-order
-    # # NOTE: transport PDE, it takes BCs only on the inflow boundary. When `V0 = 0`, then it is safe
-    # # NOTE: to set BCs symmetrically, but when axial motion is present, only the inflow (left end)
-    # # NOTE: should have a BC on `v`.
+    # # NOTE: In `SteadyStateEulerianSolidPrimal`, `v = du/dt`.
+    # #
+    # # At first glance, it seems governed by the linear first-order transport PDE... but actually,
+    # # since the equation defines `v` (with `u` determined from the linear momentum balance),
+    # # the equation is just an L2 projection of `du/dt`, so it takes no BCs.
+    #
+    # # If `v = du/dt` was instead taken to define `u` (with `v` determined from other considerations),
+    # # *then* the equation would need BCs for `u` on the inflow boundary.
     # bcu_left = DirichletBC(Usubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
     # bcu_right = DirichletBC(Usubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
-    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     # # bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)
     # bcu.append(bcu_left)
     # bcu.append(bcu_right)
-    # bcv.append(bcv_left)
+    # # bcv.append(bcv_left)
     # # bcv.append(bcv_right)
 
-    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+    # Left and right edges: fixed left end, stress-controlled pull at right end (Kurki et al. 2016).
     bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
     bcu.append(bcu_left)
-    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    bcv.append(bcv_left)
+    # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcv.append(bcv_left)
     bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
     bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
     bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
@@ -415,7 +455,7 @@ if not dynamic:
     bcσ.append(bcσ_right2)
     bcσ.append(bcσ_right3)
 
-    # # Left and right edges: constant pull at both ends
+    # # Left and right edges: stress-controlled pull at both ends
     # # TODO: Does not work yet as-is, rigid-body mode remover needs work.
     # bcσ_left1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ11
     # bcσ_left2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.LEFT.value, "geometric")  # σ12
@@ -441,8 +481,8 @@ if not dynamic:
     # center_vline = CompiledSubDomain(f"near(x[0], {xmid})")
     # # center_hline = CompiledSubDomain(f"near(x[1], {ymid})")
     # center_point = CompiledSubDomain(f"near(x[0], {xmid}) && near(x[1], {ymid})")
-    # bcu_center1 = DirichletBC(Usubspace.sub(0), Constant(0), center_vline, method="pointwise")
-    # bcu_center2 = DirichletBC(Usubspace.sub(1), Constant(0), center_point, method="pointwise")
+    # bcu_center1 = DirichletBC(Usubspace.sub(0), Constant(0), center_vline, method="pointwise")  # u1(0, y) = 0
+    # bcu_center2 = DirichletBC(Usubspace.sub(1), Constant(0), center_point, method="pointwise")  # u2(0, 0) = 0
     # bcu.append(bcu_center1)
     # bcu.append(bcu_center2)
 
@@ -1048,9 +1088,10 @@ for n in range(nt):
     # Update current time
     t += dt
 
-    # Update value in time-dependent boundary condition
-    if u0_expr:
-        u0_expr.u0 = u0_func(t)
+    # Update value in time-dependent boundary conditions
+    for expr in (u0_left, u0_right):
+        if expr:
+            expr.u0 = u0_func(t)
 
     # Solve one timestep
     # krylov_it1, krylov_it2, krylov_it3, (system_it, last_diff_H1) = solver.step()
