@@ -388,32 +388,32 @@ if not dynamic:
     bcσ.append(bcσ_bottom2)
     bcσ.append(bcσ_bottom3)
 
-    # Left and right edges: fixed displacement
-    #
-    # NOTE: In `SteadyStateEulerianSolidPrimal`, since `v = du/dt` is governed by the linear first-order
-    # NOTE: transport PDE, it takes BCs only on the inflow boundary. When `V0 = 0`, then it is safe
-    # NOTE: to set BCs symmetrically, but when axial motion is present, only the inflow (left end)
-    # NOTE: should have a BC on `v`.
-    bcu_left = DirichletBC(Usubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
-    bcu_right = DirichletBC(Usubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
-    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)
-    bcu.append(bcu_left)
-    bcu.append(bcu_right)
-    bcv.append(bcv_left)
-    # bcv.append(bcv_right)
-
-    # # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
-    # bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-    # bcu.append(bcu_left)
+    # # Left and right edges: fixed displacement
+    # #
+    # # NOTE: In `SteadyStateEulerianSolidPrimal`, since `v = du/dt` is governed by the linear first-order
+    # # NOTE: transport PDE, it takes BCs only on the inflow boundary. When `V0 = 0`, then it is safe
+    # # NOTE: to set BCs symmetrically, but when axial motion is present, only the inflow (left end)
+    # # NOTE: should have a BC on `v`.
+    # bcu_left = DirichletBC(Usubspace, Constant((-1e-3, 0)), boundary_parts, Boundaries.LEFT.value)
+    # bcu_right = DirichletBC(Usubspace, Constant((+1e-3, 0)), boundary_parts, Boundaries.RIGHT.value)
     # bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    # # bcv_right = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.RIGHT.value)
+    # bcu.append(bcu_left)
+    # bcu.append(bcu_right)
     # bcv.append(bcv_left)
-    # bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
-    # bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
-    # bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
-    # bcσ.append(bcσ_right1)
-    # bcσ.append(bcσ_right2)
-    # bcσ.append(bcσ_right3)
+    # # bcv.append(bcv_right)
+
+    # Left and right edges: fixed left end, constant pull at right end (Kurki et al. 2016).
+    bcu_left = DirichletBC(Usubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    bcu.append(bcu_left)
+    bcv_left = DirichletBC(Vsubspace, Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+    bcv.append(bcv_left)
+    bcσ_right1 = DirichletBC(Qsubspace.sub(0), Constant(1e6), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ11
+    bcσ_right2 = DirichletBC(Qsubspace.sub(1), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ12
+    bcσ_right3 = DirichletBC(Qsubspace.sub(2), Constant(0), boundary_parts, Boundaries.RIGHT.value, "geometric")  # σ21 (symm.)
+    bcσ.append(bcσ_right1)
+    bcσ.append(bcσ_right2)
+    bcσ.append(bcσ_right3)
 
     # # Left and right edges: constant pull at both ends
     # # TODO: Does not work yet as-is, rigid-body mode remover needs work.
