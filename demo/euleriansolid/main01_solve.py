@@ -257,6 +257,7 @@ if dynamic:
     # # #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
     # # #                         degree=1),
     # # #              V)  # [-0.5, 0.5]²
+    # # TODO: monolithic space needs a `FunctionAssigner` to avoid assigning to an unused copy.
     # oldfields[type(solver)]["u"](solver).assign(u0)
     # fields[type(solver)]["u"](solver).assign(u0)
     # # NOTE: `v` is defined as either `∂u/∂t` or `du/dt`, depending on the solver used.
