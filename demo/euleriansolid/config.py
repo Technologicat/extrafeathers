@@ -15,6 +15,7 @@ E = 1.66133e+11    # Young's modulus [Pa]
 ν = 0.3            # Poisson ratio [nondimensional]  # TODO: check exact value for 316L
 tau = 1e-5         # Kelvin-Voigt retardation time [s], defined by  η = tau E
 # tau = 0          # Set tau to zero when instantiating solver to use the linear elastic model.
+# tau = 1.0  # DEBUG testing
 
 # # Debug test material (numerical scaling close to unity)
 # rho = 1
@@ -29,7 +30,10 @@ mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 # To remain subcritical:  V0 < √(E / rho)    (longitudinal elastic wave speed)
 #                         V0 < √(mu / rho)?  (shear wave speed)
 # 316L steel: √(E / rho) = 4681.08952641054
-V0 = 5e-2  # Typical L-PBF 3D printer laser velocity
+#             mu = 6.38973e+10
+#             √(mu / rho) = 2903.0884849832746
+V0 = 5e-2  # Typical L-PBF 3D printer laser velocity: 5 cm/s
+# V0 = 3300.0  # 3.3 km/s: maximum stable for 316L steel, for steady state with fixed displacement
 # V0 = 0.0  # Classical case (no axial motion), for debugging and comparison.
 
 # --------------------------------------------------------------------------------
@@ -41,7 +45,7 @@ V0 = 5e-2  # Typical L-PBF 3D printer laser velocity
 T = 0.01
 # Number of timesteps
 nt = 6000  # for τ = 1e-5
-# nt = 5000  # for τ = 1e-5, possible with step_adaptive
+# nt = 5000  # for τ = 1e-5, possible with step_adaptive (but slower due to adaptive algorithm)
 # nt = 2000  # for τ = 0
 
 # For debug test material:
