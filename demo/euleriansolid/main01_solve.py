@@ -112,25 +112,24 @@ if dynamic:
     # dlatex = r"\partial"
     # dtext = "∂"
 
-    # Alternative formulation, with `v := du/dt`.
-    # Only uses the space `P` for visualizing the strains.
-    P = TensorFunctionSpace(mesh, 'DP', 0)
-    solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
-    # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
-    # Set plotting labels; this formulation uses v := du/dt
-    dlatex = r"\mathrm{d}"
-    dtext = "d"
-
-    # # Primal formulation (`u` and `v` only), with `v := du/dt`.
+    # # Alternative formulation, with `v := du/dt`.
     # # Only uses the space `P` for visualizing the strains.
-    # # The stress uses a Neumann BC, with the boundary stress field set here.
-    # # NOTE: This algorithm does not work yet. Numerically unstable?
     # P = TensorFunctionSpace(mesh, 'DP', 0)
-    # boundary_stress = Constant(((1e6, 0), (0, 0)))
-    # solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, boundary_stress, dt)
+    # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt)  # Crank-Nicolson (default)
+    # # solver = EulerianSolidAlternative(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, bcσ, dt, θ=1.0)  # backward Euler
     # # Set plotting labels; this formulation uses v := du/dt
     # dlatex = r"\mathrm{d}"
     # dtext = "d"
+
+    # Primal formulation (`u` and `v` only), with `v := du/dt`.
+    # Only uses the space `P` for visualizing the strains.
+    # The stress uses a Neumann BC, with the boundary stress field set here.
+    P = TensorFunctionSpace(mesh, 'DP', 0)
+    boundary_stress = Constant(((1e6, 0), (0, 0)))
+    solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress, dt)
+    # Set plotting labels; this formulation uses v := du/dt
+    dlatex = r"\mathrm{d}"
+    dtext = "d"
 
 else:  # steady state
     # The steady-state solvers only use the space `P` for visualizing the strains.

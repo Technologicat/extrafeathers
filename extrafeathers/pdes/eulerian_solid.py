@@ -9,7 +9,7 @@ __all__ = ["EulerianSolid",  # works fine
            "SteadyStateEulerianSolid",  # does not work yet
            "EulerianSolidAlternative",  # works fine
            "SteadyStateEulerianSolidAlternative",  # does not work yet
-           "EulerianSolidPrimal",  # does not work yet
+           "EulerianSolidPrimal",  # works fine
            "SteadyStateEulerianSolidPrimal",  # works fine
            "step_adaptive"]
 
@@ -1876,17 +1876,20 @@ class SteadyStateEulerianSolidAlternative:
 
 # --------------------------------------------------------------------------------
 
-# TODO: `EulerianSolidPrimal` does not work yet. Numerically unstable?
 class EulerianSolidPrimal:
     """Like `EulerianSolidAlternative`, but using only `u` and `v`.
-
-    NOTE: This does not work yet. Use `EulerianSolidAlternative`, which works.
 
     Boundary stresses are enforced using a Neumann BC. `bcσ` is a single expression
     that will be evaluated at boundaries that do not have a boundary condition for
     `u`.
 
     Stresses are computed at timestep commit, and provided for visualization only.
+
+    NOTE: This solver uses MUMPS (MUltifrontal Massively Parallel Sparse direct Solver)
+    instead of Krylov methods to solve the linear equation system, so the returned
+    iteration counts are just meaningless placeholders to provide a unified API.
+
+    NOTE: the equation system is monolithic, so no system iterations are needed.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
@@ -1894,6 +1897,7 @@ class EulerianSolidPrimal:
                  ρ: float, λ: float, μ: float, τ: float,
                  V0: float,
                  bcu: typing.List[DirichletBC],
+                 bcv: typing.List[DirichletBC],
                  bcσ: Expression,
                  dt: float, θ: float = 0.5):
         self.mesh = V.mesh()
@@ -1972,6 +1976,7 @@ class EulerianSolidPrimal:
 
         # Dirichlet boundary conditions
         self.bcu = bcu
+        self.bcv = bcv
 
         # Neumann BC for stress
         self.bcσ = bcσ
@@ -2154,6 +2159,9 @@ class EulerianSolidPrimal:
         b = assemble(self.L)
         [bc.apply(A) for bc in self.bcu]
         [bc.apply(b) for bc in self.bcu]
+        [bc.apply(A) for bc in self.bcv]
+        [bc.apply(b) for bc in self.bcv]
+        # TODO: The rigid-body mode remover is useless if we use a direct method (only applies to Krylov).
         if not self.bcu:
             A3_PETSc = as_backend_type(A)
             A3_PETSc.set_near_nullspace(self.null_space)
@@ -2163,7 +2171,10 @@ class EulerianSolidPrimal:
             # the preconditioner to "watch out for rigid-body modes" is fine, but orthogonalizing
             # the load function against the wrong null space corrupts the loading?
             self.null_space.orthogonalize(b)
-        it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
+        # For some reason, Krylov methods don't work well here. MUMPS seems to get the correct solution.
+        # it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
+        solve(A, self.s_.vector(), b, 'mumps')
+        it = 1
 
         end()
 
