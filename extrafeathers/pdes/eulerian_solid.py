@@ -885,14 +885,6 @@ class EulerianSolid:
 # --------------------------------------------------------------------------------
 
 # TODO: This steady-state solver does not work yet. See `SteadyStateEulerianSolidPrimal`, which works.
-#
-# Essentially, here the equations have the wrong roles when we look at which quantities appear in each
-# of them. Consider the classical (not axially moving) case. The linear momentum balance has just `σ`,
-# no `u`, although it is tested by the test function of `u`. So it is "the equation of `u`", but we
-# cannot solve `u` from it; `σ` could be solved from it just fine. `u` should be solved from the
-# constitutive law, which is currently tested by the test function of `σ`. The tests are nontrivial to
-# swap (to switch the roles), because their tensor ranks are different.
-#
 class SteadyStateEulerianSolid:
     """Axially moving linear solid, small-displacement Eulerian formulation.
 
@@ -1627,6 +1619,8 @@ class SteadyStateEulerianSolidAlternative:
     Like `EulerianSolidAlternative`, but steady state.
 
     Note `v = du/dt = (a·∇) u`, because we are in an Eulerian steady state.
+
+    NOTE: the equation system is monolithic, so no system iterations are needed.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
@@ -2216,6 +2210,8 @@ class SteadyStateEulerianSolidPrimal:
     `u`.
 
     Stresses are computed for visualization only.
+
+    NOTE: the equation system is monolithic, so no system iterations are needed.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
