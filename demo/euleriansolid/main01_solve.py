@@ -358,12 +358,13 @@ if not dynamic:
     # assigner = FunctionAssigner(solver.S, [V, V, Q])  # `SteadyStateEulerianSolidAlternative`
     # # assigner = FunctionAssigner(solver.S, [V, Q])  # `SteadyStateEulerianSolid`
     # zeroV = Function(V)
-    # # u0 = project(Expression(("1e-3 * 2.0 * x[0]", "0"), degree=1), V)  # [-0.5, 0.5]²
-    # u0 = project(Expression(("1e-3 * 2.0 * x[0]",
-    #                          f"-{ν} * 1e-3 * 2.0 * x[1] * 2.0 * pow((0.5 - abs(x[0])), 0.5)"),
-    #                         degree=1),
-    #              V)  # [-0.5, 0.5]²
-    # σ0 = project(Constant(((1e9, 0), (0, 0))), Q)
+    # # u0 = project(Expression(("1e-3 * (2.0 * x[0])", "0"), degree=1), V)  # [-0.5, 0.5]²
+    # # u0 = project(Expression(("1e-3 * 2.0 * x[0]",
+    # #                          f"-{ν} * 1e-3 * (2.0 * x[1]) * pow((1.0 - abs(2.0 * x[0])), 0.5)"),
+    # #                         degree=1),
+    # #              V)  # [-0.5, 0.5]²
+    # u0 = project(Expression(("1e-6 * (0.5 + x[0])", f"-{ν} * 1e-6 * (2.0 * x[1])"), degree=1), V)
+    # σ0 = project(Constant(((1e6, 0), (0, 0))), Q)
     # assigner.assign(solver.s_, [u0, zeroV, σ0])  # `SteadyStateEulerianSolidAlternative`
     # # assigner.assign(solver.s_, [u0, σ0])  # `SteadyStateEulerianSolid`
     # # σ = fields[type(solver)]["σ"](solver)
