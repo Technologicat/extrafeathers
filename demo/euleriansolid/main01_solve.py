@@ -245,7 +245,7 @@ if dynamic:
     #
     # # The mass-lumped formulation of `EulerianSolid` takes no BCs for `u` (which is
     # # simply the time integral of `v`); instead, set an initial condition on `u`,
-    # # ad nset `v = 0` at the fixed boundaries. Note that the solver might not
+    # # and set `v = 0` at the fixed boundaries. Note that the solver might not
     # # converge, if the initial `u` is far from a valid state. Furthermore,
     # # for some initial states, Kelvin-Voigt might converge, but linear
     # # elastic might not.
