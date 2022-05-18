@@ -1937,7 +1937,7 @@ class EulerianSolidPrimal:
         self.s_ = s_
         self.s_n = s_n
 
-        # Set up the null space for removal in the Krylov solver.
+        # Set up the null space for removal in the Krylov solver. (TODO: currently unused in this solver)
         fus = null_space_fields(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
