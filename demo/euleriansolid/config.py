@@ -43,15 +43,29 @@ V0 = 5e-2  # Typical L-PBF 3D printer laser velocity: 5 cm/s
 #
 # Dynamic simulation end time [s]
 T = 0.01
+
 # Number of timesteps
-nt = 6000  # for τ = 1e-5
+#
+# The primal algorithm is expected to be A-stable, but for simulation quality,
+# keep in mind the elastic Courant number:
+#   Co = √(E / rho) * dt / he
+# For example, for 316L steel, with T = 0.01, nt = 200, and N = 16 (per axis, quad grid), Co ≈ 3.7.
+# Solve for `dt` to get `Co = 1`:
+#   dt = he Co / √(E / rho) ≈ 1.33e-5  (at N = 16)
+# so for T = 0.01 and N = 16,
+#   nt = T / dt ≈ 750
+#
+nt = 750
+
+# # For algorithms other than primal:
+# nt = 6000  # for τ = 1e-5
 # nt = 5000  # for τ = 1e-5, possible with step_adaptive (but slower due to adaptive algorithm)
 # nt = 2000  # for τ = 0
 
-# For debug test material:
+# # For debug test material:
 # T = 5.0
-#   With T = 5.0, and a uniform mesh of 16×16 quads, V=Q1, Q=Q2;
-#   then for linear elastic nt=1e3 works, but Kelvin-Voigt needs 1.25e4.
+# # With T = 5.0, and a uniform mesh of 16×16 quads, V=Q1, Q=Q2;
+# # then for linear elastic nt=1e3 works, but Kelvin-Voigt needs 1.25e4.
 # nt = 12500
 # nt = 1000
 
