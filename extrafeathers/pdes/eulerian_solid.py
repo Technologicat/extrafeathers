@@ -1877,6 +1877,17 @@ class SteadyStateEulerianSolidAlternative:
 class EulerianSolidPrimal:
     """Like `EulerianSolidAlternative`, but using only `u` and `v`.
 
+    Here the linear momentum balance law is used for determining `u`.
+
+    `v` is determined by L2 projection, using the definition
+
+      v := du/dt = ∂u/∂t + (a·∇)u
+
+    The projection is performed using the *unknown* `u`, by including this equation
+    into a monolithic equation system.
+
+    Boundary conditions should be set on `u`; `v` takes no BCs.
+
     Boundary stresses are enforced using a Neumann BC. `bcσ` is a single expression
     that will be evaluated at boundaries that do not have a boundary condition for
     `u`.
