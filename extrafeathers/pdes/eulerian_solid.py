@@ -1634,7 +1634,7 @@ class SteadyStateEulerianSolidAlternative:
 
     Note `v = du/dt = (a·∇) u`, because we are in an Eulerian steady state.
 
-    NOTE: the equation system is monolithic, so no system iterations are needed.
+    NOTE: The equation system is monolithic, so no system iterations are needed.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
@@ -1887,7 +1887,7 @@ class EulerianSolidPrimal:
     instead of Krylov methods to solve the linear equation system, so the returned
     iteration counts are just meaningless placeholders to provide a unified API.
 
-    NOTE: the equation system is monolithic, so no system iterations are needed.
+    NOTE: The equation system is monolithic, so no system iterations are needed.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
@@ -2202,7 +2202,7 @@ class SteadyStateEulerianSolidPrimal:
 
     Stresses are computed for visualization only.
 
-    NOTE: the equation system is monolithic, so no system iterations are needed.
+    NOTE: The equation system is monolithic, so no system iterations are needed.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
