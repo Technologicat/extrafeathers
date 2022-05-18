@@ -1,16 +1,49 @@
 # -*- coding: utf-8; -*-
-"""
-Axially moving solid, Eulerian view, small-displacement regime (on top of axial motion).
+"""Axially moving solid, Eulerian view, small-displacement regime (on top of uniform axial motion).
 
-Mixed formulation based on standard C0-continuous elements.
+Three alternative formulations are provided, both in dynamic and in steady-state cases:
+
+ - `EulerianSolid`, `SteadyStateEulerianSolid`:
+
+   Straightforward Eulerian description. Variables are `u(x, t)`, `v(x, t) := ∂u/∂t`, and `σ(x, t)`.
+
+   `v` is the Eulerian rate of `u`.
+
+ - `EulerianSolidAlternative`, `SteadyStateEulerianSolidAlternative`:
+
+   Eulerian description using material parcel velocity. Variables are `u(x, t)`, `v(x, t) := du/dt`,
+   and `σ(x, t)`.
+
+   `v` is the material derivative of `u`; it is the actual physical velocity of the material
+   parcels with respect to the co-moving frame.
+
+ - `EulerianSolidPrimal`, `SteadyStateEulerianSolidPrimal`:
+
+   Eulerian description using material parcel velocity and primal variables only. Variables are
+   `u(x, t)`, and `v(x, t) := du/dt`.
+
+   `v` is the material derivative of `u`; it is the actual physical velocity of the material
+   parcels with respect to the co-moving frame.
+
+   This is the cleanest formulation, and the fastest solver, but the method does not readily
+   generalize beyond the Kelvin-Voigt model, because an explicit expression for the stress
+   (in terms of `u` and `v`) is needed to set up the primal PDE.
+
+**NOTE**:
+
+Of the steady-state solvers, currently only `SteadyStateEulerianSolidPrimal` converges to the
+correct solution; this is still something to be investigated later. For now, if you want the
+steady state, just use `SteadyStateEulerianSolidPrimal`.
+
+All three dynamic solvers work as expected.
 """
 
-__all__ = ["EulerianSolid",  # works fine
+__all__ = ["EulerianSolid",
            "SteadyStateEulerianSolid",  # does not work yet
-           "EulerianSolidAlternative",  # works fine
+           "EulerianSolidAlternative",
            "SteadyStateEulerianSolidAlternative",  # does not work yet
-           "EulerianSolidPrimal",  # works fine
-           "SteadyStateEulerianSolidPrimal",  # works fine
+           "EulerianSolidPrimal",
+           "SteadyStateEulerianSolidPrimal",
            "step_adaptive"]
 
 from contextlib import contextmanager
