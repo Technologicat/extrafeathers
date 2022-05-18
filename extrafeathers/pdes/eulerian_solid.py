@@ -1663,7 +1663,6 @@ class SteadyStateEulerianSolidAlternative:
         for fs, fu in zip(fssv, fus):
             assigner.assign(fs, [zeroV, project(fu, V), zeroQ])
         null_space_basis = [fs.vector() for fs in fssu + fssv]
-
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
         self.null_space = basis
@@ -1903,27 +1902,11 @@ class EulerianSolidPrimal:
         self.s_ = s_
         self.s_n = s_n
 
-        # Set up the null space. We'll remove it in the Krylov solver.
-        dim = self.mesh.topology().dim()
-        if dim == 2:
-            fus = [Constant((1, 0)),
-                   Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
-        elif dim == 3:
-            fus = [Constant((1, 0, 0)),
-                   Constant((0, 1, 0)),
-                   Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
-        else:
-            raise NotImplementedError(f"dim = {dim}")
-
+        # Set up the null space for removal in the Krylov solver.
+        fus = null_space_functions(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
-        # zeroQ = Function(Q)
-        # zeroQ.vector()[:] = 0.0
         # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
         assigner = FunctionAssigner(S, [V, V])  # receiving space, assigning space
         fssu = [Function(S) for _ in range(len(fus))]
@@ -1933,7 +1916,6 @@ class EulerianSolidPrimal:
         for fs, fu in zip(fssv, fus):
             assigner.assign(fs, [zeroV, project(fu, V)])
         null_space_basis = [fs.vector() for fs in fssu + fssv]
-
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
         self.null_space = basis
@@ -2239,28 +2221,11 @@ class SteadyStateEulerianSolidPrimal:
         self.S = S
         self.s_ = s_
 
-        # Strictly, this is the null space of linear elasticity, but the physics shouldn't
-        # be that much different for the other linear models.
-        dim = self.mesh.topology().dim()
-        if dim == 2:
-            fus = [Constant((1, 0)),
-                   Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
-        elif dim == 3:
-            fus = [Constant((1, 0, 0)),
-                   Constant((0, 1, 0)),
-                   Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
-        else:
-            raise NotImplementedError(f"dim = {dim}")
-
+        # Set up the null space for removal in the Krylov solver.
+        fus = null_space_functions(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
-        # zeroQ = Function(Q)
-        # zeroQ.vector()[:] = 0.0
         # https://fenicsproject.org/olddocs/dolfin/latest/cpp/d5/dc7/classdolfin_1_1FunctionAssigner.html
         assigner = FunctionAssigner(S, [V, V])  # receiving space, assigning space
         fssu = [Function(S) for _ in range(len(fus))]
@@ -2270,7 +2235,6 @@ class SteadyStateEulerianSolidPrimal:
         for fs, fu in zip(fssv, fus):
             assigner.assign(fs, [zeroV, project(fu, V)])
         null_space_basis = [fs.vector() for fs in fssu + fssv]
-
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
         self.null_space = basis
