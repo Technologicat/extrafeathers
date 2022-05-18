@@ -34,6 +34,41 @@ from .numutil import ε, mag, advw, advs
 from .util import ufl_constant_property, StabilizerFlags
 
 
+def null_space_functions(dim):
+    """Set up null space for removal in the Krylov solver.
+
+    Return a `list` of rigid-body modes of geometric dimension `dim` as FEniCS
+    expressions. These can then be projected into the correct finite element space.
+
+    Null space of the linear momentum balance is {u: ε(u) = 0 and ∇·u = 0}
+    This consists of rigid-body translations and infinitesimal rigid-body rotations.
+
+    Strictly, this is the null space of linear elasticity, but the physics shouldn't
+    be that much different for the other linear models.
+
+    See:
+        https://fenicsproject.discourse.group/t/rotation-in-null-space-for-elasticity/4083
+         https://bitbucket.org/fenics-project/dolfin/src/946dbd3e268dc20c64778eb5b734941ca5c343e5/python/demo/undocumented/elasticity/demo_elasticity.py#lines-35:52
+        https://bitbucket.org/fenics-project/dolfin/issues/587/functionassigner-does-not-always-call
+    """
+    if dim == 1:
+        fus = [Constant(1)]
+    elif dim == 2:
+        fus = [Constant((1, 0)),
+               Constant((0, 1)),
+               Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
+    elif dim == 3:
+        fus = [Constant((1, 0, 0)),
+               Constant((0, 1, 0)),
+               Constant((0, 0, 1)),
+               Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
+               Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
+               Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
+    else:
+        raise NotImplementedError(f"dim = {dim}")
+    return fus
+
+
 class EulerianSolidStabilizerFlags(StabilizerFlags):
     """Interface for numerical stabilizer on/off flags.
 
@@ -251,34 +286,9 @@ class EulerianSolid:
         self.u_, self.v_, self.σ_ = u_, v_, σ_  # latest computed approximation
         self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
 
-        # Set up the null space. We'll remove it in the Krylov solver.
-        #
-        # https://fenicsproject.discourse.group/t/rotation-in-null-space-for-elasticity/4083
-        # https://bitbucket.org/fenics-project/dolfin/src/946dbd3e268dc20c64778eb5b734941ca5c343e5/python/demo/undocumented/elasticity/demo_elasticity.py#lines-35:52
-        # https://bitbucket.org/fenics-project/dolfin/issues/587/functionassigner-does-not-always-call
-        #
-        # Null space of the linear momentum balance is {u: ε(u) = 0 and ∇·u = 0}
-        # This consists of rigid-body translations and infinitesimal rigid-body rotations.
-
-        # Strictly, this is the null space of linear elasticity, but the physics shouldn't
-        # be that much different for the other linear models.
-        dim = self.mesh.topology().dim()
-        if dim == 2:
-            fus = [Constant((1, 0)),
-                   Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
-        elif dim == 3:
-            fus = [Constant((1, 0, 0)),
-                   Constant((0, 1, 0)),
-                   Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
-        else:
-            raise NotImplementedError(f"dim = {dim}")
-
+        # Set up the null space for removal in the Krylov solver.
+        fus = null_space_functions(self.mesh.geometric_dimension())
         null_space_basis = [interpolate(fu, V).vector() for fu in fus]
-
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
         self.null_space = basis
@@ -948,23 +958,8 @@ class SteadyStateEulerianSolid:
         # for this one, the velocity is zero).
         self.v_ = Function(V)
 
-        # Strictly, this is the null space of linear elasticity, but the physics shouldn't
-        # be that much different for the other linear models.
-        dim = self.mesh.topology().dim()
-        if dim == 2:
-            fus = [Constant((1, 0)),
-                   Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
-        elif dim == 3:
-            fus = [Constant((1, 0, 0)),
-                   Constant((0, 1, 0)),
-                   Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
-        else:
-            raise NotImplementedError(f"dim = {dim}")
-
+        # Set up the null space for removal in the Krylov solver.
+        fus = null_space_functions(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
@@ -976,7 +971,6 @@ class SteadyStateEulerianSolid:
         for fs, fu in zip(fss, fus):
             assigner.assign(fs, [project(fu, V), zeroQ])
         null_space_basis = [fs.vector() for fs in fss]
-
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
         self.null_space = basis
@@ -1270,24 +1264,9 @@ class EulerianSolidAlternative:
         self.u_, self.v_, self.σ_ = u_, v_, σ_  # latest computed approximation
         self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
 
-        # Set up the null space. We'll remove it in the Krylov solver.
-        dim = self.mesh.topology().dim()
-        if dim == 2:
-            fus = [Constant((1, 0)),
-                   Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
-        elif dim == 3:
-            fus = [Constant((1, 0, 0)),
-                   Constant((0, 1, 0)),
-                   Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
-        else:
-            raise NotImplementedError(f"dim = {dim}")
-
+        # Set up the null space for removal in the Krylov solver.
+        fus = null_space_functions(self.mesh.geometric_dimension())
         null_space_basis = [interpolate(fu, V).vector() for fu in fus]
-
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
         self.null_space = basis
@@ -1668,23 +1647,8 @@ class SteadyStateEulerianSolidAlternative:
         self.S = S
         self.s_ = s_
 
-        # Strictly, this is the null space of linear elasticity, but the physics shouldn't
-        # be that much different for the other linear models.
-        dim = self.mesh.topology().dim()
-        if dim == 2:
-            fus = [Constant((1, 0)),
-                   Constant((0, 1)),
-                   Expression(("x[1]", "-x[0]"), degree=1)]  # around z axis (clockwise)
-        elif dim == 3:
-            fus = [Constant((1, 0, 0)),
-                   Constant((0, 1, 0)),
-                   Constant((0, 0, 1)),
-                   Expression(("0", "x[2]", "-x[1]"), degree=1),  # around x axis (clockwise)
-                   Expression(("-x[2]", "0", "x[0]"), degree=1),  # around y axis (clockwise)
-                   Expression(("x[1]", "-x[0]", "0"), degree=1)]  # around z axis (clockwise)
-        else:
-            raise NotImplementedError(f"dim = {dim}")
-
+        # Set up the null space for removal in the Krylov solver.
+        fus = null_space_functions(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
