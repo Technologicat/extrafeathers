@@ -33,6 +33,7 @@ from extrafeathers.pdes import (EulerianSolid,  # noqa: F401
                                 SteadyStateEulerianSolidPrimal)
 from extrafeathers.pdes.eulerian_solid import ε
 from .config import (rho, lamda, mu, tau, V0, dt, nt,
+                     dynamic, nsave_total, vis_every, enable_SUPG, show_mesh,
                      Boundaries,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
@@ -51,31 +52,11 @@ mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_f
 V = VectorFunctionSpace(mesh, 'P', 1)  # displacement
 Q = TensorFunctionSpace(mesh, 'P', 2)  # stress
 
-# for visualization purposes
+# Scalar function spaces with the same element family and degree as `V` and `Q`, for visualization purposes.
 Vscalar = V.sub(0).collapse()
 Qscalar = Q.sub(0).collapse()
 
-# --------------------------------------------------------------------------------
-# Choose the solver
-
-# TODO: Fix multi-headed hydra (dynamic and steady-state cases currently interleaved in one script).
-# TODO: The mess is even worse now that we have several alternative algorithms available for each case.
-
-dynamic = True
-
-# for dynamic solver
-nsave_total = 1000  # how many timesteps to save from the whole simulation
-vis_every = 2.5 / 100  # how often to visualize (plotting is slow)
-
-enable_SUPG = True
-
-# plotter
-show_mesh = True
-
-# --------------------------------------------------------------------------------
-# Define boundary conditions
-
-# First, detect the bounding box - we need this in some examples for fixing the
+# Start by detecting the bounding box - we need this in some examples for fixing the
 # displacement on a line inside the domain.
 with timer() as tim:
     ignored_cells, nodes_dict = meshmagic.all_cells(Vscalar)
@@ -87,6 +68,12 @@ with timer() as tim:
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
     print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}], y ∈ [{ymin:0.6g}, {ymax:0.6g}].")
+
+# --------------------------------------------------------------------------------
+# Choose the solver
+
+# TODO: Fix multi-headed hydra (dynamic and steady-state cases currently interleaved in one script).
+# TODO: The mess is even worse now that we have several alternative algorithms available for each case.
 
 bcu = []  # for steady-state solver
 bcv = []  # for dynamic solver
@@ -202,6 +189,9 @@ if dynamic:
                                        "σ": lambda solver: NotImplemented}}
 else:
     oldfields = None
+
+# --------------------------------------------------------------------------------
+# Define boundary conditions
 
 # --------------------------------------------------------------------------------
 # For dynamic solver

@@ -7,7 +7,7 @@ Simulation parameters, file paths, etcetera.
 from enum import IntEnum
 
 # --------------------------------------------------------------------------------
-# Physical
+# Physical parameters
 
 # 316L steel
 rho = 7581.62      # Density [kg/m³]
@@ -22,9 +22,6 @@ tau = 1e-5         # Kelvin-Voigt retardation time [s], defined by  η = tau E
 # E = 10
 # tau = 0.1
 
-lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
-mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
-
 # Velocity of co-moving frame in +x direction (constant) [m/s]
 #
 # To remain subcritical:  V0 < √(E / rho)    (longitudinal elastic wave speed)
@@ -36,12 +33,55 @@ V0 = 5e-2  # Typical L-PBF 3D printer laser velocity: 5 cm/s
 # V0 = 3300.0  # 3.3 km/s: maximum stable for 316L steel, for steady state with fixed displacement
 # V0 = 0.0  # Classical case (no axial motion), for debugging and comparison.
 
+# Then the Lamé parameters for the solver are:
+lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
+mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
+
 # --------------------------------------------------------------------------------
-# Numerical
+# Numerical: general
+
+# Solver mode:
+#   `True`: run dynamic simulation
+#   `False`: solve for steady state
+dynamic = True
+
+# Enable streamline upwinding Petrov-Galerkin stabilization? (if the algorithm supports it)
+enable_SUPG = True
+
+# Draw element edges (and `extrafeathers` vis edges) when visualizing during simulation?
+show_mesh = True
+
+# --------------------------------------------------------------------------------
+# Numerical: dynamic simulation
+
+# How many timesteps, at most, to export to `.xdmf` from the whole simulation.
+# If `nsave_total ≥ nt`, all timesteps are exported.
+nsave_total = 1000
+
+# How often to update the online (during simulation) visualization, as a ratio in [0, 1].
+# This visualization is meant to provide visual feedback at a reasonable latency on the
+# behavior of the simulation, without the need to load the data into ParaView to look at
+# the `.xdmf`.
+#
+# Each visualization is auto-saved as an image (see `fig_*` settings further below),
+# to preserve everything that was plotted for future visual inspection.
+#
+# Plotting is slow, so for fast simulation, the visualization should be updated
+# rather rarely. However, since we have a vibrating system, visualizing too rarely
+# may miss important temporal detail in the sequence of screenshots produced.
+#
+# For example, if the visualization interval happens to match an eigenfrequency,
+# in the sequence of screenshots it may look like nothing is happening, whereas
+# in reality, the object vibrates for an integer number cycles between each two
+# successive screenshots.
+#
+# Note that this setting does NOT affect the data export to xdmf; this controls
+# only the plotting behavior.
+vis_every = 2.5 / 100
 
 # For 316L steel
 #
-# Dynamic simulation end time [s]
+# Simulation end time [s]
 T = 0.01
 
 # Number of timesteps
@@ -69,7 +109,8 @@ nt = 750
 # nt = 12500
 # nt = 1000
 
-dt = T / nt        # timestep size [s]
+# Then the timestep size for the solver is:
+dt = T / nt
 
 # --------------------------------------------------------------------------------
 # Mesh
