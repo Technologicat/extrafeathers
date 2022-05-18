@@ -17,6 +17,8 @@ Three alternative formulations are provided, both in dynamic and in steady-state
    `v` is the material derivative of `u`; it is the actual physical velocity of the material
    parcels with respect to the co-moving frame.
 
+   Note `v` is still an Eulerian field; it is a spatial description of a material quantity!
+
  - `EulerianSolidPrimal`, `SteadyStateEulerianSolidPrimal`:
 
    Eulerian description using material parcel velocity and primal variables only. Variables are
@@ -25,9 +27,9 @@ Three alternative formulations are provided, both in dynamic and in steady-state
    `v` is the material derivative of `u`; it is the actual physical velocity of the material
    parcels with respect to the co-moving frame.
 
-   This is the cleanest formulation, and the fastest solver, but the method does not readily
-   generalize beyond the Kelvin-Voigt model, because an explicit expression for the stress
-   (in terms of `u` and `v`) is needed to set up the primal PDE.
+   Note `v` is still an Eulerian field; it is a spatial description of a material quantity!
+
+   This is the cleanest formulation, and the fastest solver.
 
 **NOTE**:
 
