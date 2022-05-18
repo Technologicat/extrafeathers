@@ -1,6 +1,6 @@
 # Changelog
 
-**0.4.0** (in progress, last updated 27 April 2022):
+**0.4.0** (in progress, last updated 18 May 2022):
 
 **Added**:
 
@@ -16,6 +16,9 @@
 - Add `collapse_node_numbering`. Like `dolfin.FunctionSpace.collapse`, but for the `extrafeathers` internal format (`cells` list and `nodes` dict, as produced by `all_cells`). This is sometimes needed; if curious, see the source code of the [`meshmagic`](extrafeathers/meshmagic.py) and [`plotmagic`](extrafeathers/plotmagic.py) modules for use cases.
 - Add [interptest demo](demo/interptest.py), to show interpolation of a bilinear function on the unit square on different element types.
 - Add [smoothing demo](demo/smoothingtest.py), to show the effects of P1->DP0->P1 (and Q1->DQ0->Q1) projection smoothing. This is a technique to eliminate a symmetric numerical checkerboard oscillation with only minor damage to the actual signal.
+- Add [Eulerian solid mechanics demo](demo/euleriansolid/): axially moving Kelvin-Voigt sheet using an Eulerian description, with both dynamic and steady-state solvers.
+  - This is actually a small open-source research code into the mechanics of axially moving materials, with applications in the analysis of industrial processes. Placing the code here facilitates co-evolving `extrafeathers` with features our research team currently actually needs.
+  - Quadrilateral elements look nice for this.
 
 **Changed**:
 
