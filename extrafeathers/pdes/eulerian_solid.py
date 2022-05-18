@@ -34,7 +34,7 @@ from .numutil import ε, mag, advw, advs
 from .util import ufl_constant_property, StabilizerFlags
 
 
-def null_space_functions(dim):
+def null_space_fields(dim):
     """Set up null space for removal in the Krylov solver.
 
     Return a `list` of rigid-body modes of geometric dimension `dim` as FEniCS
@@ -287,7 +287,7 @@ class EulerianSolid:
         self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
 
         # Set up the null space for removal in the Krylov solver.
-        fus = null_space_functions(self.mesh.geometric_dimension())
+        fus = null_space_fields(self.mesh.geometric_dimension())
         null_space_basis = [interpolate(fu, V).vector() for fu in fus]
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
@@ -959,7 +959,7 @@ class SteadyStateEulerianSolid:
         self.v_ = Function(V)
 
         # Set up the null space for removal in the Krylov solver.
-        fus = null_space_functions(self.mesh.geometric_dimension())
+        fus = null_space_fields(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
@@ -1265,7 +1265,7 @@ class EulerianSolidAlternative:
         self.u_n, self.v_n, self.σ_n = u_n, v_n, σ_n  # old value (end of previous timestep)
 
         # Set up the null space for removal in the Krylov solver.
-        fus = null_space_functions(self.mesh.geometric_dimension())
+        fus = null_space_fields(self.mesh.geometric_dimension())
         null_space_basis = [interpolate(fu, V).vector() for fu in fus]
         basis = VectorSpaceBasis(null_space_basis)
         basis.orthonormalize()
@@ -1648,7 +1648,7 @@ class SteadyStateEulerianSolidAlternative:
         self.s_ = s_
 
         # Set up the null space for removal in the Krylov solver.
-        fus = null_space_functions(self.mesh.geometric_dimension())
+        fus = null_space_fields(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
@@ -1903,7 +1903,7 @@ class EulerianSolidPrimal:
         self.s_n = s_n
 
         # Set up the null space for removal in the Krylov solver.
-        fus = null_space_functions(self.mesh.geometric_dimension())
+        fus = null_space_fields(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
@@ -2222,7 +2222,7 @@ class SteadyStateEulerianSolidPrimal:
         self.s_ = s_
 
         # Set up the null space for removal in the Krylov solver.
-        fus = null_space_functions(self.mesh.geometric_dimension())
+        fus = null_space_fields(self.mesh.geometric_dimension())
         # In a mixed formulation, we must insert zero functions for the other fields:
         zeroV = Function(V)
         zeroV.vector()[:] = 0.0
