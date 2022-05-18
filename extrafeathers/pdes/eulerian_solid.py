@@ -2096,20 +2096,19 @@ class EulerianSolidPrimal:
         F_v = (dot(V, ψ) * dx -
                (dot(dudt, ψ) * dx + advw(a, U, ψ, n)))
 
-        # # SUPG   # TODO: enable when the rest of this class works properly.
-        #
-        # deg = Constant(self.V.ufl_element().degree())
-        # moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
-        # τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
-        # R = (ρ * (dvdt + advs(a, V)) - div(Σ) - ρ * b)
-        # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
-        # F_u += F_SUPG
-        #
-        # deg = Constant(self.V.ufl_element().degree())
-        # τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
-        # R = (V - (dudt + advs(a, U)))
-        # F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
-        # F_v += F_SUPG
+        # SUPG (doesn't seem to actually do much here)
+        deg = Constant(self.V.ufl_element().degree())
+        moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
+        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
+        R = (ρ * (dvdt + advs(a, V)) - div(Σ) - ρ * b)
+        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
+        F_u += F_SUPG
+
+        deg = Constant(self.V.ufl_element().degree())
+        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
+        R = (V - (dudt + advs(a, U)))
+        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
+        F_v += F_SUPG
 
         F = F_u + F_v
         self.a = lhs(F)
