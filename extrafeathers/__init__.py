@@ -13,7 +13,7 @@ installed) as a subpackage. However, the subpackage is not automatically
 loaded; if you need it, import it explicitly.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # export the public API
 from .autoboundary import *  # noqa: F401, F403

@@ -1,5 +1,13 @@
 # Changelog
 
+**0.5.0** (last updated 19 May 2022):
+
+*No user-visible changes yet.*
+
+
+---
+
+
 **0.4.0** (19 May 2022):
 
 **Added**:
