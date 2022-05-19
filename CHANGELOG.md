@@ -1,6 +1,6 @@
 # Changelog
 
-**0.4.0** (in progress, last updated 18 May 2022):
+**0.4.0** (19 May 2022):
 
 **Added**:
 
