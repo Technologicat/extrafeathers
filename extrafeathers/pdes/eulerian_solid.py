@@ -2344,23 +2344,32 @@ class SteadyStateEulerianSolidPrimal:
         #
         # We build one monolithic equation.
 
-        # Constitutive equation
-        #
         # TODO: Extend the constitutive model for `pdes.eulerian_solid`
-        #  - Add thermal effects
-        #    - Used to be eq. (768) in report, but report reorganized; see summary
-        #      below.
-        #    - Need a FEM field for temperature `T`, and parameters `α` and `T0`
+        #  - Account for thermal strain.
+        #    - Used to be eq. (768) in report, but report reorganized; relevant details
+        #      summarized in the detailed comment further below.
+        #    - Need a FEM field for temperature `T`, and new parameters `α` and `T0`.
+        #      In general, must provide both `α` and `∂α/∂T`; use SymPy to generate?
         #    - In dynamic case, need access also to `∂T/∂t`; thermal solver doesn't
         #      currently store it, but it can be obtained (at least for Crank-Nicolson)
         #      as `(heatsolver.u_ - heatsolver.u_n) / dt`.
-        #  - Orthotropic Kelvin-Voigt
-        #    - Need just new symmetry groups, the operator `K:(...)` changes slightly.
-        #    - The thermal expansion tensor α also changes.
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes
-        #    `dσ/dt = ∂σ/∂t + (a·∇)σ`)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes
-        #    `dσ/dt = ∂σ/∂t + (a·∇)σ`)
+        #  - Orthotropic Kelvin-Voigt.
+        #    - Need new symmetry groups, the operator `K:(...)` changes slightly.
+        #      Useful to have a conversion between Voigt notation (matrices) and
+        #      symmetric rank-4 tensors to compactly specify anisotropic models.
+        #    - The thermal expansion tensor `α` also changes. An orthotropic one
+        #      can be constructed as a sum of three rank-2 tensors, each describing
+        #      the expansion behavior along one of the orthogonal material axes.
+        #  - Isotropic SLS (Zener).
+        #    - In the `EulerianSolidAlternative` formulation, requires solving a PDE.
+        #      LHS includes a term `dσ/dt = ∂σ/∂t + (a·∇)σ`; could we use the same
+        #      auxiliary variable technique as for `v`?
+        #    - In `EulerianSolidPrimal`... ouch! We could probably take a page from
+        #      Marynowski's studies on viscoelastic materials: differentiate the
+        #      whole linear momentum balance in order to make the LHS of the
+        #      constitutive equation appear in it. Then substitute as usual.
+        #      This will raise the order (at least w.r.t. time) by one.
+        #  - Orthotropic SLS (Zener). New symmetry groups.
 
         # TODO: Add Neumann BC for `(n·∇)u`; we need a zero normal gradient
         # TODO: BC in the analysis of 3D printing.
@@ -2539,6 +2548,7 @@ class SteadyStateEulerianSolidPrimal:
         # solver. Maybe also start using a dictionary (like the tutorial does) for
         # defining the BCs; this is more flexible when there are several options.
 
+        # Constitutive equation
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
         if self.τ == 0.0:  # Linear elastic (LE)
