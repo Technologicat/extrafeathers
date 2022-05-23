@@ -429,14 +429,8 @@ class EulerianSolid:
 
         # Step 2: solve `σ`, using `u` from step 1 (and if needed, the latest available `v`)
         #
-        # TODO:
-        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
-        #    - Need a FEM field for temperature T, and parameters α and T0
-        #  - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic linear elastic
-        #  - Orthotropic Kelvin-Voigt
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+        # TODO: Extend the constitutive model. For details,
+        # TODO: see comments in `SteadyStateEulerianSolidPrimal`.
 
         # θ integration: field values at the "θ-point" in time:
         U = (1 - θ) * u_n + θ * u_  # known
@@ -1088,14 +1082,8 @@ class SteadyStateEulerianSolid:
 
         # Constitutive equation
         #
-        # TODO:
-        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
-        #    - Need a FEM field for temperature T, and parameters α and T0
-        #  - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic linear elastic
-        #  - Orthotropic Kelvin-Voigt
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+        # TODO: Extend the constitutive model. For details,
+        # TODO: see comments in `SteadyStateEulerianSolidPrimal`.
 
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
@@ -1431,14 +1419,8 @@ class EulerianSolidAlternative:
 
         # Step 2: solve `σ`, using `u` from step 1 (and the latest available `v`)
         #
-        # TODO:
-        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
-        #    - Need a FEM field for temperature T, and parameters α and T0
-        #  - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic linear elastic
-        #  - Orthotropic Kelvin-Voigt
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+        # TODO: Extend the constitutive model. For details,
+        # TODO: see comments in `SteadyStateEulerianSolidPrimal`.
 
         # θ integration:
         U = (1 - θ) * u_n + θ * u_  # known
@@ -1786,14 +1768,8 @@ class SteadyStateEulerianSolidAlternative:
 
         # Constitutive equation
         #
-        # TODO:
-        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
-        #    - Need a FEM field for temperature T, and parameters α and T0
-        #  - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic linear elastic
-        #  - Orthotropic Kelvin-Voigt
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+        # TODO: Extend the constitutive model. For details,
+        # TODO: see comments in `SteadyStateEulerianSolidPrimal`.
 
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
@@ -2078,18 +2054,12 @@ class EulerianSolidPrimal:
 
         # `σ`, using unknown `u` and `v`
         #
-        # TODO:
-        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
-        #    - Need a FEM field for temperature T, and parameters α and T0
-        #  - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic linear elastic
-        #  - Orthotropic Kelvin-Voigt
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-
-        # TODO: Neumann BC on `(n·∇)u`; we need a zero normal gradient BC in the analysis of 3D printing.
-        # TODO: See detailed comments in `SteadyStateEulerianSolidPrimal` for how to do this; the exact
-        # TODO: same strategy applies here.
+        # TODO: Extend the constitutive model. For details,
+        # TODO: see comments in `SteadyStateEulerianSolidPrimal`.
+        #
+        # TODO: Add Neumann BC for `(n·∇)u`; we need a zero normal gradient
+        # TODO: BC in the analysis of 3D printing. For details,
+        # TODO: see comments in `SteadyStateEulerianSolidPrimal`.
 
         # Constitutive model
         Id = Identity(ε(u).geometric_dimension())
@@ -2376,20 +2346,81 @@ class SteadyStateEulerianSolidPrimal:
 
         # Constitutive equation
         #
-        # TODO:
-        #  - Add elastothermal effects:  ∫ φ : [KE : α] [T - T0] dΩ  (same sign as ∫ φ : KE : ε dΩ term)
-        #    - Need a FEM field for temperature T, and parameters α and T0
-        #  - Add viscothermal effects, see eq. (768) in report
-        #  - Orthotropic linear elastic
+        # TODO: Extend the constitutive model for `pdes.eulerian_solid`
+        #  - Add thermal effects
+        #    - Used to be eq. (768) in report, but report reorganized; see summary
+        #      below.
+        #    - Need a FEM field for temperature `T`, and parameters `α` and `T0`
+        #    - In dynamic case, need access also to `∂T/∂t`; thermal solver doesn't
+        #      currently store it, but it can be obtained (at least for Crank-Nicolson)
+        #      as `(heatsolver.u_ - heatsolver.u_n) / dt`.
         #  - Orthotropic Kelvin-Voigt
-        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
-        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
+        #    - Need just new symmetry groups, the operator `K:(...)` changes slightly.
+        #    - The thermal expansion tensor α also changes.
+        #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes
+        #    `dσ/dt = ∂σ/∂t + (a·∇)σ`)
+        #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes
+        #    `dσ/dt = ∂σ/∂t + (a·∇)σ`)
 
-        # TODO: Neumann BC on `(n·∇)u`; we need a zero normal gradient BC in the analysis of 3D printing.
+        # TODO: Add Neumann BC for `(n·∇)u`; we need a zero normal gradient
+        # TODO: BC in the analysis of 3D printing.
         #
-        # In the primal formulation, we can do this just like in Navier-Stokes.
-        # Consider the linear thermoelastic case. Since for an isotropic solid
-        # the elastic stiffness tensor is
+        # In the primal formulation, we can use the same technique for making our
+        # Neumann BC into zero-normal-gradient as is used for Navier-Stokes.
+        #
+        # Recall that written with the Kelvin-Voigt retardation time τ, the stress for
+        # Kelvin-Voigt is
+        #
+        #   σ = K : εve + τ K : dεve/dt
+        #
+        # where the viscoelastic strain εve, when thermal effects are present, is
+        #
+        #   εve = ε - εth
+        #
+        # The thermal strain is
+        #
+        #   εth = α [T - T0]
+        #
+        # Therefore, the stress becomes
+        #
+        #   σ = K : [ε - εth] + τ K : d[ε - εth]/dt
+        #
+        # Expanding brackets, inserting the thermal strain εth, and annotating,
+        #
+        #   σ = K : ε + τ K dε/dt       (elastic and viscous contributions)
+        #     - K : α [T - T0]          (elastothermal)
+        #     - τ K : d[α [T - T0]]/dt  (viscothermal)
+        #
+        #     = K : ε + τ K dε/dt       (elastic and viscous)
+        #     - K : α [T - T0]          (elastothermal)
+        #     - τ K : α dT/dt           (viscothermal)
+        #     - τ K : dα/dt [T - T0]    (viscothermal, time-varying α)
+        #
+        # Taking `α = α(T)`,
+        #
+        #   σ = K : ε + τ K dε/dt           (elastic and viscous)
+        #     - K : α [T - T0]              (elastothermal)
+        #     - τ K : α dT/dt               (viscothermal)
+        #     - τ K : ∂α/∂T dT/dt [T - T0]  (viscothermal, temperature-varying α)
+        #
+        # Expanding the `dα/dt`,
+        #
+        #   σ = K : ε + τ K dε/dt
+        #     - K : α [T - T0]
+        #     - τ K : α [∂T/∂t + (a·∇)T]
+        #     - τ K : ∂α/∂T [∂T/∂t + (a·∇)T] [T - T0]
+        #
+        # Finally, collecting terms, the result is
+        #
+        #   σ = K : ε + τ K dε/dt
+        #     - K : α [T - T0]
+        #     - τ [K : α + K : ∂α/∂T [T - T0]] [∂T/∂t + (a·∇)T]
+        #
+        # Note the contribution from temperature-varying `α` is nonlinear in `T`,
+        # if `T` varies in time; or if `T` varies in space and there is axial
+        # motion (`a ≠ 0`).
+        #
+        # Since for an isotropic solid the elastic stiffness tensor `K` is
         #
         #   K = 2 μ ES + 3 λ EV
         #
@@ -2398,88 +2429,115 @@ class SteadyStateEulerianSolidPrimal:
         #   K : α = 2 μ symm(α) + 3 λ vol(α)
         #         = 2 μ symm(α) + λ I tr(α)
         #
+        # and similarly for `K : ∂α/∂T`.
+        #
+        # Now, for simplicity, consider first the elastic case (τ = 0).
         # In the primal formulation, the stress is written out as (in 2D and 3D)
         #
         #   σik = 2 μ [(1/2) (∂i uk + ∂k ui)] + λ δik ∂m um
-        #       + [2 μ [(1/2) (αik + αki)] + λ δik αmm] [T - T0]
+        #       - [2 μ [(1/2) (αik + αki)] + λ δik αmm] [T - T0]
         #
-        # so its normal component is
+        # The normal component of the stress is
         #
         #   ni σik = 2 μ [(1/2) (ni ∂i uk + ni ∂k ui)] + λ ni δik ∂m um
-        #          + [2 μ [(1/2) (ni αik + ni αki)] + λ ni δik αmm] [T - T0]
+        #          - [2 μ [(1/2) (ni αik + ni αki)] + λ ni δik αmm] [T - T0]
         #          = μ [ni ∂i uk + ni ∂k ui] + λ nk ∂m um
-        #          + [μ [ni αik + ni αki] + λ nk αmm] [T - T0]
+        #          - [μ [ni αik + ni αki] + λ nk αmm] [T - T0]
         #
         # which in nabla notation reads
         #
         #   n·σ = μ (n·∇)u + μ [∇u]·n + λ n tr(ε(u))
-        #       + [μ n·α + μ α·n + λ n tr(α)] [T - T0]
+        #       - [μ n·α + μ α·n + λ n tr(α)] [T - T0]
         #
         # or alternatively,
         #
         #   n·σ = μ (n·∇)u + μ n·transpose(∇u) + λ n tr(ε(u))
-        #       + [μ n·α + μ n·transpose(α) + λ n tr(α)] [T - T0]
+        #       - [μ n·α + μ n·transpose(α) + λ n tr(α)] [T - T0]
         #
         # Dot-multiplying this by the test `w`, to set a BC on `(n·∇)u`,
-        # we must include the terms
+        # in the weak form we must include the terms
         #
-        #   -[μ du0dn + μ n·transpose(∇u) + λ tr(ε(u)) n]·w ds
-        #   -[μ n·α + μ n·transpose(α) + λ tr(α) n]·w [T - T0] ds
+        #   - [μ du0dn + μ n·transpose(∇u) + λ tr(ε(u)) n]·w ds
+        #   + [μ n·α + μ n·transpose(α) + λ tr(α) n]·w [T - T0] ds
         #
-        # where `du0dn` is the prescribed value for `(n·∇)u`. (The minus
-        # comes from the original term being `-∇·σ`.)
+        # where `du0dn` is the prescribed value for `(n·∇)u`. The signs
+        # come from the original term `-∇·σ`, so that we need `-n·σ`.
         #
-        # Similarly, in the Kelvin-Voigt version, we must include the terms
+        # Similarly, in the Kelvin-Voigt version, we have
         #
-        #   -[μ du0dn + μ n·transpose(∇u) + λ tr(ε(u)) n]·w ds
-        #   -[μ n·α + μ n·transpose(α) + λ tr(α) n]·w [T - T0] ds
-        #   -τ [μ dv0dn + μ n·transpose(∇v) + λ tr(ε(v)) n]·w ds
+        #   n·σ = μ (n·∇)u + μ [∇u]·n + λ n tr(ε(u))
+        #       + τ [μ (n·∇)v + μ [∇v]·n + λ n tr(ε(v))]
+        #       - [μ n·α + μ α·n + λ n tr(α)] [T - T0]
+        #       - τ [μ n·α + μ α·n + λ n tr(α)] dT/dt
+        #       - τ [μ n·(dα/dt) + μ (dα/dt)·n + λ n tr(dα/dt)] [T - T0]
+        #
+        # so in the weak form we must include the terms
+        #
+        #   - [μ du0dn + μ n·transpose(∇u) + λ tr(ε(u)) n]·w ds
+        #   - τ [μ dv0dn + μ n·transpose(∇v) + λ tr(ε(v)) n]·w ds
+        #   + [μ n·α + μ n·transpose(α) + λ tr(α) n]·w [T - T0] ds
+        #   + τ [μ n·α + μ n·transpose(α) + λ tr(α) n]·w dT/dt ds
+        #   + τ [μ n·dα/dt + μ n·transpose(dα/dt) + λ tr(dα/dt) n]·w [T - T0] ds
+        #
+        # or, taking `α = α(T)`, expanding the `dα/dt`, and collecting,
+        #
+        #   - [μ du0dn + μ n·transpose(∇u) + λ tr(ε(u)) n]·w ds
+        #   - τ [μ dv0dn + μ n·transpose(∇v) + λ tr(ε(v)) n]·w ds
+        #   + [μ n·α + μ n·transpose(α) + λ tr(α) n]·w [T - T0] ds
+        #   + τ [ μ n·α + μ n·transpose(α) + λ tr(α) n
+        #       + [μ n·∂α/∂T + μ n·transpose(∂α/∂T) + λ tr(∂α/∂T) n] [T - T0]
+        #       ]·w [∂T/∂t + (a·∇)T] ds
         #
         # where `du0dn` is the prescribed value for `(n·∇)u`,
         # and `dv0dn` is the prescribed value for `(n·∇)v`.
         #
-        # TODO: Make the solver work also in 1D, to be able to compare to previous results.
-        # TODO: We will have different boundary conditions. May be easiest to change the
-        # TODO: BCs in the 1D analysis.
+        # TODO: Make the solver work also in 1D, to compare to previous results.
+        # TODO: We will have different boundary conditions. May be easiest to
+        # TODO: change the BCs in the 1D analysis.
         #
         # In 1D, the stress for viscoelastothermal Kelvin-Voigt is
         #
-        #   σ = E [∂u/∂x + α [T - T0] + τ ∂v/∂x]
+        #   σ = E [ ∂u/∂x + τ ∂v/∂x
+        #         + α [T - T0]
+        #         + τ [α + ∂α/∂T [T - T0]] [∂T/∂t + V0 ∂T/∂x]]
         #
         # so at the boundaries (domain endpoints)
         #
-        #   n σ = n E [∂u/∂x + α [T - T0] + τ ∂v/∂x]
+        #   n σ = n E [ ∂u/∂x + τ ∂v/∂x
+        #             + α [T - T0]
+        #             + τ [α + ∂α/∂T [T - T0]] [∂T/∂t + V0 ∂T/∂x]]
         #
         # where `n = ±1`. So in the weak form, we must add the terms
         #
-        #   -n E [du0dn + α [T - T0] + τ dv0dn] w ds
+        #   -n E [ du0dn + τ dv0dn
+        #        + α [T - T0]
+        #        + τ [α + ∂α/∂T [T - T0]] [∂T/∂t + V0 ∂T/∂x]] w ds
         #
         # Note that there is now just one term for linear elasticity, one term for
-        # thermoelastic effects, and one additional term for Kelvin-Voigt. When
-        # solving the steady state on pen and paper, `v = V0 ∂u/∂x`, so in terms of
-        # `u`, this actually sets boundary conditions on `∂u/∂x` and `∂²u/∂x²`.
+        # the viscous part of Kelvin-Voigt, one term for elastothermal effects,
+        # and two terms (one of which nonlinear in `T`) for viscothermal effects.
         #
-        # This suggests we should set one of:
-        #   - `u` (Dirichlet, displacement)
-        #   - `σ` (Neumann, stress)
-        #   - `∂u/∂x` and `∂²u/∂x²` (Neumann; independently, but set both)
+        # When solving the steady state on pen and paper, `v = V0 ∂u/∂x`, so in terms
+        # of `u`, this actually sets boundary conditions on `∂u/∂x` and `∂²u/∂x²`.
+        #
         # In the 1D steady state *without* thermal effects, the condition `n σ = 0`
-        # is equivalent with `∂u/∂x = ∂²u/∂x² = 0`.
+        # is equivalent with `∂u/∂x = ∂²u/∂x² = 0`; in general, these will differ
+        # (due to the thermal contribution to the strain).
         #
-        # The main complication here is the API. We must be able to specify for only *some*
-        # boundaries with Neumann BCs (namely, the outlet) to use the normal gradient BC,
-        # whereas others (the free edges) should use the stress BC. So we must split `ds` to
-        # apply BCs selectively by boundary tag, and include a list of boundary tags in the
-        # Neumann BC specification.
+        # The main complication here is the API. We must be able to specify for
+        # only *some* boundaries with Neumann BCs (namely, the outlet) to use the
+        # normal gradient BC, whereas others (the free edges) should use the stress
+        # BC. So we must split `ds` to apply BCs selectively by boundary tag, and
+        # include a list of boundary tags in the Neumann BC specification.
         #
         # See the tutorial:
         #   https://fenicsproject.org/pub/tutorial/sphinx1/._ftut1005.html#fenics-implementation-14
-        # particularly, how to redefine the measure `ds` in terms of the boundary markers:
+        # particularly, how to redefine the measure `ds` in terms of the boundary
+        # markers:
         #   ds = dolfin.Measure('ds', domain=mesh, subdomain_data=boundary_parts)
-        # For this, we need to pass `boundary_parts` from the main script into the solver.
-        #
-        # Maybe also start using a dictionary (like the tutorial does) for defining the BCs;
-        # more flexible when there are several options.
+        # For this, we need to pass `boundary_parts` from the main script into the
+        # solver. Maybe also start using a dictionary (like the tutorial does) for
+        # defining the BCs; this is more flexible when there are several options.
 
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
