@@ -2087,6 +2087,10 @@ class EulerianSolidPrimal:
         #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
         #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
 
+        # TODO: Neumann BC on `(n·∇)u`; we need a zero normal gradient BC in the analysis of 3D printing.
+        # TODO: See detailed comments in `SteadyStateEulerianSolidPrimal` for how to do this; the exact
+        # TODO: same strategy applies here.
+
         # Constitutive model
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
@@ -2381,10 +2385,61 @@ class SteadyStateEulerianSolidPrimal:
         #  - Isotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
         #  - Orthotropic SLS (Zener), requires solving a PDE (LHS includes dσ/dt = ∂σ/∂t + (a·∇)σ)
 
+        # TODO: Neumann BC on `(n·∇)u`; we need a zero normal gradient BC in the analysis of 3D printing.
+        #
+        # TODO: Make the solver work also in 1D, to be able to compare to previous results.
+        # TODO: We will have different boundary conditions. May be easiest to change the 1D analysis.
+        #
+        # In the primal formulation, we can do this just like in Navier-Stokes.
+        # Consider the linear elastic case. The stress is
+        #
+        #   σik = 2 μ [(1/2) (∂i uk + ∂k ui)] + λ δik ∂m um
+        #
+        # so its normal component is
+        #
+        #   ni σik = 2 μ [(1/2) (ni ∂i uk + ni ∂k ui)] + λ ni δik ∂m um
+        #          = μ [ni ∂i uk + ni ∂k ui] + λ nk ∂m um
+        #
+        # which in nabla notation reads
+        #
+        #   n·σ = μ (n·∇)u + μ [∇u]·n + λ n tr(ε)
+        #
+        # or alternatively,
+        #
+        #   n·σ = μ (n·∇)u + μ n·transpose(∇u) + λ n tr(ε)
+        #
+        # Dot-multiplying this by the test `w`, to set a BC on `(n·∇)u`,
+        # we must include the terms
+        #
+        #   -[μ du0dn + μ n·transpose(∇u)·w + λ tr(ε(u)) n·w] ds
+        #
+        # where `du0dn` is the prescribed value for `(n·∇)u`.
+        #
+        # Similarly, in the Kelvin-Voigt version, we must include the terms
+        #
+        #   -[μ du0dn + μ n·transpose(∇u)·w + λ tr(ε(u)) n·w] ds
+        #   -τ [μ dv0dn + μ n·transpose(∇v)·w + λ tr(ε(v)) n·w] ds
+        #
+        # where `du0dn` is the prescribed value for `(n·∇)u`,
+        # and `dv0dn` is the prescribed value for `(n·∇)v`.
+        #
+        # The main complication here is the API. We must be able to specify for only *some*
+        # boundaries with Neumann BCs (namely, the outlet) to use the normal gradient BC,
+        # whereas others (the free edges) should use the stress BC. So we must split `ds` to
+        # apply BCs selectively by boundary tag, and include a list of boundary tags in the
+        # Neumann BC specification.
+        #
+        # See the tutorial:
+        #   https://fenicsproject.org/pub/tutorial/sphinx1/._ftut1005.html#fenics-implementation-14
+        # particularly, how to redefine the measure `ds` in terms of the boundary markers:
+        #   ds = dolfin.Measure('ds', domain=mesh, subdomain_data=boundary_parts)
+        # For this, we need to pass `boundary_parts` from the main script into the solver.
+        #
+        # Maybe also start using a dictionary (like the tutorial does) for defining the BCs;
+        # more flexible when there are several options.
+
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-
-        # Choose constitutive model
         if self.τ == 0.0:  # Linear elastic (LE)
             # for equation
             Σ = K_inner(ε(u))
