@@ -2379,16 +2379,25 @@ class SteadyStateEulerianSolidPrimal:
         # In the primal formulation, we can use the same technique for making our
         # Neumann BC into zero-normal-gradient as is used for Navier-Stokes.
         #
-        # Recall that written with the Kelvin-Voigt retardation time τ, the stress for
-        # Kelvin-Voigt is
+        # For a model that includes the effects of thermal expansion,
+        # the total strain `ε` (which appears in the kinematic relation)
+        # consists of two parts:
+        #
+        #   ε = εve + εth
+        #
+        # where `εve` is the viscoelastic strain, and `εth` is the thermal strain.
+        # Only the viscoelastic strain produces stress.
+        #
+        # Recall that written with the Kelvin-Voigt retardation time `τ`,
+        # the stress for Kelvin-Voigt is given by
         #
         #   σ = K : εve + τ K : dεve/dt
         #
-        # where the viscoelastic strain εve, when thermal effects are present, is
+        # where, now that thermal effects are included,
         #
         #   εve = ε - εth
         #
-        # The thermal strain is
+        # The thermal strain is given by
         #
         #   εth = α [T - T0]
         #
@@ -2396,42 +2405,46 @@ class SteadyStateEulerianSolidPrimal:
         #
         #   σ = K : [ε - εth] + τ K : d[ε - εth]/dt
         #
-        # Expanding brackets, inserting the thermal strain εth, and annotating,
+        # Expanding the brackets, inserting the thermal strain εth, and annotating,
         #
-        #   σ = K : ε + τ K dε/dt       (elastic and viscous contributions)
-        #     - K : α [T - T0]          (elastothermal)
-        #     - τ K : d[α [T - T0]]/dt  (viscothermal)
+        #   σ = K : ε + τ K dε/dt       (elastic and viscous responses)
+        #     - K : α [T - T0]          (thermoelastic response)
+        #     - τ K : d[α [T - T0]]/dt  (thermoviscous response)
         #
         #     = K : ε + τ K dε/dt       (elastic and viscous)
-        #     - K : α [T - T0]          (elastothermal)
-        #     - τ K : α dT/dt           (viscothermal)
-        #     - τ K : dα/dt [T - T0]    (viscothermal, time-varying α)
+        #     - K : α [T - T0]          (thermoelastic)
+        #     - τ K : α dT/dt           (thermoviscous)
+        #     - τ K : dα/dt [T - T0]    (thermoviscous, with time-varying α)
         #
         # Taking `α = α(T)`,
         #
         #   σ = K : ε + τ K dε/dt           (elastic and viscous)
-        #     - K : α [T - T0]              (elastothermal)
-        #     - τ K : α dT/dt               (viscothermal)
-        #     - τ K : ∂α/∂T dT/dt [T - T0]  (viscothermal, temperature-varying α)
+        #     - K : α [T - T0]              (thermoelastic)
+        #     - τ K : α dT/dt               (thermoviscous)
+        #     - τ K : ∂α/∂T dT/dt [T - T0]  (thermoviscous, with temperature-varying α)
         #
-        # Expanding the `dα/dt`,
+        # Expanding the material derivative `dα/dt` (approximately, ignoring the
+        # material parcel motion with respect to the co-moving frame),
         #
         #   σ = K : ε + τ K dε/dt
         #     - K : α [T - T0]
         #     - τ K : α [∂T/∂t + (a·∇)T]
         #     - τ K : ∂α/∂T [∂T/∂t + (a·∇)T] [T - T0]
         #
-        # Finally, collecting terms, the result is
+        # where `a` is the velocity of the co-moving frame, as measured in the
+        # laboratory frame.
+        #
+        # Finally, collecting terms, our Eulerian constitutive law is
         #
         #   σ = K : ε + τ K dε/dt
         #     - K : α [T - T0]
         #     - τ [K : α + K : ∂α/∂T [T - T0]] [∂T/∂t + (a·∇)T]
         #
-        # Note the contribution from temperature-varying `α` is nonlinear in `T`,
-        # if `T` varies in time; or if `T` varies in space and there is axial
-        # motion (`a ≠ 0`).
+        # Note that the contribution from temperature-varying `α` is nonlinear
+        # in `T`, if `T` varies in time; or if `T` varies in space and there is
+        # axial motion (`a ≠ 0`).
         #
-        # Since for an isotropic solid the elastic stiffness tensor `K` is
+        # Since for an isotropic solid, the elastic stiffness tensor `K` is
         #
         #   K = 2 μ ES + 3 λ EV
         #
@@ -2506,7 +2519,7 @@ class SteadyStateEulerianSolidPrimal:
         # TODO: We will have different boundary conditions. May be easiest to
         # TODO: change the BCs in the 1D analysis.
         #
-        # In 1D, the stress for viscoelastothermal Kelvin-Voigt is
+        # In 1D, the stress for thermoviscoelastic Kelvin-Voigt is
         #
         #   σ = E [ ∂u/∂x + τ ∂v/∂x
         #         + α [T - T0]
@@ -2525,8 +2538,8 @@ class SteadyStateEulerianSolidPrimal:
         #        + τ [α + ∂α/∂T [T - T0]] [∂T/∂t + V0 ∂T/∂x]] w ds
         #
         # Note that there is now just one term for linear elasticity, one term for
-        # the viscous part of Kelvin-Voigt, one term for elastothermal effects,
-        # and two terms (one of which nonlinear in `T`) for viscothermal effects.
+        # the viscous part of Kelvin-Voigt, one term for thermoelastic effects,
+        # and two terms (one of which nonlinear in `T`) for thermoviscous effects.
         #
         # When solving the steady state on pen and paper, `v = V0 ∂u/∂x`, so in terms
         # of `u`, this actually sets boundary conditions on `∂u/∂x` and `∂²u/∂x²`.
@@ -2535,17 +2548,18 @@ class SteadyStateEulerianSolidPrimal:
         # is equivalent with `∂u/∂x = ∂²u/∂x² = 0`; in general, these will differ
         # (due to the thermal contribution to the strain).
         #
-        # The main complication here is the API. We must be able to specify for
-        # only *some* boundaries with Neumann BCs (namely, the outlet) to use the
+        # The main practical complication here is the API. We must be able to specify
+        # for only *some* boundaries with Neumann BCs (namely, the outlet) to use the
         # normal gradient BC, whereas others (the free edges) should use the stress
         # BC. So we must split `ds` to apply BCs selectively by boundary tag, and
         # include a list of boundary tags in the Neumann BC specification.
         #
         # See the tutorial:
         #   https://fenicsproject.org/pub/tutorial/sphinx1/._ftut1005.html#fenics-implementation-14
-        # particularly, how to redefine the measure `ds` in terms of the boundary
-        # markers:
+        # particularly, how to redefine the measure `ds` in terms of boundary markers:
+        #
         #   ds = dolfin.Measure('ds', domain=mesh, subdomain_data=boundary_parts)
+        #
         # For this, we need to pass `boundary_parts` from the main script into the
         # solver. Maybe also start using a dictionary (like the tutorial does) for
         # defining the BCs; this is more flexible when there are several options.
