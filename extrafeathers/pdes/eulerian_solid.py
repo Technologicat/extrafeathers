@@ -2350,16 +2350,27 @@ class SteadyStateEulerianSolidPrimal:
         #      summarized in the detailed comment further below.
         #    - Need a FEM field for temperature `T`, and new parameters `α` and `T0`.
         #      In general, must provide both `α` and `∂α/∂T`; use SymPy to generate?
+        #    - Elastic parameters can also be temperature-dependent. We can make
+        #      them into FEM fields here, and initialize to the constant value passed
+        #      into the constructor. It is then up to the main script to update the
+        #      values, using `T = θ * heatsolver.u_n + (1 - θ) * heatsolver.u_`
+        #      (so that the time discretization matches the other terms) to compute
+        #      the field values. This must be projected into the correct function
+        #      space. If the spaces match, a relation that only needs the local
+        #      value of `T` can be implemented as a PETSc vector update at the DOF
+        #      level, which is cheap.
         #    - In dynamic case, need access also to `∂T/∂t`; thermal solver doesn't
-        #      currently store it, but it can be obtained (at least for Crank-Nicolson)
-        #      as `(heatsolver.u_ - heatsolver.u_n) / dt`.
+        #      currently store it, but the value consistent with the time discretization
+        #      can be obtained as `(heatsolver.u_ - heatsolver.u_n) / dt`.
+        #      Maybe the right API here is to pass in the objects for `T_` and `T_n`,
+        #      so these can be inserted into the UFL form.
         #  - Orthotropic Kelvin-Voigt.
         #    - Need new symmetry groups, the operator `K:(...)` changes slightly.
         #      Useful to have a conversion between Voigt notation (matrices) and
         #      symmetric rank-4 tensors to compactly specify anisotropic models.
         #    - The thermal expansion tensor `α` also changes. An orthotropic one
         #      can be constructed as a sum of three rank-2 tensors, each describing
-        #      the expansion behavior along one of the orthogonal material axes.
+        #      the thermal expansion behavior along one of the orthogonal material axes.
         #  - Isotropic SLS (Zener).
         #    - In the `EulerianSolidAlternative` formulation, requires solving a PDE.
         #      LHS includes a term `dσ/dt = ∂σ/∂t + (a·∇)σ`; could we use the same
@@ -2411,7 +2422,9 @@ class SteadyStateEulerianSolidPrimal:
         #     - K : α [T - T0]          (thermoelastic response)
         #     - τ K : d[α [T - T0]]/dt  (thermoviscous response)
         #
-        #     = K : ε + τ K dε/dt       (elastic and viscous)
+        # Performing the differentiations in the thermal terms,
+        #
+        #   σ = K : ε + τ K dε/dt       (elastic and viscous)
         #     - K : α [T - T0]          (thermoelastic)
         #     - τ K : α dT/dt           (thermoviscous)
         #     - τ K : dα/dt [T - T0]    (thermoviscous, with time-varying α)
@@ -2443,6 +2456,10 @@ class SteadyStateEulerianSolidPrimal:
         # Note that the contribution from temperature-varying `α` is nonlinear
         # in `T`, if `T` varies in time; or if `T` varies in space and there is
         # axial motion (`a ≠ 0`).
+        #
+        # Note also that there is no need to differentiate the stiffness tensor `K`;
+        # we can just as well take `K = K(T)` without affecting the equations
+        # (although, as a practical consideration, this does affect the API).
         #
         # Since for an isotropic solid, the elastic stiffness tensor `K` is
         #
