@@ -2369,7 +2369,9 @@ class SteadyStateEulerianSolidPrimal:
         #      whole linear momentum balance in order to make the LHS of the
         #      constitutive equation appear in it. Then substitute as usual.
         #      This will raise the order (at least w.r.t. time) by one.
-        #  - Orthotropic SLS (Zener). New symmetry groups.
+        #      Might be able to avoid raising order w.r.t. space by defining
+        #      suitable auxiliary variables (at least `A := dv/dt`).
+        #  - Orthotropic SLS (Zener). Apply new symmetry groups here, too.
 
         # TODO: Add Neumann BC for `(n·∇)u`; we need a zero normal gradient
         # TODO: BC in the analysis of 3D printing.
