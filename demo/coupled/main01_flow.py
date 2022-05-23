@@ -63,15 +63,26 @@ if my_rank == 0:
 # Define boundary conditions
 #
 # We want a parabolic inflow profile, with a given maximum value at the middle.
-# As SymPy can tell us, the parabola that interpolates from 0 to 1 and back to 0
-# in the interval `(a, b)` is the following `f`:
+# As is easy to check using SymPy, the parabola that interpolates from 0 to 1
+# and back to 0 in the interval `(a, b)` is the following `f`:
+#   import sympy as sy
+#   x, a, b = sy.symbols("x, a, b")
+#   f = 4 * (x - a) * (b - x) / (b - a)**2
+#   assert sy.simplify(f.subs({x: a})) == 0
+#   assert sy.simplify(f.subs({x: b})) == 0
+#   assert sy.simplify(f.subs({x: a + (b - a) / 2})) == 1
 #
-# import sympy as sy
-# x, a, b = sy.symbols("x, a, b")
-# f = 4 * (x - a) * (b - x) / (b - a)**2
-# assert sy.simplify(f.subs({x: a})) == 0
-# assert sy.simplify(f.subs({x: b})) == 0
-# assert sy.simplify(f.subs({x: a + (b - a) / 2})) == 1
+# Alternatively, we can make SymPy compute that `f` for us:
+#   import sympy as sy
+#   x, a, b, c0, c1, c2 = sy.symbols("x, a, b, c0, c1, c2")
+#   f = c2 * x**2 + c1 * x + c0
+#   sol = sy.solve([f.subs({x: a}),  # LHS form of `f(a) = 0`
+#                   f.subs({x: b}),  # LHS form of `f(b) = 0`
+#                   f.subs({x: (a + b) / 2}) - 1],  # LHS form of `f((a + b) / 2) = 1`
+#                  [c0, c1, c2])
+#   sy.pprint(sy.factor(sol))  # The solved coefficients.
+#   finalf = sy.factor(f.subs(sol))
+#   sy.pprint(finalf)  # The final polynomial.
 #
 # Thus, the C++ code for the inflow profile Expression is:
 inflow_profile = (f'{inflow_max} * 4.0 * (x[1] - {ymin}) * ({ymax} - x[1]) / pow({ymax} - {ymin}, 2)', '0')
