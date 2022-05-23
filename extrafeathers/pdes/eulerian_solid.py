@@ -2387,41 +2387,84 @@ class SteadyStateEulerianSolidPrimal:
 
         # TODO: Neumann BC on `(n·∇)u`; we need a zero normal gradient BC in the analysis of 3D printing.
         #
-        # TODO: Make the solver work also in 1D, to be able to compare to previous results.
-        # TODO: We will have different boundary conditions. May be easiest to change the 1D analysis.
-        #
         # In the primal formulation, we can do this just like in Navier-Stokes.
-        # Consider the linear elastic case. The stress is
+        # Consider the linear thermoelastic case. Since for an isotropic solid
+        # the elastic stiffness tensor is
+        #
+        #   K = 2 μ ES + 3 λ EV
+        #
+        # we have
+        #
+        #   K : α = 2 μ symm(α) + 3 λ vol(α)
+        #         = 2 μ symm(α) + λ I tr(α)
+        #
+        # In the primal formulation, the stress is written out as (in 2D and 3D)
         #
         #   σik = 2 μ [(1/2) (∂i uk + ∂k ui)] + λ δik ∂m um
+        #       + [2 μ [(1/2) (αik + αki)] + λ δik αmm] [T - T0]
         #
         # so its normal component is
         #
         #   ni σik = 2 μ [(1/2) (ni ∂i uk + ni ∂k ui)] + λ ni δik ∂m um
+        #          + [2 μ [(1/2) (ni αik + ni αki)] + λ ni δik αmm] [T - T0]
         #          = μ [ni ∂i uk + ni ∂k ui] + λ nk ∂m um
+        #          + [μ [ni αik + ni αki] + λ nk αmm] [T - T0]
         #
         # which in nabla notation reads
         #
-        #   n·σ = μ (n·∇)u + μ [∇u]·n + λ n tr(ε)
+        #   n·σ = μ (n·∇)u + μ [∇u]·n + λ n tr(ε(u))
+        #       + [μ n·α + μ α·n + λ n tr(α)] [T - T0]
         #
         # or alternatively,
         #
-        #   n·σ = μ (n·∇)u + μ n·transpose(∇u) + λ n tr(ε)
+        #   n·σ = μ (n·∇)u + μ n·transpose(∇u) + λ n tr(ε(u))
+        #       + [μ n·α + μ n·transpose(α) + λ n tr(α)] [T - T0]
         #
         # Dot-multiplying this by the test `w`, to set a BC on `(n·∇)u`,
         # we must include the terms
         #
-        #   -[μ du0dn + μ n·transpose(∇u)·w + λ tr(ε(u)) n·w] ds
+        #   -[μ du0dn + μ n·transpose(∇u) + λ tr(ε(u)) n]·w ds
+        #   -[μ n·α + μ n·transpose(α) + λ tr(α) n]·w [T - T0] ds
         #
-        # where `du0dn` is the prescribed value for `(n·∇)u`.
+        # where `du0dn` is the prescribed value for `(n·∇)u`. (The minus
+        # comes from the original term being `-∇·σ`.)
         #
         # Similarly, in the Kelvin-Voigt version, we must include the terms
         #
-        #   -[μ du0dn + μ n·transpose(∇u)·w + λ tr(ε(u)) n·w] ds
-        #   -τ [μ dv0dn + μ n·transpose(∇v)·w + λ tr(ε(v)) n·w] ds
+        #   -[μ du0dn + μ n·transpose(∇u) + λ tr(ε(u)) n]·w ds
+        #   -[μ n·α + μ n·transpose(α) + λ tr(α) n]·w [T - T0] ds
+        #   -τ [μ dv0dn + μ n·transpose(∇v) + λ tr(ε(v)) n]·w ds
         #
         # where `du0dn` is the prescribed value for `(n·∇)u`,
         # and `dv0dn` is the prescribed value for `(n·∇)v`.
+        #
+        # TODO: Make the solver work also in 1D, to be able to compare to previous results.
+        # TODO: We will have different boundary conditions. May be easiest to change the
+        # TODO: BCs in the 1D analysis.
+        #
+        # In 1D, the stress for viscoelastothermal Kelvin-Voigt is
+        #
+        #   σ = E [∂u/∂x + α [T - T0] + τ ∂v/∂x]
+        #
+        # so at the boundaries (domain endpoints)
+        #
+        #   n σ = n E [∂u/∂x + α [T - T0] + τ ∂v/∂x]
+        #
+        # where `n = ±1`. So in the weak form, we must add the terms
+        #
+        #   -n E [du0dn + α [T - T0] + τ dv0dn] w ds
+        #
+        # Note that there is now just one term for linear elasticity, one term for
+        # thermoelastic effects, and one additional term for Kelvin-Voigt. When
+        # solving the steady state on pen and paper, `v = V0 ∂u/∂x`, so in terms of
+        # `u`, this actually sets boundary conditions on `∂u/∂x` and `∂²u/∂x²`.
+        #
+        # This suggests we should set one of:
+        #   - `u` (Dirichlet, displacement)
+        #   - `σ` (Neumann, stress)
+        #   - `∂u/∂x` and `∂²u/∂x²` (Neumann; independently, but set both)
+        # In the 1D steady state *without* thermal effects, the condition `n σ = 0`
+        # is equivalent with `∂u/∂x = ∂²u/∂x² = 0`.
         #
         # The main complication here is the API. We must be able to specify for only *some*
         # boundaries with Neumann BCs (namely, the outlet) to use the normal gradient BC,
