@@ -723,7 +723,7 @@ class EulerianSolid:
                ρ * dot(dot(a, nabla_grad(U)), dot(a, nabla_grad(ψ))) * dx +  # from +∫ ρ [(a·∇)(a·∇)u]·ψ dx
                ρ * dot(n, dot(dot(outer(a, a), nabla_grad(U)), ψ)) * ds +
                inner(Σ.T, ε(ψ)) * dx -
-               dot(dot(n, Σ), ψ) * ds -
+               dot(dot(n, Σ.T), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin.
@@ -1107,7 +1107,7 @@ class SteadyStateEulerianSolid:
         F_u = (-ρ * dot(dot(a, nabla_grad(u)), dot(a, nabla_grad(ψ))) * dx +  # from +∫ ρ [(a·∇)(a·∇)u]·ψ dx
                ρ * dot(n, dot(dot(outer(a, a), nabla_grad(u)), ψ)) * ds +
                inner(σ.T, ε(ψ)) * dx -
-               dot(dot(n, σ), ψ) * ds -
+               dot(dot(n, σ.T), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
         F = F_σ + F_u
@@ -1462,7 +1462,7 @@ class EulerianSolidAlternative:
         V = (1 - θ) * v_n + θ * v   # unknown!
         Σ = (1 - θ) * σ_n + θ * σ_  # known
         F_v = (ρ * dot(dvdt, ψ) * dx + ρ * advw(a, V, ψ, n) +
-               inner(Σ.T, ε(ψ)) * dx - dot(dot(n, Σ), ψ) * ds -
+               inner(Σ.T, ε(ψ)) * dx - dot(dot(n, Σ.T), ψ) * ds -
                ρ * dot(b, ψ) * dx)
 
         # SUPG: streamline upwinding Petrov-Galerkin. The residual is evaluated elementwise in strong form.
@@ -1783,7 +1783,7 @@ class SteadyStateEulerianSolidAlternative:
                    inner(K_inner(ε(u)) + τ * K_inner(ε(v)), sym(φ)) * dx)
 
         F_u = (ρ * advw(a, v, w, n) +
-               inner(σ.T, ε(w)) * dx - dot(dot(n, σ), w) * ds -
+               inner(σ.T, ε(w)) * dx - dot(dot(n, σ.T), w) * ds -
                ρ * dot(b, w) * dx)
         F_v = (dot(v, ψ) * dx - advw(a, u, ψ, n))
 
@@ -2076,7 +2076,7 @@ class EulerianSolidPrimal:
                    inner(K_inner(ε(u_)) + τ * K_inner(ε(v_)), sym(φ)) * dx)
 
         F_u = (ρ * (dot(dvdt, w) * dx + advw(a, V, w, n)) +
-               inner(Σ.T, ε(w)) * dx - dot(dot(n, Σ0), w) * ds -
+               inner(Σ.T, ε(w)) * dx - dot(dot(n, Σ0.T), w) * ds -
                ρ * dot(b, w) * dx)
         F_v = (dot(V, ψ) * dx -
                (dot(dudt, ψ) * dx + advw(a, U, ψ, n)))
@@ -2598,7 +2598,7 @@ class SteadyStateEulerianSolidPrimal:
         # Primal formulation allows using a Neumann BC for stress.
         Σ0 = self.bcσ
         F_u = (ρ * advw(a, v, w, n) +
-               inner(Σ.T, ε(w)) * dx - dot(dot(n, Σ0), w) * ds -
+               inner(Σ.T, ε(w)) * dx - dot(dot(n, Σ0.T), w) * ds -
                ρ * dot(b, w) * dx)
         F_v = (dot(v, ψ) * dx - advw(a, u, ψ, n))
 
