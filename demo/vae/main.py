@@ -43,6 +43,9 @@ latent_dim = 2  # use a 2-dimensional latent space so that we can easily visuali
 
 epochs = 40
 
+anim_filename = 'cvae.gif'
+latent_image_filename = 'latent.png'
+
 # --------------------------------------------------------------------------------
 # Load the data
 
@@ -309,29 +312,30 @@ plt.ion()
 generate_and_save_images(model, 0, test_sample)
 
 # Train the model
-with timer() as tim_training:
+with timer() as tim_total:
     for epoch in range(1, epochs + 1):
         # SGD using one pass through the training set (with the batches set up previously)
-        with timer() as tim_epoch:
+        with timer() as tim_train:
             for train_x in train_dataset:
                 train_step(model, train_x, optimizer)
 
         # For benchmarking: compute total ELBO on the test set
-        running_mean = tf.keras.metrics.Mean()
-        for test_x in test_dataset:
-            running_mean(compute_loss(model, test_x))
-        elbo = -running_mean.result()
+        with timer() as tim_test:
+            running_mean = tf.keras.metrics.Mean()
+            for test_x in test_dataset:
+                running_mean(compute_loss(model, test_x))
+            elbo = -running_mean.result()
 
         # display.clear_output(wait=False)  # Jupyter?
-        print('Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: {}'
-              .format(epoch, elbo, tim_epoch.dt))
+        print('Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: training {}, testing {}'
+              .format(epoch, elbo, tim_train.dt, tim_test.dt))
         generate_and_save_images(model, epoch, test_sample)
-print(f'Total time elapsed for training: {tim_training.dt} seconds')
+print(f'Total time elapsed for training: {tim_total.dt} seconds')
 
+# --------------------------------------------------------------------------------
 # Make a gif animation of the training epochs
-anim_file = 'cvae.gif'
 
-with imageio.get_writer(anim_file, mode='I') as writer:
+with imageio.get_writer(anim_filename, mode='I') as writer:
     filenames = glob.glob('image_at_epoch*.png')
     filenames = sorted(filenames)
     for filename in filenames:
@@ -366,7 +370,7 @@ def plot_latent_images(model, n, digit_size=28):
     plt.axis('off')
     plt.tight_layout()
     plt.show()
-    plt.savefig('latent.png')
+    plt.savefig(latent_image_filename)
 
 plot_latent_images(model, 20)
 plt.ioff()
