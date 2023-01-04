@@ -75,6 +75,7 @@ class CVAE(tf.keras.Model):
         x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
                                    strides=2, padding="same")(x)
         x = tf.keras.layers.Flatten()(x)
+        # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
         x = tf.keras.layers.Dense(units=16, activation="relu")(x)
         z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean")(x)
         z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var")(x)
