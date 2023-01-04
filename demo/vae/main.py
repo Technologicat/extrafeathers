@@ -17,6 +17,7 @@ repl_server.start(locals={"__main__": sys.modules["__main__"]})
 
 # TODO: configure paths to conform to other extrafeathers demos
 # TODO: use plotmagic.pause (see euleriansolid)
+# TODO: change the decoder model to a Gaussian (with learnable variance) as suggested in the paper by Lin et al.
 
 import glob
 
@@ -35,7 +36,8 @@ import imageio
 # Config
 
 # batch_size = 32  # for CPU
-batch_size = 128  # faster on GPU, still acceptable generalization
+# batch_size = 128  # faster on GPU, still acceptable generalization on discrete Bernoulli
+batch_size = 64  # acceptable generalization on continuous Bernoulli
 
 latent_dim = 2  # use a 2-dimensional latent space so that we can easily visualize the results
 
@@ -45,18 +47,17 @@ epochs = 40
 # Load the data
 
 (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
+train_size = train_images.shape[0]  # 60k
+test_size = test_images.shape[0]  # 10k
 
-# Binarize input data to make compatible with the classic VAE Bernoulli decoder model.
-# TODO: change the decoder model to a Gaussian (with learnable variance) as suggested in the paper by Lin et al.
-def preprocess_images(images):
-    images = images.reshape((images.shape[0], 28, 28, 1)) / 255.
-    return np.where(images > .5, 1.0, 0.0).astype('float32')
+def preprocess_images(images, discrete=False):
+    images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
+    if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
+        images = np.where(images > .5, 1.0, 0.0)
+    return images.astype('float32')
 
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
-
-train_size = 60000
-test_size = 10000
 
 train_dataset = tf.data.Dataset.from_tensor_slices(train_images).shuffle(train_size).batch(batch_size)
 test_dataset = tf.data.Dataset.from_tensor_slices(test_images).shuffle(test_size).batch(batch_size)
@@ -124,9 +125,12 @@ class CVAE(tf.keras.Model):
         return self.encoder(x)
 
     def reparameterize(self, mean, logvar):
-        """Map  (μ, log σ) → z  stochastically."""
+        """Map  (μ, log σ) → z  stochastically.
+
+        Return (ε, z) (the same ε sample is needed in the ELBO computation).
+        """
         eps = tf.random.normal(shape=mean.shape)
-        return eps * tf.exp(logvar * .5) + mean
+        return eps, eps * tf.exp(logvar * .5) + mean
 
     def decode(self, z, apply_sigmoid=False):
         """z → μ of p(x|z)"""
@@ -147,10 +151,31 @@ class CVAE(tf.keras.Model):
 # For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
 optimizer = tf.keras.optimizers.Adam(1e-4)
 
+# Note that since we have defined the reparameterization as
+#   z = mean + eps * exp(logvar / 2)
+# inverting yields
+#   eps = (z - mean) * exp(-logvar / 2)
+# and
+#   eps² = (z - mean)² * exp(-logvar)
+# so calling log_normal_pdf(z, mean, logvar) actually yields
+#   sum_i(-0.5 * eps_i**2 + logvar + log2pi)
+# which matches Kingma and Welling (2019).
 def log_normal_pdf(x, mean, logvar, raxis=1):
-    log2pi = tf.math.log(2. * np.pi)
-    return tf.reduce_sum(-.5 * ((x - mean) ** 2. * tf.exp(-logvar) + logvar + log2pi),
+    log2pi = tf.math.log(2 * np.pi)
+    return tf.reduce_sum(-0.5 * ((x - mean)**2 * tf.exp(-logvar) + logvar + log2pi),
                          axis=raxis)
+
+# https://github.com/cunningham-lab/cb_and_cc
+def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
+    # computes the log normalizing constant of a continuous Bernoulli distribution in a numerically stable way.
+    # returns the log normalizing constant for lam in (0, l_lim) U (u_lim, 1) and a Taylor approximation in
+    # [l_lim, u_lim].
+    # cut_y below might appear useless, but it is important to not evaluate log_norm near 0.5 as tf.where evaluates
+    # both options, regardless of the value of the condition.
+    cut_lam = tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), lam, l_lim * tf.ones_like(lam))
+    log_norm = tf.math.log(tf.abs(2.0 * tf.atanh(1 - 2.0 * cut_lam))) - tf.math.log(tf.abs(1 - 2.0 * cut_lam))
+    taylor = tf.math.log(2.0) + 4.0 / 3.0 * tf.pow(lam - 0.5, 2) + 104.0 / 45.0 * tf.pow(lam - 0.5, 4)
+    return tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), log_norm, taylor)
 
 def compute_loss(model, x):
     """VAE loss function: negative ELBO.
@@ -179,7 +204,7 @@ def compute_loss(model, x):
     #
     # Note z is encoded stochastically; even feeding in the same x produces a different z each time
     # (since z is sampled from the variational posterior).
-    z = model.reparameterize(mean, logvar)
+    eps, z = model.reparameterize(mean, logvar)
 
     # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z).
     # Here θ are the decoder NN coefficients: NN_dec = NN_dec(θ, z).
@@ -219,8 +244,21 @@ def compute_loss(model, x):
     # In the observation term pθ(x|z), our z sample (which the observation is conditioned on) is drawn from
     # qϕ(z|x), which in turn is conditioned on the input x.
     #
-    cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=P, labels=x)
-    logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])  # log pθ(x|z) (observation model)
+    # cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=P, labels=x)
+    # logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])  # log pθ(x|z) (observation model)
+
+    # # discrete Bernoulli, explicitly
+    # p = tf.sigmoid(P)  # interpret decoder output as logits; map into probabilities
+    # p = tf.clip_by_value(p, 1e-4, 1 - 1e-4)  # avoid log(0)
+    # logpx_z = tf.reduce_sum(x * tf.math.log(p) + (1 - x) * tf.math.log(1 - p),
+    #                         axis=[1, 2, 3])  # log pθ(x|z) (observation model)
+
+    # continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1
+    # https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/cb_vae_mnist.ipynb
+    p = tf.sigmoid(P)  # interpret decoder output as logits; map into probabilities
+    p = tf.clip_by_value(p, 1e-4, 1 - 1e-4)  # avoid log(0)
+    logpx_z = tf.reduce_sum(x * tf.math.log(p) + (1 - x) * tf.math.log(1 - p) + cont_bern_log_norm(p),
+                            axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
     # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(0, 1).
     # Note the function `log_normal_pdf` takes `log σ`, not bare σ.
@@ -248,7 +286,7 @@ model = CVAE(latent_dim)
 
 def generate_and_save_images(model, epoch, test_sample):
     mean, logvar = model.encode(test_sample)
-    z = model.reparameterize(mean, logvar)
+    ignored_eps, z = model.reparameterize(mean, logvar)
     predictions = model.sample(z)
     plt.figure(1, figsize=(4, 4))
 
