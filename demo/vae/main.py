@@ -2,11 +2,9 @@
 #
 # Convolutional variational autoencoder implemented in Keras and TensorFlow.
 #
-# Initial version based on:
-# https://www.tensorflow.org/tutorials/generative/cvae
-#
-# Also useful (perhaps clearer, and using a different API):
-# https://keras.io/examples/generative/vae/
+# Based on combining material from these two tutorials:
+#   https://www.tensorflow.org/tutorials/generative/cvae
+#   https://keras.io/examples/generative/vae/
 
 # Start a REPL server so we can inspect/save global-scope variables while the process is live.
 # This is convenient if we have forgotten to include some save command in the script before starting it.
@@ -72,49 +70,6 @@ class CVAE(tf.keras.Model):
     def __init__(self, latent_dim):
         super(CVAE, self).__init__()
         self.latent_dim = latent_dim
-
-        # # Based on https://www.tensorflow.org/tutorials/generative/cvae
-        # self.encoder = tf.keras.Sequential(
-        #     [
-        #         # 28×28×1: MNIST input image size
-        #         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-        #         # 28×28×1 → 14×14×32 (32 low-level features for each 3×3 stencil; note the strides)
-        #         tf.keras.layers.Conv2D(
-        #             filters=32, kernel_size=3, strides=(2, 2), activation='relu'),
-        #         # 14×14×32 → 7×7×64 (64 higher-level features)
-        #         tf.keras.layers.Conv2D(
-        #             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-        #         # 7×7×64 → 3136 (flat vector)
-        #         tf.keras.layers.Flatten(),
-        #         # 3136 → 2 * latent_dim
-        #         # `2 * latent_dim`: μ, log σ for q(z|x) (variational posterior distribution)
-        #         tf.keras.layers.Dense(latent_dim + latent_dim),
-        #     ]
-        # )
-        #
-        # self.decoder = tf.keras.Sequential(
-        #     [
-        #         # `latent_dim`, because the input is a latent sample (code point) `z`
-        #         tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
-        #         # TODO: WTF is this layer, it doesn't match anything in the encoder?
-        #         # TODO: The (other) Keras tutorial has the encoder/decoder as mirror images of each other.
-        #         tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
-        #         # 3136 → 7×7×32 (un-flatten)
-        #         tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
-        #         # 7×7×32 → 14×14×64
-        #         tf.keras.layers.Conv2DTranspose(
-        #             filters=64, kernel_size=3, strides=2, padding='same',
-        #             activation='relu'),
-        #         # 14×14×64 → 28×28×32
-        #         tf.keras.layers.Conv2DTranspose(
-        #             filters=32, kernel_size=3, strides=2, padding='same',
-        #             activation='relu'),
-        #         # 28×28×32 → 28×28×1 (note the `strides=1`)
-        #         # Final output: μ of p(x|z) (observation model) for each pixel
-        #         tf.keras.layers.Conv2DTranspose(
-        #             filters=1, kernel_size=3, strides=1, padding='same'),
-        #     ]
-        # )
 
         # Modified from https://keras.io/examples/generative/vae/
         # Encoder differences:
