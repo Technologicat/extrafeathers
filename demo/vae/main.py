@@ -351,8 +351,8 @@ def plot_latent_images(model, n, digit_size=28):
     """Plots n x n digit images decoded from the latent space."""
 
     gaussian = tfp.distributions.Normal(0, 1)
-    grid_x = gaussian.quantile(np.linspace(0.05, 0.95, n))
-    grid_y = gaussian.quantile(np.linspace(0.05, 0.95, n))
+    grid_x = gaussian.quantile(np.linspace(0.001, 0.999, n))  # 3σ
+    grid_y = gaussian.quantile(np.linspace(0.001, 0.999, n))
     image_width = digit_size * n
     image_height = image_width
     image = np.zeros((image_height, image_width))
