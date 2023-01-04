@@ -81,6 +81,7 @@ class CVAE(tf.keras.Model):
         #   - We handle the final (sigmoid) activation of the decoder manually later.
         #   - We have added an extra Dense layer of 16 units at the input side
         #     to more closely mirror the structure of the encoder.
+        #   - The architecture is an exact mirror image of the encoder.
         encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
         x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
                                    strides=2, padding="same")(encoder_inputs)
@@ -93,19 +94,6 @@ class CVAE(tf.keras.Model):
         encoder_outputs = [z_mean, z_log_var]
         self.encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
         self.encoder.summary()
-
-        # # decoder - best ELBO
-        # decoder_inputs = tf.keras.Input(shape=(latent_dim,))
-        # x = tf.keras.layers.Dense(units=16, activation="relu")(decoder_inputs)
-        # x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
-        # x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
-        # x = tf.keras.layers.Conv2DTranspose(filters=64, kernel_size=3, activation="relu",
-        #                                     strides=2, padding="same")(x)
-        # x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-        #                                     strides=2, padding="same")(x)
-        # decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, padding="same")(x)
-        # self.decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
-        # self.decoder.summary()
 
         # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
         decoder_inputs = tf.keras.Input(shape=(latent_dim,))
@@ -316,16 +304,6 @@ with imageio.get_writer(anim_file, mode='I') as writer:
 
 # --------------------------------------------------------------------------------
 # Visualize latent representation
-
-# # Jupyter
-# import tensorflow_docs.vis.embed as embed
-# embed.embed_file(anim_file)
-
-# # final result
-# def display_image(epoch_no):
-#     return PIL.Image.open('image_at_epoch_{:04d}.png'.format(epoch_no))
-# plt.imshow(display_image(epoch))  # will show in the last subplot, not useful
-# plt.axis('off')
 
 def plot_latent_images(model, n, digit_size=28):
     """Plots n x n digit images decoded from the latent space."""
