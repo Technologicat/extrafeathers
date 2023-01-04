@@ -13,7 +13,6 @@
 #    available as `__main__` in the REPL scope.
 import sys
 import unpythonic.net.server as repl_server
-repl_server.start(locals={"__main__": sys.modules["__main__"]})
 
 # TODO: configure paths to conform to other extrafeathers demos
 # TODO: use plotmagic.pause (see euleriansolid)
@@ -46,24 +45,8 @@ epochs = 40
 anim_filename = 'cvae.gif'
 latent_image_filename = 'latent.png'
 
-# --------------------------------------------------------------------------------
-# Load the data
-
-(train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
-train_size = train_images.shape[0]  # 60k
-test_size = test_images.shape[0]  # 10k
-
-def preprocess_images(images, discrete=False):
-    images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
-    if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
-        images = np.where(images > .5, 1.0, 0.0)
-    return images.astype('float32')
-
-train_images = preprocess_images(train_images)
-test_images = preprocess_images(test_images)
-
-train_dataset = tf.data.Dataset.from_tensor_slices(train_images).shuffle(train_size).batch(batch_size)
-test_dataset = tf.data.Dataset.from_tensor_slices(test_images).shuffle(test_size).batch(batch_size)
+# For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
+optimizer = tf.keras.optimizers.Adam(1e-4)
 
 # --------------------------------------------------------------------------------
 # NN architecture
@@ -148,11 +131,10 @@ class CVAE(tf.keras.Model):
             return probs
         return logits
 
-# --------------------------------------------------------------------------------
-# Choose optimizer, define loss function
+model = CVAE(latent_dim)
 
-# For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
-optimizer = tf.keras.optimizers.Adam(1e-4)
+# --------------------------------------------------------------------------------
+# Loss function
 
 # Note that since we have defined the reparameterization as
 #   z = mean + eps * exp(logvar / 2)
@@ -279,73 +261,26 @@ def train_step(model, x, optimizer):
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
 # --------------------------------------------------------------------------------
-# Training
+# Main program - training
 
-# Keeping the random vector constant for generation (prediction),
-# it will be easier to see the improvement.
-num_examples_to_generate = 16
-random_vector_for_generation = tf.random.normal(shape=[num_examples_to_generate, latent_dim])
-model = CVAE(latent_dim)
-
-def generate_and_save_images(model, epoch, test_sample):
+# TODO: currently only works for test sample size 16
+def generate_and_save_epoch_image(model, epoch, test_sample):
     mean, logvar = model.encode(test_sample)
     ignored_eps, z = model.reparameterize(mean, logvar)
     predictions = model.sample(z)
-    plt.figure(1, figsize=(4, 4))
+    plt.figure(1, figsize=(8, 4))
 
     for i in range(predictions.shape[0]):
-        plt.subplot(4, 4, i + 1)
+        plt.subplot(4, 8, 1 + (2 * i))
+        plt.imshow(test_sample[i, :, :, 0], cmap='gray')
+        plt.axis('off')
+        plt.subplot(4, 8, 1 + (2 * i + 1))
         plt.imshow(predictions[i, :, :, 0], cmap='gray')
         plt.axis('off')
 
     plt.tight_layout()
     plt.show()
     plt.savefig('image_at_epoch_{:04d}.png'.format(epoch))
-
-# Pick a sample of the test set for generating output images
-assert num_examples_to_generate <= batch_size
-for test_batch in test_dataset.take(1):
-    test_sample = test_batch[0:num_examples_to_generate, :, :, :]
-
-# Visualize the random initial state
-plt.ion()
-generate_and_save_images(model, 0, test_sample)
-
-# Train the model
-with timer() as tim_total:
-    for epoch in range(1, epochs + 1):
-        # SGD using one pass through the training set (with the batches set up previously)
-        with timer() as tim_train:
-            for train_x in train_dataset:
-                train_step(model, train_x, optimizer)
-
-        # For benchmarking: compute total ELBO on the test set
-        with timer() as tim_test:
-            running_mean = tf.keras.metrics.Mean()
-            for test_x in test_dataset:
-                running_mean(compute_loss(model, test_x))
-            elbo = -running_mean.result()
-
-        # display.clear_output(wait=False)  # Jupyter?
-        print('Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: training {}, testing {}'
-              .format(epoch, elbo, tim_train.dt, tim_test.dt))
-        generate_and_save_images(model, epoch, test_sample)
-print(f'Total time elapsed for training: {tim_total.dt} seconds')
-
-# --------------------------------------------------------------------------------
-# Make a gif animation of the training epochs
-
-with imageio.get_writer(anim_filename, mode='I') as writer:
-    filenames = glob.glob('image_at_epoch*.png')
-    filenames = sorted(filenames)
-    for filename in filenames:
-        image = imageio.v2.imread(filename)
-        writer.append_data(image)
-    image = imageio.v2.imread(filename)
-    writer.append_data(image)
-
-# --------------------------------------------------------------------------------
-# Visualize latent representation
 
 def plot_latent_images(model, n, digit_size=28):
     """Plots n x n digit images decoded from the latent space."""
@@ -372,6 +307,77 @@ def plot_latent_images(model, n, digit_size=28):
     plt.show()
     plt.savefig(latent_image_filename)
 
-plot_latent_images(model, 20)
-plt.ioff()
-plt.show()
+def main():
+    # Load the data
+    (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
+    train_size = train_images.shape[0]  # 60k
+    test_size = test_images.shape[0]  # 10k
+
+    def preprocess_images(images, discrete=False):
+        images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
+        if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
+            images = np.where(images > .5, 1.0, 0.0)
+        return images.astype('float32')
+
+    train_images = preprocess_images(train_images)
+    test_images = preprocess_images(test_images)
+
+    train_dataset = tf.data.Dataset.from_tensor_slices(train_images).shuffle(train_size).batch(batch_size)
+    test_dataset = tf.data.Dataset.from_tensor_slices(test_images).shuffle(test_size).batch(batch_size)
+
+    # Train the model
+
+    # Keeping the random vector constant for generation (prediction),
+    # it will be easier to see the improvement.
+    num_examples_to_generate = 16
+    # random_vector_for_generation = tf.random.normal(shape=[num_examples_to_generate, latent_dim])
+
+    # Or... we can pick a sample of the test set for generating the corresponding output images
+    assert num_examples_to_generate <= batch_size
+    for test_batch in test_dataset.take(1):
+        test_sample = test_batch[0:num_examples_to_generate, :, :, :]
+
+    # Visualize the random initial state
+    generate_and_save_epoch_image(model, 0, test_sample)
+
+    # Train the model
+    with timer() as tim_total:
+        for epoch in range(1, epochs + 1):
+            # SGD using one pass through the training set (with the batches set up previously)
+            with timer() as tim_train:
+                for train_x in train_dataset:
+                    train_step(model, train_x, optimizer)
+
+            # For benchmarking: compute total ELBO on the test set
+            with timer() as tim_test:
+                running_mean = tf.keras.metrics.Mean()
+                for test_x in test_dataset:
+                    running_mean(compute_loss(model, test_x))
+                elbo = -running_mean.result()
+
+            # display.clear_output(wait=False)  # Jupyter?
+            print('Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: training {}, testing {}'
+                  .format(epoch, elbo, tim_train.dt, tim_test.dt))
+            generate_and_save_epoch_image(model, epoch, test_sample)
+    print(f'Total time elapsed for training: {tim_total.dt} seconds')
+    model.save_weights("weights.h5")
+
+    # Make a gif animation of the training epochs
+    with imageio.get_writer(anim_filename, mode='I') as writer:
+        filenames = glob.glob('image_at_epoch*.png')
+        filenames = sorted(filenames)
+        for filename in filenames:
+            image = imageio.v2.imread(filename)
+            writer.append_data(image)
+        image = imageio.v2.imread(filename)
+        writer.append_data(image)
+
+    # Visualize latent representation
+    plot_latent_images(model, 20)
+
+if __name__ == '__main__':
+    repl_server.start(locals={"__main__": sys.modules["__main__"]})
+    plt.ion()
+    main()
+    plt.ioff()
+    plt.show()
