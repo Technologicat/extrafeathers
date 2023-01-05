@@ -17,6 +17,7 @@ import unpythonic.net.server as repl_server
 # TODO: change the decoder model to a Gaussian (with learnable variance) as suggested in the paper by Lin et al.
 
 import glob
+import pathlib
 
 from unpythonic import timer
 
@@ -142,6 +143,35 @@ class CVAE(tf.keras.Model):
             probs = tf.sigmoid(logits)
             return probs
         return logits
+
+    # TODO: figure out how to properly support the official Keras serialization API
+    # # https://www.tensorflow.org/guide/keras/save_and_serialize
+    def my_save(self, path="./my_model"):
+        p = pathlib.Path(path).expanduser().resolve()
+        pathlib.Path.mkdir(p, parents=True, exist_ok=True)
+        self.encoder.save(str(p / "encoder"))
+        self.decoder.save(str(p / "decoder"))
+    def my_load(self, path="./my_model"):
+        p = pathlib.Path(path).expanduser().resolve()
+        self.encoder = tf.keras.models.load_model(str(p / "encoder"))
+        self.decoder = tf.keras.models.load_model(str(p / "decoder"))
+
+    # def get_config(self):
+    #     return {"latent_dim": self.latent_dim,
+    #             "encoder": self.encoder,
+    #             "decoder": self.decoder}
+    # @classmethod
+    # def from_config(cls, config):
+    #     model = cls(config["latent_dim"])
+    #     model.encoder = config["encoder"]
+    #     model.decoder = config["decoder"]
+    #     return model
+    # # to make a custom object saveable, it must have a call method
+    # def call(self, inputs):
+    #     mean, logvar = self.encode(inputs)
+    #     ignored_eps, z = self.reparameterize(mean, logvar)
+    #     xhat = self.decode(z, apply_sigmoid=True)
+    #     return xhat
 
 model = CVAE(latent_dim)
 
@@ -373,7 +403,21 @@ def main():
                   .format(epoch, elbo, tim_train.dt, tim_test.dt))
             generate_and_save_epoch_image(model, epoch, test_sample)
     print(f'Total time elapsed for training: {tim_total.dt} seconds')
-    model.save_weights("weights.h5")
+
+    # # TODO: The saved model doesn't work yet.
+    # # Save the trained model.
+    # # To reload the trained model in another session:
+    # #   import keras
+    # #   import main
+    # #   main.model = keras.models.load_model("my_model")
+    # # Now the model is loaded; you should be able to e.g.
+    # #   main.plot_latent_images(main.model, 20)
+    # #
+    # # force the model to build its graph to make it savable
+    # dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
+    # _ = model(dummy_data)
+    # model.save("my_model")
+    model.my_save()
 
     # Make a gif animation of the training epochs
     with imageio.get_writer(anim_filename, mode='I') as writer:
