@@ -1,5 +1,9 @@
 #!/bin/bash
 #
+# Set up environment variables for GPU acceleration (CUDA) of the VAE model.
+#
+# Requirements:
+#
 # from pip:
 #   tensorflow
 #   tensorflow-probability
