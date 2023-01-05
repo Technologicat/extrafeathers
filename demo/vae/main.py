@@ -333,11 +333,11 @@ def train_step(model, x, optimizer):
 # Main program - training
 
 # TODO: currently only works for test sample size 16
-def generate_and_save_epoch_image(model, epoch, test_sample):
+def generate_and_save_epoch_image(model, epoch, test_sample, figno=1):
     mean, logvar = model.encode(test_sample)
     ignored_eps, z = model.reparameterize(mean, logvar)
     predictions = model.sample(z)
-    plt.figure(1, figsize=(8, 4))
+    plt.figure(figno, figsize=(8, 4))
 
     for i in range(predictions.shape[0]):
         plt.subplot(4, 8, 1 + (2 * i))
@@ -348,15 +348,50 @@ def generate_and_save_epoch_image(model, epoch, test_sample):
         plt.axis('off')
 
     plt.tight_layout()
-    plt.show()
     plt.savefig('image_at_epoch_{:04d}.png'.format(epoch))
+    plt.show()
 
-def plot_latent_images(model, n, digit_size=28):
-    """Plots n x n digit images decoded from the latent space."""
+def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, figno=1):
+    """Plots n x n digit images decoded from the latent space.
+
+    `grid`: grid spacing type; one of "linear" or "quantile" (default)
+
+            A quantile grid accounts for the shape of the spherical gaussian latent
+            prior, placing more emphasis on the region near the origin, where most
+            of the prior's probability mass is concentrated. This grid is linear
+            in cumulative probability.
+
+            A linear grid effectively emphasizes the faraway regions of the
+            latent space, since the prior does not have much probability mass there.
+            This grid is linear directly in the coordinates of the latent space.
+
+            Grid min/max are always taken to be ±εσ in the latent space.
+
+    `eps`:  ε for grid lower/upper limit ±εσ. E.g. the default 3 means ±3σ.
+
+    `model`: `CVAE` instance, or `None` to use the default instance.
+    `figno`: matplotlib figure number.
+    """
+    if model is None:
+        def get_default_model():
+            global model
+            return model
+        model = get_default_model()
+    assert isinstance(model, CVAE)
+    assert grid in ("linear", "quantile")
 
     gaussian = tfp.distributions.Normal(0, 1)
-    grid_x = gaussian.quantile(np.linspace(0.001, 0.999, n))  # 3σ
-    grid_y = gaussian.quantile(np.linspace(0.001, 0.999, n))
+    p = gaussian.cdf(-eps)  # cdf(x) := P[X ≤ x], so this is P[x ≤ -εσ], where σ = 1
+
+    if grid == "quantile":  # quantile(p) := {x | P[X ≤ x] = p}
+        # linear in cumulative probability
+        grid_x = gaussian.quantile(np.linspace(p, 1 - p, n))
+        grid_y = gaussian.quantile(np.linspace(p, 1 - p, n))
+    else:  # grid == "linear":
+        # linear in latent space
+        grid_x = np.linspace(gaussian.quantile(p), gaussian.quantile(1 - p), n)
+        grid_y = np.linspace(gaussian.quantile(p), gaussian.quantile(1 - p), n)
+
     image_width = digit_size * n
     image_height = image_width
     image = np.zeros((image_height, image_width))
@@ -370,12 +405,12 @@ def plot_latent_images(model, n, digit_size=28):
             image[i * digit_size: (i + 1) * digit_size,
                   j * digit_size: (j + 1) * digit_size] = digit.numpy()
 
-    plt.figure(2, figsize=(10, 10))
+    plt.figure(figno, figsize=(10, 10))
     plt.imshow(image, cmap='Greys_r')
     plt.axis('off')
     plt.tight_layout()
-    plt.show()
     plt.savefig(latent_image_filename)
+    plt.show()
 
 def main():
     # Load the data
@@ -442,7 +477,7 @@ def main():
     # #   import main
     # #   main.model = keras.models.load_model("my_model")
     # # Now the model is loaded; you should be able to e.g.
-    # #   main.plot_latent_images(main.model, 20)
+    # #   main.plot_latent_images(20)
     # #
     # # force the model to build its graph to make it savable
     # dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
@@ -461,7 +496,7 @@ def main():
         writer.append_data(image)
 
     # Visualize latent representation
-    plot_latent_images(model, 20)
+    plot_latent_images(20, figno=2)
 
 if __name__ == '__main__':
     # To allow easy access to our global-scope variables in the live REPL session,
