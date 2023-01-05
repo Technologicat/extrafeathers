@@ -170,8 +170,10 @@ class CVAE(tf.keras.Model):
             return probs
         return logits
 
-    # TODO: figure out how to properly support the official Keras serialization API
-    # # https://www.tensorflow.org/guide/keras/save_and_serialize
+    # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
+    # TODO: So for now, we separately save the encoder and decoder models (both are Functional
+    # TODO: models that support saving natively).
+    # https://www.tensorflow.org/guide/keras/save_and_serialize
     def my_save(self, path="./my_model"):
         p = pathlib.Path(path).expanduser().resolve()
         _delete_directory_recursively(str(p))  # delete previous saved model if any
@@ -219,13 +221,20 @@ def log_normal_pdf(x, mean, logvar, raxis=1):
     return tf.reduce_sum(-0.5 * ((x - mean)**2 * tf.exp(-logvar) + logvar + log2pi),
                          axis=raxis)
 
-# https://github.com/cunningham-lab/cb_and_cc
 def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
-    # computes the log normalizing constant of a continuous Bernoulli distribution in a numerically stable way.
-    # returns the log normalizing constant for lam in (0, l_lim) U (u_lim, 1) and a Taylor approximation in
-    # [l_lim, u_lim].
-    # cut_y below might appear useless, but it is important to not evaluate log_norm near 0.5 as tf.where evaluates
-    # both options, regardless of the value of the condition.
+    """Compute the log normalizing constant of a continuous Bernoulli distribution.
+
+    Returns the log normalizing constant for lam in (0, l_lim) U (u_lim, 1) and
+    a Taylor approximation in [l_lim, u_lim] (there is a singularity in the
+    general formula at lam=0.5).
+
+    Numerically stable formulation.
+
+    Taken from the GitHub repo for the paper by Loaiza-Ganem and Cunningham (2019):
+        https://github.com/cunningham-lab/cb_and_cc
+    """
+    # cut_y below might appear useless, but it is important to not evaluate log_norm near 0.5
+    # as tf.where evaluates both options, regardless of the value of the condition.
     cut_lam = tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), lam, l_lim * tf.ones_like(lam))
     log_norm = tf.math.log(tf.abs(2.0 * tf.atanh(1 - 2.0 * cut_lam))) - tf.math.log(tf.abs(1 - 2.0 * cut_lam))
     taylor = tf.math.log(2.0) + 4.0 / 3.0 * tf.pow(lam - 0.5, 2) + 104.0 / 45.0 * tf.pow(lam - 0.5, 4)
@@ -301,13 +310,14 @@ def compute_loss(model, x):
     # cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=P, labels=x)
     # logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
-    # # discrete Bernoulli, explicitly
+    # # Discrete Bernoulli, computing pθ(x|z) ourselves explicitly.
     # p = tf.sigmoid(P)  # interpret decoder output as logits; map into probabilities
     # p = tf.clip_by_value(p, 1e-4, 1 - 1e-4)  # avoid log(0)
     # logpx_z = tf.reduce_sum(x * tf.math.log(p) + (1 - x) * tf.math.log(1 - p),
     #                         axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
-    # continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1
+    # Continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1.
+    # As for how to apply the constant, see the original implementation by Loaiza-Ganem and Cunningham:
     # https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/cb_vae_mnist.ipynb
     p = tf.sigmoid(P)  # interpret decoder output as logits; map into probabilities
     p = tf.clip_by_value(p, 1e-4, 1 - 1e-4)  # avoid log(0)
@@ -339,6 +349,7 @@ def generate_and_save_epoch_image(model, epoch, test_sample, figno=1):
     predictions = model.sample(z)
     plt.figure(figno, figsize=(8, 4))
 
+    # TODO: improve layout (plot each pair into the same subplot, similarly to how plot_latent_images does it)
     for i in range(predictions.shape[0]):
         plt.subplot(4, 8, 1 + (2 * i))
         plt.imshow(test_sample[i, :, :, 0], cmap='gray')
@@ -470,7 +481,7 @@ def main():
             generate_and_save_epoch_image(model, epoch, test_sample)
     print(f'Total time elapsed for training: {tim_total.dt} seconds')
 
-    # # TODO: The saved model doesn't work yet.
+    # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # # Save the trained model.
     # # To reload the trained model in another session:
     # #   import keras
@@ -483,7 +494,7 @@ def main():
     # dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
     # _ = model(dummy_data)
     # model.save("my_model")
-    model.my_save()
+    model.my_save()  # this custom saving hack (saving the encoder/decoder separately) works
 
     # Make a gif animation of the training epochs
     with imageio.get_writer(anim_filename, mode='I') as writer:
