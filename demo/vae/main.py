@@ -6,11 +6,9 @@
 #   https://www.tensorflow.org/tutorials/generative/cvae
 #   https://keras.io/examples/generative/vae/
 
-# Start a REPL server so we can inspect/save global-scope variables while the process is live.
+# Start a REPL server (in main()) so we can inspect/save global-scope variables while the process is live.
 # This is convenient if we have forgotten to include some save command in the script before starting it.
-#  - To connect, `python -m unpythonic.net.client localhost`.
-#  - To allow easy access to our global-scope variables, we make the main module (this module)
-#    available as `__main__` in the REPL scope.
+# To connect, `python -m unpythonic.net.client localhost`.
 import sys
 import unpythonic.net.server as repl_server
 
