@@ -49,47 +49,56 @@ optimizer = tf.keras.optimizers.Adam(1e-4)
 # --------------------------------------------------------------------------------
 # NN architecture
 
+# Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
+#
+# Encoder differences:
+#   - No z value in output, we use the reparameterize function instead.
+#     The custom Sampling layer in the original is a neat technique,
+#     but this is conceptually cleaner (encoder output is explicitly
+#     a distribution (represented as parameters), not a sample from it).
+#
+# Decoder differences:
+#   - We handle the final (sigmoid) activation of the decoder manually later.
+#   - We have added an extra Dense layer of 16 units at the input side
+#     to more closely mirror the structure of the encoder.
+#   - The architecture is an exact mirror image of the encoder.
+def make_encoder():
+    encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
+    x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
+                               strides=2, padding="same")(encoder_inputs)
+    x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
+                               strides=2, padding="same")(x)
+    x = tf.keras.layers.Flatten()(x)
+    # VRAM saving trick: an extra dense layer (with small size) after the convolutions
+    # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
+    x = tf.keras.layers.Dense(units=16, activation="relu")(x)
+    z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean")(x)
+    z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var")(x)
+    encoder_outputs = [z_mean, z_log_var]
+    encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
+    return encoder
+
+def make_decoder():
+    # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
+    decoder_inputs = tf.keras.Input(shape=(latent_dim,))
+    x = tf.keras.layers.Dense(units=16, activation="relu")(decoder_inputs)
+    x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
+    x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
+    x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
+                                        strides=2, padding="same")(x)
+    decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2, padding="same")(x)
+    decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
+    return decoder
+
 class CVAE(tf.keras.Model):
     """Convolutional variational autoencoder."""
 
     def __init__(self, latent_dim):
         super(CVAE, self).__init__()
         self.latent_dim = latent_dim
-
-        # Modified from https://keras.io/examples/generative/vae/
-        # Encoder differences:
-        #   - No z value in output, we use the reparameterize function instead.
-        #     The custom Sampling layer in the original is a neat technique,
-        #     but this is conceptually cleaner (encoder output is explicitly
-        #     a distribution (represented as parameters), not a sample from it).
-        # Decoder differences:
-        #   - We handle the final (sigmoid) activation of the decoder manually later.
-        #   - We have added an extra Dense layer of 16 units at the input side
-        #     to more closely mirror the structure of the encoder.
-        #   - The architecture is an exact mirror image of the encoder.
-        encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
-        x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(encoder_inputs)
-        x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(x)
-        x = tf.keras.layers.Flatten()(x)
-        # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
-        x = tf.keras.layers.Dense(units=16, activation="relu")(x)
-        z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean")(x)
-        z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var")(x)
-        encoder_outputs = [z_mean, z_log_var]
-        self.encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
+        self.encoder = make_encoder()
+        self.decoder = make_decoder()
         self.encoder.summary()
-
-        # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
-        decoder_inputs = tf.keras.Input(shape=(latent_dim,))
-        x = tf.keras.layers.Dense(units=16, activation="relu")(decoder_inputs)
-        x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
-        x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
-        x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-                                            strides=2, padding="same")(x)
-        decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2, padding="same")(x)
-        self.decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
         self.decoder.summary()
 
     @tf.function
