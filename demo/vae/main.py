@@ -375,7 +375,9 @@ def main():
     plot_latent_images(model, 20)
 
 if __name__ == '__main__':
-    repl_server.start(locals={"__main__": sys.modules["__main__"]})
+    # To allow easy access to our global-scope variables in the live REPL session,
+    # we make the main module (this module) available as `main` in the REPL scope.
+    repl_server.start(locals={"main": sys.modules["__main__"]})
     plt.ion()
     main()
     plt.ioff()
