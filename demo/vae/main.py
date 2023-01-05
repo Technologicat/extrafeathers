@@ -308,6 +308,7 @@ def plot_latent_images(model, n, digit_size=28):
         for j, xi in enumerate(grid_y):
             z = np.array([[xi, yi]])
             x_decoded = model.sample(z)
+            # x_decoded = model.decode(z, apply_sigmoid=True)
             digit = tf.reshape(x_decoded[0], (digit_size, digit_size))
             image[i * digit_size: (i + 1) * digit_size,
                   j * digit_size: (j + 1) * digit_size] = digit.numpy()
