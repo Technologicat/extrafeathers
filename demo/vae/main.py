@@ -17,6 +17,7 @@ import unpythonic.net.server as repl_server
 # TODO: change the decoder model to a Gaussian (with learnable variance) as suggested in the paper by Lin et al.
 
 import glob
+import os
 import pathlib
 
 from unpythonic import timer
@@ -46,6 +47,33 @@ latent_image_filename = 'latent.png'
 
 # For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
 optimizer = tf.keras.optimizers.Adam(1e-4)
+
+# --------------------------------------------------------------------------------
+# Helper for deleting previously saved model (to save new one cleanly)
+
+def _delete_directory_recursively(path):
+    """Delete a directory recursively, like 'rm -rf' in the shell.
+
+    Ignores `FileNotFoundError`, but other errors raise. If an error occurs,
+    some files and directories may already have been deleted.
+    """
+    for root, dirs, files in os.walk(path, topdown=False, followlinks=False):
+        for x in files:
+            try:
+                os.unlink(os.path.join(root, x))
+            except FileNotFoundError:
+                pass
+
+        for x in dirs:
+            try:
+                os.rmdir(os.path.join(root, x))
+            except FileNotFoundError:
+                pass
+
+    try:
+        os.rmdir(path)
+    except FileNotFoundError:
+        pass
 
 # --------------------------------------------------------------------------------
 # NN architecture
@@ -146,6 +174,7 @@ class CVAE(tf.keras.Model):
     # # https://www.tensorflow.org/guide/keras/save_and_serialize
     def my_save(self, path="./my_model"):
         p = pathlib.Path(path).expanduser().resolve()
+        _delete_directory_recursively(str(p))  # delete previous saved model if any
         pathlib.Path.mkdir(p, parents=True, exist_ok=True)
         self.encoder.save(str(p / "encoder"))
         self.decoder.save(str(p / "decoder"))
