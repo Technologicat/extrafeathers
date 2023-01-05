@@ -99,8 +99,6 @@ class CVAE(tf.keras.Model):
         self.latent_dim = latent_dim
         self.encoder = make_encoder()
         self.decoder = make_decoder()
-        self.encoder.summary()
-        self.decoder.summary()
 
     @tf.function
     def sample(self, z=None):
@@ -379,6 +377,10 @@ def main():
     assert num_examples_to_generate <= batch_size
     for test_batch in test_dataset.take(1):
         test_sample = test_batch[0:num_examples_to_generate, :, :, :]
+
+    # debug / info
+    model.encoder.summary()
+    model.decoder.summary()
 
     # Visualize the random initial state
     generate_and_save_epoch_image(model, 0, test_sample)
