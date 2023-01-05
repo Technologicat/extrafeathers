@@ -123,7 +123,11 @@ class CVAE(tf.keras.Model):
 
         Return (ε, z) (the same ε sample is needed in the ELBO computation).
         """
-        eps = tf.random.normal(shape=mean.shape)
+        # https://datascience.stackexchange.com/questions/51086/valueerror-cannot-convert-a-partially-known-tensorshape-to-a-tensor-256
+        # tf.shape is dynamic; mean.shape is static (see docstring of tf.shape) and does not work
+        # if one of the dimensions is not yet known (e.g. the batch size)
+        # eps = tf.random.normal(shape=mean.shape)
+        eps = tf.random.normal(shape=tf.shape(mean))
         return eps, eps * tf.exp(logvar * .5) + mean
 
     def decode(self, z, apply_sigmoid=False):
