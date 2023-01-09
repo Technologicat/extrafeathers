@@ -509,7 +509,7 @@ def main():
 
     # Make a gif animation of the training epochs
     with imageio.get_writer(f"{output_dir}{anim_filename}", mode="I") as writer:
-        filenames = glob.glob(f"{fig_basename}*.{fig_format}")
+        filenames = glob.glob(f"{output_dir}{fig_basename}*.{fig_format}")
         filenames = sorted(filenames)
         for filename in filenames:
             image = imageio.v2.imread(filename)
