@@ -326,11 +326,14 @@ def compute_loss(model, x):
     #                         axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
     # Continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1.
+    # Note the output is now the parameter λ of the continuous Bernoulli distribution, not directly a
+    # point-probability or a mean. But it works well as-is as the decoder output.
+    #
     # As for how to apply the constant, see the original implementation by Loaiza-Ganem and Cunningham:
     # https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/cb_vae_mnist.ipynb
-    p = tf.sigmoid(P)  # interpret decoder output as logits; map into probabilities
-    p = tf.clip_by_value(p, 1e-4, 1 - 1e-4)  # avoid log(0)
-    logpx_z = tf.reduce_sum(x * tf.math.log(p) + (1 - x) * tf.math.log(1 - p) + cont_bern_log_norm(p),
+    lam = tf.sigmoid(P)  # interpret decoder output as logits; map into λ parameter of continuous Bernoulli
+    lam = tf.clip_by_value(lam, 1e-4, 1 - 1e-4)  # avoid log(0)
+    logpx_z = tf.reduce_sum(x * tf.math.log(lam) + (1 - x) * tf.math.log(1 - lam) + cont_bern_log_norm(lam),
                             axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
     # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(0, 1).
