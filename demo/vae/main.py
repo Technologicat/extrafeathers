@@ -2,22 +2,44 @@
 #
 # Convolutional variational autoencoder implemented in Keras and TensorFlow.
 #
-# Based on combining material from these two tutorials:
+# This script operates in two modes:
+#    1) As the main program, to train the model.
+#    2) As an importable module, to use the trained model.
+#
+# To train the model, open a terminal in the top-level `extrafeathers` directory, and:
+#
+#   python -m demo.vae.main
+#
+# The model will be saved in `saved_model_dir`, defined in config below.
+#
+# To load the trained model, in an IPython session:
+#
+#   import demo.vae.main as main
+#   main.model.my_load(main.saved_model_dir)
+#
+# Now you can e.g.:
+#
+#   import matplotlib.pyplot as plt
+#   main.plot_and_save_latent_image(10)
+#   plt.show()
+#
+# The implementation is based on combining material from these two tutorials:
 #   https://www.tensorflow.org/tutorials/generative/cvae
 #   https://keras.io/examples/generative/vae/
 
-# Start a REPL server (in main()) so we can inspect/save global-scope variables while the process is live.
-# This is convenient if we have forgotten to include some save command in the script before starting it.
-# To connect, `python -m unpythonic.net.client localhost`.
-import sys
+# The REPL server allows inspecting/saving anything accessible from module-global scope
+# while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
-# TODO: use plotmagic.pause (see euleriansolid)
-# TODO: change the decoder model to a Gaussian (with learnable variance) as suggested in the paper by Lin et al.
+# TODO: For use with PDE solution fields:
+#   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
+#   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
+#   - Or better yet, compute the distribution of the actual fields (observed data!) and model that
 
 import glob
 import os
 import pathlib
+import typing
 
 from unpythonic import ETAEstimator, timer
 
@@ -58,12 +80,14 @@ anim_filename = "cvae.gif"
 # --------------------------------------------------------------------------------
 # Helper for deleting previously saved model (to save new one cleanly)
 
-def _delete_directory_recursively(path):
+def _delete_directory_recursively(path: str) -> None:
     """Delete a directory recursively, like 'rm -rf' in the shell.
 
     Ignores `FileNotFoundError`, but other errors raise. If an error occurs,
     some files and directories may already have been deleted.
     """
+    path = pathlib.Path(path).expanduser().resolve()
+
     for root, dirs, files in os.walk(path, topdown=False, followlinks=False):
         for x in files:
             try:
@@ -82,10 +106,13 @@ def _delete_directory_recursively(path):
     except FileNotFoundError:
         pass
 
-def _clear_and_create_directory(path):
+def _create_directory(path: str) -> None:
     p = pathlib.Path(path).expanduser().resolve()
-    _delete_directory_recursively(str(p))
     pathlib.Path.mkdir(p, parents=True, exist_ok=True)
+
+def _clear_and_create_directory(path: str) -> None:
+    _delete_directory_recursively(path)
+    _create_directory(path)
 
 # --------------------------------------------------------------------------------
 # NN architecture
@@ -131,6 +158,8 @@ def make_decoder():
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder
 
+# TODO: `CVAE` does not conform to the standard Keras Model API, since it does not implement `call`,
+# TODO: and although we have a custom `train_step`, it's a separate function, not a method of `CVAE`.
 class CVAE(tf.keras.Model):
     """Convolutional variational autoencoder."""
 
@@ -356,40 +385,46 @@ def train_step(model, x, optimizer):
 # --------------------------------------------------------------------------------
 # Main program - training
 
-def generate_and_save_epoch_image(model, epoch, test_sample, figno=1):
-    batch_size, ny, nx, n_channels = tf.shape(test_sample).numpy()
+def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int = 1) -> None:
+    """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE)."""
+    batch_size, n_pixels_y, n_pixels_x, n_channels = tf.shape(test_sample).numpy()
     assert batch_size == 16, f"This function currently assumes a test sample of size 16, got {batch_size}"
-    n = 4  # sqrt(batch_size)
     assert n_channels == 1, f"This function currently assumes grayscale images, got {n_channels} channels"
 
     mean, logvar = model.encode(test_sample)
     ignored_eps, z = model.reparameterize(mean, logvar)
     predictions = model.sample(z)
 
-    image = np.zeros((n * ny, (2 * n + 1) * nx))
+    n = 4  # how many images per row/column; sqrt(batch_size)
+    image = np.zeros((n * n_pixels_y, (2 * n + 1) * n_pixels_x))  # empty center column as separator
     for i in range(batch_size):
         x_orig = test_sample[i, :, :, 0]
         x_hat = predictions[i, :, :, 0]
         row, base_col = divmod(i, n)
-        col1 = base_col
-        col2 = base_col + n + 1
-        image[row * ny: (row + 1) * ny,
-              col1 * nx: (col1 + 1) * nx] = x_orig.numpy()
-        image[row * ny: (row + 1) * ny,
-              col2 * nx: (col2 + 1) * nx] = x_hat.numpy()
+        col1 = base_col  # original image (input)
+        col2 = base_col + n + 1  # reconstructed image
+        image[row * n_pixels_y: (row + 1) * n_pixels_y,
+              col1 * n_pixels_x: (col1 + 1) * n_pixels_x] = x_orig.numpy()
+        image[row * n_pixels_y: (row + 1) * n_pixels_y,
+              col2 * n_pixels_x: (col2 + 1) * n_pixels_x] = x_hat.numpy()
 
     plt.figure(figno, figsize=(8, 4))
     plt.clf()
     plt.imshow(image, cmap="Greys_r")
     plt.axis("off")
-    plt.title(f"Epoch {epoch} (left: input, right: reconstructed)")
+    plt.title(f"Epoch {epoch} (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$)")
     plt.tight_layout()
+    _create_directory(output_dir)
     plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
-def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, figno=1):
-    """Plots n x n digit images decoded from the latent space.
+def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
+                               grid: str = "quantile", eps: float = 3, figno: int = 1) -> None:
+    """Plot n × n digit images decoded from the latent space.
+
+    `digit_size`: width/height of each digit image (square-shaped), in pixels.
+                  Must match what the model was trained for.
 
     `grid`: grid spacing type; one of "linear" or "quantile" (default)
 
@@ -421,11 +456,11 @@ def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, fig
     p = gaussian.cdf(-eps)  # cdf(x) := P[X ≤ x], so this is P[x ≤ -εσ], where σ = 1
 
     if grid == "quantile":  # quantile(p) := {x | P[X ≤ x] = p}
-        # linear in cumulative probability
+        # Linear in cumulative probability (according to latent prior, which is subtly wrong; see Lin et al.)
         grid_x = gaussian.quantile(np.linspace(p, 1 - p, n))
         grid_y = gaussian.quantile(np.linspace(p, 1 - p, n))
     else:  # grid == "linear":
-        # linear in latent space
+        # Linear in latent space coordinates
         grid_x = np.linspace(gaussian.quantile(p), gaussian.quantile(1 - p), n)
         grid_y = np.linspace(gaussian.quantile(p), gaussian.quantile(1 - p), n)
 
@@ -437,7 +472,6 @@ def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, fig
         for j, xi in enumerate(grid_y):
             z = np.array([[xi, yi]])
             x_decoded = model.sample(z)
-            # x_decoded = model.decode(z, apply_sigmoid=True)
             digit = tf.reshape(x_decoded[0], (digit_size, digit_size))
             image[i * digit_size: (i + 1) * digit_size,
                   j * digit_size: (j + 1) * digit_size] = digit.numpy()
@@ -445,22 +479,27 @@ def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, fig
     plt.figure(figno, figsize=(10, 10))
     plt.clf()
     plt.imshow(image, cmap="Greys_r")
-    plt.axis("off")
+    plt.axis("off")  # TODO: show coordinates of latent point z (need to center tick on each image, then remap)
+    # plt.xlabel(r"z_{1}")
+    # plt.ylabel(r"z_{2}")
     plt.title(f"Latent space ({grid} grid, up to ±{eps}σ)")
     plt.tight_layout()
+    _create_directory(output_dir)
     plt.savefig(f"{output_dir}{latent_vis_basename}.{fig_format}")
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
 def main():
+    # Make preparations
+
     _clear_and_create_directory(output_dir)
 
-    # Load the data
     (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
     train_size = train_images.shape[0]  # 60k
     test_size = test_images.shape[0]  # 10k
 
     def preprocess_images(images, discrete=False):
+        """Preprocess MNIST dataset."""
         images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
         if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
             images = np.where(images > .5, 1.0, 0.0)
@@ -474,24 +513,24 @@ def main():
 
     # Train the model
 
-    # Keeping the random vector constant for generation (prediction),
-    # it will be easier to see the improvement.
     num_examples_to_generate = 16
+
+    # Keeping the random vector constant for generation (prediction), it will be easier to see the improvement.
     # random_vector_for_generation = tf.random.normal(shape=[num_examples_to_generate, latent_dim])
 
-    # Or... we can pick a sample of the test set for generating the corresponding output images
+    # Or... we can pick a sample of the test set for generating the corresponding reconstructed images.
     assert num_examples_to_generate <= batch_size
     for test_batch in test_dataset.take(1):
         test_sample = test_batch[0:num_examples_to_generate, :, :, :]
 
-    # debug / info
+    # Debug / info
     model.encoder.summary()
     model.decoder.summary()
 
     # Visualize the random initial state
-    generate_and_save_epoch_image(model, 0, test_sample)
+    plot_and_save_epoch_image(model, 0, test_sample)
     plt.show()  # must call plt.show() once before pause works
-    plotmagic.pause(0.001)
+    plotmagic.pause(0.001)  # force redraw
 
     # Train the model
     est = ETAEstimator(epochs, keep_last=10)
@@ -509,12 +548,11 @@ def main():
                     running_mean(compute_loss(model, test_x))
                 elbo = -running_mean.result()
 
-            # display.clear_output(wait=False)  # Jupyter?
-            generate_and_save_epoch_image(model, epoch, test_sample)
+            plot_and_save_epoch_image(model, epoch, test_sample)
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
-            print(f"Epoch: {epoch}, Test set ELBO: {elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}, testing {tim_test.dt:0.3g}, {est.formatted_eta}")
-    print(f"Total time elapsed for training: {tim_total.dt:0.3g} seconds")
+            print(f"Epoch: {epoch}, Test set ELBO: {elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s; {est.formatted_eta}")
+    print(f"Total training/testing wall time: {tim_total.dt:0.3g}s")
 
     # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # # Save the trained model.
@@ -523,7 +561,7 @@ def main():
     # #   import main
     # #   main.model = keras.models.load_model("my_model")
     # # Now the model is loaded; you should be able to e.g.
-    # #   main.plot_latent_images(20)
+    # #   main.plot_and_save_latent_image(20)
     # #
     # # force the model to build its graph to make it savable
     # dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
@@ -542,12 +580,14 @@ def main():
         writer.append_data(image)
 
     # Visualize latent representation
-    plot_latent_images(20, figno=2)
+    plot_and_save_latent_image(20, figno=2)
 
 if __name__ == "__main__":
     # To allow easy access to our global-scope variables in the live REPL session,
     # we make the main module (this module) available as `main` in the REPL scope.
+    import sys
     repl_server.start(locals={"main": sys.modules["__main__"]})
+
     plt.ion()
     main()
     plt.ioff()
