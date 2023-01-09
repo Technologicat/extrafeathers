@@ -74,6 +74,10 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
+# TODO: add ELBO history progress plot (we should also compute statistics of these over several runs)
+# TODO: use an early-stopping criterion?
+# TODO: plot the original data locations in the latent space (like in the Keras tutorial)
+
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
