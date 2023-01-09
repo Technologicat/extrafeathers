@@ -396,7 +396,10 @@ def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, f
     predictions = model.sample(z)
 
     n = 4  # how many images per row/column; sqrt(batch_size)
-    image = np.zeros((n * n_pixels_y, (2 * n + 1) * n_pixels_x))  # empty center column as separator
+    image_width = (2 * n + 1) * n_pixels_x  # extra empty column at center, as separator
+    image_height = n * n_pixels_y
+    image = np.zeros((image_height, image_width))
+
     for i in range(batch_size):
         x_orig = test_sample[i, :, :, 0]
         x_hat = predictions[i, :, :, 0]
