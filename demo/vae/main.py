@@ -19,7 +19,7 @@ import glob
 import os
 import pathlib
 
-from unpythonic import timer
+from unpythonic import ETAEstimator, timer
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,6 +29,8 @@ import tensorflow_probability as tfp
 
 # import PIL
 import imageio
+
+from extrafeathers import plotmagic
 
 # --------------------------------------------------------------------------------
 # Config
@@ -354,25 +356,37 @@ def train_step(model, x, optimizer):
 # --------------------------------------------------------------------------------
 # Main program - training
 
-# TODO: currently only works for test sample size 16
 def generate_and_save_epoch_image(model, epoch, test_sample, figno=1):
+    batch_size, ny, nx, n_channels = tf.shape(test_sample).numpy()
+    assert batch_size == 16, f"This function currently assumes a test sample of size 16, got {batch_size}"
+    n = 4  # sqrt(batch_size)
+    assert n_channels == 1, f"This function currently assumes grayscale images, got {n_channels} channels"
+
     mean, logvar = model.encode(test_sample)
     ignored_eps, z = model.reparameterize(mean, logvar)
     predictions = model.sample(z)
+
+    image = np.zeros((n * ny, (2 * n + 1) * nx))
+    for i in range(batch_size):
+        x_orig = test_sample[i, :, :, 0]
+        x_hat = predictions[i, :, :, 0]
+        row, base_col = divmod(i, n)
+        col1 = base_col
+        col2 = base_col + n + 1
+        image[row * ny: (row + 1) * ny,
+              col1 * nx: (col1 + 1) * nx] = x_orig.numpy()
+        image[row * ny: (row + 1) * ny,
+              col2 * nx: (col2 + 1) * nx] = x_hat.numpy()
+
     plt.figure(figno, figsize=(8, 4))
-
-    # TODO: improve layout (plot each pair into the same subplot, similarly to how plot_latent_images does it)
-    for i in range(predictions.shape[0]):
-        plt.subplot(4, 8, 1 + (2 * i))
-        plt.imshow(test_sample[i, :, :, 0], cmap="gray")
-        plt.axis("off")
-        plt.subplot(4, 8, 1 + (2 * i + 1))
-        plt.imshow(predictions[i, :, :, 0], cmap="gray")
-        plt.axis("off")
-
+    plt.clf()
+    plt.imshow(image, cmap="Greys_r")
+    plt.axis("off")
+    plt.title(f"Epoch {epoch} (left: input, right: reconstructed)")
     plt.tight_layout()
     plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
-    plt.show()
+    plt.draw()
+    plotmagic.pause(0.1)  # force redraw
 
 def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, figno=1):
     """Plots n x n digit images decoded from the latent space.
@@ -429,11 +443,14 @@ def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, fig
                   j * digit_size: (j + 1) * digit_size] = digit.numpy()
 
     plt.figure(figno, figsize=(10, 10))
+    plt.clf()
     plt.imshow(image, cmap="Greys_r")
     plt.axis("off")
+    plt.title(f"Latent space ({grid} grid, up to ±{eps}σ)")
     plt.tight_layout()
     plt.savefig(f"{output_dir}{latent_vis_basename}.{fig_format}")
-    plt.show()
+    plt.draw()
+    plotmagic.pause(0.1)  # force redraw
 
 def main():
     _clear_and_create_directory(output_dir)
@@ -473,8 +490,11 @@ def main():
 
     # Visualize the random initial state
     generate_and_save_epoch_image(model, 0, test_sample)
+    plt.show()  # must call plt.show() once before pause works
+    plotmagic.pause(0.001)
 
     # Train the model
+    est = ETAEstimator(epochs, keep_last=10)
     with timer() as tim_total:
         for epoch in range(1, epochs + 1):
             # SGD using one pass through the training set (with the batches set up previously)
@@ -490,10 +510,11 @@ def main():
                 elbo = -running_mean.result()
 
             # display.clear_output(wait=False)  # Jupyter?
-            print("Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: training {}, testing {}"
-                  .format(epoch, elbo, tim_train.dt, tim_test.dt))
             generate_and_save_epoch_image(model, epoch, test_sample)
-    print(f"Total time elapsed for training: {tim_total.dt} seconds")
+            est.tick()
+            # dt_avg = sum(est.que) / len(est.que)
+            print(f"Epoch: {epoch}, Test set ELBO: {elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}, testing {tim_test.dt:0.3g}, {est.formatted_eta}")
+    print(f"Total time elapsed for training: {tim_total.dt:0.3g} seconds")
 
     # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # # Save the trained model.
