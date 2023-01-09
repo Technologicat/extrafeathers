@@ -476,15 +476,24 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
             z = np.array([[xi, yi]])
             x_decoded = model.sample(z)
             digit = tf.reshape(x_decoded[0], (digit_size, digit_size))
+            # flip y so we can use origin="lower" for plotting the complete tiled image
             image[i * digit_size: (i + 1) * digit_size,
-                  j * digit_size: (j + 1) * digit_size] = digit.numpy()
+                  j * digit_size: (j + 1) * digit_size] = digit.numpy()[::-1, :]
 
     plt.figure(figno, figsize=(10, 10))
     plt.clf()
-    plt.imshow(image, cmap="Greys_r")
-    plt.axis("off")  # TODO: show coordinates of latent point z (need to center tick on each image, then remap)
-    # plt.xlabel(r"z_{1}")
-    # plt.ylabel(r"z_{2}")
+    plt.imshow(image, origin="lower", cmap="Greys_r")
+
+    # Show latent space coordinates (center a tick on each row/column, labeled with the coordinate)
+    startx = digit_size / 2
+    endx = image_width - (digit_size / 2)
+    tick_positions_x = np.array(startx + np.linspace(0, 1, len(grid_x)) * (endx - startx), dtype=int)
+    tick_positions_y = tick_positions_x
+    plt.xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x.numpy()])
+    plt.yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y.numpy()])
+    plt.xlabel(r"$z_{1}$")
+    plt.ylabel(r"$z_{2}$")
+
     plt.title(f"Latent space ({grid} grid, up to ±{eps}σ)")
     plt.tight_layout()
     _create_directory(output_dir)
