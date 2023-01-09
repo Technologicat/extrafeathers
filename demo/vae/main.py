@@ -508,8 +508,8 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
 
     if grid == "quantile":  # quantile(p) := {x | P[X ≤ x] = p}
         # Linear in cumulative probability (according to latent prior, which is subtly wrong; see Lin et al.)
-        grid_x = gaussian.quantile(np.linspace(p, 1 - p, n))
-        grid_y = gaussian.quantile(np.linspace(p, 1 - p, n))
+        grid_x = gaussian.quantile(np.linspace(p, 1 - p, n)).numpy()
+        grid_y = gaussian.quantile(np.linspace(p, 1 - p, n)).numpy()
     else:  # grid == "linear":
         # Linear in latent space coordinates
         grid_x = np.linspace(gaussian.quantile(p), gaussian.quantile(1 - p), n)
@@ -537,8 +537,8 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
     endx = image_width - (digit_size / 2)
     tick_positions_x = np.array(startx + np.linspace(0, 1, len(grid_x)) * (endx - startx), dtype=int)
     tick_positions_y = tick_positions_x
-    plt.xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x.numpy()])
-    plt.yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y.numpy()])
+    plt.xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x])
+    plt.yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y])
     plt.xlabel(r"$z_{1}$")
     plt.ylabel(r"$z_{2}$")
 
