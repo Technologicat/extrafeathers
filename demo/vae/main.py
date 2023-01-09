@@ -55,15 +55,18 @@ The implementation is based on combining material from these two tutorials:
 
 References:
 
-  Diederik P. Kingma and Max Welling. 2019. An introduction to variational autoencoders. arXiv: 1906.02691
+  Diederik P. Kingma and Max Welling. 2019. An introduction to variational autoencoders.
+  https://arxiv.org/abs/1906.02691
 
-  Gabriel Loaiza-Ganem and John P. Cunningham. 2019. The continuous Bernoulli: fixing a pervasive error in
-  variational autoencoders. arXiv: 1907.06845.
+  Gabriel Loaiza-Ganem and John P. Cunningham. 2019. The continuous Bernoulli: fixing a pervasive error
+  in variational autoencoders.
+  https://arxiv.org/abs/1907.06845
 
-  Shuyu Lin, Stephen Roberts, Niki Trigoni, Ronald Clark. 2019. Balancing reconstruction quality and
-  regularisation in evidence lower bound for variational autoencoders. arXiv: 1909.03765.
+  Shuyu Lin, Stephen Roberts, Niki Trigoni, and Ronald Clark. 2019. Balancing reconstruction quality
+  and regularisation in evidence lower bound for variational autoencoders.
+  https://arxiv.org/abs/1909.03765
 
-  Ian Goodfellow, Yoshua Bengio, Aaron Courville. 2016. Deep Learning. MIT press.
+  Ian Goodfellow, Yoshua Bengio, and Aaron Courville. 2016. Deep Learning. MIT press.
   http://www.deeplearningbook.org
 """
 
