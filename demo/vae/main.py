@@ -106,7 +106,7 @@ batch_size = 64  # acceptable generalization on continuous Bernoulli
 
 latent_dim = 2  # use a 2-dimensional latent space so that we can easily visualize the results
 
-epochs = 40
+epochs = 100
 
 # For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
 optimizer = tf.keras.optimizers.Adam(1e-4)
