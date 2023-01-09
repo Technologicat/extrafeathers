@@ -63,6 +63,8 @@ References:
   Shuyu Lin, Stephen Roberts, Niki Trigoni, Ronald Clark. 2019. Balancing reconstruction quality and
   regularisation in evidence lower bound for variational autoencoders. arXiv: 1909.03765.
 
+  Ian Goodfellow, Yoshua Bengio, Aaron Courville. 2016. Deep Learning. MIT press.
+  http://www.deeplearningbook.org
 """
 
 # The REPL server allows inspecting/saving anything accessible from module-global scope
