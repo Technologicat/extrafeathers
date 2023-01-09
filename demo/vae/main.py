@@ -12,7 +12,6 @@
 import sys
 import unpythonic.net.server as repl_server
 
-# TODO: configure paths to conform to other extrafeathers demos
 # TODO: use plotmagic.pause (see euleriansolid)
 # TODO: change the decoder model to a Gaussian (with learnable variance) as suggested in the paper by Lin et al.
 
@@ -42,11 +41,17 @@ latent_dim = 2  # use a 2-dimensional latent space so that we can easily visuali
 
 epochs = 40
 
-anim_filename = 'cvae.gif'
-latent_image_filename = 'latent.png'
-
 # For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
 optimizer = tf.keras.optimizers.Adam(1e-4)
+
+# Saving
+output_dir = "demo/output/vae/"
+saved_model_dir = "demo/output/vae/my_model"  # for trained model reloading later
+
+fig_basename = "epoch"  # -> "epoch_0000.png" and so on; must be a unique prefix among output filenames
+fig_format = "png"
+latent_vis_basename = "latent_space"
+anim_filename = "cvae.gif"
 
 # --------------------------------------------------------------------------------
 # Helper for deleting previously saved model (to save new one cleanly)
@@ -74,6 +79,11 @@ def _delete_directory_recursively(path):
         os.rmdir(path)
     except FileNotFoundError:
         pass
+
+def _clear_and_create_directory(path):
+    p = pathlib.Path(path).expanduser().resolve()
+    _delete_directory_recursively(str(p))
+    pathlib.Path.mkdir(p, parents=True, exist_ok=True)
 
 # --------------------------------------------------------------------------------
 # NN architecture
@@ -174,13 +184,12 @@ class CVAE(tf.keras.Model):
     # TODO: So for now, we separately save the encoder and decoder models (both are Functional
     # TODO: models that support saving natively).
     # https://www.tensorflow.org/guide/keras/save_and_serialize
-    def my_save(self, path="./my_model"):
+    def my_save(self, path=saved_model_dir):
+        _clear_and_create_directory(path)
         p = pathlib.Path(path).expanduser().resolve()
-        _delete_directory_recursively(str(p))  # delete previous saved model if any
-        pathlib.Path.mkdir(p, parents=True, exist_ok=True)
         self.encoder.save(str(p / "encoder"))
         self.decoder.save(str(p / "decoder"))
-    def my_load(self, path="./my_model"):
+    def my_load(self, path=saved_model_dir):
         p = pathlib.Path(path).expanduser().resolve()
         self.encoder = tf.keras.models.load_model(str(p / "encoder"))
         self.decoder = tf.keras.models.load_model(str(p / "decoder"))
@@ -352,14 +361,14 @@ def generate_and_save_epoch_image(model, epoch, test_sample, figno=1):
     # TODO: improve layout (plot each pair into the same subplot, similarly to how plot_latent_images does it)
     for i in range(predictions.shape[0]):
         plt.subplot(4, 8, 1 + (2 * i))
-        plt.imshow(test_sample[i, :, :, 0], cmap='gray')
-        plt.axis('off')
+        plt.imshow(test_sample[i, :, :, 0], cmap="gray")
+        plt.axis("off")
         plt.subplot(4, 8, 1 + (2 * i + 1))
-        plt.imshow(predictions[i, :, :, 0], cmap='gray')
-        plt.axis('off')
+        plt.imshow(predictions[i, :, :, 0], cmap="gray")
+        plt.axis("off")
 
     plt.tight_layout()
-    plt.savefig('image_at_epoch_{:04d}.png'.format(epoch))
+    plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
     plt.show()
 
 def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, figno=1):
@@ -417,13 +426,15 @@ def plot_latent_images(n, model=None, digit_size=28, grid="quantile", eps=3, fig
                   j * digit_size: (j + 1) * digit_size] = digit.numpy()
 
     plt.figure(figno, figsize=(10, 10))
-    plt.imshow(image, cmap='Greys_r')
-    plt.axis('off')
+    plt.imshow(image, cmap="Greys_r")
+    plt.axis("off")
     plt.tight_layout()
-    plt.savefig(latent_image_filename)
+    plt.savefig(f"{output_dir}{latent_vis_basename}.{fig_format}")
     plt.show()
 
 def main():
+    _clear_and_create_directory(output_dir)
+
     # Load the data
     (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
     train_size = train_images.shape[0]  # 60k
@@ -433,7 +444,7 @@ def main():
         images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
         if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
             images = np.where(images > .5, 1.0, 0.0)
-        return images.astype('float32')
+        return images.astype("float32")
 
     train_images = preprocess_images(train_images)
     test_images = preprocess_images(test_images)
@@ -476,10 +487,10 @@ def main():
                 elbo = -running_mean.result()
 
             # display.clear_output(wait=False)  # Jupyter?
-            print('Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: training {}, testing {}'
+            print("Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: training {}, testing {}"
                   .format(epoch, elbo, tim_train.dt, tim_test.dt))
             generate_and_save_epoch_image(model, epoch, test_sample)
-    print(f'Total time elapsed for training: {tim_total.dt} seconds')
+    print(f"Total time elapsed for training: {tim_total.dt} seconds")
 
     # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # # Save the trained model.
@@ -497,8 +508,8 @@ def main():
     model.my_save()  # this custom saving hack (saving the encoder/decoder separately) works
 
     # Make a gif animation of the training epochs
-    with imageio.get_writer(anim_filename, mode='I') as writer:
-        filenames = glob.glob('image_at_epoch*.png')
+    with imageio.get_writer(f"{output_dir}{anim_filename}", mode="I") as writer:
+        filenames = glob.glob(f"{fig_basename}*.{fig_format}")
         filenames = sorted(filenames)
         for filename in filenames:
             image = imageio.v2.imread(filename)
@@ -509,7 +520,7 @@ def main():
     # Visualize latent representation
     plot_latent_images(20, figno=2)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # To allow easy access to our global-scope variables in the live REPL session,
     # we make the main module (this module) available as `main` in the REPL scope.
     repl_server.start(locals={"main": sys.modules["__main__"]})
