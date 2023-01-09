@@ -1,31 +1,69 @@
 #!/usr/bin/python
-#
-# Convolutional variational autoencoder implemented in Keras and TensorFlow.
-#
-# This script operates in two modes:
-#    1) As the main program, to train the model.
-#    2) As an importable module, to use the trained model.
-#
-# To train the model, open a terminal in the top-level `extrafeathers` directory, and:
-#
-#   python -m demo.vae.main
-#
-# The model will be saved in `saved_model_dir`, defined in config below.
-#
-# To load the trained model, in an IPython session:
-#
-#   import demo.vae.main as main
-#   main.model.my_load(main.saved_model_dir)
-#
-# Now you can e.g.:
-#
-#   import matplotlib.pyplot as plt
-#   main.plot_and_save_latent_image(10)
-#   plt.show()
-#
-# The implementation is based on combining material from these two tutorials:
-#   https://www.tensorflow.org/tutorials/generative/cvae
-#   https://keras.io/examples/generative/vae/
+"""Convolutional variational autoencoder (CVAE) implemented in Keras and TensorFlow.
+
+This is a simple technology demo, condensed and improved from existing online VAE tutorials,
+that just approximates MNIST digits. The goal of introducing a VAE in the context of
+`extrafeathers` is to eventually make a PINN (physically informed neural network) for
+the acceleration of numerical simulations in digital twin applications.
+
+The idea is that a PDE solution field, projected onto a uniform grid, can be thought of as
+a multichannel image (like an RGB image, but tensor components instead of colors). A PINN
+is produced by adding an extra term to the loss function, penalizing the residual of the PDE,
+as evaluated using the reconstructed output. The encoder part of the VAE then acts as a
+lossy data compressor, reducing the solution field into a low-dimensional representation
+(which can be decompressed using the decoder part of the VAE).
+
+For the acceleration of simulations, a VAE is a particularly useful type of neural network,
+because its latent representation is continuous. Given a trained VAE, we can train another
+neural network to act as a time evolution operator in the low-dimensional latent space, thus
+yielding a ROM (reduced order model) for real-time simulation.
+
+Note that a VAE is essentially an interpolator, so it only helps with deployed models, not in
+research into new situations. For the output to be meaningful, the situation being simulated,
+or a reasonable approximation thereof, must exist in the training data of the VAE. This
+limitation is not too different from classical ROM techniques such as proper orthogonal
+decomposition (POD); that too is an interpolator, which can only reproduce behavior that
+exists in the input data.
+
+As development proceeds, the next planned step is to implement a CVAE to approximate the
+solution fields of the classical vortex shedding benchmark (flow over cylinder).
+
+This script operates in two modes:
+   1) As the main program, to train the model.
+   2) As an importable module, to use the trained model.
+
+To train the model, open a terminal in the top-level `extrafeathers` directory, and:
+
+  python -m demo.vae.main
+
+The model will be saved in `saved_model_dir`, defined in config below.
+
+To load the trained model, in an IPython session:
+
+  import demo.vae.main as main
+  main.model.my_load(main.saved_model_dir)
+
+Now you can e.g.:
+
+  import matplotlib.pyplot as plt
+  main.plot_and_save_latent_image(10)
+  plt.show()
+
+The implementation is based on combining material from these two tutorials:
+  https://www.tensorflow.org/tutorials/generative/cvae
+  https://keras.io/examples/generative/vae/
+
+References:
+
+  Diederik P. Kingma and Max Welling. 2019. An introduction to variational autoencoders. arXiv: 1906.02691
+
+  Gabriel Loaiza-Ganem and John P. Cunningham. 2019. The continuous Bernoulli: fixing a pervasive error in
+  variational autoencoders. arXiv: 1907.06845.
+
+  Shuyu Lin, Stephen Roberts, Niki Trigoni, Ronald Clark. 2019. Balancing reconstruction quality and
+  regularisation in evidence lower bound for variational autoencoders. arXiv: 1909.03765.
+
+"""
 
 # The REPL server allows inspecting/saving anything accessible from module-global scope
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
