@@ -74,9 +74,11 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
+# TODO: separate plotting and saving
+# TODO: refactor `overlay_dataxys`
+
 # TODO: add ELBO history progress plot (we should also compute statistics of these over several runs)
 # TODO: use an early-stopping criterion?
-# TODO: plot the original data locations in the latent space (like in the Keras tutorial)
 
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
@@ -507,6 +509,7 @@ def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, f
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
+
 def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
                                grid: str = "quantile", eps: float = 3, figno: int = 1) -> None:
     """Plot n × n digit images decoded from the latent space.
@@ -574,8 +577,9 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
     endx = image_width - (digit_size / 2)
     tick_positions_x = np.array(startx + np.linspace(0, 1, len(grid_x)) * (endx - startx), dtype=int)
     tick_positions_y = tick_positions_x
-    plt.xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x])
+    plt.xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x], rotation="vertical")
     plt.yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y])
+
     plt.xlabel(r"$z_{1}$")
     plt.ylabel(r"$z_{2}$")
 
@@ -586,28 +590,110 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
+
+def overlay_dataxys(x: tf.Tensor, labels: tf.Tensor, model: typing.Optional[CVAE] = None) -> None:
+    """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot."""
+    if model is None:
+        def get_default_model():
+            global model
+            return model
+        model = get_default_model()
+    assert isinstance(model, CVAE)
+
+    # Find latent distribution parameters for the given data.
+    # We'll plot the means.
+    mean, logvar = model.encode(x)
+
+    # https://stackoverflow.com/questions/16829436/overlay-matplotlib-imshow-with-line-plots-that-are-arranged-in-a-grid
+    # https://matplotlib.org/stable/tutorials/advanced/transforms_tutorial.html
+    fig = plt.gcf()
+    # axs = fig.axes  # list of all Axes objects in this Figure
+    ax = plt.gca()
+    plt.draw()  # force update of extents
+    # box = ax._position.bounds  # whole of the current Axes, in figure coordinates
+
+    # Compute position for overlay:
+    #
+    # Determine the centers of edgemost images in data coordinates.
+    digit_size = 28
+    n = 20
+    image_width = digit_size * n
+    xmin = digit_size / 2
+    xmax = image_width - (digit_size / 2)
+    ymin = xmin
+    ymax = xmax
+    xy0 = [xmin, ymin]
+    xy1 = [xmax, ymax]
+
+    # Convert to figure coordinates.
+    def data_to_fig(xy):
+        """Convert Matplotlib data coordinates (of current axis) to figure coordinates."""
+        xy_ax = ax.transLimits.transform(xy)  # data coordinates -> axes coordinates
+        xy_disp = ax.transAxes.transform(xy_ax)
+        xy_fig = fig.transFigure.inverted().transform(xy_disp)
+        # print(f"data: {xy}")
+        # print(f"ax:   {xy_ax}")
+        # print(f"disp: {xy_disp}")
+        # print(f"fig:  {xy_fig}")
+        return xy_fig
+    x0, y0 = data_to_fig(xy0)
+    x1, y1 = data_to_fig(xy1)
+
+    # Set up the new Axes, no background (`set_axis_off`), and plot the overlay.
+    box = [x0, y0, (x1 - x0), (y1 - y0)]
+    newax = fig.add_axes(box)
+    newax.set_axis_off()
+
+    # # We could also customize a colormap like this:
+    # import matplotlib as mpl
+    # rgb_colors = mpl.colormaps.get("viridis").colors  # or some other base colormap; or make a custom one
+    # rgba_colors = [[r, g, b, 0.25] for r, g, b in rgb_colors]
+    # my_cmap = mpl.colors.ListedColormap(rgba_colors, name="viridis_translucent")
+    # # mpl.colormaps.register(my_cmap, force=True)  # no need to register it as we can pass it directly.
+
+    # Account for the nonlinear scaling so that the positioning matches the example images.
+    eps = 3
+    gaussian = tfp.distributions.Normal(0, 1)
+    p = gaussian.cdf(-eps)
+    # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
+    # grid distributed according to the nonlinear labels on the latent space image axes
+    grid_nonlinear = gaussian.quantile(np.linspace(p, 1 - p, 10001)).numpy()
+    # corresponding grid for a linear space where we'll actually do the scatterplot
+    grid_linear = np.linspace(-eps, eps, 10001)
+    def remap(x):
+        return np.interp(x, grid_nonlinear, grid_linear, left=np.nan, right=np.nan)  # nan = don't plot
+    linear_x = remap(mean[:, 0])
+    linear_y = remap(mean[:, 1])
+    newax.scatter(linear_x, linear_y, c=labels, alpha=0.1)
+    # newax.scatter(linear_x, linear_y, c=labels, cmap=my_cmap)
+    # newax.patch.set_alpha(0.25)  # patch = Axes background
+    newax.set_xlim(-eps, eps)
+    newax.set_ylim(-eps, eps)
+
+
 # --------------------------------------------------------------------------------
 # Main program - model training
+
+def preprocess_images(images, discrete=False):
+    """Preprocess MNIST dataset."""
+    images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
+    if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
+        images = np.where(images > .5, 1.0, 0.0)
+    # else continuous grayscale data
+    return images.astype("float32")
+
+# For overlay plotting, it's convenient to have these here.
+(train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data()
+train_images = preprocess_images(train_images)
+test_images = preprocess_images(test_images)
 
 def main():
     # Make preparations
 
     _clear_and_create_directory(output_dir)
 
-    (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
     train_size = train_images.shape[0]  # 60k
     test_size = test_images.shape[0]  # 10k
-
-    def preprocess_images(images, discrete=False):
-        """Preprocess MNIST dataset."""
-        images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
-        if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
-            images = np.where(images > .5, 1.0, 0.0)
-        # else continuous grayscale data
-        return images.astype("float32")
-
-    train_images = preprocess_images(train_images)
-    test_images = preprocess_images(test_images)
 
     train_dataset = tf.data.Dataset.from_tensor_slices(train_images).shuffle(train_size).batch(batch_size)
     test_dataset = tf.data.Dataset.from_tensor_slices(test_images).shuffle(test_size).batch(batch_size)
