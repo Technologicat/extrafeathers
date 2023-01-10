@@ -239,7 +239,11 @@ class CVAE(tf.keras.Model):
         if z is None:
             # Sample the code points from the latent prior.
             z = tf.random.normal(shape=(100, self.latent_dim))
-        return self.decode(z, apply_sigmoid=True)
+        P = self.decode(z)
+        p = tf.sigmoid(P)  # probability for discrete Bernoulli; λ parameter of continuous Bernoulli
+        # For the discrete Bernoulli distribution, the mean is the same as the Bernoulli parameter,
+        # which is the same as the probability of the output taking on the value 1 (instead of 0).
+        return p
 
     def encode(self, x):
         """x → parameters of variational posterior qϕ(z|x), namely `(μ, log σ)`."""
@@ -250,28 +254,31 @@ class CVAE(tf.keras.Model):
         return self.encoder(x)
 
     def reparameterize(self, mean, logvar):
-        """Map  (μ, log σ) → z  stochastically.
+        """Map `(μ, log σ) → z` stochastically.
 
-        Return (ε, z) (the same ε sample is needed in the ELBO computation).
+        Draw a single noise sample `ε`; return `(ε, z)`.
+
+        This is the reparameterization trick, isolating the stochasticity of `z`
+        into a non-parametric noise variable `ε`. Writing `z = g(μ(ϕ, x), [log σ](ϕ, x), ε)`
+        allows keeping the transformation `g` deterministic, thus allowing backpropagation
+        through graph nodes involving `z`.
         """
         # https://datascience.stackexchange.com/questions/51086/valueerror-cannot-convert-a-partially-known-tensorshape-to-a-tensor-256
         # `tf.shape` is dynamic; `mean.shape` is static (see docstring of `tf.shape`) and
         # does not work if one of the dimensions is not yet known (e.g. the batch size).
         # This is important to make the model saveable, because `Model.save` calls the
         # `call` method with an unspecified batch size (to build the computational graph).
+        #
+        # The noise sample is drawn from a unit spherical Gaussian, distinct from the latent prior.
+        #
         # eps = tf.random.normal(shape=mean.shape)
         eps = tf.random.normal(shape=tf.shape(mean))
-        return eps, eps * tf.exp(logvar * .5) + mean
+        z = eps * tf.exp(logvar * .5) + mean
+        return eps, z
 
-    def decode(self, z, apply_sigmoid=False):
+    def decode(self, z):
         """z → parameters of observation model pθ(x|z)"""
-        P = self.decoder(z)
-        if apply_sigmoid:
-            # For the discrete Bernoulli distribution, the mean is the same as the Bernoulli parameter,
-            # which is the same as the probability of the output taking on the value 1 (instead of 0).
-            p = tf.sigmoid(P)
-            return p
-        return P
+        return self.decoder(z)
 
     # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # TODO: So for now, we separately save the encoder and decoder models (both are Functional
@@ -301,7 +308,8 @@ class CVAE(tf.keras.Model):
     # def call(self, inputs):
     #     mean, logvar = self.encode(inputs)
     #     ignored_eps, z = self.reparameterize(mean, logvar)
-    #     xhat = self.decode(z, apply_sigmoid=True)
+    #     P = self.decode(z)
+    #     xhat = tf.sigmoid(P)
     #     return xhat
 
 model = CVAE(latent_dim)
@@ -343,7 +351,7 @@ def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
     return tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), log_norm, taylor)
 
 def compute_loss(model, x):
-    """VAE loss function: negative ELBO.
+    """VAE loss function: negative of the ELBO, for a data batch `x`.
 
     Evaluated by drawing a single-sample Monte Carlo estimate. Kingma and Welling (2019) note
     that this yields an unbiased estimator for the expectation that appears in the ELBO formula.
@@ -383,6 +391,12 @@ def compute_loss(model, x):
     # VAE, which doesn't even make sense for continuous (grayscale) data (hence the unnecessary
     # binarization of the input data, which hurts quality).
     #
+    # It is correct that even in the general case, we do want to minimize cross-entropy, but the ELBO is
+    # easier to understand without introducing this extra concept.
+    #
+    # See e.g. Wikipedia on cross-entropy:
+    #    https://en.wikipedia.org/wiki/Cross_entropy
+    #
     # How to compute pθ(x|z) in general, for any VAE: we just take the observation parameters P computed by
     # P = NN_dec(θ, z) at the sampled z (thus accounting for the dependence on z), and evaluate the known
     # function pθ(x|z) (parameterized by P and x) with those parameters P at the input x.
@@ -421,10 +435,12 @@ def compute_loss(model, x):
     # logpx_z = tf.reduce_sum(x * tf.math.log(p) + (1 - x) * tf.math.log(1 - p),
     #                         axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
-    # Continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1.
+    # Continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1,
+    # when x is continuous in the interval [0, 1] (instead of taking on just one of the values {0, 1}).
+    #
     # Note the output is now the parameter λ of the continuous Bernoulli distribution, not directly a
     # probability; and the mean of the continuous Bernoulli distribution is also different from λ.
-    # But still, in practice λ works well as-is as a deterministic output value for the decoder.
+    # Still, in practice λ works well as-is as a deterministic output value for the decoder.
     #
     # As for how to apply the normalization constant, see the original implementation by Loaiza-Ganem
     # and Cunningham: https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/cb_vae_mnist.ipynb
