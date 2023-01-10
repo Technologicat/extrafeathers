@@ -243,6 +243,7 @@ class CVAE(tf.keras.Model):
         p = tf.sigmoid(P)  # probability for discrete Bernoulli; λ parameter of continuous Bernoulli
         # For the discrete Bernoulli distribution, the mean is the same as the Bernoulli parameter,
         # which is the same as the probability of the output taking on the value 1 (instead of 0).
+        # For the continuous Bernoulli distribution, we just return λ as-is (works fine as output in practice).
         return p
 
     def encode(self, x):
