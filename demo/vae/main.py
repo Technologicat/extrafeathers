@@ -448,9 +448,10 @@ def train_step(model, x, optimizer):
         loss = compute_loss(model, x)
     gradients = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    return loss
 
 # --------------------------------------------------------------------------------
-# Main program - training
+# Plotting helpers
 
 def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int = 1) -> None:
     """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE)."""
@@ -568,6 +569,9 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
+# --------------------------------------------------------------------------------
+# Main program - model training
+
 def main():
     # Make preparations
 
@@ -582,6 +586,7 @@ def main():
         images = images.reshape((images.shape[0], 28, 28, 1)) / 255.  # scale to [0, 1]
         if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
             images = np.where(images > .5, 1.0, 0.0)
+        # else continuous grayscale data
         return images.astype("float32")
 
     train_images = preprocess_images(train_images)
@@ -617,20 +622,22 @@ def main():
         for epoch in range(1, epochs + 1):
             # SGD using one pass through the training set (with the batches set up previously)
             with timer() as tim_train:
+                running_mean = tf.keras.metrics.Mean()
                 for train_x in train_dataset:
-                    train_step(model, train_x, optimizer)
+                    running_mean(train_step(model, train_x, optimizer))
+                train_elbo = -running_mean.result()
 
             # For benchmarking: compute total ELBO on the test set
             with timer() as tim_test:
                 running_mean = tf.keras.metrics.Mean()
                 for test_x in test_dataset:
                     running_mean(compute_loss(model, test_x))
-                elbo = -running_mean.result()
+                test_elbo = -running_mean.result()
 
             plot_and_save_epoch_image(model, epoch, test_sample)
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
-            print(f"Epoch: {epoch}, Test set ELBO: {elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s; {est.formatted_eta}")
+            print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}: test set ELBO {test_elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s; {est.formatted_eta}")
     print(f"Total training/testing wall time: {tim_total.dt:0.3g}s")
 
     # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
