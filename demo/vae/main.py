@@ -184,9 +184,18 @@ def make_encoder():
     x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
                                strides=2, padding="same")(x)
     x = tf.keras.layers.Flatten()(x)
-    # VRAM saving trick: an extra dense layer (with small size) after the convolutions
+    # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
+    # if we add a small dense layer after the convolutions, and connect that to the outputs, we will have
+    # much fewer trainable parameters (in total) than if we connect the last convolution layer to the outputs
+    # directly. As pointed out by:
     # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
     x = tf.keras.layers.Dense(units=16, activation="relu")(x)
+    # No activation function in the output layers - we want arbitrary real numbers as output.
+    # The outputs will be interpreted as `(μ, log σ)` for the variational posterior qϕ(z|x).
+    # A uniform distribution for these quantities (from the random initialization of the NN)
+    # is a good prior for unknown location and scale parameters, see e.g.:
+    #   https://en.wikipedia.org/wiki/Principle_of_transformation_groups
+    #   https://en.wikipedia.org/wiki/Principle_of_maximum_entropy
     z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean")(x)
     z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var")(x)
     encoder_outputs = [z_mean, z_log_var]
@@ -196,11 +205,15 @@ def make_encoder():
 def make_decoder():
     # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
     decoder_inputs = tf.keras.Input(shape=(latent_dim,))
+    # Here we add the dense layer just for architectural symmetry with the encoder.
     x = tf.keras.layers.Dense(units=16, activation="relu")(decoder_inputs)
     x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
     x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
     x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
                                         strides=2, padding="same")(x)
+    # No activation function in the output layer - we want arbitrary real numbers as output.
+    # The output will be interpreted as parameters `P` for the observation model pθ(x|z).
+    # Here we want just something convenient that we can remap as necessary.
     decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2, padding="same")(x)
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder
@@ -224,13 +237,16 @@ class CVAE(tf.keras.Model):
              If not specified, a batch of 100 random samples is returned.
         """
         if z is None:
+            # Sample the code points from the latent prior.
             z = tf.random.normal(shape=(100, self.latent_dim))
         return self.decode(z, apply_sigmoid=True)
 
     def encode(self, x):
-        """Encode a batch of input data. Return the posterior parameters `(μ, log σ)`."""
+        """x → parameters of variational posterior qϕ(z|x), namely `(μ, log σ)`."""
+        # # If we had a single output layer of double the size, we could do it like this:
         # mean, logvar = tf.split(self.encoder(x), num_or_size_splits=2, axis=1)
         # return mean, logvar
+        # But having two outputs explicitly, we can just:
         return self.encoder(x)
 
     def reparameterize(self, mean, logvar):
@@ -239,24 +255,23 @@ class CVAE(tf.keras.Model):
         Return (ε, z) (the same ε sample is needed in the ELBO computation).
         """
         # https://datascience.stackexchange.com/questions/51086/valueerror-cannot-convert-a-partially-known-tensorshape-to-a-tensor-256
-        # tf.shape is dynamic; mean.shape is static (see docstring of tf.shape) and does not work
-        # if one of the dimensions is not yet known (e.g. the batch size)
+        # `tf.shape` is dynamic; `mean.shape` is static (see docstring of `tf.shape`) and
+        # does not work if one of the dimensions is not yet known (e.g. the batch size).
+        # This is important to make the model saveable, because `Model.save` calls the
+        # `call` method with an unspecified batch size (to build the computational graph).
         # eps = tf.random.normal(shape=mean.shape)
         eps = tf.random.normal(shape=tf.shape(mean))
         return eps, eps * tf.exp(logvar * .5) + mean
 
     def decode(self, z, apply_sigmoid=False):
-        """z → μ of p(x|z)"""
-        # TODO: It is unnecessarily confusing to interpret the output as logits.
-        # TODO: The encoder NN just produces real numbers, which we can interpret as we like.
-        # TODO: How we use them determines what the optimization process drives them to become.
-        logits = self.decoder(z)
+        """z → parameters of observation model pθ(x|z)"""
+        P = self.decoder(z)
         if apply_sigmoid:
             # For the discrete Bernoulli distribution, the mean is the same as the Bernoulli parameter,
             # which is the same as the probability of the output taking on the value 1 (instead of 0).
-            probs = tf.sigmoid(logits)
-            return probs
-        return logits
+            p = tf.sigmoid(P)
+            return p
+        return P
 
     # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # TODO: So for now, we separately save the encoder and decoder models (both are Functional
