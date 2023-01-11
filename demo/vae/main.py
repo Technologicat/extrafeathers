@@ -46,7 +46,7 @@ To load the trained model, in an IPython session:
 Now you can e.g.:
 
   import matplotlib.pyplot as plt
-  main.plot_and_save_latent_image(10)
+  main.plot_latent_image(10)
   plt.show()
 
 The implementation is based on combining material from these two tutorials:
@@ -73,8 +73,6 @@ References:
 # The REPL server allows inspecting/saving anything accessible from module-global scope
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
-
-# TODO: separate plotting and saving
 
 # TODO: add ELBO history progress plot (we should also compute statistics of these over several runs)
 # TODO: use an early-stopping criterion to avoid overfitting the training set?
@@ -479,7 +477,7 @@ def train_step(model, x, optimizer):
 # --------------------------------------------------------------------------------
 # Plotting helpers
 
-def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int = 1) -> None:
+def plot_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int = 1) -> None:
     """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE)."""
     batch_size, n_pixels_y, n_pixels_x, n_channels = tf.shape(test_sample).numpy()
     assert batch_size == 16, f"This function currently assumes a test sample of size 16, got {batch_size}"
@@ -511,8 +509,6 @@ def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, f
     plt.axis("off")
     plt.title(f"Epoch {epoch} (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$)")
     plt.tight_layout()
-    _create_directory(output_dir)
-    plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
@@ -558,8 +554,8 @@ def normal_grid(n: int = 20, kind: str = "quantile", eps: float = 3):
     return xx
 
 
-def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
-                               grid: str = "quantile", eps: float = 3, figno: int = 1) -> env:
+def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
+                      grid: str = "quantile", eps: float = 3, figno: int = 1) -> env:
     """Plot n × n digit images decoded from the latent space.
 
     `n`, `grid`, `eps`: passed to `normal_grid` (`grid` is the `kind`)
@@ -614,8 +610,6 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
 
     plt.title(f"Latent space ({grid} grid, up to ±{eps}σ)")
     plt.tight_layout()
-    _create_directory(output_dir)
-    plt.savefig(f"{output_dir}{latent_vis_basename}.{fig_format}")
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
@@ -626,7 +620,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot.
 
     `figdata`: metadata describing the figure on which to overlay the plot.
-               This is the return value of `plot_and_save_latent_image`.
+               This is the return value of `plot_latent_image`.
     `alpha`: opacity of the scatterplot points.
     """
     n = figdata.n
@@ -739,6 +733,10 @@ def main():
 
     _clear_and_create_directory(output_dir)
 
+    # must call `plt.show` once before `plotmagic.pause` works
+    plt.figure(1)
+    plt.show()
+
     train_size = train_images.shape[0]  # 60k
     test_size = test_images.shape[0]  # 10k
 
@@ -762,9 +760,8 @@ def main():
     model.decoder.summary()
 
     # Visualize the random initial state
-    plot_and_save_epoch_image(model, 0, test_sample)
-    plt.show()  # must call plt.show() once before pause works
-    plotmagic.pause(0.001)  # force redraw
+    plot_epoch_image(model, 0, test_sample)
+    plt.savefig(f"{output_dir}{fig_basename}_0000.{fig_format}")
 
     # Train the model
     est = ETAEstimator(epochs, keep_last=10)
@@ -784,7 +781,8 @@ def main():
                     running_mean(compute_loss(model, test_x))
                 test_elbo = -running_mean.result()
 
-            plot_and_save_epoch_image(model, epoch, test_sample)
+            plot_epoch_image(model, epoch, test_sample)
+            plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
             print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}: test set ELBO {test_elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s; {est.formatted_eta}")
@@ -797,7 +795,7 @@ def main():
     # #   import main
     # #   main.model = keras.models.load_model("my_model")
     # # Now the model is loaded; you should be able to e.g.
-    # #   main.plot_and_save_latent_image(20)
+    # #   main.plot_latent_image(20)
     # #
     # # force the model to build its graph to make it savable
     # dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
@@ -816,7 +814,8 @@ def main():
         writer.append_data(image)
 
     # Visualize latent representation
-    plot_and_save_latent_image(20, figno=2)
+    plot_latent_image(20, figno=2)
+    plt.savefig(f"{output_dir}{latent_vis_basename}.{fig_format}")
 
 if __name__ == "__main__":
     # To allow easy access to our global-scope variables in the live REPL session,
