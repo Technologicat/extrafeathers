@@ -598,8 +598,11 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
     plotmagic.pause(0.1)  # force redraw
 
 
-def overlay_dataxys(x: tf.Tensor, labels: tf.Tensor, model: typing.Optional[CVAE] = None) -> None:
-    """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot."""
+def overlay_dataxys(x: tf.Tensor, labels: tf.Tensor, model: typing.Optional[CVAE] = None, alpha: float = 0.1) -> None:
+    """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot.
+
+    `alpha`: opacity of the scatterplot points.
+    """
     if model is None:
         def get_default_model():
             global model
@@ -651,28 +654,29 @@ def overlay_dataxys(x: tf.Tensor, labels: tf.Tensor, model: typing.Optional[CVAE
     newax = fig.add_axes(box)
     newax.set_axis_off()
 
-    # # We could also customize a colormap like this:
+    # # Instead of using a global alpha, we could also customize a colormap like this
+    # # (to make alpha vary as a function of the data value):
     # import matplotlib as mpl
     # rgb_colors = mpl.colormaps.get("viridis").colors  # or some other base colormap; or make a custom one
-    # rgba_colors = [[r, g, b, 0.25] for r, g, b in rgb_colors]
+    # rgba_colors = [[r, g, b, alpha] for r, g, b in rgb_colors]
     # my_cmap = mpl.colors.ListedColormap(rgba_colors, name="viridis_translucent")
     # # mpl.colormaps.register(my_cmap, force=True)  # no need to register it as we can pass it directly.
 
-    # Account for the nonlinear scaling so that the positioning matches the example images.
+    # Invert the quantile spacing numerically, to make the positioning match the example images.
+    # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
+    N_interp = 10001
     eps = 3
     gaussian = tfp.distributions.Normal(0, 1)
     p = gaussian.cdf(-eps)
-    # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
-    # grid distributed according to the nonlinear labels on the latent space image axes
-    grid_nonlinear = gaussian.quantile(np.linspace(p, 1 - p, 10001)).numpy()
-    # corresponding grid for a linear space where we'll actually do the scatterplot
-    grid_linear = np.linspace(-eps, eps, 10001)
-    def remap(x):
-        return np.interp(x, grid_nonlinear, grid_linear, left=np.nan, right=np.nan)  # nan = don't plot
-    linear_x = remap(mean[:, 0])
-    linear_y = remap(mean[:, 1])
-    newax.scatter(linear_x, linear_y, c=labels, alpha=0.1)
-    # newax.scatter(linear_x, linear_y, c=labels, cmap=my_cmap)
+    raw_zi = gaussian.quantile(np.linspace(p, 1 - p, N_interp)).numpy()  # data value
+    linear_zi = np.linspace(-eps, eps, N_interp)  # where that value is on a display with linear coordinates
+    def to_linear_display_coordinate(zi):
+        """raw value of z_i -> display position on a linear axis with interval [-eps, eps]"""
+        return np.interp(zi, xp=raw_zi, fp=linear_zi, left=np.nan, right=np.nan)  # nan = don't plot
+    linear_z1 = to_linear_display_coordinate(mean[:, 0])
+    linear_z2 = to_linear_display_coordinate(mean[:, 1])
+    newax.scatter(linear_z1, linear_z2, c=labels, alpha=alpha)
+    # newax.scatter(linear_z1, linear_z2, c=labels, cmap=my_cmap)
     # newax.patch.set_alpha(0.25)  # patch = Axes background
     newax.set_xlim(-eps, eps)
     newax.set_ylim(-eps, eps)
