@@ -75,7 +75,6 @@ References:
 import unpythonic.net.server as repl_server
 
 # TODO: separate plotting and saving
-# TODO: refactor `overlay_dataxys` (and rename to `overlay_datapoints`)
 
 # TODO: add ELBO history progress plot (we should also compute statistics of these over several runs)
 # TODO: use an early-stopping criterion to avoid overfitting the training set?
@@ -98,6 +97,7 @@ import pathlib
 import typing
 
 from unpythonic import ETAEstimator, timer
+from unpythonic.env import env
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -518,7 +518,7 @@ def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, f
 
 
 def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
-                               grid: str = "quantile", eps: float = 3, figno: int = 1) -> None:
+                               grid: str = "quantile", eps: float = 3, figno: int = 1) -> env:
     """Plot n × n digit images decoded from the latent space.
 
     `digit_size`: width/height of each digit image (square-shaped), in pixels.
@@ -597,36 +597,45 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
+    return env(n=n, model=model, digit_size=digit_size, grid=grid, eps=eps, figno=figno)
 
-def overlay_dataxys(x: tf.Tensor, labels: tf.Tensor, model: typing.Optional[CVAE] = None, alpha: float = 0.1) -> None:
+
+def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: float = 0.1) -> None:
     """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot.
 
+    `figdata`: metadata describing the figure on which to overlay the plot.
+               This is the return value of `plot_and_save_latent_image`.
     `alpha`: opacity of the scatterplot points.
     """
-    if model is None:
-        def get_default_model():
-            global model
-            return model
-        model = get_default_model()
+    n = figdata.n
+    model = figdata.model
+    digit_size = figdata.digit_size
+    grid = figdata.grid
+    eps = figdata.eps
+    figno = figdata.figno
+
     assert isinstance(model, CVAE)
 
     # Find latent distribution parameters for the given data.
     # We'll plot the means.
     mean, logvar = model.encode(x)
 
+    # We need some gymnastics to plot on top of an imshow image; it's easiest to
+    # overlay a new Axes with a transparent background.
     # https://stackoverflow.com/questions/16829436/overlay-matplotlib-imshow-with-line-plots-that-are-arranged-in-a-grid
     # https://matplotlib.org/stable/tutorials/advanced/transforms_tutorial.html
+    plt.figure(figno)
     fig = plt.gcf()
     # axs = fig.axes  # list of all Axes objects in this Figure
     ax = plt.gca()
     plt.draw()  # force update of extents
-    # box = ax._position.bounds  # whole of the current Axes, in figure coordinates
+    # box = ax._position.bounds  # whole of the Axes `ax`, in figure coordinates
+
+    # print([int(x) for x in fig.axes[0].get_xlim()])
 
     # Compute position for overlay:
     #
-    # Determine the centers of edgemost images in data coordinates.
-    digit_size = 28
-    n = 20
+    # Determine the centers of images at two opposite corners of the sheet, in data coordinates.
     image_width = digit_size * n
     xmin = digit_size / 2
     xmax = image_width - (digit_size / 2)
@@ -639,8 +648,8 @@ def overlay_dataxys(x: tf.Tensor, labels: tf.Tensor, model: typing.Optional[CVAE
     def data_to_fig(xy):
         """Convert Matplotlib data coordinates (of current axis) to figure coordinates."""
         xy_ax = ax.transLimits.transform(xy)  # data coordinates -> axes coordinates
-        xy_disp = ax.transAxes.transform(xy_ax)
-        xy_fig = fig.transFigure.inverted().transform(xy_disp)
+        xy_disp = ax.transAxes.transform(xy_ax)  # axes -> display
+        xy_fig = fig.transFigure.inverted().transform(xy_disp)  # display -> figure
         # print(f"data: {xy}")
         # print(f"ax:   {xy_ax}")
         # print(f"disp: {xy_disp}")
@@ -662,19 +671,23 @@ def overlay_dataxys(x: tf.Tensor, labels: tf.Tensor, model: typing.Optional[CVAE
     # my_cmap = mpl.colors.ListedColormap(rgba_colors, name="viridis_translucent")
     # # mpl.colormaps.register(my_cmap, force=True)  # no need to register it as we can pass it directly.
 
-    # Invert the quantile spacing numerically, to make the positioning match the example images.
-    # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
-    N_interp = 10001
-    eps = 3
-    gaussian = tfp.distributions.Normal(0, 1)
-    p = gaussian.cdf(-eps)
-    raw_zi = gaussian.quantile(np.linspace(p, 1 - p, N_interp)).numpy()  # data value
-    linear_zi = np.linspace(-eps, eps, N_interp)  # where that value is on a display with linear coordinates
-    def to_linear_display_coordinate(zi):
-        """raw value of z_i -> display position on a linear axis with interval [-eps, eps]"""
-        return np.interp(zi, xp=raw_zi, fp=linear_zi, left=np.nan, right=np.nan)  # nan = don't plot
-    linear_z1 = to_linear_display_coordinate(mean[:, 0])
-    linear_z2 = to_linear_display_coordinate(mean[:, 1])
+    if grid == "quantile":
+        # Invert the quantile spacing numerically, to make the positioning match the example images.
+        # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
+        N_interp = 10001
+        gaussian = tfp.distributions.Normal(0, 1)
+        p = gaussian.cdf(-eps)
+        raw_zi = gaussian.quantile(np.linspace(p, 1 - p, N_interp)).numpy()  # data value
+        linear_zi = np.linspace(-eps, eps, N_interp)  # where that value is on a display with linear coordinates
+        def to_linear_display_coordinate(zi):
+            """raw value of z_i -> display position on a linear axis with interval [-eps, eps]"""
+            return np.interp(zi, xp=raw_zi, fp=linear_zi, left=np.nan, right=np.nan)  # nan = don't plot
+        linear_z1 = to_linear_display_coordinate(mean[:, 0])
+        linear_z2 = to_linear_display_coordinate(mean[:, 1])
+    else:  # grid == "linear":
+        linear_z1 = mean[:, 0]
+        linear_z2 = mean[:, 1]
+
     newax.scatter(linear_z1, linear_z2, c=labels, alpha=alpha)
     # newax.scatter(linear_z1, linear_z2, c=labels, cmap=my_cmap)
     # newax.patch.set_alpha(0.25)  # patch = Axes background
