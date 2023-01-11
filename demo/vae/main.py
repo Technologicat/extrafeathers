@@ -75,15 +75,22 @@ References:
 import unpythonic.net.server as repl_server
 
 # TODO: separate plotting and saving
-# TODO: refactor `overlay_dataxys`
+# TODO: refactor `overlay_dataxys` (and rename to `overlay_datapoints`)
 
 # TODO: add ELBO history progress plot (we should also compute statistics of these over several runs)
-# TODO: use an early-stopping criterion?
+# TODO: use an early-stopping criterion to avoid overfitting the training set?
+
+# TODO: conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)
+#  - for a custom Keras object, `train_step` should be a method, not a separate function
+#  - `call` (although somewhat useless for an autoencoder) should be implemented
+#  - how to support `fit` and `predict`?
+#  - saving/serialization with standard API
+# TODO: register some monitored metrics? This would allow using the `EarlyStopping` class from the Keras API.
 
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
-#   - Or better yet, compute the distribution of the actual fields (observed data!) and model that
+#   - Or better yet, first check the distribution of the actual fields (observed data!)
 
 import glob
 import os
