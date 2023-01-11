@@ -517,28 +517,59 @@ def plot_and_save_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, f
     plotmagic.pause(0.1)  # force redraw
 
 
+def normal_grid(n: int = 20, kind: str = "quantile", eps: float = 3):
+    """Make a grid on `[-εσ, +εσ]` for evaluating normally distributed quantities.
+
+    μ = 0, σ = 1; shift and scale the result manually if necessary.
+
+    `n`: number of points
+
+    `grid`: grid spacing type; one of "linear" or "quantile" (default)
+
+            "quantile" has normally distributed density, placing more emphasis
+            on the region near the origin, where most of the gaussian probability
+            mass is concentrated. This grid is linear in cumulative probability.
+
+            "linear" is just a linear spacing. It effectively emphasizes the faraway
+            regions, since the gaussian does not have much probability mass there.
+
+    `eps`:  ε for lower/upper limit ±εσ. E.g. the default 3 means ±3σ.
+    """
+    assert kind in ("linear", "quantile")
+
+    gaussian = tfp.distributions.Normal(0, 1)
+    pmin = gaussian.cdf(-eps)  # cdf(x) := P[X ≤ x], so this is P[x ≤ -εσ], where σ = 1
+
+    if kind == "quantile":  # quantile(p) := {x | P[X ≤ x] = p}
+        # xx = gaussian.quantile(np.linspace(p, 1 - p, n)).numpy()  # yields +inf at ≥ +6σ
+        xx = gaussian.quantile(np.linspace(pmin, 0.5, n // 2 + 1)).numpy()
+        xx_left = xx[:-1]
+        xx_right = -xx_left[::-1]
+        if n % 2 == 0:
+            xx = np.concatenate((xx_left, xx_right))
+        else:
+            xx = np.concatenate((xx_left, [0.0], xx_right))
+    else:  # kind == "linear":
+        xmin = gaussian.quantile(pmin)
+        xmax = -xmin
+        xx = np.linspace(xmin, xmax, n)
+
+    assert np.shape(xx)[0] == n
+    return xx
+
+
 def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
                                grid: str = "quantile", eps: float = 3, figno: int = 1) -> env:
     """Plot n × n digit images decoded from the latent space.
 
+    `n`, `grid`, `eps`: passed to `normal_grid` (`grid` is the `kind`)
+
+                        A quantile grid is linear in cumulative probability according to the
+                        latent prior. However, using the prior is subtly wrong, and the marginal
+                        posterior of z should be used instead; see Lin et al.
+
     `digit_size`: width/height of each digit image (square-shaped), in pixels.
                   Must match what the model was trained for.
-
-    `grid`: grid spacing type; one of "linear" or "quantile" (default)
-
-            A quantile grid accounts for the shape of the spherical gaussian latent
-            prior, placing more emphasis on the region near the origin, where most
-            of the prior's probability mass is concentrated. This grid is linear
-            in cumulative probability.
-
-            A linear grid effectively emphasizes the faraway regions of the
-            latent space, since the prior does not have much probability mass there.
-            This grid is linear directly in the coordinates of the latent space.
-
-            Grid min/max are always taken to be ±εσ in the latent space.
-
-    `eps`:  ε for grid lower/upper limit ±εσ. E.g. the default 3 means ±3σ.
-
     `model`: `CVAE` instance, or `None` to use the default instance.
     `figno`: matplotlib figure number.
     """
@@ -548,23 +579,14 @@ def plot_and_save_latent_image(n: int = 20, model: typing.Optional[CVAE] = None,
             return model
         model = get_default_model()
     assert isinstance(model, CVAE)
-    assert grid in ("linear", "quantile")
-
-    gaussian = tfp.distributions.Normal(0, 1)
-    p = gaussian.cdf(-eps)  # cdf(x) := P[X ≤ x], so this is P[x ≤ -εσ], where σ = 1
-
-    if grid == "quantile":  # quantile(p) := {x | P[X ≤ x] = p}
-        # Linear in cumulative probability (according to latent prior, which is subtly wrong; see Lin et al.)
-        grid_x = gaussian.quantile(np.linspace(p, 1 - p, n)).numpy()
-        grid_y = gaussian.quantile(np.linspace(p, 1 - p, n)).numpy()
-    else:  # grid == "linear":
-        # Linear in latent space coordinates
-        grid_x = np.linspace(gaussian.quantile(p), gaussian.quantile(1 - p), n)
-        grid_y = np.linspace(gaussian.quantile(p), gaussian.quantile(1 - p), n)
 
     image_width = digit_size * n
     image_height = image_width
     image = np.zeros((image_height, image_width))
+
+    zz = normal_grid(n, grid, eps)
+    grid_x = zz
+    grid_y = zz
 
     for i, yi in enumerate(grid_x):
         for j, xi in enumerate(grid_y):
@@ -635,7 +657,8 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
 
     # Compute position for overlay:
     #
-    # Determine the centers of images at two opposite corners of the sheet, in data coordinates.
+    # Determine the centers of images at two opposite corners of the sheet,
+    # in data coordinates of the imshow plot.
     image_width = digit_size * n
     xmin = digit_size / 2
     xmax = image_width - (digit_size / 2)
@@ -674,11 +697,9 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     if grid == "quantile":
         # Invert the quantile spacing numerically, to make the positioning match the example images.
         # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
-        N_interp = 10001
-        gaussian = tfp.distributions.Normal(0, 1)
-        p = gaussian.cdf(-eps)
-        raw_zi = gaussian.quantile(np.linspace(p, 1 - p, N_interp)).numpy()  # data value
-        linear_zi = np.linspace(-eps, eps, N_interp)  # where that value is on a display with linear coordinates
+        n_interp = 10001
+        raw_zi = normal_grid(n_interp, grid, eps)  # data value
+        linear_zi = np.linspace(-eps, eps, n_interp)  # where that value is on a display with linear coordinates
         def to_linear_display_coordinate(zi):
             """raw value of z_i -> display position on a linear axis with interval [-eps, eps]"""
             return np.interp(zi, xp=raw_zi, fp=linear_zi, left=np.nan, right=np.nan)  # nan = don't plot
@@ -693,6 +714,8 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # newax.patch.set_alpha(0.25)  # patch = Axes background
     newax.set_xlim(-eps, eps)
     newax.set_ylim(-eps, eps)
+    plt.draw()
+    plotmagic.pause(0.1)  # force redraw
 
 
 # --------------------------------------------------------------------------------
