@@ -18,5 +18,5 @@ test_images = main.preprocess_images(test_images)
 
 plt.ion()
 
-e = main.plot_latent_image(20)
+e = main.plot_latent_image(21)
 main.overlay_datapoints(train_images, train_labels, e)

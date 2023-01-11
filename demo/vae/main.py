@@ -814,7 +814,7 @@ def main():
         writer.append_data(image)
 
     # Visualize latent representation
-    plot_latent_image(20, figno=2)
+    plot_latent_image(21, figno=2)
     plt.savefig(f"{output_dir}{latent_vis_basename}.{fig_format}")
 
 if __name__ == "__main__":
