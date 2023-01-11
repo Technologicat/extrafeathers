@@ -639,7 +639,6 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # We need some gymnastics to plot on top of an imshow image; it's easiest to
     # overlay a new Axes with a transparent background.
     # https://stackoverflow.com/questions/16829436/overlay-matplotlib-imshow-with-line-plots-that-are-arranged-in-a-grid
-    # https://matplotlib.org/stable/tutorials/advanced/transforms_tutorial.html
     plt.figure(figno)
     fig = plt.gcf()
     # axs = fig.axes  # list of all Axes objects in this Figure
@@ -664,6 +663,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # Convert to figure coordinates.
     def data_to_fig(xy):
         """Convert Matplotlib data coordinates (of current axis) to figure coordinates."""
+        # https://matplotlib.org/stable/tutorials/advanced/transforms_tutorial.html
         xy_ax = ax.transLimits.transform(xy)  # data coordinates -> axes coordinates
         xy_disp = ax.transAxes.transform(xy_ax)  # axes -> display
         xy_fig = fig.transFigure.inverted().transform(xy_disp)  # display -> figure
