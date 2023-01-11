@@ -74,8 +74,8 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
-# TODO: add ELBO history progress plot (we should also compute statistics of these over several runs)
 # TODO: use an early-stopping criterion to avoid overfitting the training set?
+# TODO: also save model snapshots so we can stop manually
 
 # TODO: conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)
 #  - for a custom Keras object, `train_step` should be a method, not a separate function
@@ -83,6 +83,7 @@ import unpythonic.net.server as repl_server
 #  - how to support `fit` and `predict`?
 #  - saving/serialization with standard API
 # TODO: register some monitored metrics? This would allow using the `EarlyStopping` class from the Keras API.
+# TODO: implement metrics from "Early stopping but when?" paper
 
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
@@ -477,7 +478,7 @@ def train_step(model, x, optimizer):
 # --------------------------------------------------------------------------------
 # Plotting helpers
 
-def plot_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int = 1) -> None:
+def plot_test_sample_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int = 1) -> None:
     """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE)."""
     batch_size, n_pixels_y, n_pixels_x, n_channels = tf.shape(test_sample).numpy()
     assert batch_size == 16, f"This function currently assumes a test sample of size 16, got {batch_size}"
@@ -503,12 +504,18 @@ def plot_epoch_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int
         image[row * n_pixels_y: (row + 1) * n_pixels_y,
               col2 * n_pixels_x: (col2 + 1) * n_pixels_x] = x_hat.numpy()
 
-    plt.figure(figno, figsize=(8, 4))
-    plt.clf()
-    plt.imshow(image, cmap="Greys_r")
-    plt.axis("off")
-    plt.title(f"Epoch {epoch} (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$)")
-    plt.tight_layout()
+    plt.figure(figno)
+    fig = plt.gcf()
+    ax = fig.axes[0]
+    ax.cla()
+    plt.sca(ax)
+    fig.tight_layout()  # prevent axes crawling
+    ax.imshow(image, cmap="Greys_r")
+    ax.axis("off")
+
+    ax.set_title(f"Test sample, epoch {epoch} (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$)")
+    fig.tight_layout()
+
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
@@ -555,7 +562,8 @@ def normal_grid(n: int = 20, kind: str = "quantile", eps: float = 3):
 
 
 def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
-                      grid: str = "quantile", eps: float = 3, figno: int = 1) -> env:
+                      grid: str = "quantile", eps: float = 3, figno: int = 1,
+                      epoch: typing.Optional[int] = None) -> env:
     """Plot n × n digit images decoded from the latent space.
 
     `n`, `grid`, `eps`: passed to `normal_grid` (`grid` is the `kind`)
@@ -568,6 +576,7 @@ def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_si
                   Must match what the model was trained for.
     `model`: `CVAE` instance, or `None` to use the default instance.
     `figno`: matplotlib figure number.
+    `epoch`: if specified, included in the figure title.
     """
     if model is None:
         def get_default_model():
@@ -593,23 +602,31 @@ def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_si
             image[i * digit_size: (i + 1) * digit_size,
                   j * digit_size: (j + 1) * digit_size] = digit.numpy()[::-1, :]
 
-    plt.figure(figno, figsize=(10, 10))
-    plt.clf()
-    plt.imshow(image, origin="lower", cmap="Greys_r")
+    plt.figure(figno)
+    fig = plt.gcf()
+    ax = fig.axes[0]
+    ax.cla()
+    plt.sca(ax)
+    fig.tight_layout()  # <-- important to do this also here to prevent axes crawling
+    ax.imshow(image, origin="lower", cmap="Greys_r")
+    # print(ax._position.bounds)  # DEBUG
 
     # Show latent space coordinates (center a tick on each row/column, labeled with the coordinate)
     startx = digit_size / 2
     endx = image_width - (digit_size / 2)
     tick_positions_x = np.array(startx + np.linspace(0, 1, len(grid_x)) * (endx - startx), dtype=int)
     tick_positions_y = tick_positions_x
-    plt.xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x], rotation="vertical")
-    plt.yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y])
+    ax.set_xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x], rotation="vertical")
+    ax.set_yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y])
 
-    plt.xlabel(r"$z_{1}$")
-    plt.ylabel(r"$z_{2}$")
+    ax.set_xlabel(r"$z_{1}$")
+    ax.set_ylabel(r"$z_{2}$")
 
-    plt.title(f"Latent space ({grid} grid, up to ±{eps}σ)")
-    plt.tight_layout()
+    epoch_str = f"; epoch {epoch}" if epoch is not None else ""
+    ax.set_title(f"Latent space ({grid} grid, up to ±{eps}σ){epoch_str}")
+
+    fig.tight_layout()
+
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
@@ -733,9 +750,18 @@ def main():
 
     _clear_and_create_directory(output_dir)
 
+    # Set up figures
+    fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))  # test example
+    fig1.tight_layout()
+    fig2, axs2 = plt.subplots(1, 1, figsize=(6, 4))  # ELBO history
+    fig2.tight_layout()
+    fig3, axs3 = plt.subplots(1, 1, figsize=(10, 10))  # latent space
+    fig3.tight_layout()
+
     # must call `plt.show` once before `plotmagic.pause` works
-    plt.figure(1)
     plt.show()
+    plt.draw()
+    plotmagic.pause(0.001)
 
     train_size = train_images.shape[0]  # 60k
     test_size = test_images.shape[0]  # 10k
@@ -759,12 +785,19 @@ def main():
     model.encoder.summary()
     model.decoder.summary()
 
-    # Visualize the random initial state
-    plot_epoch_image(model, 0, test_sample)
+    # Plot the random initial state
+    plot_test_sample_image(model, 0, test_sample)
+    plot_test_sample_image(model, 0, test_sample)  # and again to prevent axes crawling
     plt.savefig(f"{output_dir}{fig_basename}_0000.{fig_format}")
+
+    e = plot_latent_image(21, figno=3, epoch=0)
+    e = plot_latent_image(21, figno=3, epoch=0)  # and again to prevent axes crawling
+    plt.savefig(f"{output_dir}{latent_vis_basename}_0000.{fig_format}")
 
     # Train the model
     est = ETAEstimator(epochs, keep_last=10)
+    train_elbos = []
+    test_elbos = []
     with timer() as tim_total:
         for epoch in range(1, epochs + 1):
             # SGD using one pass through the training set (with the batches set up previously)
@@ -773,6 +806,7 @@ def main():
                 for train_x in train_dataset:
                     running_mean(train_step(model, train_x, optimizer))
                 train_elbo = -running_mean.result()
+                train_elbos.append(train_elbo)
 
             # For benchmarking: compute total ELBO on the test set
             with timer() as tim_test:
@@ -780,9 +814,40 @@ def main():
                 for test_x in test_dataset:
                     running_mean(compute_loss(model, test_x))
                 test_elbo = -running_mean.result()
+                test_elbos.append(test_elbo)
 
-            plot_epoch_image(model, epoch, test_sample)
+            plot_test_sample_image(model, epoch, test_sample)
             plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
+
+            # plot ELBO and save the ELBO history (for visual tracking of training)
+            plt.figure(2)
+            fig = plt.gcf()
+            ax = fig.axes[0]
+            ax.cla()
+            plt.sca(ax)
+            xx = np.arange(1, epoch + 1)
+            ax.plot(xx, train_elbos, label="train")
+            ax.plot(xx, test_elbos, label="test")
+            ax.xaxis.grid(visible=True, which="both")
+            ax.yaxis.grid(visible=True, which="both")
+            ax.set_xlabel("epoch")
+            ax.set_ylabel("ELBO")
+            ax.legend(loc="best")
+            fig.tight_layout()
+            plt.draw()
+            plotmagic.pause(0.1)
+            plt.savefig(f"{output_dir}elbo.{fig_format}")
+            np.savez(f"{output_dir}elbo.npz", epochs=xx, train_elbos=train_elbos, test_elbos=test_elbos)
+
+            # Plot and save latent representation
+            e = plot_latent_image(21, figno=3, epoch=epoch)
+            plt.savefig(f"{output_dir}{latent_vis_basename}_{epoch:04d}.{fig_format}")
+            # overlay_datapoints(train_images, train_labels, e)  # out of memory on GPU
+
+            # snapshot model every now and then
+            if epoch % 5 == 1:
+                model.my_save()
+
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
             print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}: test set ELBO {test_elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s; {est.formatted_eta}")
@@ -814,8 +879,12 @@ def main():
         writer.append_data(image)
 
     # Visualize latent representation
-    plot_latent_image(21, figno=2)
-    plt.savefig(f"{output_dir}{latent_vis_basename}.{fig_format}")
+    e = plot_latent_image(21, figno=3)
+    plt.savefig(f"{output_dir}{latent_vis_basename}_final.{fig_format}")
+
+    # ...and once again with a training dataset overlay
+    overlay_datapoints(train_images, train_labels, e)
+    plt.savefig(f"{output_dir}{latent_vis_basename}_annotated.{fig_format}")
 
 if __name__ == "__main__":
     # To allow easy access to our global-scope variables in the live REPL session,
