@@ -695,11 +695,15 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         # print(f"disp: {xy_disp}")
         # print(f"fig:  {xy_fig}")
         return xy_fig
-    x0, y0 = data_to_fig(xy0)
-    x1, y1 = data_to_fig(xy1)
+
+    def compute_overlay_position():  # in figure coordinates
+        x0, y0 = data_to_fig(xy0)
+        x1, y1 = data_to_fig(xy1)
+        box = [x0, y0, (x1 - x0), (y1 - y0)]
+        return box
 
     # Set up the new Axes, no background (`set_axis_off`), and plot the overlay.
-    box = [x0, y0, (x1 - x0), (y1 - y0)]
+    box = compute_overlay_position()
     newax = fig.add_axes(box)
     newax.set_axis_off()
 
@@ -708,11 +712,9 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         fig.tight_layout()
         plt.draw()
         plotmagic.pause(0.001)
-        x0, y0 = data_to_fig(xy0)
-        x1, y1 = data_to_fig(xy1)
-        box = [x0, y0, (x1 - x0), (y1 - y0)]
+        box = compute_overlay_position()
         newax.set_position(box)
-    cid = fig.canvas.mpl_connect('resize_event', onresize)
+    cid = fig.canvas.mpl_connect('resize_event', onresize)  # return value = callback id for `mpl_disconnect`
 
     # # Instead of using a global alpha, we could also customize a colormap like this
     # # (to make alpha vary as a function of the data value):
