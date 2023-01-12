@@ -127,11 +127,15 @@ optimizer = tf.keras.optimizers.Adam(1e-4)
 
 # Saving
 output_dir = "demo/output/vae/"
-
-fig_basename = "epoch"  # -> "epoch_0000.png" and so on; must be a unique prefix among output filenames
 fig_format = "png"
-latent_vis_basename = "latent_space"
-anim_filename = "cvae.gif"
+
+test_sample_fig_basename = "test_sample"  # -> "test_sample_0000.png" and so on; must be a unique prefix among output filenames
+latent_space_fig_basename = "latent_space"
+
+elbo_fig_filename = "elbo"
+
+test_sample_anim_filename = f"evolution_{test_sample_fig_basename}.gif"
+latent_space_anim_filename = f"evolution_{latent_space_fig_basename}.gif"
 
 # --------------------------------------------------------------------------------
 # Helper for deleting previously saved model (to save new one cleanly)
@@ -919,12 +923,12 @@ def main():
     # Plot the random initial state
     plot_test_sample_image(test_sample, epoch=0, figno=1)
     plot_test_sample_image(test_sample, epoch=0, figno=1)  # and again to prevent axes crawling
-    fig1.savefig(f"{output_dir}{fig_basename}_0000.{fig_format}")
+    fig1.savefig(f"{output_dir}{test_sample_fig_basename}_0000.{fig_format}")
     fig1.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
     e = plot_latent_image(21, figno=3, epoch=0)
     e = plot_latent_image(21, figno=3, epoch=0)  # and again to prevent axes crawling
-    fig3.savefig(f"{output_dir}{latent_vis_basename}_0000.{fig_format}")
+    fig3.savefig(f"{output_dir}{latent_space_fig_basename}_0000.{fig_format}")
     fig3.canvas.draw_idle()
 
     # Train the model
@@ -941,7 +945,7 @@ def main():
                 train_elbo = -running_mean.result()
                 train_elbos.append(train_elbo)
 
-            # For benchmarking: compute total ELBO on the test set
+            # Performance estimation: ELBO on the test set
             with timer() as tim_test:
                 running_mean = tf.keras.metrics.Mean()
                 for test_x in test_dataset:
@@ -949,31 +953,34 @@ def main():
                 test_elbo = -running_mean.result()
                 test_elbos.append(test_elbo)
 
-            plot_test_sample_image(test_sample, epoch=epoch, figno=1)
-            fig1.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
-            fig1.canvas.draw_idle()
+            # Plot the progress
+            with timer() as tim_plot:
+                # Test sample
+                plot_test_sample_image(test_sample, epoch=epoch, figno=1)
+                fig1.savefig(f"{output_dir}{test_sample_fig_basename}_{epoch:04d}.{fig_format}")
+                fig1.canvas.draw_idle()
 
-            # Plot ELBO and save the ELBO history (for visual tracking of training)
-            epochs = np.arange(1, epoch + 1)
-            plot_elbo(epochs, train_elbos, test_elbos, epoch=epoch, figno=2)
-            fig2.savefig(f"{output_dir}elbo.{fig_format}")
-            fig2.canvas.draw_idle()
-            np.savez(f"{output_dir}elbo.npz", epochs=epochs, train_elbos=train_elbos, test_elbos=test_elbos)
+                # ELBO
+                epochs = np.arange(1, epoch + 1)
+                plot_elbo(epochs, train_elbos, test_elbos, epoch=epoch, figno=2)
+                fig2.savefig(f"{output_dir}{elbo_fig_filename}.{fig_format}")
+                fig2.canvas.draw_idle()
 
-            # Plot and save latent representation
-            e = plot_latent_image(21, figno=3, epoch=epoch)
-            fig3.savefig(f"{output_dir}{latent_vis_basename}_{epoch:04d}.{fig_format}")
-            fig3.canvas.draw_idle()
-            # overlay_datapoints(train_images, train_labels, e)  # out of memory on GPU
+                # Latent space
+                e = plot_latent_image(21, figno=3, epoch=epoch)
+                fig3.savefig(f"{output_dir}{latent_space_fig_basename}_{epoch:04d}.{fig_format}")
+                fig3.canvas.draw_idle()
+                # overlay_datapoints(train_images, train_labels, e)  # out of memory on GPU
 
-            # snapshot model every now and then
-            if epoch % 5 == 1:
+            # Save current model coefficients, and the ELBO history so far
+            with timer() as tim_save:
                 model.my_save(f"{output_dir}model/{epoch:04d}")
+                np.savez(f"{output_dir}elbo.npz", epochs=epochs, train_elbos=train_elbos, test_elbos=test_elbos)
 
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
-            print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}: test set ELBO {test_elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s; {est.formatted_eta}")
-    print(f"Total training/testing wall time: {tim_total.dt:0.3g}s")
+            print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}: test set ELBO {test_elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s, plotting {tim_plot.dt:0.3g}s, saving {tim_save.dt:0.3g}; {est.formatted_eta}")
+    print(f"Total model training wall time: {tim_total.dt:0.6g}s")
 
     # # Save the trained model.
     # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
@@ -992,25 +999,33 @@ def main():
     # this custom saving hack (saving the encoder/decoder separately) works
     model.my_save(f"{output_dir}model/final")
 
-    # Make a gif animation of the training epochs
-    with imageio.get_writer(f"{output_dir}{anim_filename}", mode="I") as writer:
-        filenames = glob.glob(f"{output_dir}{fig_basename}*.{fig_format}")
-        filenames = sorted(filenames)
-        for filename in filenames:
+    # Make gif animations
+    def make_animation(output_filename: str, input_glob: str) -> None:
+        with imageio.get_writer(output_filename, mode="I") as writer:
+            filenames = glob.glob(input_glob)
+            filenames = sorted(filenames)
+            for filename in filenames:
+                image = imageio.v2.imread(filename)
+                writer.append_data(image)
             image = imageio.v2.imread(filename)
             writer.append_data(image)
-        image = imageio.v2.imread(filename)
-        writer.append_data(image)
+    make_animation(f"{output_dir}{test_sample_anim_filename}",
+                   f"{output_dir}{test_sample_fig_basename}*.{fig_format}")
+    make_animation(f"{output_dir}{latent_space_anim_filename}",
+                   f"{output_dir}{latent_space_fig_basename}*.{fig_format}")
 
-    # Visualize final latent representation
+    # Visualize final state
+    plot_test_sample_image(test_sample, figno=1)
+    fig1.savefig(f"{output_dir}{test_sample_fig_basename}_final.{fig_format}")
+    fig1.canvas.draw_idle()
     e = plot_latent_image(21, figno=3)  # noqa: F841
-    fig3.savefig(f"{output_dir}{latent_vis_basename}_final.{fig_format}")
+    fig3.savefig(f"{output_dir}{latent_space_fig_basename}_final.{fig_format}")
     fig3.canvas.draw_idle()
 
     # # ...and once again with a training dataset overlay
     # # out of memory on GPU, let's not do this in training
     # overlay_datapoints(train_images, train_labels, e)
-    # fig3.savefig(f"{output_dir}{latent_vis_basename}_annotated.{fig_format}")
+    # fig3.savefig(f"{output_dir}{latent_space_fig_basename}_annotated.{fig_format}")
     # fig3.canvas.draw_idle()
 
 if __name__ == "__main__":
