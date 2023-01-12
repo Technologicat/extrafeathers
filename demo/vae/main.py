@@ -506,6 +506,8 @@ def plot_test_sample_image(model: CVAE, epoch: int, test_sample: tf.Tensor, fign
 
     plt.figure(figno)
     fig = plt.gcf()
+    if not fig.axes:
+        plt.subplot(1, 1, 1)  # create Axes
     ax = fig.axes[0]
     ax.cla()
     plt.sca(ax)
@@ -604,6 +606,8 @@ def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_si
 
     plt.figure(figno)
     fig = plt.gcf()
+    if not fig.axes:
+        plt.subplot(1, 1, 1)  # create Axes
     ax = fig.axes[0]
     ax.cla()
     plt.sca(ax)
@@ -658,6 +662,8 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # https://stackoverflow.com/questions/16829436/overlay-matplotlib-imshow-with-line-plots-that-are-arranged-in-a-grid
     plt.figure(figno)
     fig = plt.gcf()
+    if not fig.axes:
+        raise ValueError(f"Figure {figno} has no existing Axes; nothing to overlay on.")
     # axs = fig.axes  # list of all Axes objects in this Figure
     ax = plt.gca()
     plt.draw()  # force update of extents
