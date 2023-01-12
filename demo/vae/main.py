@@ -75,8 +75,7 @@ References:
 import unpythonic.net.server as repl_server
 
 # TODO: use an early-stopping criterion to avoid overfitting the training set?
-# TODO: also save model snapshots so we can stop manually
-
+#
 # TODO: conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)
 #  - for a custom Keras object, `train_step` should be a method, not a separate function
 #  - `call` (although somewhat useless for an autoencoder) should be implemented
