@@ -640,9 +640,17 @@ def plot_latent_image(n: int = 20, *,
     ax.imshow(image, origin="lower", cmap="Greys_r")
     # print(ax._position.bounds)  # DEBUG
 
-    # Show latent space coordinates (center a tick on each row/column, labeled with the coordinate)
-    startx = digit_size / 2
-    endx = image_width - (digit_size / 2)
+    # Show latent space coordinates
+    #
+    # # center a tick on each row/column
+    # startx = digit_size / 2
+    # endx = image_width - (digit_size / 2)
+    #
+    # cover the whole figure area with the ticks
+    # (centermost image corresponds to its center point; cornermost images correspond to their corner points)
+    startx = 0
+    endx = image_width - 1
+
     tick_positions_x = np.array(startx + np.linspace(0, 1, len(grid_x)) * (endx - startx), dtype=int)
     tick_positions_y = tick_positions_x
     ax.set_xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x], rotation="vertical")
@@ -716,8 +724,10 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # Determine the centers of images at two opposite corners of the sheet,
     # in data coordinates of the imshow plot.
     image_width = digit_size * n
-    xmin = digit_size / 2
-    xmax = image_width - (digit_size / 2)
+    # xmin = digit_size / 2
+    # xmax = image_width - (digit_size / 2)
+    xmin = 0
+    xmax = image_width
     ymin = xmin
     ymax = xmax
     xy0 = [xmin, ymin]
