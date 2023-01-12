@@ -128,7 +128,6 @@ optimizer = tf.keras.optimizers.Adam(1e-4)
 
 # Saving
 output_dir = "demo/output/vae/"
-saved_model_dir = "demo/output/vae/my_model"  # for trained model reloading later
 
 fig_basename = "epoch"  # -> "epoch_0000.png" and so on; must be a unique prefix among output filenames
 fig_format = "png"
@@ -296,12 +295,12 @@ class CVAE(tf.keras.Model):
     # TODO: So for now, we separately save the encoder and decoder models (both are Functional
     # TODO: models that support saving natively).
     # https://www.tensorflow.org/guide/keras/save_and_serialize
-    def my_save(self, path=saved_model_dir):
+    def my_save(self, path: str):
         _clear_and_create_directory(path)
         p = pathlib.Path(path).expanduser().resolve()
         self.encoder.save(str(p / "encoder"))
         self.decoder.save(str(p / "decoder"))
-    def my_load(self, path=saved_model_dir):
+    def my_load(self, path: str):
         p = pathlib.Path(path).expanduser().resolve()
         self.encoder = tf.keras.models.load_model(str(p / "encoder"))
         self.decoder = tf.keras.models.load_model(str(p / "decoder"))
@@ -542,6 +541,43 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     plotmagic.pause(0.1)  # force redraw
 
 
+def plot_elbo(epochs, train_elbos, test_elbos, *,
+              epoch: typing.Optional[int] = None,
+              figno: int = 1) -> None:
+    """Plot the evidence lower bound for the training and test sets as a function of the epoch number."""
+    plt.figure(figno)
+    fig = plt.gcf()
+    if not fig.axes:
+        plt.subplot(1, 1, 1)  # create Axes
+        fig.set_figwidth(6)
+        fig.set_figheight(4)
+    ax = fig.axes[0]
+    ax.cla()
+    plt.sca(ax)
+    fig.tight_layout()  # <-- important to do this also here to prevent axes crawling
+
+    ax.plot(epochs, train_elbos, label="train")
+    ax.plot(epochs, test_elbos, label="test")
+
+    # Zoom to top 80% of data mass
+    q = np.quantile(train_elbos, 0.2)
+    datamax = max(np.max(train_elbos), np.max(test_elbos))
+    ax.set_ylim(q, datamax)
+
+    ax.xaxis.grid(visible=True, which="both")
+    ax.yaxis.grid(visible=True, which="both")
+    # https://stackoverflow.com/questions/30914462/how-to-force-integer-tick-labels
+    # https://matplotlib.org/stable/api/ticker_api.html#matplotlib.ticker.MaxNLocator
+    ax.xaxis.set_major_locator(mpl.ticker.MaxNLocator(integer=True))
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("ELBO")
+    ax.legend(loc="best")
+
+    fig.tight_layout()
+    plt.draw()
+    plotmagic.pause(0.1)
+
+
 def normal_grid(n: int = 20, *, kind: str = "quantile", eps: float = 3):
     """Make a grid on `[-εσ, +εσ]` for evaluating normally distributed quantities.
 
@@ -642,6 +678,9 @@ def plot_latent_image(n: int = 20, *,
     # print(ax._position.bounds)  # DEBUG
 
     # Show latent space coordinates
+    #
+    # TODO: It would be ideal to use the centered ticks for the bare latent space plot,
+    # TODO: and the shifted ticks when the dataset overlay is displayed.
     #
     # # center a tick on each row/column
     # startx = digit_size / 2
@@ -881,18 +920,20 @@ def main():
     # Plot the random initial state
     plot_test_sample_image(test_sample, epoch=0, figno=1)
     plot_test_sample_image(test_sample, epoch=0, figno=1)  # and again to prevent axes crawling
-    plt.savefig(f"{output_dir}{fig_basename}_0000.{fig_format}")
+    fig1.savefig(f"{output_dir}{fig_basename}_0000.{fig_format}")
+    fig1.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
     e = plot_latent_image(21, figno=3, epoch=0)
     e = plot_latent_image(21, figno=3, epoch=0)  # and again to prevent axes crawling
-    plt.savefig(f"{output_dir}{latent_vis_basename}_0000.{fig_format}")
+    fig3.savefig(f"{output_dir}{latent_vis_basename}_0000.{fig_format}")
+    fig3.canvas.draw_idle()
 
     # Train the model
-    est = ETAEstimator(epochs, keep_last=10)
+    est = ETAEstimator(n_epochs, keep_last=10)
     train_elbos = []
     test_elbos = []
     with timer() as tim_total:
-        for epoch in range(1, epochs + 1):
+        for epoch in range(1, n_epochs + 1):
             # SGD using one pass through the training set (with the batches set up previously)
             with timer() as tim_train:
                 running_mean = tf.keras.metrics.Mean()
@@ -910,44 +951,33 @@ def main():
                 test_elbos.append(test_elbo)
 
             plot_test_sample_image(test_sample, epoch=epoch, figno=1)
-            plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
+            fig1.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
+            fig1.canvas.draw_idle()
 
-            # plot ELBO and save the ELBO history (for visual tracking of training)
-            plt.figure(2)
-            fig = plt.gcf()
-            ax = fig.axes[0]
-            ax.cla()
-            plt.sca(ax)
-            xx = np.arange(1, epoch + 1)
-            ax.plot(xx, train_elbos, label="train")
-            ax.plot(xx, test_elbos, label="test")
-            ax.xaxis.grid(visible=True, which="both")
-            ax.yaxis.grid(visible=True, which="both")
-            ax.set_xlabel("epoch")
-            ax.set_ylabel("ELBO")
-            ax.legend(loc="best")
-            fig.tight_layout()
-            plt.draw()
-            plotmagic.pause(0.1)
-            plt.savefig(f"{output_dir}elbo.{fig_format}")
-            np.savez(f"{output_dir}elbo.npz", epochs=xx, train_elbos=train_elbos, test_elbos=test_elbos)
+            # Plot ELBO and save the ELBO history (for visual tracking of training)
+            epochs = np.arange(1, epoch + 1)
+            plot_elbo(epochs, train_elbos, test_elbos, epoch=epoch, figno=2)
+            fig2.savefig(f"{output_dir}elbo.{fig_format}")
+            fig2.canvas.draw_idle()
+            np.savez(f"{output_dir}elbo.npz", epochs=epochs, train_elbos=train_elbos, test_elbos=test_elbos)
 
             # Plot and save latent representation
             e = plot_latent_image(21, figno=3, epoch=epoch)
-            plt.savefig(f"{output_dir}{latent_vis_basename}_{epoch:04d}.{fig_format}")
+            fig3.savefig(f"{output_dir}{latent_vis_basename}_{epoch:04d}.{fig_format}")
+            fig3.canvas.draw_idle()
             # overlay_datapoints(train_images, train_labels, e)  # out of memory on GPU
 
             # snapshot model every now and then
             if epoch % 5 == 1:
-                model.my_save()
+                model.my_save(f"{output_dir}model/{epoch:04d}")
 
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
             print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}: test set ELBO {test_elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s; {est.formatted_eta}")
     print(f"Total training/testing wall time: {tim_total.dt:0.3g}s")
 
-    # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # # Save the trained model.
+    # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
     # # To reload the trained model in another session:
     # #   import keras
     # #   import main
@@ -959,7 +989,9 @@ def main():
     # dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
     # _ = model(dummy_data)
     # model.save("my_model")
-    model.my_save()  # this custom saving hack (saving the encoder/decoder separately) works
+    #
+    # this custom saving hack (saving the encoder/decoder separately) works
+    model.my_save(f"{output_dir}model/final")
 
     # Make a gif animation of the training epochs
     with imageio.get_writer(f"{output_dir}{anim_filename}", mode="I") as writer:
@@ -971,13 +1003,16 @@ def main():
         image = imageio.v2.imread(filename)
         writer.append_data(image)
 
-    # Visualize latent representation
-    e = plot_latent_image(21, figno=3)
-    plt.savefig(f"{output_dir}{latent_vis_basename}_final.{fig_format}")
+    # Visualize final latent representation
+    e = plot_latent_image(21, figno=3)  # noqa: F841
+    fig3.savefig(f"{output_dir}{latent_vis_basename}_final.{fig_format}")
+    fig3.canvas.draw_idle()
 
-    # ...and once again with a training dataset overlay
-    overlay_datapoints(train_images, train_labels, e)
-    plt.savefig(f"{output_dir}{latent_vis_basename}_annotated.{fig_format}")
+    # # ...and once again with a training dataset overlay
+    # # out of memory on GPU, let's not do this in training
+    # overlay_datapoints(train_images, train_labels, e)
+    # fig3.savefig(f"{output_dir}{latent_vis_basename}_annotated.{fig_format}")
+    # fig3.canvas.draw_idle()
 
 if __name__ == "__main__":
     # To allow easy access to our global-scope variables in the live REPL session,

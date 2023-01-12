@@ -7,7 +7,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import demo.vae.main as main
 
-saved_model_dir = "demo/output/vae_test6/my_model"  # or whatever
+saved_model_dir = "demo/output/vae/model/final"  # or whatever
 
 importlib.reload(main)  # so we can simply run this snippet again to refresh the code (and reset the model)
 main.model.my_load(saved_model_dir)
