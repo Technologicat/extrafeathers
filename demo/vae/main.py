@@ -703,6 +703,17 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     newax = fig.add_axes(box)
     newax.set_axis_off()
 
+    # https://matplotlib.org/stable/users/explain/event_handling.html
+    def onresize(event):
+        fig.tight_layout()
+        plt.draw()
+        plotmagic.pause(0.001)
+        x0, y0 = data_to_fig(xy0)
+        x1, y1 = data_to_fig(xy1)
+        box = [x0, y0, (x1 - x0), (y1 - y0)]
+        newax.set_position(box)
+    cid = fig.canvas.mpl_connect('resize_event', onresize)
+
     # # Instead of using a global alpha, we could also customize a colormap like this
     # # (to make alpha vary as a function of the data value):
     # import matplotlib as mpl
