@@ -90,6 +90,7 @@ import unpythonic.net.server as repl_server
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
 #   - Or better yet, first check the distribution of the actual fields (observed data!)
 
+from collections import defaultdict
 import glob
 import os
 import pathlib
@@ -99,6 +100,7 @@ from unpythonic import ETAEstimator, timer
 from unpythonic.env import env
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
@@ -478,8 +480,23 @@ def train_step(model, x, optimizer):
 # --------------------------------------------------------------------------------
 # Plotting helpers
 
-def plot_test_sample_image(model: CVAE, epoch: int, test_sample: tf.Tensor, figno: int = 1) -> None:
-    """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE)."""
+def plot_test_sample_image(test_sample: tf.Tensor, *,
+                           model: typing.Optional[CVAE] = None,
+                           epoch: typing.Optional[int] = None,
+                           figno: int = 1) -> None:
+    """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE).
+
+    `model`: `CVAE` instance, or `None` to use the default instance.
+    `epoch`: if specified, included in the figure title.
+    `figno`: matplotlib figure number.
+    """
+    if model is None:
+        def get_default_model():
+            global model
+            return model
+        model = get_default_model()
+    assert isinstance(model, CVAE)
+
     batch_size, n_pixels_y, n_pixels_x, n_channels = tf.shape(test_sample).numpy()
     assert batch_size == 16, f"This function currently assumes a test sample of size 16, got {batch_size}"
     assert n_channels == 1, f"This function currently assumes grayscale images, got {n_channels} channels"
@@ -508,6 +525,8 @@ def plot_test_sample_image(model: CVAE, epoch: int, test_sample: tf.Tensor, fign
     fig = plt.gcf()
     if not fig.axes:
         plt.subplot(1, 1, 1)  # create Axes
+        fig.set_figwidth(8)
+        fig.set_figheight(4)
     ax = fig.axes[0]
     ax.cla()
     plt.sca(ax)
@@ -515,14 +534,14 @@ def plot_test_sample_image(model: CVAE, epoch: int, test_sample: tf.Tensor, fign
     ax.imshow(image, cmap="Greys_r")
     ax.axis("off")
 
-    ax.set_title(f"Test sample, epoch {epoch} (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$)")
+    epoch_str = f"; epoch {epoch}" if epoch is not None else ""
+    ax.set_title(f"Test sample (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$){epoch_str}")
     fig.tight_layout()
-
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
 
-def normal_grid(n: int = 20, kind: str = "quantile", eps: float = 3):
+def normal_grid(n: int = 20, *, kind: str = "quantile", eps: float = 3):
     """Make a grid on `[-εσ, +εσ]` for evaluating normally distributed quantities.
 
     μ = 0, σ = 1; shift and scale the result manually if necessary.
@@ -563,9 +582,13 @@ def normal_grid(n: int = 20, kind: str = "quantile", eps: float = 3):
     return xx
 
 
-def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_size: int = 28,
-                      grid: str = "quantile", eps: float = 3, figno: int = 1,
-                      epoch: typing.Optional[int] = None) -> env:
+def plot_latent_image(n: int = 20, *,
+                      grid: str = "quantile",
+                      eps: float = 3,
+                      model: typing.Optional[CVAE] = None,
+                      digit_size: int = 28,
+                      epoch: typing.Optional[int] = None,
+                      figno: int = 1) -> env:
     """Plot n × n digit images decoded from the latent space.
 
     `n`, `grid`, `eps`: passed to `normal_grid` (`grid` is the `kind`)
@@ -574,11 +597,11 @@ def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_si
                         latent prior. However, using the prior is subtly wrong, and the marginal
                         posterior of z should be used instead; see Lin et al.
 
+    `model`: `CVAE` instance, or `None` to use the default instance.
     `digit_size`: width/height of each digit image (square-shaped), in pixels.
                   Must match what the model was trained for.
-    `model`: `CVAE` instance, or `None` to use the default instance.
-    `figno`: matplotlib figure number.
     `epoch`: if specified, included in the figure title.
+    `figno`: matplotlib figure number.
     """
     if model is None:
         def get_default_model():
@@ -591,7 +614,7 @@ def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_si
     image_height = image_width
     image = np.zeros((image_height, image_width))
 
-    zz = normal_grid(n, grid, eps)
+    zz = normal_grid(n, kind=grid, eps=eps)
     grid_x = zz
     grid_y = zz
 
@@ -608,6 +631,8 @@ def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_si
     fig = plt.gcf()
     if not fig.axes:
         plt.subplot(1, 1, 1)  # create Axes
+        fig.set_figwidth(10)
+        fig.set_figheight(10)
     ax = fig.axes[0]
     ax.cla()
     plt.sca(ax)
@@ -637,6 +662,8 @@ def plot_latent_image(n: int = 20, model: typing.Optional[CVAE] = None, digit_si
     return env(n=n, model=model, digit_size=digit_size, grid=grid, eps=eps, figno=figno)
 
 
+_overlay_colorbars = defaultdict(list)
+_overlay_callbacks = defaultdict(list)
 def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: float = 0.1) -> None:
     """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot.
 
@@ -665,6 +692,19 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     if not fig.axes:
         raise ValueError(f"Figure {figno} has no existing Axes; nothing to overlay on.")
     # axs = fig.axes  # list of all Axes objects in this Figure
+
+    # Widen the figure to accommodate for the colorbar
+    fig.set_figwidth(fig.get_figheight() * 1.2)
+
+    # We're making a new overlay; clean up old stuff added to figure `figno` by this function.
+    for cb in _overlay_colorbars.pop(figno, []):
+        cb.remove()
+    for cid in _overlay_callbacks.pop(figno, []):
+        fig.canvas.mpl_disconnect(cid)
+    if len(fig.axes) > 1:
+        for ax in fig.axes[1:]:
+            ax.remove()
+
     ax = plt.gca()
     plt.draw()  # force update of extents
     # box = ax._position.bounds  # whole of the Axes `ax`, in figure coordinates
@@ -718,7 +758,6 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
 
     # # Instead of using a global alpha, we could also customize a colormap like this
     # # (to make alpha vary as a function of the data value):
-    # import matplotlib as mpl
     # rgb_colors = mpl.colormaps.get("viridis").colors  # or some other base colormap; or make a custom one
     # rgba_colors = [[r, g, b, alpha] for r, g, b in rgb_colors]
     # my_cmap = mpl.colors.ListedColormap(rgba_colors, name="viridis_translucent")
@@ -728,7 +767,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         # Invert the quantile spacing numerically, to make the positioning match the example images.
         # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
         n_interp = 10001
-        raw_zi = normal_grid(n_interp, grid, eps)  # data value
+        raw_zi = normal_grid(n_interp, kind=grid, eps=eps)  # data value
         linear_zi = np.linspace(-eps, eps, n_interp)  # where that value is on a display with linear coordinates
         def to_linear_display_coordinate(zi):
             """raw value of z_i -> display position on a linear axis with interval [-eps, eps]"""
@@ -739,11 +778,35 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         linear_z1 = mean[:, 0]
         linear_z2 = mean[:, 1]
 
-    newax.scatter(linear_z1, linear_z2, c=labels, alpha=alpha)
+    # https://stackoverflow.com/questions/14777066/matplotlib-discrete-colorbar
+    cmap = mpl.colormaps.get("viridis")  # or just `mpl.cm.viridis`
+    minlabel = np.min(labels)
+    maxlabel = np.max(labels)
+    color_bounds = np.arange(minlabel, (maxlabel + 1) + 1)
+    color_norm = mpl.colors.BoundaryNorm(color_bounds, cmap.N)
+
+    newax.scatter(linear_z1, linear_z2, c=labels, norm=color_norm, alpha=alpha)
     # newax.scatter(linear_z1, linear_z2, c=labels, cmap=my_cmap)
     # newax.patch.set_alpha(0.25)  # patch = Axes background
     newax.set_xlim(-eps, eps)
     newax.set_ylim(-eps, eps)
+
+    # The alpha value of the scatter points messes up the colorbar (making the entries translucent),
+    # so we need to customize the colorbar (instead of using the `scatter` return value as the mappable).
+    #
+    # # One way is to plot an invisible copy of the label values, and base the colorbar on that:
+    # # https://stackoverflow.com/questions/16595138/standalone-colorbar-matplotlib
+    # fakeax = fig.add_axes([0.0, 0.0, 0.0, 0.0])
+    # fakeax.set_visible(False)
+    # fakedata = np.array([[minlabel, maxlabel]])
+    # fakeplot = fakeax.imshow(fakedata, norm=color_norm)  # cmap=... if needed
+    # cb = fig.colorbar(fakeplot, ax=ax)
+    #
+    # Another way is to supply `norm` and optionally `cmap` (see docstring of `mpl.colorbar.Colorbar`):
+    cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed
+                      ticks=color_bounds + 0.5, format="%d")
+    _overlay_colorbars[figno].append(cb)
+
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
@@ -805,8 +868,8 @@ def main():
     model.decoder.summary()
 
     # Plot the random initial state
-    plot_test_sample_image(model, 0, test_sample)
-    plot_test_sample_image(model, 0, test_sample)  # and again to prevent axes crawling
+    plot_test_sample_image(test_sample, epoch=0, figno=1)
+    plot_test_sample_image(test_sample, epoch=0, figno=1)  # and again to prevent axes crawling
     plt.savefig(f"{output_dir}{fig_basename}_0000.{fig_format}")
 
     e = plot_latent_image(21, figno=3, epoch=0)
@@ -835,7 +898,7 @@ def main():
                 test_elbo = -running_mean.result()
                 test_elbos.append(test_elbo)
 
-            plot_test_sample_image(model, epoch, test_sample)
+            plot_test_sample_image(test_sample, epoch=epoch, figno=1)
             plt.savefig(f"{output_dir}{fig_basename}_{epoch:04d}.{fig_format}")
 
             # plot ELBO and save the ELBO history (for visual tracking of training)
