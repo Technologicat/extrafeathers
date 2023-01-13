@@ -135,6 +135,11 @@ import tensorflow_probability as tfp
 
 from extrafeathers import plotmagic
 
+from .config import (output_dir, fig_format,
+                     test_sample_fig_basename,
+                     latent_space_fig_basename,
+                     elbo_fig_filename)
+
 # --------------------------------------------------------------------------------
 # Config
 
@@ -149,15 +154,6 @@ n_epochs = 200
 
 # For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
 optimizer = tf.keras.optimizers.Adam(1e-4)
-
-# Saving
-output_dir = "demo/output/vae/"
-fig_format = "png"
-
-test_sample_fig_basename = "test_sample"  # -> "test_sample_0000.png" and so on; must be a unique prefix among output filenames
-latent_space_fig_basename = "latent_space"
-
-elbo_fig_filename = "elbo"
 
 # --------------------------------------------------------------------------------
 # Helper for deleting previously saved model (to save new one cleanly)

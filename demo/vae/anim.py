@@ -21,22 +21,13 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 
-import demo.vae.main as main
+from . import main as main
+from .config import (output_dir, fig_format,
+                     test_sample_fig_basename, test_sample_anim_filename,
+                     latent_space_fig_basename, latent_space_anim_filename,
+                     overlay_fig_basename, overlay_anim_filename)
 
-# --------------------------------------------------------------------------------
-# Config
-
-# TODO: refactor config into a separate module
-output_dir = "demo/output/vae/"
-fig_format = "png"
-test_sample_fig_basename = "test_sample"
-latent_space_fig_basename = "latent_space"
-overlay_fig_basename = "dataset"
-
-test_sample_anim_filename = f"evolution_{test_sample_fig_basename}.gif"
-latent_space_anim_filename = f"evolution_{latent_space_fig_basename}.gif"
-overlay_anim_filename = f"evolution_{overlay_fig_basename}.gif"
-
+# TODO: refactor dataset config too into `config.py`
 (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data()
 train_images = main.preprocess_images(train_images)
 test_images = main.preprocess_images(test_images)
