@@ -38,16 +38,37 @@ To train the model, open a terminal in the top-level `extrafeathers` directory, 
 
 The model will be saved in `saved_model_dir`, defined in config below.
 
+The ELBO history, and some visualizations from the training process, will also be saved.
+
+Note that some visualizations are created separately by running `anim.py` after the model
+has been trained:
+
+ - The evolution of the encoding of the dataset.
+ - Animations.
+
 To load the trained model, in an IPython session:
 
   import demo.vae.main as main
-  main.model.my_load(main.saved_model_dir)
+  main.model.my_load("demo/output/vae/model/final")  # or whatever
 
 Now you can e.g.:
 
   import matplotlib.pyplot as plt
-  main.plot_latent_image(10)
+  main.plot_latent_image(21)
   plt.show()
+
+Be aware that TensorFlow can be finicky with regard to resetting, if you wish to plot
+different model instances during the same session. As of this writing (January 2023,
+tf 2.12-nightly), to reset the model, you'll need something like:
+
+  import gc
+  import importlib
+  import tensorflow as tf
+  importlib.reload(main)  # re-instantiate CVAE
+  tf.keras.backend.clear_session()  # clean up dangling tensors
+  gc.collect()  # and make sure they are deleted
+
+At this point, you should be able to load another trained model instance and it should work.
 
 The implementation is based on combining material from these two tutorials:
   https://www.tensorflow.org/tutorials/generative/cvae
@@ -74,6 +95,14 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
+# TODO: refactor config, model implementation and plotter into separate modules
+
+# TODO: in dataset overlay, vary marker size by the variance of each codepoint
+#       (Need to compute the local scaling factor introduced by the coordinate
+#        transformation in the figure, and choose a global overall scaling so
+#        that it looks good. For the local scaling factor in quantile mode,
+#        a finite difference of the interpolation grid is good enough.)
+
 # TODO: use an early-stopping criterion to avoid overfitting the training set?
 #
 # TODO: conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)
@@ -90,7 +119,6 @@ import unpythonic.net.server as repl_server
 #   - Or better yet, first check the distribution of the actual fields (observed data!)
 
 from collections import defaultdict
-import glob
 import os
 import pathlib
 import typing
@@ -104,9 +132,6 @@ import matplotlib.pyplot as plt
 
 import tensorflow as tf
 import tensorflow_probability as tfp
-
-# import PIL
-import imageio
 
 from extrafeathers import plotmagic
 
@@ -133,9 +158,6 @@ test_sample_fig_basename = "test_sample"  # -> "test_sample_0000.png" and so on;
 latent_space_fig_basename = "latent_space"
 
 elbo_fig_filename = "elbo"
-
-test_sample_anim_filename = f"evolution_{test_sample_fig_basename}.gif"
-latent_space_anim_filename = f"evolution_{latent_space_fig_basename}.gif"
 
 # --------------------------------------------------------------------------------
 # Helper for deleting previously saved model (to save new one cleanly)
@@ -524,8 +546,7 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
         image[row * n_pixels_y: (row + 1) * n_pixels_y,
               col2 * n_pixels_x: (col2 + 1) * n_pixels_x] = x_hat.numpy()
 
-    plt.figure(figno)
-    fig = plt.gcf()
+    fig = plt.figure(figno)
     if not fig.axes:
         plt.subplot(1, 1, 1)  # create Axes
         fig.set_figwidth(8)
@@ -548,8 +569,7 @@ def plot_elbo(epochs, train_elbos, test_elbos, *,
               epoch: typing.Optional[int] = None,
               figno: int = 1) -> None:
     """Plot the evidence lower bound for the training and test sets as a function of the epoch number."""
-    plt.figure(figno)
-    fig = plt.gcf()
+    fig = plt.figure(figno)
     if not fig.axes:
         plt.subplot(1, 1, 1)  # create Axes
         fig.set_figwidth(6)
@@ -667,12 +687,12 @@ def plot_latent_image(n: int = 20, *,
             image[i * digit_size: (i + 1) * digit_size,
                   j * digit_size: (j + 1) * digit_size] = digit.numpy()[::-1, :]
 
-    plt.figure(figno)
-    fig = plt.gcf()
+    fig = plt.figure(figno)
     if not fig.axes:
         plt.subplot(1, 1, 1)  # create Axes
         fig.set_figwidth(10)
         fig.set_figheight(10)
+    remove_overlay(figno)
     ax = fig.axes[0]
     ax.cla()
     plt.sca(ax)
@@ -682,17 +702,14 @@ def plot_latent_image(n: int = 20, *,
 
     # Show latent space coordinates
     #
-    # TODO: It would be ideal to use the centered ticks for the bare latent space plot,
-    # TODO: and the shifted ticks when the dataset overlay is displayed.
+    # We use ticks aligned to the image centers ticks for the bare latent space plot.
+    # Each image corresponds to its center point.
     #
-    # # center a tick on each row/column
-    # startx = digit_size / 2
-    # endx = image_width - (digit_size / 2)
+    # If a dataset overlay is displayed later, the ticks will be adjusted so that they
+    # cover the whole data area, which looks better.
     #
-    # cover the whole figure area with the ticks
-    # (centermost image corresponds to its center point; cornermost images correspond to their corner points)
-    startx = 0
-    endx = image_width - 1
+    startx = digit_size / 2
+    endx = image_width - (digit_size / 2)
 
     tick_positions_x = np.array(startx + np.linspace(0, 1, len(grid_x)) * (endx - startx), dtype=int)
     tick_positions_y = tick_positions_x
@@ -711,6 +728,25 @@ def plot_latent_image(n: int = 20, *,
     plotmagic.pause(0.1)  # force redraw
 
     return env(n=n, model=model, digit_size=digit_size, grid=grid, eps=eps, figno=figno)
+
+
+def remove_overlay(figno: int = 1):
+    """Remove previous datapoint overlay in figure `figno`, if any."""
+    fig = plt.figure(figno)
+
+    # We're making a new overlay; clean up old stuff added to figure `figno` by this function.
+    for cb in _overlay_colorbars.pop(figno, []):
+        cb.remove()
+    for cid in _overlay_callbacks.pop(figno, []):
+        fig.canvas.mpl_disconnect(cid)
+    if len(fig.axes) > 1:
+        for ax in fig.axes[1:]:
+            ax.remove()
+    fig.set_figwidth(fig.get_figheight())
+    fig.tight_layout()
+
+    plt.draw()  # force update of extents
+    plotmagic.pause(0.1)
 
 
 _overlay_colorbars = defaultdict(list)
@@ -738,27 +774,12 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # We need some gymnastics to plot on top of an imshow image; it's easiest to
     # overlay a new Axes with a transparent background.
     # https://stackoverflow.com/questions/16829436/overlay-matplotlib-imshow-with-line-plots-that-are-arranged-in-a-grid
-    plt.figure(figno)
-    fig = plt.gcf()
+    fig = plt.figure(figno)
+    remove_overlay(figno)
     if not fig.axes:
         raise ValueError(f"Figure {figno} has no existing Axes; nothing to overlay on.")
+    ax = fig.axes[0]  # the Axes we're overlaying the dataset on
     # axs = fig.axes  # list of all Axes objects in this Figure
-
-    # Widen the figure to accommodate for the colorbar
-    fig.set_figwidth(fig.get_figheight() * 1.2)
-
-    # We're making a new overlay; clean up old stuff added to figure `figno` by this function.
-    for cb in _overlay_colorbars.pop(figno, []):
-        cb.remove()
-    for cid in _overlay_callbacks.pop(figno, []):
-        fig.canvas.mpl_disconnect(cid)
-    if len(fig.axes) > 1:
-        for ax in fig.axes[1:]:
-            ax.remove()
-
-    ax = plt.gca()
-    plt.draw()  # force update of extents
-    # box = ax._position.bounds  # whole of the Axes `ax`, in figure coordinates
 
     # print([int(x) for x in fig.axes[0].get_xlim()])
 
@@ -767,14 +788,32 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # Determine the centers of images at two opposite corners of the sheet,
     # in data coordinates of the imshow plot.
     image_width = digit_size * n
+
+    # # In this variant, the data area ends at the center of the edgemost images.
+    # # Doesn't look good, the dataset is cut off before the image area ends.
     # xmin = digit_size / 2
     # xmax = image_width - (digit_size / 2)
+    #
+    # Use whole data area - looks much better.
     xmin = 0
     xmax = image_width
+
     ymin = xmin
     ymax = xmax
     xy0 = [xmin, ymin]
     xy1 = [xmax, ymax]
+
+    # Adjust the ticks of the parent plot to match. Now the centermost image corresponds
+    # to its center point; cornermost images correspond to their outermost corner points.
+    startx = 0
+    endx = image_width - 1
+    zz = normal_grid(n, kind=grid, eps=eps)
+    grid_x = zz
+    grid_y = zz
+    tick_positions_x = np.array(startx + np.linspace(0, 1, len(grid_x)) * (endx - startx), dtype=int)
+    tick_positions_y = tick_positions_x
+    ax.set_xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x], rotation="vertical")
+    ax.set_yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y])
 
     # Convert to figure coordinates.
     def data_to_fig(xy):
@@ -797,7 +836,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
 
     # Set up the new Axes, no background (`set_axis_off`), and plot the overlay.
     box = compute_overlay_position()
-    newax = fig.add_axes(box)
+    newax = fig.add_axes(box, label="<custom overlay>")
     newax.set_axis_off()
 
     # https://matplotlib.org/stable/users/explain/event_handling.html
@@ -808,6 +847,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         box = compute_overlay_position()
         newax.set_position(box)
     cid = fig.canvas.mpl_connect('resize_event', onresize)  # return value = callback id for `mpl_disconnect`
+    _overlay_callbacks[figno].append(cid)
 
     # # Instead of using a global alpha, we could also customize a colormap like this
     # # (to make alpha vary as a function of the data value):
@@ -859,6 +899,10 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed
                       ticks=color_bounds + 0.5, format="%d")
     _overlay_colorbars[figno].append(cb)
+
+    # Widen the figure to accommodate for the colorbar (at the end, to force a resize)
+    fig.set_figwidth(fig.get_figheight() * 1.2)
+    onresize(None)  # force-update overlay position once, even if no resizing took place
 
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
@@ -998,21 +1042,6 @@ def main():
     #
     # this custom saving hack (saving the encoder/decoder separately) works
     model.my_save(f"{output_dir}model/final")
-
-    # Make gif animations
-    def make_animation(output_filename: str, input_glob: str) -> None:
-        with imageio.get_writer(output_filename, mode="I") as writer:
-            filenames = glob.glob(input_glob)
-            filenames = sorted(filenames)
-            for filename in filenames:
-                image = imageio.v2.imread(filename)
-                writer.append_data(image)
-            image = imageio.v2.imread(filename)
-            writer.append_data(image)
-    make_animation(f"{output_dir}{test_sample_anim_filename}",
-                   f"{output_dir}{test_sample_fig_basename}*.{fig_format}")
-    make_animation(f"{output_dir}{latent_space_anim_filename}",
-                   f"{output_dir}{latent_space_fig_basename}*.{fig_format}")
 
     # Visualize final state
     plot_test_sample_image(test_sample, figno=1)
