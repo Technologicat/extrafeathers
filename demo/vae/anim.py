@@ -26,11 +26,13 @@ from .config import (output_dir, fig_format,
                      test_sample_fig_basename, test_sample_anim_filename,
                      latent_space_fig_basename, latent_space_anim_filename,
                      overlay_fig_basename, overlay_anim_filename)
+from .plotter import plot_latent_image, overlay_datapoints
+from .util import preprocess_images
 
 # TODO: refactor dataset config too into `config.py`
 (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data()
-train_images = main.preprocess_images(train_images)
-test_images = main.preprocess_images(test_images)
+train_images = preprocess_images(train_images)
+test_images = preprocess_images(test_images)
 
 # --------------------------------------------------------------------------------
 # Animation-making helper
@@ -74,15 +76,16 @@ for model_dir in input_dirs:
         epoch = int(epoch_str)
     except ValueError:
         epoch = None
-    e = main.plot_latent_image(21, epoch=epoch)
-    main.overlay_datapoints(train_images, train_labels, e)
+
+    e = plot_latent_image(21, epoch=epoch)
+    overlay_datapoints(train_images, train_labels, e)
 
     fig = plt.figure(1)
     fig.savefig(f"{output_dir}{overlay_fig_basename}_{epoch_str}.{fig_format}")
     fig.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
 # --------------------------------------------------------------------------------
-# Finally, make an animation of the dataset evolution:
+# Finally, make an animation of the codepoint evolution:
 
 make_animation(f"{output_dir}{overlay_anim_filename}",
                f"{output_dir}{overlay_fig_basename}*.{fig_format}")

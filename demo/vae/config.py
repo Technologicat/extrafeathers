@@ -1,5 +1,8 @@
 """Configuration for the VAE example."""
 
+# use a 2-dimensional latent space so that we can easily visualize the results
+latent_dim = 2
+
 output_dir = "demo/output/vae/"
 
 fig_format = "png"
