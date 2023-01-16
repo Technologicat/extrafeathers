@@ -78,7 +78,7 @@ class ConvolutionBlock(tf.keras.layers.Layer):
 
     Tensor sizes::
 
-        [batch, 2*n, 2*n, filters // 2] -> [batch, n, n, filters]
+        [batch, 2*n, 2*n, channels] -> [batch, n, n, filters]
 
     The convention with `filters` is the same as in `Conv2D`; it's the number
     of *output* channels.
@@ -86,7 +86,7 @@ class ConvolutionBlock(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None):
         super().__init__(name=name)
-        self.conv1 = tf.keras.layers.Conv2D(filters=filters // 2, kernel_size=1,
+        self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, strides=2,
                                             padding="same", activation="relu")
@@ -95,7 +95,8 @@ class ConvolutionBlock(tf.keras.layers.Layer):
         # Classically, downsampling is done here by a size-1 convolution ignoring 3/4 of the pixels:
         # self.downsample = tf.keras.layers.Conv2D(filters=filters, kernel_size=1, strides=2)
         # But perhaps we could try something like this:
-        self.downsample = tf.keras.Sequential([tf.keras.layers.AveragePooling2D(pool_size=2, padding="same"),
+        self.downsample = tf.keras.Sequential([tf.keras.layers.AveragePooling2D(pool_size=2,
+                                                                                padding="same"),
                                                tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                                                       padding="same")])
         self.adder = tf.keras.layers.Add()
@@ -149,7 +150,7 @@ class ConvolutionBlockTranspose(tf.keras.layers.Layer):
 
     Tensor sizes::
 
-        [batch, n, n, 2*filters] -> [batch, 2*n, 2*n, filters]
+        [batch, n, n, channels] -> [batch, 2*n, 2*n, filters]
 
     The convention with `filters` is the same as in `Conv2DTranspose`; it's the number
     of *output* channels.
@@ -157,13 +158,16 @@ class ConvolutionBlockTranspose(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None):
         super().__init__(name=name)
-        self.conv1 = tf.keras.layers.Conv2DTranspose(filters=2 * filters, kernel_size=1,
+        self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same", activation="relu")
-        self.conv2 = tf.keras.layers.Conv2DTranspose(filters=2 * filters, kernel_size=kernel_size, strides=2,
+        self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=2,
                                                      padding="same", activation="relu")
         self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same")  # activation handled in `call`
-        self.upsample = tf.keras.layers.Upsampling2D(size=2, interpolation="bilinear")
+        self.upsample = tf.keras.Sequential([tf.keras.layers.Upsampling2D(size=2,
+                                                                          interpolation="bilinear"),
+                                             tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
+                                                                    padding="same")])
         self.adder = tf.keras.layers.Add()
         self.activation = tf.keras.layers.ReLU()
 
