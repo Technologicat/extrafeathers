@@ -9,6 +9,7 @@ import numpy as np
 import tensorflow as tf
 
 from .config import latent_dim
+from .resnet import IdentityBlock, IdentityBlockTranspose
 from .util import clear_and_create_directory
 
 # --------------------------------------------------------------------------------
@@ -31,10 +32,14 @@ extra_layer_size = 16
 #   - The architecture is an exact mirror image of the encoder.
 def make_encoder():
     encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
+
     x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
                                strides=2, padding="same")(encoder_inputs)
+    x = IdentityBlock(filters=32, kernel_size=3)(x)
     x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
                                strides=2, padding="same")(x)
+    x = IdentityBlock(filters=64, kernel_size=3)(x)
+
     x = tf.keras.layers.Flatten()(x)
     # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
     # if we add a small dense layer after the convolutions, and connect that to the outputs, we will have
@@ -65,12 +70,16 @@ def make_decoder():
     x = tf.keras.layers.Dense(units=extra_layer_size, activation="relu")(decoder_inputs)
     x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
     x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
+
+    x = IdentityBlockTranspose(filters=64, kernel_size=3)(x)
     x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
                                         strides=2, padding="same")(x)
+    x = IdentityBlockTranspose(filters=32, kernel_size=3)(x)
     # No activation function in the output layer - we want arbitrary real numbers as output.
     # The output will be interpreted as parameters `P` for the observation model pθ(x|z).
     # Here we want just something convenient that we can remap as necessary.
     decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2, padding="same")(x)
+
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder
 
