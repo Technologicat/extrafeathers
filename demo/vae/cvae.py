@@ -14,6 +14,8 @@ from .util import clear_and_create_directory
 # --------------------------------------------------------------------------------
 # NN architecture
 
+extra_layer_size = 16
+
 # Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
 #
 # Encoder differences:
@@ -39,7 +41,11 @@ def make_encoder():
     # much fewer trainable parameters (in total) than if we connect the last convolution layer to the outputs
     # directly. As pointed out by:
     # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
-    x = tf.keras.layers.Dense(units=16, activation="relu")(x)
+    #
+    # Note that this trick only helps if `2 * latent_dim > extra_layer_size`; otherwise the architecture
+    # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity,
+    # which may be useful if the model is underfitting.
+    x = tf.keras.layers.Dense(units=extra_layer_size, activation="relu")(x)
     # No activation function in the output layers - we want arbitrary real numbers as output.
     # The outputs will be interpreted as `(μ, log σ)` for the variational posterior qϕ(z|x).
     # A uniform distribution for these quantities (from the random initialization of the NN)
@@ -56,7 +62,7 @@ def make_decoder():
     # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
     decoder_inputs = tf.keras.Input(shape=(latent_dim,))
     # Here we add the dense layer just for architectural symmetry with the encoder.
-    x = tf.keras.layers.Dense(units=16, activation="relu")(decoder_inputs)
+    x = tf.keras.layers.Dense(units=extra_layer_size, activation="relu")(decoder_inputs)
     x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
     x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
     x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
