@@ -48,12 +48,16 @@ class IdentityBlock(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None):
         super().__init__(name=name)
+        # The purpose of the size-1 convolution is to cheaply change the dimensionality (number of channels)
+        # in the filter space, without introducing spatial dependencies:
+        #   https://stats.stackexchange.com/questions/194142/what-does-1x1-convolution-mean-in-a-neural-network
+        #
+        # In the blocks defined in this module, the activation of the last sublayer is handled in `call`,
+        # because we need to add the residual from the skip-connection before applying the activation.
         self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size,
                                             padding="same", activation="relu")
-        # In the blocks defined in this module, activation of the last layer is handled in `call`
-        # because we need to add the residual from the skip-connection before applying the activation.
         self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same")
         self.adder = tf.keras.layers.Add()
@@ -115,6 +119,8 @@ class IdentityBlockTranspose(tf.keras.layers.Layer):
     Tensor sizes::
 
         [batch, n, n, filters] -> [batch, n, n, filters]
+
+    The input must have `filters` channels so that the skip connection works.
     """
 
     def __init__(self, filters, kernel_size, *, name=None):
