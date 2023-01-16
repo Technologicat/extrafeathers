@@ -92,7 +92,7 @@ class ConvolutionBlock(tf.keras.layers.Layer):
                                             padding="same", activation="relu")
         self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same")  # activation handled in `call`
-        # Classically, downsampling is done here by a size-1 convolution skipping 3/4 of the pixels:
+        # Classically, downsampling is done here by a size-1 convolution ignoring 3/4 of the pixels:
         # self.downsample = tf.keras.layers.Conv2D(filters=filters, kernel_size=1, strides=2)
         # But perhaps we could try something like this:
         self.downsample = tf.keras.Sequential([tf.keras.layers.AveragePooling2D(pool_size=2, padding="same"),
