@@ -58,6 +58,7 @@ class IdentityBlock(tf.keras.layers.Layer):
                                             padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size,
                                             padding="same", activation="relu")
+        # TODO: conv3 seems useless if we use the same number of filters, it's just remapping channels?
         self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same")
         self.adder = tf.keras.layers.Add()
