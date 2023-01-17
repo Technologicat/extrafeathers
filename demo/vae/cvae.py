@@ -42,11 +42,11 @@ def make_encoder():
 
     # # ResNet attempt 1
     # x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-    #                            strides=2, padding="same")(encoder_inputs)
-    # x = IdentityBlock2D(filters=32, kernel_size=3)(x)
+    #                            strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
+    # x = IdentityBlock2D(filters=32, kernel_size=3)(x)                         # 14×14×32→ 14×14×32
     # x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-    #                            strides=2, padding="same")(x)
-    # x = IdentityBlock2D(filters=64, kernel_size=3)(x)
+    #                            strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
+    # x = IdentityBlock2D(filters=64, kernel_size=3)(x)                         # 7×7×64 → 7×7×64
 
     # ResNet attempt 2
     x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
@@ -100,11 +100,12 @@ def make_decoder():
     #                                                   padding="same")(x)  # 14×14×32 → 28×28×1
 
     # # ResNet attempt 1
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3)(x)
+    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3)(x)                         # 7×7×64 → 7×7×64
     # x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-    #                                     strides=2, padding="same")(x)
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3)(x)
-    # decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2, padding="same")(x)
+    #                                     strides=2, padding="same")(x)                  # 7×7×64 → 14×14×32
+    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3)(x)                         # 14×14×32 → 14×14×32
+    # decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3,
+    #                                                   strides=2, padding="same")(x)    # 14×14×32 → 28×28×1
 
     # ResNet attempt 2
     x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
