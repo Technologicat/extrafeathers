@@ -20,8 +20,8 @@ but mostly this is just a minimalistic jazz solo on the general idea of ResNets,
 in the context of the MNIST datasets and `extrafeathers`.
 """
 
-__all__ = ["IdentityBlock2D", "ConvolutionBlock2D",
-           "IdentityBlockTranspose2D", "ConvolutionBlockTranspose2D"]
+__all__ = ["IdentityBlock2D", "IdentityBlockTranspose2D",
+           "ConvolutionBlock2D", "ConvolutionBlockTranspose2D"]
 
 import tensorflow as tf
 
@@ -74,6 +74,39 @@ class IdentityBlock2D(tf.keras.layers.Layer):
         x = self.activation(x)
         return x
 
+class IdentityBlockTranspose2D(tf.keras.layers.Layer):
+    """The architectural inverse of `IdentityBlock2D`, for autoencoder decoders.
+
+    Tensor sizes::
+
+        [batch, n, n, filters] -> [batch, n, n, filters]
+
+    The input must have `filters` channels so that the skip connection works.
+    """
+
+    def __init__(self, filters, kernel_size, *, name=None, activation=None):
+        assert activation in ("relu", None)
+        super().__init__(name=name)
+        self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
+                                                     padding="same", activation="relu")
+        self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size,
+                                                     padding="same", activation="relu")
+        self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
+                                                     padding="same")  # activation handled in `call`
+        self.adder = tf.keras.layers.Add()
+        self.activation = tf.keras.activations.get(activation)
+
+    def call(self, x, training=False):
+        x_skip = x
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.adder([x, x_skip])
+        x = self.activation(x)
+        return x
+
+# --------------------------------------------------------------------------------
+
 class ConvolutionBlock2D(tf.keras.layers.Layer):
     """A simple ResNet convolution block (a.k.a. bottleneck block).
 
@@ -105,39 +138,6 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
 
     def call(self, x, training=False):
         x_skip = self.downsample(x)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.adder([x, x_skip])
-        x = self.activation(x)
-        return x
-
-# --------------------------------------------------------------------------------
-
-class IdentityBlockTranspose2D(tf.keras.layers.Layer):
-    """The architectural inverse of `IdentityBlock2D`, for autoencoder decoders.
-
-    Tensor sizes::
-
-        [batch, n, n, filters] -> [batch, n, n, filters]
-
-    The input must have `filters` channels so that the skip connection works.
-    """
-
-    def __init__(self, filters, kernel_size, *, name=None, activation=None):
-        assert activation in ("relu", None)
-        super().__init__(name=name)
-        self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
-                                                     padding="same", activation="relu")
-        self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size,
-                                                     padding="same", activation="relu")
-        self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
-                                                     padding="same")  # activation handled in `call`
-        self.adder = tf.keras.layers.Add()
-        self.activation = tf.keras.activations.get(activation)
-
-    def call(self, x, training=False):
-        x_skip = x
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
