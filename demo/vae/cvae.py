@@ -9,7 +9,8 @@ import numpy as np
 import tensorflow as tf
 
 from .config import latent_dim
-from .resnet import IdentityBlock, IdentityBlockTranspose
+from .resnet import (IdentityBlock2D, IdentityBlockTranspose2D,
+                     ConvolutionBlock2D, ConvolutionBlockTranspose2D)
 from .util import clear_and_create_directory
 
 # --------------------------------------------------------------------------------
@@ -33,12 +34,25 @@ extra_layer_size = 16
 def make_encoder():
     encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
 
-    x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-                               strides=2, padding="same")(encoder_inputs)
-    x = IdentityBlock(filters=32, kernel_size=3)(x)
-    x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-                               strides=2, padding="same")(x)
-    x = IdentityBlock(filters=64, kernel_size=3)(x)
+    # # classical VAE
+    # x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
+    #                            strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
+    # x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
+    #                            strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
+
+    # # ResNet attempt 1
+    # x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
+    #                            strides=2, padding="same")(encoder_inputs)
+    # x = IdentityBlock2D(filters=32, kernel_size=3)(x)
+    # x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
+    #                            strides=2, padding="same")(x)
+    # x = IdentityBlock2D(filters=64, kernel_size=3)(x)
+
+    # ResNet attempt 2
+    x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
+    x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
+    x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
+    x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
 
     x = tf.keras.layers.Flatten()(x)
     # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
@@ -48,8 +62,9 @@ def make_encoder():
     # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
     #
     # Note that this trick only helps if `2 * latent_dim > extra_layer_size`; otherwise the architecture
-    # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity,
-    # which may be useful if the model is underfitting.
+    # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity slightly
+    # (but in practice we get better results if we add more layers in the convolution part instead of making
+    # this one larger).
     x = tf.keras.layers.Dense(units=extra_layer_size, activation="relu")(x)
     # No activation function in the output layers - we want arbitrary real numbers as output.
     # The outputs will be interpreted as `(μ, log σ)` for the variational posterior qϕ(z|x).
@@ -71,14 +86,31 @@ def make_decoder():
     x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
     x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
 
-    x = IdentityBlockTranspose(filters=64, kernel_size=3)(x)
-    x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-                                        strides=2, padding="same")(x)
-    x = IdentityBlockTranspose(filters=32, kernel_size=3)(x)
-    # No activation function in the output layer - we want arbitrary real numbers as output.
+    # Now we are at the point of the architecture where we have the Conv2D output,
+    # so let's mirror the encoder architecture to return to the input space.
+    #
+    # Note no activation function in the output layer - we want arbitrary real numbers as output.
     # The output will be interpreted as parameters `P` for the observation model pθ(x|z).
     # Here we want just something convenient that we can remap as necessary.
-    decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2, padding="same")(x)
+
+    # # Classical VAE
+    # x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
+    #                                     strides=2, padding="same")(x)     # 7×7×64 → 14×14×32
+    # decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2,
+    #                                                   padding="same")(x)  # 14×14×32 → 28×28×1
+
+    # # ResNet attempt 1
+    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3)(x)
+    # x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
+    #                                     strides=2, padding="same")(x)
+    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3)(x)
+    # decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2, padding="same")(x)
+
+    # ResNet attempt 2
+    x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
+    x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
+    x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
+    decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder

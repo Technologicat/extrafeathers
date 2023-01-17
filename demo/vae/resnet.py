@@ -20,15 +20,14 @@ but mostly this is just a minimalistic jazz solo on the general idea of ResNets,
 in the context of the MNIST datasets and `extrafeathers`.
 """
 
-__all__ = ["IdentityBlock", "ConvolutionBlock",
-           "IdentityBlockTranspose", "ConvolutionBlockTranspose"]
+__all__ = ["IdentityBlock2D", "ConvolutionBlock2D",
+           "IdentityBlockTranspose2D", "ConvolutionBlockTranspose2D"]
 
 import tensorflow as tf
 
 # --------------------------------------------------------------------------------
 
-# TODO: rename -> IdentityBlock2D
-class IdentityBlock(tf.keras.layers.Layer):
+class IdentityBlock2D(tf.keras.layers.Layer):
     """A simple ResNet identity block (a.k.a. basic block).
 
     Tensor sizes::
@@ -39,42 +38,38 @@ class IdentityBlock(tf.keras.layers.Layer):
     To work with input with a different number of channels, use e.g. a convolution
     layer with kernel size 1 as an adaptor::
 
-        # adaptor
+        # change number of channels to 32
         x = Conv2D(filters=32, kernel_size=1, strides=1, padding="same", activation="relu")(x)
 
-        # now `x` can be fed into a 32-filter `IdentityBlock`
-        x = IdentityBlock(filters=32, kernel_size=3)(x)
+        # now `x` can be fed into a 32-filter `IdentityBlock2D`
+        x = IdentityBlock2D(filters=32, kernel_size=3)(x)
     """
 
-    def __init__(self, filters, kernel_size, *, name=None):
+    def __init__(self, filters, kernel_size, *, name=None, activation=None):
         super().__init__(name=name)
         # The purpose of the size-1 convolution is to cheaply change the dimensionality (number of channels)
         # in the filter space, without introducing spatial dependencies:
         #   https://stats.stackexchange.com/questions/194142/what-does-1x1-convolution-mean-in-a-neural-network
+        # It also acts as a "feature selector" (since the weights are trainable), and applies a ReLU.
         #
         # In the blocks defined in this module, the activation of the last sublayer is handled in `call`,
         # because we need to add the residual from the skip-connection before applying the activation.
         self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size,
-                                            padding="same", activation="relu")
-        # TODO: conv3 seems useless if we use the same number of filters, it's just remapping channels?
-        self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same")
         self.adder = tf.keras.layers.Add()
-        self.activation = tf.keras.layers.ReLU()
+        self.activation = tf.keras.activations.get(activation)
 
     def call(self, x, training=False):
         x_skip = x
         x = self.conv1(x)
         x = self.conv2(x)
-        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
 
-# TODO: rename -> ConvolutionBlock2D
-class ConvolutionBlock(tf.keras.layers.Layer):
+class ConvolutionBlock2D(tf.keras.layers.Layer):
     """A simple ResNet convolution block (a.k.a. bottleneck block).
 
     Tensor sizes::
@@ -85,13 +80,11 @@ class ConvolutionBlock(tf.keras.layers.Layer):
     of *output* channels.
     """
 
-    def __init__(self, filters, kernel_size, *, name=None):
+    def __init__(self, filters, kernel_size, *, name=None, activation=None):
         super().__init__(name=name)
         self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, strides=2,
-                                            padding="same", activation="relu")
-        self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same")  # activation handled in `call`
         # Classically, downsampling is done here by a size-1 convolution ignoring 3/4 of the pixels:
         # self.downsample = tf.keras.layers.Conv2D(filters=filters, kernel_size=1, strides=2)
@@ -101,22 +94,20 @@ class ConvolutionBlock(tf.keras.layers.Layer):
                                                tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                                                       padding="same")])
         self.adder = tf.keras.layers.Add()
-        self.activation = tf.keras.layers.ReLU()
+        self.activation = tf.keras.activations.get(activation)
 
     def call(self, x, training=False):
         x_skip = self.downsample(x)
         x = self.conv1(x)
         x = self.conv2(x)
-        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
 
 # --------------------------------------------------------------------------------
 
-# TODO: rename -> IdentityBlockTranspose2D
-class IdentityBlockTranspose(tf.keras.layers.Layer):
-    """The architectural inverse of `IdentityBlock`, for autoencoder decoders.
+class IdentityBlockTranspose2D(tf.keras.layers.Layer):
+    """The architectural inverse of `IdentityBlock2D`, for autoencoder decoders.
 
     Tensor sizes::
 
@@ -125,29 +116,26 @@ class IdentityBlockTranspose(tf.keras.layers.Layer):
     The input must have `filters` channels so that the skip connection works.
     """
 
-    def __init__(self, filters, kernel_size, *, name=None):
+    def __init__(self, filters, kernel_size, *, name=None, activation=None):
+        assert activation in ("relu", None)
         super().__init__(name=name)
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size,
-                                                     padding="same", activation="relu")
-        self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
-                                                     padding="same")
+                                                     padding="same")  # activation handled in `call`
         self.adder = tf.keras.layers.Add()
-        self.activation = tf.keras.layers.ReLU()
+        self.activation = tf.keras.activations.get(activation)
 
     def call(self, x, training=False):
         x_skip = x
         x = self.conv1(x)
         x = self.conv2(x)
-        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
 
-# TODO: rename -> ConvolutionBlockTranspose2D
-class ConvolutionBlockTranspose(tf.keras.layers.Layer):
-    """The architectural inverse of `ConvolutionBlock`, for autoencoder decoders.
+class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
+    """The architectural inverse of `ConvolutionBlock2D`, for autoencoder decoders.
 
     Tensor sizes::
 
@@ -157,26 +145,24 @@ class ConvolutionBlockTranspose(tf.keras.layers.Layer):
     of *output* channels.
     """
 
-    def __init__(self, filters, kernel_size, *, name=None):
+    def __init__(self, filters, kernel_size, *, name=None, activation=None):
+        assert activation in ("relu", None)
         super().__init__(name=name)
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=2,
-                                                     padding="same", activation="relu")
-        self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same")  # activation handled in `call`
-        self.upsample = tf.keras.Sequential([tf.keras.layers.Upsampling2D(size=2,
+        self.upsample = tf.keras.Sequential([tf.keras.layers.UpSampling2D(size=2,
                                                                           interpolation="bilinear"),
                                              tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                                                     padding="same")])
         self.adder = tf.keras.layers.Add()
-        self.activation = tf.keras.layers.ReLU()
+        self.activation = tf.keras.activations.get(activation)
 
     def call(self, x, training=False):
         x_skip = self.upsample(x)
         x = self.conv1(x)
         x = self.conv2(x)
-        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
