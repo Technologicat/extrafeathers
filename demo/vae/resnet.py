@@ -57,7 +57,11 @@ class IdentityBlock2D(tf.keras.layers.Layer):
         self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size,
-                                            padding="same")
+                                            padding="same", activation="relu")
+        # I don't yet understand why, but this third size-1 convolution is important if we want to chain
+        # several identity blocks (otherwise the output will be mostly zeros).
+        self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
+                                            padding="same")  # activation handled in `call`
         self.adder = tf.keras.layers.Add()
         self.activation = tf.keras.activations.get(activation)
 
@@ -65,6 +69,7 @@ class IdentityBlock2D(tf.keras.layers.Layer):
         x_skip = x
         x = self.conv1(x)
         x = self.conv2(x)
+        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
@@ -85,6 +90,8 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
         self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, strides=2,
+                                            padding="same", activation="relu")
+        self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             padding="same")  # activation handled in `call`
         # Classically, downsampling is done here by a size-1 convolution ignoring 3/4 of the pixels:
         # self.downsample = tf.keras.layers.Conv2D(filters=filters, kernel_size=1, strides=2)
@@ -100,6 +107,7 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
         x_skip = self.downsample(x)
         x = self.conv1(x)
         x = self.conv2(x)
+        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
@@ -122,6 +130,8 @@ class IdentityBlockTranspose2D(tf.keras.layers.Layer):
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size,
+                                                     padding="same", activation="relu")
+        self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same")  # activation handled in `call`
         self.adder = tf.keras.layers.Add()
         self.activation = tf.keras.activations.get(activation)
@@ -130,6 +140,7 @@ class IdentityBlockTranspose2D(tf.keras.layers.Layer):
         x_skip = x
         x = self.conv1(x)
         x = self.conv2(x)
+        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
@@ -151,6 +162,8 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same", activation="relu")
         self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=2,
+                                                     padding="same", activation="relu")
+        self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      padding="same")  # activation handled in `call`
         self.upsample = tf.keras.Sequential([tf.keras.layers.UpSampling2D(size=2,
                                                                           interpolation="bilinear"),
@@ -163,6 +176,7 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
         x_skip = self.upsample(x)
         x = self.conv1(x)
         x = self.conv2(x)
+        x = self.conv3(x)
         x = self.adder([x, x_skip])
         x = self.activation(x)
         return x
