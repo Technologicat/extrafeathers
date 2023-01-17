@@ -29,7 +29,7 @@ import tensorflow as tf
 
 # TODO: rename -> IdentityBlock2D
 class IdentityBlock(tf.keras.layers.Layer):
-    """A simple ResNet identity block.
+    """A simple ResNet identity block (a.k.a. basic block).
 
     Tensor sizes::
 
@@ -75,7 +75,7 @@ class IdentityBlock(tf.keras.layers.Layer):
 
 # TODO: rename -> ConvolutionBlock2D
 class ConvolutionBlock(tf.keras.layers.Layer):
-    """A simple ResNet convolution block.
+    """A simple ResNet convolution block (a.k.a. bottleneck block).
 
     Tensor sizes::
 
