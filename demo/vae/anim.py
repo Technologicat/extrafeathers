@@ -19,6 +19,8 @@ import importlib
 
 import imageio
 
+from unpythonic import ETAEstimator
+
 import tensorflow as tf
 
 import matplotlib.pyplot as plt
@@ -60,8 +62,8 @@ make_animation(f"{output_dir}{latent_space_anim_filename}",
 # Plot the evolution of the codepoints corresponding to the training dataset
 
 input_dirs = sorted(glob.glob(f"{output_dir}model/*"))
+est = ETAEstimator(len(input_dirs), keep_last=10)
 for model_dir in input_dirs:
-    print(model_dir)
     epoch_str = model_dir[model_dir.rfind("/") + 1:]
 
     # reset the model
@@ -85,6 +87,9 @@ for model_dir in input_dirs:
     fig = plt.figure(1)
     fig.savefig(f"{output_dir}{overlay_fig_basename}_{epoch_str}.{fig_format}")
     fig.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
+
+    est.tick()
+    print(f"Done {model_dir}, walltime {est.formatted_eta}")
 
 # --------------------------------------------------------------------------------
 # Finally, make an animation of the codepoint evolution:
