@@ -177,6 +177,10 @@ def plot_latent_image(n: int = 20, *,
                   Must match what the model was trained for.
     `epoch`: if specified, included in the figure title.
     `figno`: matplotlib figure number.
+
+    The return value is an `unpythonic.env.env` that can be passed to
+    `overlay_datapoints` as the `figdata` parameter to add a translucent
+    dataset overlay onto the plot.
     """
     if model is None:
         from . import main
