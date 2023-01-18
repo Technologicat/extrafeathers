@@ -39,6 +39,8 @@ test_images = preprocess_images(test_images)
 # --------------------------------------------------------------------------------
 # Animation-making helper
 
+# TODO: use a proper video encoder to save on output file size instead of making a gif animation
+
 def make_animation(output_filename: str, input_glob: str) -> None:
     with imageio.get_writer(output_filename, mode="I") as writer:
         filenames = sorted(glob.glob(input_glob))
