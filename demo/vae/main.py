@@ -96,12 +96,6 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
-# TODO: in dataset overlay, vary marker size by the variance of each codepoint
-#       (Need to compute the local scaling factor introduced by the coordinate
-#        transformation in the figure, and choose a global overall scaling so
-#        that it looks good. For the local scaling factor in quantile mode,
-#        a finite difference of the interpolation grid is good enough.)
-
 # TODO: use an early-stopping criterion to avoid overfitting the training set?
 #
 # TODO: conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)

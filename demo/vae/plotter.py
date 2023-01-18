@@ -391,21 +391,68 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # my_cmap = mpl.colors.ListedColormap(rgba_colors, name="viridis_translucent")
     # # mpl.colormaps.register(my_cmap, force=True)  # no need to register it as we can pass it directly.
 
+    # Set up transformation between raw z space and linear display space
+    n_interp = 10001
+    linear_zi = np.linspace(-eps, eps, n_interp)  # where raw_zi (below) is on a display with linear coordinates
     if grid == "quantile":
         # Invert the quantile spacing numerically, to make the positioning match the example images.
         # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
-        n_interp = 10001
         raw_zi = normal_grid(n_interp, kind=grid, eps=eps)  # data value
-        linear_zi = np.linspace(-eps, eps, n_interp)  # where that value is on a display with linear coordinates
         def to_linear_display_coordinate(zi):
             """raw value of z_i -> display position on a linear axis with interval [-eps, eps]"""
             return np.interp(zi, xp=raw_zi, fp=linear_zi, left=np.nan, right=np.nan)  # nan = don't plot
+
+        # display scaling jacobian at interpolation interval midpoints (as function of raw z)
+        dzilinear_dziraw = (linear_zi[1:] - linear_zi[:-1]) / (raw_zi[1:] - raw_zi[:-1])
+
         linear_z1 = to_linear_display_coordinate(mean[:, 0])
         linear_z2 = to_linear_display_coordinate(mean[:, 1])
     else:  # grid == "linear":
+        dzilinear_dziraw = np.ones([n_interp - 1])
+
         linear_z1 = mean[:, 0]
         linear_z2 = mean[:, 1]
 
+    # Vary marker size by the standard deviation of the approximate posterior qϕ(z|x) (i.e. encoding model)
+    #
+    # By definition,  logvar := log(σ²),  so
+    sigma = np.exp(logvar / 2)
+
+    # In "quantile" mode, the scaling of the display depends on the position of the data point.
+    # So the mean also affects the visual marker size.
+    #
+    # Markers are circular, so we need to scalarize the 2D μ and σ to use them to control marker size.
+    # Euclidean distance from the origin of the raw z space (always at the center of the plot) will do fine.
+    def d(z):
+        return np.sqrt(np.sum(z**2, axis=1))
+    mu_scalar = d(mean)  # in raw z space
+    sigma_scalar = d(sigma)  # in raw z space
+
+    # Some standard deviations are very small (1e-6), so we force a minimum marker size
+    # to make all data points visible.
+    linear_tick_interval = (2 * eps) / (n - 1)  # whole axis = 2 * eps, with n ticks
+    min_marker_size = linear_tick_interval / 16  # in linear space (display axis)
+
+    # Account for the nonlinear coordinate scaling from raw z space to linear display space.
+    zzraw_for_dziraw_dzilinear = (raw_zi[1:] + raw_zi[:-1]) / 2  # raw z where we have jacobian data
+    def jacobian(zi):  # d[z_linear]/d[z_raw] as function of z_raw
+        return np.interp(zi, xp=zzraw_for_dziraw_dzilinear, fp=dzilinear_dziraw)
+    marker_size_scalings = np.maximum(min_marker_size, sigma_scalar * jacobian(mu_scalar))  # in linear space
+
+    # # DEBUG
+    # print(np.min(mu_scalar), np.max(mu_scalar))
+    # print(np.min(sigma_scalar), np.max(sigma_scalar))
+    # print(np.min(jacobian(mu_scalar)), np.max(jacobian(mu_scalar)))
+    # print(np.min(sigma_scalar / jacobian(mu_scalar)), np.max(sigma_scalar / jacobian(mu_scalar)))
+    # print(np.min(marker_size_scalings), np.max(marker_size_scalings))
+
+    # TODO: We need to convert marker sizes to points² instead of data space coordinates...
+    # TODO: ...so for now, make a qualitative scaling that looks good for our VAE on MNIST data.
+    # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.scatter.html
+    default_scatter_marker_size = mpl.rcParams['lines.markersize'] ** 2
+    marker_sizes = (marker_size_scalings / np.max(marker_size_scalings))**2 * (16 * default_scatter_marker_size)
+
+    # Make the colorbar discrete (since it represents data labels)
     # https://stackoverflow.com/questions/14777066/matplotlib-discrete-colorbar
     cmap = mpl.colormaps.get("viridis")  # or just `mpl.cm.viridis`
     minlabel = np.min(labels)
@@ -413,7 +460,8 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     color_bounds = np.arange(minlabel, (maxlabel + 1) + 1)
     color_norm = mpl.colors.BoundaryNorm(color_bounds, cmap.N)
 
-    newax.scatter(linear_z1, linear_z2, c=labels, norm=color_norm, alpha=alpha)
+    # Make the actual scatter plot
+    newax.scatter(linear_z1, linear_z2, s=marker_sizes, c=labels, norm=color_norm, alpha=alpha)
     # newax.scatter(linear_z1, linear_z2, c=labels, cmap=my_cmap)
     # newax.patch.set_alpha(0.25)  # patch = Axes background
     newax.set_xlim(-eps, eps)
