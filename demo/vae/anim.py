@@ -11,8 +11,6 @@ run this script from the top-level `extrafeathers` directory as:
 !!! Run this script on the CPU; the GPU will easily run out of memory when plotting dataset evolution. !!!
 """
 
-# TODO: add an `ETAEstimator`, like in `main.py`
-
 import gc
 import glob
 import importlib
