@@ -415,6 +415,9 @@ def compute_loss(model, x):
     logpz = log_normal_pdf(z, 0., 0.)                    # log pθ(z)   (latent prior, at *sampled* z)
 
     logqz_x = log_normal_pdf(z, mean, logvar)            # log qϕ(z|x) (variational posterior)
+
+    # TODO: Why is the ELBO positive on MNIST? This started happening when we changed the observation
+    # TODO: model to the continuous Bernoulli distribution, which should be properly normalized.
     return -tf.reduce_mean(logpx_z + logpz - logqz_x)    # ELBO (sign flipped → ELBO loss)
 
 @tf.function
