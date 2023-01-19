@@ -98,21 +98,26 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
-# TODO: use an early-stopping criterion to avoid overfitting the training set?
+# TODO: Use an early-stopping criterion to avoid overfitting the training set?
 #
-# TODO: conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)
+# TODO: Conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)
 #  - for a custom Keras object, `train_step` should be a method, not a separate function
 #  - `call` (although somewhat useless for an autoencoder) should be implemented
 #  - how to support `fit` and `predict`?
 #  - saving/serialization with standard API
-# TODO: register some monitored metrics? This would allow using the `EarlyStopping` class from the Keras API.
-# TODO: implement metrics from "Early stopping but when?" paper
+# TODO: Register some monitored metrics? This would allow using the `EarlyStopping` class from the Keras API.
+# TODO: Implement metrics from "Early stopping but when?" paper.
+
+# TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step, processing the z space
+# via e.g. diffusion maps or t-SNE for visualizing the latent representation in 2-dimensional space.
+
+# TODO: Add denoising, see e.g. https://davidstutz.de/denoising-variational-auto-encoders/
 
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
 #   - Or better yet, first check the distribution of the actual fields (observed data!)
-#   - Encode extra parameters as extra channels in the data?
+#   - Encode extra parameters (e.g. fluid viscosity) as extra channels in the data?
 
 import sys
 
