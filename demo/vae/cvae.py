@@ -326,99 +326,106 @@ def compute_loss(model, x):
     # Here ϕ are the encoder NN coefficients: NN_enc = NN_enc(ϕ, x).
     mean, logvar = model.encode(x)
 
-    # Draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
-    # reparameterization transformation z = g(ε, ϕ, x). In the implementation, actually z = g(μ, log σ);
-    # the dependencies on ϕ and x have been absorbed into μ(ϕ, x) and log σ(ϕ, x). The `reparameterize`
-    # function internally draws the noise sample ε, so we don't need to supply it here.
-    #
-    # We choose our class of variational posteriors (which we optimize over) as factorized Gaussian,
-    # mainly for convenience. Thus we interpret the (essentially arbitrary) numbers coming from the
-    # encoder as (μ, log σ) for a factorized Gaussian, and plug them in in those roles.
-    #
-    # Note z is encoded stochastically; even feeding in the same x produces a different z each time
-    # (since z is sampled from the variational posterior).
-    eps, z = model.reparameterize(mean, logvar)
+    # Trying a multiple-sample Monte Carlo just for the lulz...
+    elbo = 0.0
+    n_mc_samples = 2
+    for _ in range(n_mc_samples):
+        # Draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
+        # reparameterization transformation z = g(ε, ϕ, x). In the implementation, actually z = g(μ, log σ);
+        # the dependencies on ϕ and x have been absorbed into μ(ϕ, x) and log σ(ϕ, x). The `reparameterize`
+        # function internally draws the noise sample ε, so we don't need to supply it here.
+        #
+        # We choose our class of variational posteriors (which we optimize over) as factorized Gaussian,
+        # mainly for convenience. Thus we interpret the (essentially arbitrary) numbers coming from the
+        # encoder as (μ, log σ) for a factorized Gaussian, and plug them in in those roles.
+        #
+        # Note z is encoded stochastically; even feeding in the same x produces a different z each time
+        # (since z is sampled from the variational posterior).
+        eps, z = model.reparameterize(mean, logvar)
 
-    # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z).
-    # Here θ are the decoder NN coefficients: NN_dec = NN_dec(θ, z).
-    #
-    # We implement the classic VAE: we choose our class of observation models as factorized Bernoulli
-    # (pixel-wise). Thus we interpret the (essentially arbitrary) numbers coming from the decoder as
-    # logits for a factorized Bernoulli distribution, and plug them in in that role.
-    #
-    # The original tutorial implementations are unnecessarily confusing here; logits and the binary
-    # cross-entropy are a sideshow, specific to the discrete Bernoulli observation model of the classic
-    # VAE, which doesn't even make sense for continuous (grayscale) data (hence the unnecessary
-    # binarization of the input data, which hurts quality).
-    #
-    # It is correct that even in the general case, we do want to minimize cross-entropy, but the ELBO is
-    # easier to understand without introducing this extra concept.
-    #
-    # See e.g. Wikipedia on cross-entropy:
-    #    https://en.wikipedia.org/wiki/Cross_entropy
-    #
-    # How to compute pθ(x|z) in general, for any VAE: we just take the observation parameters P computed by
-    # P = NN_dec(θ, z) at the sampled z (thus accounting for the dependence on z), and evaluate the known
-    # function pθ(x|z) (parameterized by P and x) with those parameters P at the input x.
-    #
-    # Note that in a VAE, unlike a classical AE, the decoded output is not directly x-hat (i.e. an
-    # approximation of the input data point), but parameters for a distribution that can be used to
-    # compute x-hat. Strictly, in a VAE, x-hat is a (pixelwise) distribution. Many implementations
-    # return the mean of that distribution as the decoded image.
-    #
-    # For more details, see the VAE tutorial paper by Kingma and Welling (2019, algorithm 2).
-    P = model.decode(z)
+        # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z).
+        # Here θ are the decoder NN coefficients: NN_dec = NN_dec(θ, z).
+        #
+        # We implement the classic VAE: we choose our class of observation models as factorized Bernoulli
+        # (pixel-wise). Thus we interpret the (essentially arbitrary) numbers coming from the decoder as
+        # logits for a factorized Bernoulli distribution, and plug them in in that role.
+        #
+        # The original tutorial implementations are unnecessarily confusing here; logits and the binary
+        # cross-entropy are a sideshow, specific to the discrete Bernoulli observation model of the classic
+        # VAE, which doesn't even make sense for continuous (grayscale) data (hence the unnecessary
+        # binarization of the input data, which hurts quality).
+        #
+        # It is correct that even in the general case, we do want to minimize cross-entropy, but the ELBO is
+        # easier to understand without introducing this extra concept.
+        #
+        # See e.g. Wikipedia on cross-entropy:
+        #    https://en.wikipedia.org/wiki/Cross_entropy
+        #
+        # How to compute pθ(x|z) in general, for any VAE: we just take the observation parameters P computed by
+        # P = NN_dec(θ, z) at the sampled z (thus accounting for the dependence on z), and evaluate the known
+        # function pθ(x|z) (parameterized by P and x) with those parameters P at the input x.
+        #
+        # Note that in a VAE, unlike a classical AE, the decoded output is not directly x-hat (i.e. an
+        # approximation of the input data point), but parameters for a distribution that can be used to
+        # compute x-hat. Strictly, in a VAE, x-hat is a (pixelwise) distribution. Many implementations
+        # return the mean of that distribution as the decoded image.
+        #
+        # For more details, see the VAE tutorial paper by Kingma and Welling (2019, algorithm 2).
+        P = model.decode(z)
 
-    # Evaluate a single-sample Monte Carlo (MC) estimate of the ELBO.
-    #
-    # We basically need the logarithms of the three probabilities pθ(x|z) (observation model),
-    # pθ(z) (latent prior), and qϕ(z|x) (variational posterior), evaluated for the current model (θ, ϕ),
-    # at the input x and the corresponding encoded z. The encoded z is sampled from qϕ(z|x), which is
-    # available for the current iterate of the variational parameters ϕ.
-    #
-    # IMPORTANT for consistency: We use the *input* x and the *sampled* z in all terms of the MC estimate.
-    # This is because we are evaluating the ELBO at the input x.
-    #
-    # For example, evaluating the latent prior at the sampled z gives the probability that the prior pθ(z)
-    # assigns to the z drawn from the approximate posterior qϕ(z|x).
-    #
-    # In the observation term pθ(x|z), our z sample (which the observation is conditioned on) is drawn from
-    # qϕ(z|x), which in turn is conditioned on the input x.
-    #
-    # # The original tutorial implementations did it like this:
-    # cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=P, labels=x)
-    # logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])  # log pθ(x|z) (observation model)
+        # Evaluate a single-sample Monte Carlo (MC) estimate of the ELBO.
+        #
+        # We basically need the logarithms of the three probabilities pθ(x|z) (observation model),
+        # pθ(z) (latent prior), and qϕ(z|x) (variational posterior), evaluated for the current model (θ, ϕ),
+        # at the input x and the corresponding encoded z. The encoded z is sampled from qϕ(z|x), which is
+        # available for the current iterate of the variational parameters ϕ.
+        #
+        # IMPORTANT for consistency: We use the *input* x and the *sampled* z in all terms of the MC estimate.
+        # This is because we are evaluating the ELBO at the input x.
+        #
+        # For example, evaluating the latent prior at the sampled z gives the probability that the prior pθ(z)
+        # assigns to the z drawn from the approximate posterior qϕ(z|x).
+        #
+        # In the observation term pθ(x|z), our z sample (which the observation is conditioned on) is drawn from
+        # qϕ(z|x), which in turn is conditioned on the input x.
+        #
+        # # The original tutorial implementations did it like this:
+        # cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=P, labels=x)
+        # logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
-    # # Discrete Bernoulli, computing pθ(x|z) ourselves explicitly:
-    # p = tf.sigmoid(P)  # interpret decoder output as logits; map into probabilities
-    # p = tf.clip_by_value(p, 1e-4, 1 - 1e-4)  # avoid log(0)
-    # logpx_z = tf.reduce_sum(x * tf.math.log(p) + (1 - x) * tf.math.log(1 - p),
-    #                         axis=[1, 2, 3])  # log pθ(x|z) (observation model)
+        # # Discrete Bernoulli, computing pθ(x|z) ourselves explicitly:
+        # p = tf.sigmoid(P)  # interpret decoder output as logits; map into probabilities
+        # p = tf.clip_by_value(p, 1e-4, 1 - 1e-4)  # avoid log(0)
+        # logpx_z = tf.reduce_sum(x * tf.math.log(p) + (1 - x) * tf.math.log(1 - p),
+        #                         axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
-    # Continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1,
-    # when x is continuous in the interval [0, 1] (instead of taking on just one of the values {0, 1}).
-    #
-    # Note the output is now the parameter λ of the continuous Bernoulli distribution, not directly a
-    # probability; and the mean of the continuous Bernoulli distribution is also different from λ.
-    # Still, in practice λ works well as-is as a deterministic output value for the decoder.
-    #
-    # As for how to apply the normalization constant, see the original implementation by Loaiza-Ganem
-    # and Cunningham: https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/cb_vae_mnist.ipynb
-    lam = tf.sigmoid(P)  # interpret decoder output as logits; map into λ parameter of continuous Bernoulli
-    lam = tf.clip_by_value(lam, 1e-4, 1 - 1e-4)  # avoid log(0)
-    logpx_z = tf.reduce_sum(x * tf.math.log(lam) + (1 - x) * tf.math.log(1 - lam) + cont_bern_log_norm(lam),
-                            axis=[1, 2, 3])  # log pθ(x|z) (observation model)
+        # Continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1,
+        # when x is continuous in the interval [0, 1] (instead of taking on just one of the values {0, 1}).
+        #
+        # Note the output is now the parameter λ of the continuous Bernoulli distribution, not directly a
+        # probability; and the mean of the continuous Bernoulli distribution is also different from λ.
+        # Still, in practice λ works well as-is as a deterministic output value for the decoder.
+        #
+        # As for how to apply the normalization constant, see the original implementation by Loaiza-Ganem
+        # and Cunningham: https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/cb_vae_mnist.ipynb
+        lam = tf.sigmoid(P)  # interpret decoder output as logits; map into λ parameter of continuous Bernoulli
+        lam = tf.clip_by_value(lam, 1e-4, 1 - 1e-4)  # avoid log(0)
+        logpx_z = tf.reduce_sum(x * tf.math.log(lam) + (1 - x) * tf.math.log(1 - lam) + cont_bern_log_norm(lam),
+                                axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
-    # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(0, 1).
-    # Note this spherical unit Gaussian is distinct from the one we used for the noise variable ε.
-    # Note also the function `log_normal_pdf` takes `log σ`, not bare `σ`.
-    logpz = log_normal_pdf(z, 0., 0.)                    # log pθ(z)   (latent prior, at *sampled* z)
+        # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(0, 1).
+        # Note this spherical unit Gaussian is distinct from the one we used for the noise variable ε.
+        # Note also the function `log_normal_pdf` takes `log σ`, not bare `σ`.
+        logpz = log_normal_pdf(z, 0., 0.)                    # log pθ(z)   (latent prior, at *sampled* z)
 
-    logqz_x = log_normal_pdf(z, mean, logvar)            # log qϕ(z|x) (variational posterior)
+        logqz_x = log_normal_pdf(z, mean, logvar)            # log qϕ(z|x) (variational posterior)
 
-    # TODO: Why is the ELBO positive on MNIST? This started happening when we changed the observation
-    # TODO: model to the continuous Bernoulli distribution, which should be properly normalized.
-    return -tf.reduce_mean(logpx_z + logpz - logqz_x)    # ELBO (sign flipped → ELBO loss)
+        # TODO: Why is the ELBO positive on MNIST? This started happening when we changed the observation
+        # TODO: model to the continuous Bernoulli distribution, which should be properly normalized.
+        elbo += tf.reduce_mean(logpx_z + logpz - logqz_x)
+    elbo /= n_mc_samples  # take the mean
+
+    return -elbo  # with sign flipped → ELBO loss
 
 @tf.function
 def train_step(model, x, optimizer):
