@@ -112,6 +112,7 @@ import unpythonic.net.server as repl_server
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
 #   - Or better yet, first check the distribution of the actual fields (observed data!)
+#   - Encode extra parameters as extra channels in the data?
 
 import sys
 
@@ -144,6 +145,9 @@ batch_size = 64  # acceptable generalization on continuous Bernoulli
 
 # For this particular model, the test set ELBO saturates somewhere between epoch 100...200.
 n_epochs = 200
+
+# TODO: Apply a learning rate schedule to eliminate excessive learning noise after epoch ≈ 100?
+# TODO: (See the latent space plots with the dataset overlay, produced by `anim.py`.)
 
 # For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
 optimizer = tf.keras.optimizers.Adam(1e-4)
