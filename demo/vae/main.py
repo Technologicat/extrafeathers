@@ -151,19 +151,28 @@ batch_size = 64  # acceptable generalization on continuous Bernoulli
 # For this particular model, the test set ELBO saturates somewhere between epoch 100...200.
 n_epochs = 200
 
-# TODO: Apply a learning rate schedule to eliminate excessive learning noise after epoch ≈ 100?
-# TODO: (See the latent space plots with the dataset overlay, produced by `anim.py`.)
-
-# For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
-optimizer = tf.keras.optimizers.Adam(1e-4)
-
-# --------------------------------------------------------------------------------
-# Main program - model training
-
-# For overlay plotting, it's convenient to have these here.
 (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
+
+decay_epochs = 100
+d, m = divmod(train_images.shape[0], batch_size)
+steps_per_epoch = d + int(m > 0)
+
+# For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
+# optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+#
+# The API docs at
+# https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Optimizer
+# say that an `Optimizer` increments `self.iterations` by one every time its `apply_gradients`
+# method is called. So we should be able to use a dynamic learning rate.
+lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-4,
+                                                             decay_steps=decay_epochs * steps_per_epoch,
+                                                             decay_rate=0.25)
+optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+
+# --------------------------------------------------------------------------------
+# Main program - model training
 
 model = CVAE(latent_dim)
 
@@ -220,10 +229,13 @@ def main():
 
     # Train the model
     est = ETAEstimator(n_epochs, keep_last=10)
+    learning_rates = []
     train_elbos = []
     test_elbos = []
     with timer() as tim_total:
         for epoch in range(1, n_epochs + 1):
+            prev_iterations = optimizer.iterations.numpy()
+
             # SGD using one pass through the training set (with the batches set up previously)
             with timer() as tim_train:
                 running_mean = tf.keras.metrics.Mean()
@@ -259,14 +271,25 @@ def main():
                 fig3.canvas.draw_idle()
                 # overlay_datapoints(train_images, train_labels, e)  # out of memory on GPU
 
+            # Store current learning rate, for visualization/debugging of the learning schedule
+            learning_rate = lr_schedule(optimizer.iterations)
+            learning_rates.append(learning_rate)
+            total_iterations = optimizer.iterations.numpy()
+            epoch_iterations = total_iterations - prev_iterations
+
             # Save current model coefficients, and the ELBO history so far
             with timer() as tim_save:
                 model.my_save(f"{output_dir}model/{epoch:04d}")
-                np.savez(f"{output_dir}elbo.npz", epochs=epochs, train_elbos=train_elbos, test_elbos=test_elbos)
+                np.savez(f"{output_dir}elbo.npz",
+                         epochs=epochs,
+                         train_elbos=train_elbos,
+                         test_elbos=test_elbos,
+                         optimizer_iterations=total_iterations,
+                         learning_rates=learning_rates)
 
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
-            print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}: test set ELBO {test_elbo:0.6g}, epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s, plotting {tim_plot.dt:0.3g}s, saving {tim_save.dt:0.3g}s; {est.formatted_eta}")
+            print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}, test set ELBO {test_elbo:0.6g}, learning rate {learning_rate:0.6g}, optimizer iterations {epoch_iterations} (epoch), {total_iterations} (total); epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s, plotting {tim_plot.dt:0.3g}s, saving {tim_save.dt:0.3g}s; {est.formatted_eta}")
     print(f"Total model training wall time: {tim_total.dt:0.6g}s")
 
     # # Save the trained model.
