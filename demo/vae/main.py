@@ -36,9 +36,11 @@ To train the model, open a terminal in the top-level `extrafeathers` directory, 
 
   python -m demo.vae.main
 
-The model will be saved in `saved_model_dir`, defined in config below.
+The model will be saved in `<output_dir>/model/<XXXX>`, where `output_dir` is defined in `config.py`,
+and XXXX is either a four-digit epoch number starting from 0001, or "final" for the final result of
+a completed training run.
 
-The ELBO history, and some visualizations from the training process, will also be saved.
+The ELBO history, and some visualizations from the training process, will also be saved in `output_dir`.
 
 Note that some visualizations are created separately by running `anim.py` after the model
 has been trained:
@@ -51,7 +53,7 @@ To load the trained model, in an IPython session:
   import demo.vae.main as main
   main.model.my_load("demo/output/vae/model/final")  # or whatever
 
-Now you can e.g.:
+Once the model is loaded, you can e.g.:
 
   import matplotlib.pyplot as plt
   import demo.vae.plotter as plotter
