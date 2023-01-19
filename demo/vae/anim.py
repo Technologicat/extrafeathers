@@ -14,6 +14,8 @@ run this script from the top-level `extrafeathers` directory as:
 import gc
 import glob
 import importlib
+import os
+import sys
 
 import imageio
 
@@ -36,6 +38,16 @@ from .util import preprocess_images
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 
+# Optionally take a directory name from the command line
+# (so that we can create animations of completed models later
+#  after the directory has been renamed for archival purposes).
+if len(sys.argv) > 1:
+    data_dir = sys.argv[1]
+else:
+    data_dir = output_dir
+if data_dir[-1] != os.path.sep:
+    data_dir += os.path.sep
+
 # --------------------------------------------------------------------------------
 # Animation-making helper
 
@@ -43,7 +55,10 @@ test_images = preprocess_images(test_images)
 
 def make_animation(output_filename: str, input_glob: str) -> None:
     with imageio.get_writer(output_filename, mode="I") as writer:
-        filenames = sorted(glob.glob(input_glob))
+        filenames = glob.glob(input_glob)
+        if not filenames:
+            raise FileNotFoundError(f"No input files for glob '{input_glob}'")
+        filenames = sorted(filenames)
         for filename in filenames:
             image = imageio.v2.imread(filename)
             writer.append_data(image)
@@ -53,15 +68,15 @@ def make_animation(output_filename: str, input_glob: str) -> None:
 # --------------------------------------------------------------------------------
 # Easy ones first (the training process already writes the individual animation frames):
 
-make_animation(f"{output_dir}{test_sample_anim_filename}",
-               f"{output_dir}{test_sample_fig_basename}*.{fig_format}")
-make_animation(f"{output_dir}{latent_space_anim_filename}",
-               f"{output_dir}{latent_space_fig_basename}*.{fig_format}")
+make_animation(f"{data_dir}{test_sample_anim_filename}",
+               f"{data_dir}{test_sample_fig_basename}*.{fig_format}")
+make_animation(f"{data_dir}{latent_space_anim_filename}",
+               f"{data_dir}{latent_space_fig_basename}*.{fig_format}")
 
 # --------------------------------------------------------------------------------
 # Plot the evolution of the codepoints corresponding to the training dataset
 
-input_dirs = sorted(glob.glob(f"{output_dir}model/*"))
+input_dirs = sorted(glob.glob(f"{data_dir}model/*"))
 est = ETAEstimator(len(input_dirs), keep_last=10)
 for model_dir in input_dirs:
     epoch_str = model_dir[model_dir.rfind("/") + 1:]
@@ -85,7 +100,7 @@ for model_dir in input_dirs:
     overlay_datapoints(train_images, train_labels, e)
 
     fig = plt.figure(1)
-    fig.savefig(f"{output_dir}{overlay_fig_basename}_{epoch_str}.{fig_format}")
+    fig.savefig(f"{data_dir}{overlay_fig_basename}_{epoch_str}.{fig_format}")
     fig.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
     est.tick()
@@ -94,5 +109,5 @@ for model_dir in input_dirs:
 # --------------------------------------------------------------------------------
 # Finally, make an animation of the codepoint evolution:
 
-make_animation(f"{output_dir}{overlay_anim_filename}",
-               f"{output_dir}{overlay_fig_basename}*.{fig_format}")
+make_animation(f"{data_dir}{overlay_anim_filename}",
+               f"{data_dir}{overlay_fig_basename}*.{fig_format}")
