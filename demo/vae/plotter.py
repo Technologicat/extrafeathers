@@ -397,7 +397,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.scatter.html
         # https://stackoverflow.com/questions/14827650/pyplot-scatter-plot-marker-size
         #
-        trans = newax.transData.transform  # linear data coordinates -> display coordinates (pixels)
+        trans = newax.transData.transform  # linear (`newax`) data coordinates -> display coordinates (pixels)
         # Here `mradius_pixels[:, 0]` is only for debug, to show the length of one linear data unit
         # in display coordinates (pixels).
         mradius_pixels = trans(p2_linear) - trans(p1_linear)
@@ -427,16 +427,14 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         # Invert the quantile spacing numerically.
         # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
         zi_raw = normal_grid(n_interp, kind=grid, eps=eps)
-        def raw_to_linear(zi):
-            """raw value of z_i -> linear (`newax`) data coordinates on interval [-eps, eps]"""
+        def linear_z(zi):  # raw z_i to linear (`newax`) data coordinates on interval [-eps, eps]
             # We pad with NaN to disable plotting of any points outside the overlay area.
             return np.interp(zi, xp=zi_raw, fp=zi_linear, left=np.nan, right=np.nan)
 
-        z1_linear = raw_to_linear(mean[:, 0])
-        z2_linear = raw_to_linear(mean[:, 1])
+        z1_linear = linear_z(mean[:, 0])
+        z2_linear = linear_z(mean[:, 1])
 
-        # Jacobian of linear to raw transformation (note direction!),
-        # at interpolation interval midpoints, as function of raw z.
+        # Jacobian of the transformation, at interpolation interval midpoints, as function of raw z.
         dzilinear_dziraw = (zi_linear[1:] - zi_linear[:-1]) / (zi_raw[1:] - zi_raw[:-1])
         zzraw_for_jacobian = (zi_raw[1:] + zi_raw[:-1]) / 2  # raw z where we have jacobian data
         def display_jacobian(zi):  # d[z_linear]/d[z_raw] as function of z_raw
