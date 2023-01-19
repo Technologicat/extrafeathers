@@ -166,6 +166,8 @@ def plot_latent_image(n: int = 20, *,
                       figno: int = 1) -> env:
     """Plot n × n digit images decoded from the latent space.
 
+    (This works for any square images encoded into a 2-dimensional latent space.)
+
     `n`, `grid`, `eps`: passed to `normal_grid` (`grid` is the `kind`)
 
                         A quantile grid is linear in cumulative probability according to the
@@ -271,6 +273,8 @@ _overlay_colorbars = defaultdict(list)
 _overlay_callbacks = defaultdict(list)
 def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: float = 0.1) -> None:
     """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot.
+
+    (This works for any square images encoded into a 2-dimensional latent space.)
 
     `figdata`: metadata describing the figure on which to overlay the plot.
                This is the return value of `plot_latent_image`.
