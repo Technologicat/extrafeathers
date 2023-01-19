@@ -247,6 +247,7 @@ def plot_latent_image(n: int = 20, *,
     return env(n=n, model=model, digit_size=digit_size, grid=grid, eps=eps, figno=figno)
 
 
+# TODO: BUG: `remove_overlay`: removing the colorbar raises an exception at least in an IPython session.
 def remove_overlay(figno: int = 1):
     """Remove previous datapoint overlay in figure `figno`, if any."""
     fig = plt.figure(figno)
