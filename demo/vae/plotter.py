@@ -306,9 +306,13 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         return mean, logvar
     mean, logvar = encode_batched(x)
 
+    # --------------------------------------------------------------------------------
     # We need some gymnastics to plot on top of an imshow image; it's easiest to
     # overlay a new Axes with a transparent background.
+    #
     # https://stackoverflow.com/questions/16829436/overlay-matplotlib-imshow-with-line-plots-that-are-arranged-in-a-grid
+
+    # Remove old overlay, if any.
     fig = plt.figure(figno)
     remove_overlay(figno)
     if not fig.axes:
@@ -318,28 +322,27 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
 
     # print([int(x) for x in fig.axes[0].get_xlim()])
 
-    # Compute position for overlay:
-    #
-    # Determine the centers of images at two opposite corners of the sheet,
-    # in data coordinates of the imshow plot.
+    # Compute the desired position for the overlay, in pixels of the imshow image.
     image_width = digit_size * n
 
-    # # In this variant, the data area ends at the center of the edgemost images.
-    # # Doesn't look good, the dataset is cut off before the image area ends.
+    # # In this variant, we use the centers of images at two opposite corners of the sheet.
+    # # The data area ends at the center of the edgemost images.
+    # # Doesn't look good, the dataset overlay is cut off before the image area ends.
     # xmin = digit_size / 2
     # xmax = image_width - (digit_size / 2)
     #
-    # Use whole data area - looks much better.
+    # In this variant, we use the whole image area for the overlay - looks much better.
     xmin = 0
-    xmax = image_width
+    xmax = image_width  # endpoint, so after the last pixel.
 
     ymin = xmin
     ymax = xmax
     xy0 = [xmin, ymin]
     xy1 = [xmax, ymax]
 
-    # Adjust the ticks of the parent plot to match. Now the centermost image corresponds
-    # to its center point; cornermost images correspond to their outermost corner points.
+    # For the second variant, we now adjust the ticks of the parent plot to match. The result is that now
+    # the centermost image corresponds to its center point; and the cornermost images correspond to their
+    # outermost corner points.
     startx = 0
     endx = image_width - 1
     zz = normal_grid(n, kind=grid, eps=eps)
@@ -350,27 +353,29 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     ax.set_xticks(tick_positions_x, [f"{x:0.3g}" for x in grid_x], rotation="vertical")
     ax.set_yticks(tick_positions_y, [f"{y:0.3g}" for y in grid_y])
 
-    # Convert to figure coordinates.
+    # --------------------------------------------------------------------------------
+    # Create the overlay, and keep it positioned when the window size changes.
+
     def data_to_fig(xy):
         """Convert Matplotlib data coordinates (of current axis) to figure coordinates."""
         # https://matplotlib.org/stable/tutorials/advanced/transforms_tutorial.html
         xy_ax = ax.transLimits.transform(xy)  # data coordinates -> axes coordinates
-        xy_disp = ax.transAxes.transform(xy_ax)  # axes -> display
-        xy_fig = fig.transFigure.inverted().transform(xy_disp)  # display -> figure
+        xy_pixels = ax.transAxes.transform(xy_ax)  # axes -> display
+        xy_fig = fig.transFigure.inverted().transform(xy_pixels)  # display -> figure
         # print(f"data: {xy}")
         # print(f"ax:   {xy_ax}")
-        # print(f"disp: {xy_disp}")
+        # print(f"disp: {xy_pixels}")
         # print(f"fig:  {xy_fig}")
         return xy_fig
 
-    def compute_overlay_position():  # in figure coordinates
+    def compute_overlay_position_in_figure_coordinates():
         x0, y0 = data_to_fig(xy0)
         x1, y1 = data_to_fig(xy1)
         box = [x0, y0, (x1 - x0), (y1 - y0)]
         return box
 
-    # Set up the new Axes, no background (`set_axis_off`), and plot the overlay.
-    box = compute_overlay_position()
+    # Set up the new Axes, no background (`set_axis_off`).
+    box = compute_overlay_position_in_figure_coordinates()
     newax = fig.add_axes(box, label="<custom overlay>")
     newax.set_axis_off()
 
@@ -379,98 +384,145 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
         fig.tight_layout()
         plt.draw()
         plotmagic.pause(0.001)
-        box = compute_overlay_position()
+        box = compute_overlay_position_in_figure_coordinates()
         newax.set_position(box)
+
+        # Update scatter plot marker sizes.
+        # The data needed here is computed further below when we set up the plot.
+        #
+        # Matplotlib `scatter` marker sizes `s` are given in units of points². This is defined so that
+        # if the marker shape is square, `s` is its area. A circular marker is the inscribed circle,
+        # which has area  (π / 4) s = π r²  so  s = 4 r² = (2 r)²  or in other words, `s` is the square
+        # of the diameter.
+        # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.scatter.html
+        # https://stackoverflow.com/questions/14827650/pyplot-scatter-plot-marker-size
+        #
+        trans = newax.transData.transform  # linear data coordinates -> display coordinates (pixels)
+        # Here `mradius_pixels[:, 0]` is only for debug, to show the length of one linear data unit
+        # in display coordinates (pixels).
+        mradius_pixels = trans(p2_linear) - trans(p1_linear)
+        ppd = 72. / fig.dpi  # relative size of a typographic point
+        mradius_points = mradius_pixels[:, 1] * ppd
+        s = 4 * mradius_points**2
+        scatterplot.set_sizes(s)
     cid = fig.canvas.mpl_connect('resize_event', onresize)  # return value = callback id for `mpl_disconnect`
     _overlay_callbacks[figno].append(cid)
+
+    # # For documentation: if we need to fire a redraw from a `draw_event` handler, it must be delayed.
+    # # https://stackoverflow.com/a/48174228
+    # # https://github.com/matplotlib/matplotlib/issues/10334
+    # def redraw_later(fig):
+    #     timer = fig.canvas.new_timer(interval=10)
+    #     timer.single_shot = True
+    #     timer.add_callback(lambda: fig.canvas.draw_idle())
+    #     timer.start()
+
+    # --------------------------------------------------------------------------------
+    # Set up a transformation between raw z space (as displayed on the ticks of the parent plot)
+    # and linear (`newax`) data coordinates, and use it to position the overlay datapoints.
+
+    n_interp = 10001
+    zi_linear = np.linspace(-eps, eps, n_interp)  # where zi_raw (below) is in linear data coordinates
+    if grid == "quantile":
+        # Invert the quantile spacing numerically.
+        # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
+        zi_raw = normal_grid(n_interp, kind=grid, eps=eps)
+        def raw_to_linear(zi):
+            """raw value of z_i -> linear (`newax`) data coordinates on interval [-eps, eps]"""
+            # We pad with NaN to disable plotting of any points outside the overlay area.
+            return np.interp(zi, xp=zi_raw, fp=zi_linear, left=np.nan, right=np.nan)
+
+        z1_linear = raw_to_linear(mean[:, 0])
+        z2_linear = raw_to_linear(mean[:, 1])
+
+        # Jacobian of linear to raw transformation (note direction!),
+        # at interpolation interval midpoints, as function of raw z.
+        dzilinear_dziraw = (zi_linear[1:] - zi_linear[:-1]) / (zi_raw[1:] - zi_raw[:-1])
+        zzraw_for_jacobian = (zi_raw[1:] + zi_raw[:-1]) / 2  # raw z where we have jacobian data
+        def display_jacobian(zi):  # d[z_linear]/d[z_raw] as function of z_raw
+            return np.interp(zi, xp=zzraw_for_jacobian, fp=dzilinear_dziraw)
+    else:  # grid == "linear":
+        z1_linear = mean[:, 0]
+        z2_linear = mean[:, 1]
+        def display_jacobian(zi):
+            return np.ones_like(zi)
+
+    # --------------------------------------------------------------------------------
+    # Show the standard deviation of the approximate posterior qϕ(z|x) (i.e. encoding model)
+    # in the marker size.
+    #
+    # TODO: This doesn't yet work correctly upon zooming into a region.
+
+    # By definition, the log-variance is  logvar := log(σ²),  so
+    sigma = np.exp(logvar / 2)
+
+    # In "quantile" mode, parts of the data space are magnified, depending on the position of the data point.
+    # So the mean of the approximate posterior also affects the visual marker size.
+    #
+    # Markers are equal-aspect (circular), so we need to scalarize the 2D μ and σ to use them to control
+    # the marker size. We use the euclidean length of the vector just for simplicity.
+    def euclidean_length(z):
+        return np.sqrt(np.sum(z**2, axis=1))
+    mdistance_raw = euclidean_length(mean)  # ‖μ‖ in raw z space
+    mradius_raw = euclidean_length(sigma)  # ‖σ‖ in raw z space (could also visualize e.g. ‖3σ‖)
+
+    # Some standard deviations are very small (1e-6), so we force a minimum marker size
+    # to make all data points visible.
+    tick_interval_linear = (2 * eps) / (n - 1)  # whole axis = 2 * eps, with n ticks
+    min_mradius_linear = tick_interval_linear / 32  # in linear space (display axis)
+
+    # Given the marker radius in raw z space, compute the marker radius in linear (`newax`) data space.
+    mradius_linear = np.maximum(min_mradius_linear, mradius_raw * display_jacobian(mdistance_raw))
+
+    # # DEBUG
+    # print(np.min(mdistance_raw), np.max(mdistance_raw))
+    # print(np.min(mradius_raw), np.max(mradius_raw))
+    # print(np.min(jacobian(mdistance_raw)), np.max(jacobian(mdistance_raw)))
+    # print(np.min(mradius_raw / jacobian(mdistance_raw)), np.max(mradius_raw / jacobian(mdistance_raw)))
+    # print(np.min(mradius_linear), np.max(mradius_linear))
+
+    # As the final step, we need to convert from `newax` data units into typographic points; see e.g.
+    # https://stackoverflow.com/a/48174228
+    ONE = np.ones_like(mradius_linear)
+    ZERO = np.zeros_like(mradius_linear)
+    p2_linear = np.column_stack((ONE, mradius_linear))
+    p1_linear = np.column_stack((ZERO, ZERO))
+    # The rest is done in `onresize`, as the marker sizes must be updated when the window size changes.
+
+    # --------------------------------------------------------------------------------
+    # Set up colors, make the actual scatterplot, add a colorbar to show data labels.
 
     # # Instead of using a global alpha, we could also customize a colormap like this
     # # (to make alpha vary as a function of the data value):
     # rgb_colors = mpl.colormaps.get("viridis").colors  # or some other base colormap; or make a custom one
     # rgba_colors = [[r, g, b, alpha] for r, g, b in rgb_colors]
     # my_cmap = mpl.colors.ListedColormap(rgba_colors, name="viridis_translucent")
-    # # mpl.colormaps.register(my_cmap, force=True)  # no need to register it as we can pass it directly.
-
-    # Set up transformation between raw z space and linear display space
-    n_interp = 10001
-    linear_zi = np.linspace(-eps, eps, n_interp)  # where raw_zi (below) is on a display with linear coordinates
-    if grid == "quantile":
-        # Invert the quantile spacing numerically, to make the positioning match the example images.
-        # TODO: implement a custom ScaleTransform for data-interpolated axes? Useful both here and in `hdrplot`.
-        raw_zi = normal_grid(n_interp, kind=grid, eps=eps)  # data value
-        def to_linear_display_coordinate(zi):
-            """raw value of z_i -> display position on a linear axis with interval [-eps, eps]"""
-            return np.interp(zi, xp=raw_zi, fp=linear_zi, left=np.nan, right=np.nan)  # nan = don't plot
-
-        # display scaling jacobian at interpolation interval midpoints (as function of raw z)
-        dzilinear_dziraw = (linear_zi[1:] - linear_zi[:-1]) / (raw_zi[1:] - raw_zi[:-1])
-
-        linear_z1 = to_linear_display_coordinate(mean[:, 0])
-        linear_z2 = to_linear_display_coordinate(mean[:, 1])
-    else:  # grid == "linear":
-        dzilinear_dziraw = np.ones([n_interp - 1])
-
-        linear_z1 = mean[:, 0]
-        linear_z2 = mean[:, 1]
-
-    # Vary marker size by the standard deviation of the approximate posterior qϕ(z|x) (i.e. encoding model)
-    #
-    # By definition,  logvar := log(σ²),  so
-    sigma = np.exp(logvar / 2)
-
-    # In "quantile" mode, the scaling of the display depends on the position of the data point.
-    # So the mean also affects the visual marker size.
-    #
-    # Markers are circular, so we need to scalarize the 2D μ and σ to use them to control marker size.
-    # Euclidean distance from the origin of the raw z space (always at the center of the plot) will do fine.
-    def d(z):
-        return np.sqrt(np.sum(z**2, axis=1))
-    mu_scalar = d(mean)  # in raw z space
-    sigma_scalar = d(sigma)  # in raw z space
-
-    # Some standard deviations are very small (1e-6), so we force a minimum marker size
-    # to make all data points visible.
-    linear_tick_interval = (2 * eps) / (n - 1)  # whole axis = 2 * eps, with n ticks
-    min_marker_size = linear_tick_interval / 16  # in linear space (display axis)
-
-    # Account for the nonlinear coordinate scaling from raw z space to linear display space.
-    zzraw_for_dziraw_dzilinear = (raw_zi[1:] + raw_zi[:-1]) / 2  # raw z where we have jacobian data
-    def jacobian(zi):  # d[z_linear]/d[z_raw] as function of z_raw
-        return np.interp(zi, xp=zzraw_for_dziraw_dzilinear, fp=dzilinear_dziraw)
-    marker_size_scalings = np.maximum(min_marker_size, sigma_scalar * jacobian(mu_scalar))  # in linear space
-
-    # # DEBUG
-    # print(np.min(mu_scalar), np.max(mu_scalar))
-    # print(np.min(sigma_scalar), np.max(sigma_scalar))
-    # print(np.min(jacobian(mu_scalar)), np.max(jacobian(mu_scalar)))
-    # print(np.min(sigma_scalar / jacobian(mu_scalar)), np.max(sigma_scalar / jacobian(mu_scalar)))
-    # print(np.min(marker_size_scalings), np.max(marker_size_scalings))
-
-    # TODO: We need to convert marker sizes to points² instead of data space coordinates...
-    # TODO: ...so for now, make a qualitative scaling that looks good for our VAE on MNIST data.
-    # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.scatter.html
-    default_scatter_marker_size = mpl.rcParams['lines.markersize'] ** 2
-    marker_sizes = (marker_size_scalings / np.max(marker_size_scalings))**2 * (16 * default_scatter_marker_size)
+    # # mpl.colormaps.register(my_cmap, force=True)  # no need to register, we can pass it directly as `cmap`.
 
     # Make the colorbar discrete (since it represents data labels)
     # https://stackoverflow.com/questions/14777066/matplotlib-discrete-colorbar
     cmap = mpl.colormaps.get("viridis")  # or just `mpl.cm.viridis`
     minlabel = np.min(labels)
     maxlabel = np.max(labels)
+    # Labels 0...9 need an upper bound of 10 to have a region for the "9" (in the BoundaryNorm,
+    # the region 9...10 maps to 9). The other +1 is for one-past-end.
     color_bounds = np.arange(minlabel, (maxlabel + 1) + 1)
     color_norm = mpl.colors.BoundaryNorm(color_bounds, cmap.N)
 
     # Make the actual scatter plot
-    newax.scatter(linear_z1, linear_z2, s=marker_sizes, c=labels, norm=color_norm, alpha=alpha)
-    # newax.scatter(linear_z1, linear_z2, c=labels, cmap=my_cmap)
+    scatterplot = newax.scatter(z1_linear, z2_linear,
+                                s=np.ones_like(z1_linear),
+                                c=labels, norm=color_norm,
+                                alpha=alpha)
+    # newax.scatter(z1_linear, z2_linear, c=labels, cmap=my_cmap)
     # newax.patch.set_alpha(0.25)  # patch = Axes background
     newax.set_xlim(-eps, eps)
     newax.set_ylim(-eps, eps)
 
-    # The alpha value of the scatter points messes up the colorbar (making the entries translucent),
+    # The alpha value of the scatterplot points makes also the corresponding colorbar entries translucent,
     # so we need to customize the colorbar (instead of using the `scatter` return value as the mappable).
     #
-    # # One way is to plot an invisible copy of the label values, and base the colorbar on that:
+    # # The old way is to plot an invisible copy of the label values, and base the colorbar on that:
     # # https://stackoverflow.com/questions/16595138/standalone-colorbar-matplotlib
     # fakeax = fig.add_axes([0.0, 0.0, 0.0, 0.0])
     # fakeax.set_visible(False)
@@ -478,10 +530,14 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # fakeplot = fakeax.imshow(fakedata, norm=color_norm)  # cmap=... if needed
     # cb = fig.colorbar(fakeplot, ax=ax)
     #
-    # Another way is to supply `norm` and optionally `cmap` (see docstring of `mpl.colorbar.Colorbar`):
+    # Another, better way is to supply `norm` and optionally `cmap` (see docstring of `mpl.colorbar.Colorbar`).
+    # We also shift the ticks to the midpoint of each discrete region of the colorbar, to ease readability.
     cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed
                       ticks=color_bounds + 0.5, format="%d")
     _overlay_colorbars[figno].append(cb)
+
+    # --------------------------------------------------------------------------------
+    # Final adjustments.
 
     # Widen the figure to accommodate for the colorbar (at the end, to force a resize)
     fig.set_figwidth(fig.get_figheight() * 1.2)
