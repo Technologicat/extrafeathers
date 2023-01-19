@@ -464,13 +464,18 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     mdistance_raw = euclidean_length(mean)  # ‖μ‖ in raw z space
     mradius_raw = euclidean_length(sigma)  # ‖σ‖ in raw z space (could also visualize e.g. ‖3σ‖)
 
+    # Given the marker radius in raw z space, compute the marker radius in linear (`newax`) data space.
     # Some standard deviations are very small (1e-6), so we force a minimum marker size
     # to make all data points visible.
+    # Also, at the start of the training, with the initial random weights in the network,
+    # some standard derivations may be excessively large.
     tick_interval_linear = (2 * eps) / (n - 1)  # whole axis = 2 * eps, with n ticks
-    min_mradius_linear = tick_interval_linear / 32  # in linear space (display axis)
-
-    # Given the marker radius in raw z space, compute the marker radius in linear (`newax`) data space.
-    mradius_linear = np.maximum(min_mradius_linear, mradius_raw * display_jacobian(mdistance_raw))
+    min_mradius_linear = tick_interval_linear / 32
+    max_mradius_linear = (2 * (2 * eps)**2)**0.5  # covering the whole data area from corner to opposite corner
+    assert min_mradius_linear <= max_mradius_linear
+    mradius_linear = np.clip(mradius_raw * display_jacobian(mdistance_raw),
+                             min_mradius_linear,
+                             max_mradius_linear)
 
     # # DEBUG
     # print(np.min(mdistance_raw), np.max(mdistance_raw))
