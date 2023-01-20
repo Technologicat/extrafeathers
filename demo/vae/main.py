@@ -336,6 +336,9 @@ def main():
     # fig3.savefig(f"{output_dir}{latent_space_fig_basename}_annotated.{fig_format}")
     # fig3.canvas.draw_idle()
 
+    print("Model training complete.")
+
+
 if __name__ == "__main__":
     # HACK: If `main.py` is running as main program, but we also import it somewhere, then there will be
     # two independent copies, and the plotter will get the wrong one when fetching the default model
