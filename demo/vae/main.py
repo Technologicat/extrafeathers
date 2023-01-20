@@ -106,7 +106,6 @@ import unpythonic.net.server as repl_server
 #  - how to support `fit` and `predict`?
 #  - saving/serialization with standard API
 # TODO: Register some monitored metrics? This would allow using the `EarlyStopping` class from the Keras API.
-# TODO: Implement metrics from "Early stopping but when?" paper.
 
 # TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step, processing the z space
 # via e.g. diffusion maps or t-SNE for visualizing the latent representation in 2-dimensional space.
@@ -232,11 +231,13 @@ def main():
     learning_rates = []
     train_elbos = []
     test_elbos = []
+    generalization_losses = []
+    training_progresses = []
     with timer() as tim_total:
         for epoch in range(1, n_epochs + 1):
             prev_iterations = optimizer.iterations.numpy()
 
-            # SGD using one pass through the training set (with the batches set up previously)
+            # SGD (with Adam) using one pass through the training set (with the batches set up previously)
             with timer() as tim_train:
                 running_mean = tf.keras.metrics.Mean()
                 for train_x in train_dataset:
@@ -244,7 +245,7 @@ def main():
                 train_elbo = -running_mean.result()
                 train_elbos.append(train_elbo)
 
-            # Performance estimation: ELBO on the test set
+            # Performance estimation: ELBO on the test set (technically, used as a validation set)
             with timer() as tim_test:
                 running_mean = tf.keras.metrics.Mean()
                 for test_x in test_dataset:
@@ -277,7 +278,24 @@ def main():
             total_iterations = optimizer.iterations.numpy()
             epoch_iterations = total_iterations - prev_iterations
 
-            # Save current model coefficients, and the ELBO history so far
+            # Estimate generalization quality and training progress.
+            #
+            # Similar to GL(t) in Prechelt (2000): "Early stopping, but when?"; but our ELBOs are positive
+            # (because continuous distribution p(x)), which makes our loss function negative, so we adapt
+            # the definition slightly.
+            max_test_elbo = max(test_elbos)  # only running a couple hundred epochs; O(n) not a problem.
+            generalization_loss = 1.0 - test_elbo / max_test_elbo
+            generalization_losses.append(generalization_loss)
+
+            # Similar to Pk(t) in Prechelt (2000).
+            k = 5
+            last_k_train_elbos = train_elbos[-k:]
+            max_of_last_k_train_elbos = max(last_k_train_elbos)
+            mean_of_last_k_train_elbos = sum(last_k_train_elbos) / len(last_k_train_elbos)
+            training_progress = 1.0 - mean_of_last_k_train_elbos / max_of_last_k_train_elbos
+            training_progresses.append(training_progress)
+
+            # Save the current model coefficients, and some statistics
             with timer() as tim_save:
                 model.my_save(f"{output_dir}model/{epoch:04d}")
                 np.savez(f"{output_dir}elbo.npz",
@@ -285,11 +303,13 @@ def main():
                          train_elbos=train_elbos,
                          test_elbos=test_elbos,
                          optimizer_iterations=total_iterations,
-                         learning_rates=learning_rates)
+                         learning_rates=learning_rates,
+                         generalization_losses=generalization_losses,
+                         training_progresses=training_progresses)
 
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
-            print(f"Epoch: {epoch}, training set ELBO {train_elbo:0.6g}, test set ELBO {test_elbo:0.6g}, learning rate {learning_rate:0.6g}, optimizer iterations {epoch_iterations} (epoch), {total_iterations} (total); epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s, plotting {tim_plot.dt:0.3g}s, saving {tim_save.dt:0.3g}s; {est.formatted_eta}")
+            print(f"Epoch: {epoch}, LR {learning_rate:0.6g}, train ELBO {train_elbo:0.6g}, test ELBO {test_elbo:0.6g}, GL(t) {generalization_loss:0.6g}, PR5(t) {training_progress:0.6g}; opt. iter. {total_iterations} (epoch {epoch_iterations}); epoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s, plotting {tim_plot.dt:0.3g}s, saving {tim_save.dt:0.3g}s; {est.formatted_eta}")
     print(f"Total model training wall time: {tim_total.dt:0.6g}s")
 
     # # Save the trained model.
