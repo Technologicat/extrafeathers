@@ -94,6 +94,10 @@ def make_encoder():
     #
     # Another idea that comes to mind is to try various different kernel sizes.
     #
+    # Also, consider an atrous (dilated) convolution, see `dilation_rate` parameter of `Conv2D`.
+    # See section 3.1 in:
+    #   https://arxiv.org/pdf/1606.00915v2.pdf
+    #
     # A spatial pyramid pooling (SPP) layer before the final fully connected layer(s) is also an
     # option (this is especially useful for producing a fixed-length representation for varying input
     # image sizes). But is there an inverse of SPP, for the decoder?
