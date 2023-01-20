@@ -310,6 +310,7 @@ def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
     taylor = tf.math.log(2.0) + 4.0 / 3.0 * tf.pow(lam - 0.5, 2) + 104.0 / 45.0 * tf.pow(lam - 0.5, 4)
     return tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), log_norm, taylor)
 
+@tf.function
 def compute_loss(model, x):
     """VAE loss function: negative of the ELBO, for a data batch `x`.
 
