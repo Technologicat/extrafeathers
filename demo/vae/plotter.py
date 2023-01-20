@@ -249,14 +249,11 @@ def plot_latent_image(n: int = 20, *,
     return env(n=n, model=model, digit_size=digit_size, grid=grid, eps=eps, figno=figno)
 
 
-# TODO: BUG: `remove_overlay`: removing the colorbar raises an exception at least in an IPython session.
 def remove_overlay(figno: int = 1):
     """Remove previous datapoint overlay in figure `figno`, if any."""
     fig = plt.figure(figno)
 
-    # We're making a new overlay; clean up old stuff added to figure `figno` by this function.
-    for cb in _overlay_colorbars.pop(figno, []):
-        cb.remove()
+    # We're making a new overlay; clean up old stuff added to figure `figno` by `overlay_datapoints`.
     for cid in _overlay_callbacks.pop(figno, []):
         fig.canvas.mpl_disconnect(cid)
     if len(fig.axes) > 1:
@@ -269,7 +266,6 @@ def remove_overlay(figno: int = 1):
     plotmagic.pause(0.1)
 
 
-_overlay_colorbars = defaultdict(list)
 _overlay_callbacks = defaultdict(list)
 def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: float = 0.1) -> None:
     """Overlay the codepoints corresponding to a dataset `x` and `labels` onto the latent space plot.
@@ -540,9 +536,8 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     #
     # Another, better way is to supply `norm` and optionally `cmap` (see docstring of `mpl.colorbar.Colorbar`).
     # We also shift the ticks to the midpoint of each discrete region of the colorbar, to ease readability.
-    cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed
+    cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed    # noqa: F841
                       ticks=color_bounds + 0.5, format="%d")
-    _overlay_colorbars[figno].append(cb)
 
     # --------------------------------------------------------------------------------
     # Final adjustments.
