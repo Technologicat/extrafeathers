@@ -326,9 +326,9 @@ def compute_loss(model, x):
     # Here ϕ are the encoder NN coefficients: NN_enc = NN_enc(ϕ, x).
     mean, logvar = model.encode(x)
 
-    # Trying a multiple-sample Monte Carlo just for the lulz...
+    # Optional multiple-sample Monte Carlo just for the lulz.
     elbo = 0.0
-    n_mc_samples = 2
+    n_mc_samples = 1
     for _ in range(n_mc_samples):
         # Draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
         # reparameterization transformation z = g(ε, ϕ, x). In the implementation, actually z = g(μ, log σ);
