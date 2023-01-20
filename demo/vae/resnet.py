@@ -33,6 +33,9 @@ import tensorflow as tf
 # https://datascience.stackexchange.com/questions/13061/when-to-use-he-or-glorot-normal-initialization-over-uniform-init-and-what-are
 # https://andyljones.tumblr.com/post/110998971763/an-explanation-of-xavier-initialization
 
+# TODO: Downsampling type? Max pooling seems more popular than average pooling. Explore why.
+# TODO: Upsampling type? We use bilerp; nearest-neighbor would be a better match if we switch to max-pooling.
+
 # TODO: Add batch normalization (BN) to the resnet blocks to allow building deeper nets.
 
 # --------------------------------------------------------------------------------

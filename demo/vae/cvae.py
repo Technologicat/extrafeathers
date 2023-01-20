@@ -86,6 +86,18 @@ def make_encoder():
     # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
     #                     bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
 
+    # TODO: Improve the resnet architecture.
+    #
+    # According to He et al. (2015), adding depth to a convolution network beyond a certain
+    # (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
+    # channels, i.e. `filters`) can still increase the capacity of the model usefully. Explore this.
+    #
+    # Another idea that comes to mind is to try various different kernel sizes.
+    #
+    # A spatial pyramid pooling (SPP, https://github.com/yhenon/keras-spp ) layer before the final
+    # fully connected layer(s) is also an option (this is especially useful for producing a fixed-length
+    # representation for varying input image sizes). But is there an inverse of SPP, for the decoder?
+    #
     # ResNet attempt 6
     x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
                            bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
