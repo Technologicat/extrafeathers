@@ -149,13 +149,13 @@ from .util import clear_and_create_directory, preprocess_images
 batch_size = 64  # acceptable generalization on continuous Bernoulli
 
 # For this particular model, the test set ELBO saturates somewhere between epoch 100...200.
-n_epochs = 200
+n_epochs = 400
 
 (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 
-decay_epochs = 100
+decay_epochs = 200
 d, m = divmod(train_images.shape[0], batch_size)
 steps_per_epoch = d + int(m > 0)
 
