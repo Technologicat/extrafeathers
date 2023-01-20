@@ -420,10 +420,49 @@ def compute_loss(model, x):
 
         logqz_x = log_normal_pdf(z, mean, logvar)            # log qϕ(z|x) (variational posterior)
 
-        # TODO: Why is the ELBO positive on MNIST? This started happening when we changed the observation
-        # TODO: model to the continuous Bernoulli distribution, which should be properly normalized.
+        # Finally, evaluate the ELBO. We have
+        #
+        #   ELBO[θ,ϕ](x) := E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
+        #                 = E[qϕ(z|x)] [log (pθ(x|z) pθ(z)) - log qϕ(z|x)]       (rewrite joint probability)
+        #                 = E[qϕ(z|x)] [log pθ(x|z) + log pθ(z) - log qϕ(z|x)]   (log arithmetic)
+        #                 = E[p(ε)] [log pθ(x|z) + log pθ(z) - log qϕ(z|x)]      (reparameterization trick)
+        #                 ≃ log pθ(x|z) + log pθ(z) - log qϕ(z|x)
+        #
+        # where E[var][expr] is the expectation, and the simeq symbol ≃ denotes that one side
+        # (here the right-hand side) is an unbiased estimator of the other side.
+        #
+        # For understanding how the ELBO works, consider
+        #
+        #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
+        #                = E[qϕ(z|x)] [log (pθ(x|z) pθ(z)) - log qϕ(z|x)]
+        #                = E[qϕ(z|x)] [log pθ(x|z) - [log qϕ(z|x) - log pθ(z)]]
+        #                ≡ E[qϕ(z|x)] [log pθ(x|z)] - DKL(qϕ(z|x) ‖ pθ(z))
+        #
+        # where DKL is the Kullback--Leibler divergence. So the above expression is the sum of
+        # a reconstruction quality term and a regularization term. On the other hand, by rewriting
+        # the joint probability the other way,
+        #
+        #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
+        #                = E[qϕ(z|x)] [log (pθ(x) pθ(z|x)) - log qϕ(z|x)]
+        #                = E[qϕ(z|x)] [log pθ(x) - [log qϕ(z|x) - log pθ(z|x)]]
+        #                = E[qϕ(z|x)] [log pθ(x)] - E[qϕ(z|x)] [log qϕ(z|x) - log pθ(z|x)]]
+        #                ≡ E[qϕ(z|x)] [log pθ(x)] - DKL(qϕ(z|x) ‖ pθ(z|x))
+        #                ≡ log pθ(x) - DKL(qϕ(z|x) ‖ pθ(z|x))
+        #
+        # which, since  DKL ≥ 0,  highlights two important facts. First,
+        #
+        #   ELBO[θ,ϕ](x) ≤ log p(x)
+        #
+        # for all θ,ϕ; and secondly, the tightness of this inequality depends on how close the
+        # approximate variational posterior qϕ(z|x) is to the unknown true posterior pθ(z|x).
+        # So maximizing the ELBO should allow us to find the optimal qϕ(z|x), which approximates
+        # pθ(z|x) best, within our chosen class of distributions qϕ(z|x).
+        #
+        # Keep in mind that for a continuous distribution p(x), the ELBO may actually take on positive
+        # values, because p(x) is then a probability *density*, which may in general exceed 1.
         elbo += tf.reduce_mean(logpx_z + logpz - logqz_x)
-    elbo /= n_mc_samples  # take the mean
+    if n_mc_samples > 1:  # take the mean
+        elbo /= n_mc_samples
 
     return -elbo  # with sign flipped → ELBO loss
 
