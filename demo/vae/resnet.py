@@ -24,6 +24,15 @@ __all__ = ["ResidualBlock2D", "ResidualBlockTranspose2D",
 
 import tensorflow as tf
 
+# TODO: Rectifier type? Maybe use PReLU instead of the classical ReLU? See He et al. (2015):
+# TODO: https://arxiv.org/abs/1502.01852
+
+# TODO: `kernel_initializer`? Maybe we should use "he_normal" instead of the default "glorot_uniform"?
+# https://keras.io/api/layers/convolution_layers/convolution2d/
+# https://keras.io/api/layers/initializers/#henormal-class
+# https://datascience.stackexchange.com/questions/13061/when-to-use-he-or-glorot-normal-initialization-over-uniform-init-and-what-are
+# https://andyljones.tumblr.com/post/110998971763/an-explanation-of-xavier-initialization
+
 # --------------------------------------------------------------------------------
 
 class ResidualBlock2D(tf.keras.layers.Layer):
