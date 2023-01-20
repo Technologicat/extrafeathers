@@ -75,6 +75,7 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
 
     epoch_str = f"; epoch {epoch}" if epoch is not None else ""
     ax.set_title(f"Test sample (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$){epoch_str}")
+
     fig.tight_layout()
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
@@ -242,7 +243,6 @@ def plot_latent_image(n: int = 20, *,
     ax.set_title(f"Latent space ({grid} grid, up to ±{eps}σ){epoch_str}")
 
     fig.tight_layout()
-
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
 
@@ -263,8 +263,8 @@ def remove_overlay(figno: int = 1):
         for ax in fig.axes[1:]:
             ax.remove()
     fig.set_figwidth(fig.get_figheight())
-    fig.tight_layout()
 
+    fig.tight_layout()
     plt.draw()  # force update of extents
     plotmagic.pause(0.1)
 
