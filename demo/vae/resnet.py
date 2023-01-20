@@ -33,6 +33,8 @@ import tensorflow as tf
 # https://datascience.stackexchange.com/questions/13061/when-to-use-he-or-glorot-normal-initialization-over-uniform-init-and-what-are
 # https://andyljones.tumblr.com/post/110998971763/an-explanation-of-xavier-initialization
 
+# TODO: Add batch normalization (BN) to the resnet blocks to allow building deeper nets.
+
 # --------------------------------------------------------------------------------
 
 class ResidualBlock2D(tf.keras.layers.Layer):
