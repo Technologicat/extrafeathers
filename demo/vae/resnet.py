@@ -2,13 +2,9 @@
 
 These can be used e.g. for building slightly more advanced NN architectures for autoencoders.
 
-We skip batch normalization for now, because I'm new to the AI field, and not sure (as of
-this writing) how to invert a normalizer, which we would need to do to build a symmetric
-decoder.
-
-Also, BN won't do anything useful anyway until we set the `training` flag correctly, which
-`main.py` currently does not bother with. The network always thinks `training=False`,
-which would make BN produce nonsense, since it hasn't been calibrated.
+We skip batch normalization for now. BN won't do anything useful until we set the `training`
+flag correctly, which `main.py` currently does not bother with. The network always thinks
+`training=False`, which would make BN produce nonsense, since it hasn't been calibrated.
 
 The implementation is based on combining information from:
 
@@ -88,6 +84,9 @@ class IdentityBlock2D(tf.keras.layers.Layer):
 
         [batch, n, n, filters] -> [batch, n, n, filters]
 
+    The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
+    channels; the final output has `filters` channels.
+
     The input must have `filters` channels so that the skip-connection works.
     When this holds, this block is cheaper to use than `ProjectionBlock2D`.
     """
@@ -124,7 +123,11 @@ class IdentityBlockTranspose2D(tf.keras.layers.Layer):
 
         [batch, n, n, filters] -> [batch, n, n, filters]
 
+    The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
+    channels; the final output has `filters` channels.
+
     The input must have `filters` channels so that the skip-connection works.
+    When this holds, this block is cheaper to use than `ProjectionBlockTranspose2D`.
     """
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None, bottleneck_factor=4):
@@ -158,6 +161,9 @@ class ProjectionBlock2D(tf.keras.layers.Layer):
     Tensor sizes::
 
         [batch, n, n, channels] -> [batch, n, n, filters]
+
+    The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
+    channels; the final output has `filters` channels.
     """
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None, bottleneck_factor=4):
@@ -196,6 +202,9 @@ class ProjectionBlockTranspose2D(tf.keras.layers.Layer):
     Tensor sizes::
 
         [batch, n, n, channels] -> [batch, n, n, filters]
+
+    The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
+    channels; the final output has `filters` channels.
     """
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None, bottleneck_factor=4):
@@ -234,8 +243,8 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
 
         [batch, n, n, channels] -> [batch, n // strides, n // strides, filters]
 
-    The convention with `filters` is the same as in `Conv2D`; it's the number
-    of *output* channels.
+    The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
+    channels; the final output has `filters` channels.
     """
 
     def __init__(self, filters, kernel_size, *, strides=2, name=None, activation=None, bottleneck_factor=4):
@@ -278,8 +287,8 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
 
         [batch, n, n, channels] -> [batch, strides*n, strides*n, filters]
 
-    The convention with `filters` is the same as in `Conv2DTranspose`; it's the number
-    of *output* channels.
+    The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
+    channels; the final output has `filters` channels.
     """
 
     def __init__(self, filters, kernel_size, *, strides=2, name=None, activation=None, bottleneck_factor=4):
