@@ -72,19 +72,31 @@ def make_encoder():
     # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
     # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
 
-    # ResNet attempt 5
+    # # ResNet attempt 5
+    # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+    #                        bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
+    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+    #                     bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
+    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+    #                     bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
+    # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+    #                        bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
+    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+    #                     bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+    #                     bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+
+    # ResNet attempt 6
     x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
                            bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
-    x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-                        bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
-    x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-                        bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
+    for _ in range(3):
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                            bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
     x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
                            bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
-    x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                        bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
-    x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                        bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+    for _ in range(3):
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                            bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
 
     x = tf.keras.layers.Flatten()(x)
     # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
@@ -163,17 +175,28 @@ def make_decoder():
     # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
     # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
-    # ResNet attempt 5
-    x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-                                 bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-    x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-                                 bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+    # # ResNet attempt 5
+    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+    #                              bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+    #                              bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+    # x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+    #                                 bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
+    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+    #                              bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+    #                              bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+    # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+
+    # ResNet attempt 6
+    for _ in range(3):
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                     bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
     x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
                                     bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
-    x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                 bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-    x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                 bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+    for _ in range(3):
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                     bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
     decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
