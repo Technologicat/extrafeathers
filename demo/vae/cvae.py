@@ -94,9 +94,11 @@ def make_encoder():
     #
     # Another idea that comes to mind is to try various different kernel sizes.
     #
-    # A spatial pyramid pooling (SPP, https://github.com/yhenon/keras-spp ) layer before the final
-    # fully connected layer(s) is also an option (this is especially useful for producing a fixed-length
-    # representation for varying input image sizes). But is there an inverse of SPP, for the decoder?
+    # A spatial pyramid pooling (SPP) layer before the final fully connected layer(s) is also an
+    # option (this is especially useful for producing a fixed-length representation for varying input
+    # image sizes). But is there an inverse of SPP, for the decoder?
+    #   https://arxiv.org/abs/1406.4729
+    #   https://github.com/yhenon/keras-spp
     #
     # ResNet attempt 6
     x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
