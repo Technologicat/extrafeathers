@@ -117,6 +117,7 @@ import unpythonic.net.server as repl_server
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
 #   - Or better yet, first check the distribution of the actual fields (observed data!)
 #   - Encode extra parameters (e.g. fluid viscosity) as extra channels in the data?
+#     - Better: have an extra input to the encoder, and then concatenate it to the final Dense layer.
 
 import sys
 
