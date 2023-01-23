@@ -10,6 +10,7 @@ import tensorflow as tf
 
 from .config import latent_dim
 from .resnet import (IdentityBlock2D, IdentityBlockTranspose2D,
+                     ProjectionBlock2D, ProjectionBlockTranspose2D,
                      ConvolutionBlock2D, ConvolutionBlockTranspose2D)
 from .util import clear_and_create_directory
 
@@ -76,9 +77,9 @@ def make_encoder():
     # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
     #                        bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
     # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
+    #                     bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
     # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
+    #                     bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
     # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
     #                        bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
     # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
@@ -104,17 +105,35 @@ def make_encoder():
     #   https://arxiv.org/abs/1406.4729
     #   https://github.com/yhenon/keras-spp
     #
-    # ResNet attempt 6
-    x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-                           bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
-    for _ in range(3):
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-                            bottleneck_factor=2)(x)                  # 14×14×32→ 14×14×32
-    x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
-                           bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
-    for _ in range(3):
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+    # # ResNet attempt 6 - deeper network (more layers) - very good results
+    # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+    #                        bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
+    # for _ in range(3):
+    #     x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+    #                         bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
+    # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+    #                        bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
+    # for _ in range(3):
+    #     x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+    #                         bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+
+    # ResNet attempt 7 - wider network (more channels)
+    x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                           bottleneck_factor=2)(encoder_inputs)
+    x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                        bottleneck_factor=2)(x)
+    x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                          bottleneck_factor=2)(x)
+    x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                        bottleneck_factor=2)(x)
+    x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                           bottleneck_factor=2)(x)
+    x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                        bottleneck_factor=2)(x)
+    x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                          bottleneck_factor=2)(x)
+    x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                        bottleneck_factor=2)(x)
 
     x = tf.keras.layers.Flatten()(x)
     # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
@@ -127,7 +146,8 @@ def make_encoder():
     # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity slightly
     # (but in practice we get better results if we add more layers in the convolution part instead of making
     # this one larger).
-    x = tf.keras.layers.Dense(units=extra_layer_size, activation="relu")(x)
+    x = tf.keras.layers.Dense(units=extra_layer_size)(x)
+    x = tf.keras.layers.PReLU()(x)
     # No activation function in the output layers - we want arbitrary real numbers as output.
     # The outputs will be interpreted as `(μ, log σ)` for the variational posterior qϕ(z|x).
     # A uniform distribution for these quantities (from the random initialization of the NN)
@@ -144,9 +164,17 @@ def make_decoder():
     # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
     decoder_inputs = tf.keras.Input(shape=(latent_dim,))
     # Here we add the dense layer just for architectural symmetry with the encoder.
-    x = tf.keras.layers.Dense(units=extra_layer_size, activation="relu")(decoder_inputs)
-    x = tf.keras.layers.Dense(units=7 * 7 * 64, activation="relu")(x)
-    x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
+    x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
+    x = tf.keras.layers.PReLU()(x)
+
+    # x = tf.keras.layers.Dense(units=7 * 7 * 64)(x)
+    # x = tf.keras.layers.PReLU()(x)
+    # x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
+
+    # for resnet attempt 7
+    x = tf.keras.layers.Dense(units=7 * 7 * 256)(x)
+    x = tf.keras.layers.PReLU()(x)
+    x = tf.keras.layers.Reshape(target_shape=(7, 7, 256))(x)
 
     # Now we are at the point of the architecture where we have the Conv2D output,
     # so let's mirror the encoder architecture to return to the input space.
@@ -206,16 +234,34 @@ def make_decoder():
     #                              bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
     # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
-    # ResNet attempt 6
-    for _ in range(3):
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-                                     bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-    x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                    bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
-    for _ in range(3):
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                     bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-    decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+    # # ResNet attempt 6 - deeper network (more layers) - very good results
+    # for _ in range(3):
+    #     x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+    #                                  bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+    # x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+    #                                 bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
+    # for _ in range(3):
+    #     x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+    #                                  bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+    # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+
+    # ResNet attempt 7 - wider network (more channels)
+    x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                 bottleneck_factor=2)(x)
+    x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+    x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                 bottleneck_factor=2)(x)
+    x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                    bottleneck_factor=2)(x)
+    x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                 bottleneck_factor=2)(x)
+    x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+    x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                 bottleneck_factor=2)(x)
+    decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                                  bottleneck_factor=2)(x)
 
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder
