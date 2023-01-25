@@ -59,10 +59,11 @@ class ResidualBlock2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None):
         super().__init__(name=name)
+
         # In the blocks defined in this module:
         #
-        # The activation of the last sublayer is handled in `call`, because we need to add the residual
-        # from the skip-connection before applying the activation.
+        # The activation of the last sublayer is handled after adding the residual
+        # from the skip-connection.
         #
         # We use PReLU (trainable leaky ReLU) activation instead of the basic ReLU,
         # as it tends to perform slightly better, at almost no extra computational cost.
@@ -79,6 +80,7 @@ class ResidualBlock2D(tf.keras.layers.Layer):
         #   https://datascience.stackexchange.com/questions/13061/when-to-use-he-or-glorot-normal-initialization-over-uniform-init-and-what-are
         #   https://andyljones.tumblr.com/post/110998971763/an-explanation-of-xavier-initialization
 
+        # main path
         self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size,
                                             kernel_initializer="he_normal",
                                             padding="same")
@@ -86,16 +88,17 @@ class ResidualBlock2D(tf.keras.layers.Layer):
         self.conv2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size,
                                             kernel_initializer="he_normal",
                                             padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act2 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = x
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.adder([x, x_skip])
-        x = self.act2(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.adder([x, inputs], *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
         return x
 
 class ResidualBlockTranspose2D(tf.keras.layers.Layer):
@@ -103,6 +106,8 @@ class ResidualBlockTranspose2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None):
         super().__init__(name=name)
+
+        # main path
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size,
                                                      kernel_initializer="he_normal",
                                                      padding="same")
@@ -110,16 +115,17 @@ class ResidualBlockTranspose2D(tf.keras.layers.Layer):
         self.conv2 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size,
                                                      kernel_initializer="he_normal",
                                                      padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act2 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = x
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.adder([x, x_skip])
-        x = self.act2(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.adder([x, inputs], *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
         return x
 
 # --------------------------------------------------------------------------------
@@ -140,6 +146,9 @@ class IdentityBlock2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
+
+        # main path
+        #
         # The purpose of the size-1 convolution is to cheaply change the dimensionality (number of channels)
         # in the filter space, without introducing spatial dependencies:
         #   https://stats.stackexchange.com/questions/194142/what-does-1x1-convolution-mean-in-a-neural-network
@@ -156,18 +165,19 @@ class IdentityBlock2D(tf.keras.layers.Layer):
         self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             kernel_initializer="he_normal",
                                             padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = x
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.act2(x)
-        x = self.conv3(x)
-        x = self.adder([x, x_skip])
-        x = self.act3(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
+        x = self.conv3(x, *args, **kwargs)
+        x = self.adder([x, inputs], *args, **kwargs)
+        x = self.act3(x, *args, **kwargs)
         return x
 
 class IdentityBlockTranspose2D(tf.keras.layers.Layer):
@@ -186,6 +196,8 @@ class IdentityBlockTranspose2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
+
+        # main path
         bottleneck = max(1, filters // bottleneck_factor)
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=bottleneck, kernel_size=1,
                                                      kernel_initializer="he_normal",
@@ -198,18 +210,19 @@ class IdentityBlockTranspose2D(tf.keras.layers.Layer):
         self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      kernel_initializer="he_normal",
                                                      padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = x
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.act2(x)
-        x = self.conv3(x)
-        x = self.adder([x, x_skip])
-        x = self.act3(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
+        x = self.conv3(x, *args, **kwargs)
+        x = self.adder([x, inputs], *args, **kwargs)
+        x = self.act3(x, *args, **kwargs)
         return x
 
 # --------------------------------------------------------------------------------
@@ -229,6 +242,8 @@ class ProjectionBlock2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
+
+        # main path
         bottleneck = max(1, filters // bottleneck_factor)
         self.conv1 = tf.keras.layers.Conv2D(filters=bottleneck, kernel_size=1,
                                             kernel_initializer="he_normal",
@@ -241,21 +256,25 @@ class ProjectionBlock2D(tf.keras.layers.Layer):
         self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             kernel_initializer="he_normal",
                                             padding="same")
+
+        # skip-connection
         self.projection = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                                  kernel_initializer="he_normal",
                                                  padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = self.projection(x)
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.act2(x)
-        x = self.conv3(x)
-        x = self.adder([x, x_skip])
-        x = self.act3(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
+        x = self.conv3(x, *args, **kwargs)
+        x_skip = self.projection(inputs, *args, **kwargs)
+        x = self.adder([x, x_skip], *args, **kwargs)
+        x = self.act3(x, *args, **kwargs)
         return x
 
 class ProjectionBlockTranspose2D(tf.keras.layers.Layer):
@@ -271,6 +290,8 @@ class ProjectionBlockTranspose2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
+
+        # main path
         bottleneck = max(1, filters // bottleneck_factor)
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=bottleneck, kernel_size=1,
                                                      kernel_initializer="he_normal",
@@ -283,21 +304,25 @@ class ProjectionBlockTranspose2D(tf.keras.layers.Layer):
         self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      kernel_initializer="he_normal",
                                                      padding="same")
+
+        # skip-connection
         self.projection = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                           kernel_initializer="he_normal",
                                                           padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = self.projection(x)
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.act2(x)
-        x = self.conv3(x)
-        x = self.adder([x, x_skip])
-        x = self.act3(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
+        x = self.conv3(x, *args, **kwargs)
+        x_skip = self.projection(inputs, *args, **kwargs)
+        x = self.adder([x, x_skip], *args, **kwargs)
+        x = self.act3(x, *args, **kwargs)
         return x
 
 # --------------------------------------------------------------------------------
@@ -319,6 +344,8 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, strides=2, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
+
+        # main path
         bottleneck = max(1, filters // bottleneck_factor)
         self.conv1 = tf.keras.layers.Conv2D(filters=bottleneck, kernel_size=1,
                                             kernel_initializer="he_normal",
@@ -332,26 +359,38 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
         self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                             kernel_initializer="he_normal",
                                             padding="same")
+
+        # skip-connection
+        #
         # Classically, downsampling is done here by a size-1 convolution ignoring 3/4 of the pixels:
         # self.downsample = tf.keras.layers.Conv2D(filters=filters, kernel_size=1, strides=2)
         # But perhaps we could try something like this:
-        self.downsample = tf.keras.Sequential([tf.keras.layers.AveragePooling2D(pool_size=strides,
-                                                                                padding="same"),
-                                               tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
-                                                                      kernel_initializer="he_normal",
-                                                                      padding="same")])
+        # self.downsample = tf.keras.Sequential([tf.keras.layers.AveragePooling2D(pool_size=strides,
+        #                                                                         padding="same"),
+        #                                        tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
+        #                                                               kernel_initializer="he_normal",
+        #                                                               padding="same")])
+        # Using `Sequential` hides the details from `summary`; to expose the structure for inspection,
+        # we're better off defining this with individual layers:
+        self.downsample = tf.keras.layers.AveragePooling2D(pool_size=strides, padding="same")
+        self.compat = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
+                                             kernel_initializer="he_normal",
+                                             padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = self.downsample(x)
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.act2(x)
-        x = self.conv3(x)
-        x = self.adder([x, x_skip])
-        x = self.act3(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
+        x = self.conv3(x, *args, **kwargs)
+        x_skip = self.downsample(inputs, *args, **kwargs)
+        x_skip = self.compat(x_skip, *args, **kwargs)
+        x = self.adder([x, x_skip], *args, **kwargs)
+        x = self.act3(x, *args, **kwargs)
         return x
 
 class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
@@ -371,6 +410,8 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
 
     def __init__(self, filters, kernel_size, *, strides=2, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
+
+        # main path
         bottleneck = max(1, filters // bottleneck_factor)
         self.conv1 = tf.keras.layers.Conv2DTranspose(filters=bottleneck, kernel_size=1,
                                                      kernel_initializer="he_normal",
@@ -384,21 +425,28 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
         self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
                                                      kernel_initializer="he_normal",
                                                      padding="same")
-        self.upsample = tf.keras.Sequential([tf.keras.layers.UpSampling2D(size=strides,
-                                                                          interpolation="bilinear"),
-                                             tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
-                                                                    kernel_initializer="he_normal",
-                                                                    padding="same")])
+
+        # skip-connection
+        # TODO: What was I thinking? Cheaper to convert channels first, then upsample,
+        # TODO: since this is a decoder part, and decoders typically reduce the number of channels.
+        # TODO: Maybe change this (but then we have to retrain the model).
+        self.upsample = tf.keras.layers.UpSampling2D(size=strides, interpolation="bilinear")
+        self.compat = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
+                                             kernel_initializer="he_normal",
+                                             padding="same")
+
+        # output
         self.adder = tf.keras.layers.Add()
         self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
 
-    def call(self, x, training=False):
-        x_skip = self.upsample(x)
-        x = self.conv1(x)
-        x = self.act1(x)
-        x = self.conv2(x)
-        x = self.act2(x)
-        x = self.conv3(x)
-        x = self.adder([x, x_skip])
-        x = self.act3(x)
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs, *args, **kwargs)
+        x = self.act1(x, *args, **kwargs)
+        x = self.conv2(x, *args, **kwargs)
+        x = self.act2(x, *args, **kwargs)
+        x = self.conv3(x, *args, **kwargs)
+        x_skip = self.upsample(inputs, *args, **kwargs)
+        x_skip = self.compat(x_skip, *args, **kwargs)
+        x = self.adder([x, x_skip], *args, **kwargs)
+        x = self.act3(x, *args, **kwargs)
         return x
