@@ -1,14 +1,41 @@
 """Various small utilities for the VAE example."""
 
-__all__ = ["preprocess_images",
+__all__ = ["layer_to_model",
+           "preprocess_images",
            "delete_directory_recursively",
            "create_directory",
            "clear_and_create_directory"]
 
 import os
 import pathlib
+import typing
 
 import numpy as np
+
+import tensorflow as tf
+
+# --------------------------------------------------------------------------------
+
+def layer_to_model(layer: tf.keras.layers.Layer,
+                   input_shape: typing.Tuple[typing.Optional[int]]) -> tf.keras.Model:
+    """Convert a `Layer` to a `Model` to make it inspectable.
+
+    This allows visualizing the internal structure of a custom layer with `.summary()`
+    or `tf.keras.utils.plot_model` when that layer is modular enough (e.g. its `call`
+    method consists of calls to the Keras functional API).
+
+    For example::
+
+        from demo.vae.resnet import ConvolutionBlock2D
+
+        layer = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)
+        model = layer_to_model(layer, input_shape=(28, 28, 1))
+        model.summary()
+    """
+    inputs = tf.keras.Input(shape=input_shape, name="input")
+    outputs = layer.call(inputs)
+    return tf.keras.Model(inputs, outputs)
 
 # --------------------------------------------------------------------------------
 
