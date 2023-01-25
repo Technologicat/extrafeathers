@@ -22,6 +22,8 @@ __all__ = ["ResidualBlock2D", "ResidualBlockTranspose2D",
            "ProjectionBlock2D", "ProjectionBlockTranspose2D",
            "ConvolutionBlock2D", "ConvolutionBlockTranspose2D"]
 
+from functools import wraps
+
 import tensorflow as tf
 
 from unpythonic import safeissubclass
@@ -30,6 +32,19 @@ from unpythonic import safeissubclass
 # TODO: Upsampling type? We use bilerp; nearest-neighbor would be a better match if we switch to max-pooling.
 
 # TODO: Add batch normalization (BN) to the resnet blocks to allow building deeper nets.
+
+# --------------------------------------------------------------------------------
+
+# HACK: the basic activation functions returned by `tf.keras.activations.get` do not take
+# the `training` kwarg, but the activation layers in `tf.keras.layers` do. Ideally, we should
+# inspect the call signature, and pass on compatible args only, but discarding everything
+# except the input tensor `x` will do for now.
+def pass_first_arg_only_to(f):
+    """Decorator. Return a copy of `f` that ignores all but the first argument."""
+    @wraps(f)
+    def adaptor(x, *args, **kwargs):
+        return f(x)
+    return adaptor
 
 # --------------------------------------------------------------------------------
 
@@ -91,7 +106,7 @@ class ResidualBlock2D(tf.keras.layers.Layer):
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act2 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act2 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -118,7 +133,7 @@ class ResidualBlockTranspose2D(tf.keras.layers.Layer):
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act2 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act2 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -152,7 +167,14 @@ class IdentityBlock2D(tf.keras.layers.Layer):
         # The purpose of the size-1 convolution is to cheaply change the dimensionality (number of channels)
         # in the filter space, without introducing spatial dependencies:
         #   https://stats.stackexchange.com/questions/194142/what-does-1x1-convolution-mean-in-a-neural-network
-        # It also acts as a "feature selector" (since the weights are trainable).
+        #
+        # The first size-1 convolution here:
+        #   - Acts as a "feature selector" (since the weights are trainable).
+        #   - Lowers the computational cost of the block, because it is cheaper to select channels first,
+        #     and then perform the size-n convolution on the result, than it is to perform the size-n
+        #     convolution directly on the input.
+        #
+        # The final size-1 convolution then postprocesses the result to output the desired number of features.
         bottleneck = max(1, filters // bottleneck_factor)
         self.conv1 = tf.keras.layers.Conv2D(filters=bottleneck, kernel_size=1,
                                             kernel_initializer="he_normal",
@@ -168,7 +190,7 @@ class IdentityBlock2D(tf.keras.layers.Layer):
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -213,7 +235,7 @@ class IdentityBlockTranspose2D(tf.keras.layers.Layer):
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -264,7 +286,7 @@ class ProjectionBlock2D(tf.keras.layers.Layer):
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -312,7 +334,7 @@ class ProjectionBlockTranspose2D(tf.keras.layers.Layer):
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -332,7 +354,7 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
 
     `strides` is passed to the convolution, and on the skip-connection, the input
     is downsampled using the same `strides` (currently by local average pooling,
-    followed by a projection).
+    followed by a projection to the desired number of filters).
 
     Tensor sizes::
 
@@ -379,7 +401,7 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -397,8 +419,8 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
     """The architectural inverse of `ConvolutionBlock2D`, for autoencoder decoders.
 
     `strides` is passed to the convolution transpose, and on the skip-connection,
-    the input is upsampled using the same `strides` (currently by bilinear interpolation,
-    followed by a projection).
+    the input is upsampled using the same `strides` (currently by projection to
+    the desired number of filters, then followed by a bilinear interpolation).
 
     Tensor sizes::
 
@@ -427,17 +449,14 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
                                                      padding="same")
 
         # skip-connection
-        # TODO: What was I thinking? Cheaper to convert channels first, then upsample,
-        # TODO: since this is a decoder part, and decoders typically reduce the number of channels.
-        # TODO: Maybe change this (but then we have to retrain the model).
+        self.compat = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
+                                                      kernel_initializer="he_normal",
+                                                      padding="same")
         self.upsample = tf.keras.layers.UpSampling2D(size=strides, interpolation="bilinear")
-        self.compat = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
-                                             kernel_initializer="he_normal",
-                                             padding="same")
 
         # output
         self.adder = tf.keras.layers.Add()
-        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else tf.keras.activations.get(activation)
+        self.act3 = activation() if safeissubclass(activation, tf.keras.layers.Layer) else pass_first_arg_only_to(tf.keras.activations.get(activation))
 
     def call(self, inputs, *args, **kwargs):
         x = self.conv1(inputs, *args, **kwargs)
@@ -445,8 +464,8 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
         x = self.conv2(x, *args, **kwargs)
         x = self.act2(x, *args, **kwargs)
         x = self.conv3(x, *args, **kwargs)
-        x_skip = self.upsample(inputs, *args, **kwargs)
-        x_skip = self.compat(x_skip, *args, **kwargs)
+        x_skip = self.compat(inputs, *args, **kwargs)
+        x_skip = self.upsample(x_skip, *args, **kwargs)
         x = self.adder([x, x_skip], *args, **kwargs)
         x = self.act3(x, *args, **kwargs)
         return x
