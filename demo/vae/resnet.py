@@ -392,8 +392,8 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
         #                                        tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
         #                                                               kernel_initializer="he_normal",
         #                                                               padding="same")])
-        # Using `Sequential` hides the details from `summary`; to expose the structure for inspection,
-        # we're better off defining this with individual layers:
+        # Using `Sequential` hides the details from `summary` (see `util.layer_to_model`).
+        # To expose the architecture for inspection, we're better off defining this with individual layers:
         self.downsample = tf.keras.layers.AveragePooling2D(pool_size=strides, padding="same")
         self.compat = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
                                              kernel_initializer="he_normal",
