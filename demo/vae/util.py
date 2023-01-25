@@ -12,12 +12,22 @@ import numpy as np
 
 # --------------------------------------------------------------------------------
 
-def preprocess_images(images, digit_size=28, discrete=False):
-    """Preprocess MNIST dataset."""
-    images = images.reshape((images.shape[0], digit_size, digit_size, 1)) / 255.  # scale to [0, 1]
-    if discrete:  # binarize to {0, 1}, to make compatible with discrete Bernoulli observation model
+def preprocess_images(images, digit_size=28, channels=1, discrete=False):
+    """Preprocess square images, 8 bits per channel, for use with the CVAE.
+
+    Reshape to `(?, digit_size, digit_size, channels)`.
+
+    Scale each channel to [0, 1], by dividing by 255.
+
+    If `discrete=True`, binarize to {0, 1} to make compatible with a discrete Bernoulli
+    observation model. Otherwise keep as continuous, compatible with a continuous
+    Bernoulli observation model.
+
+    Return as a `float32` array.
+    """
+    images = images.reshape((images.shape[0], digit_size, digit_size, channels)) / 255.
+    if discrete:
         images = np.where(images > .5, 1.0, 0.0)
-    # else continuous grayscale data
     return images.astype("float32")
 
 # --------------------------------------------------------------------------------
