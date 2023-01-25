@@ -5,7 +5,9 @@ __all__ = ["CVAE",
            "train_step"]
 
 import pathlib
+
 import numpy as np
+
 import tensorflow as tf
 
 from .config import latent_dim
