@@ -112,6 +112,8 @@ import unpythonic.net.server as repl_server
 
 # TODO: Add denoising, see e.g. https://davidstutz.de/denoising-variational-auto-encoders/
 
+# TODO: Explore how we could implement more of the stochastics via `tensorflow_probability`, could be cleaner.
+
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
