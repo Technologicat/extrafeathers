@@ -8,15 +8,22 @@
 #   tensorflow
 #   tensorflow-probability
 #   tensorboard
-#   keras
-# OR
+# OR to get the bleeding edge,
 #   tf-nightly
 #   tensorflow-probability
 #   tb-nightly
-#   keras-nightly
 #
-# tensorflow-gpu is old (deprecated?, from 1.x days), don't install it.
-# As of 2.x, the base `tensorflow` package supports GPU.
+# Notes:
+#   - `tensorflow-gpu` is old (deprecated?, from 1.x days), don't install it.
+#     As of 2.x, the base `tensorflow` package supports GPU.
+#   - The separate `keras` package is old; as of TensorFlow 2.x,
+#     Keras has moved into `tf.keras` and is now distributed as part of TensorFlow.
+#   - When reading examples online, be aware that as of January 2023, the Keras API
+#     has changed slightly from how it was in the final separate `keras` package;
+#     for example, `plot_model` is now directly in `keras.utils`, and there is no
+#     separate `plot_utils` submodule.
+#   - See also `visualkeras` to easily visualize simple encoder/decoder designs
+#     (when you have a `tf.keras.Model` instance and want to get a diagram).
 #
 # Then install some pip packages from NVIDIA:
 # https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
@@ -37,6 +44,7 @@ export PATH=$PATH:~/.local/lib/python3.10/site-packages/nvidia/cuda_nvcc/bin
 export XLA_FLAGS=--xla_gpu_cuda_data_dir=/home/jje/.local/lib/python3.10/site-packages/nvidia/cuda_nvcc
 
 # libcuda.so.1 (for tf-nightly 2.12)
+# This is the system libcuda from libnvidia-compute-xxx, where xxx is the version number (e.g. 525).
 export LD_LIBDARY_PATH=/usr/lib/x86_64-linux-gnu/
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/.local/lib/python3.10/site-packages/nvidia/cuda_runtime/lib/
