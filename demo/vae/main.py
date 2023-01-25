@@ -114,6 +114,14 @@ import unpythonic.net.server as repl_server
 
 # TODO: Explore how we could implement more of the stochastics via `tensorflow_probability`, could be cleaner.
 
+# TODO: Explore if we can set up skip-connections from an encoder layer to the decoder layer of the same size.
+#   - This kind of architecture is commonly seen in autoencoder designs used for approximating PDE solutions;
+#     it should speed up training of the encoder/decoder combination by allowing the decoded output to
+#     directly influence the weights on the encoder side.
+#   - Using the functional API, we should be able to set up three `Model`s that share layer instances:
+#     the encoder, the decoder, and (for training) the full autoencoder that combines both and adds the
+#     skip-connections from the encoder side to the decoder side.
+
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
 #   - Change the decoder model to a Gaussian (with learnable variance), as suggested in the paper by Lin et al.
