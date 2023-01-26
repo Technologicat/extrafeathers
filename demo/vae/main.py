@@ -128,6 +128,8 @@ import unpythonic.net.server as repl_server
 #   - Or better yet, first check the distribution of the actual fields (observed data!)
 #   - Encode extra parameters (e.g. fluid viscosity) as extra channels in the data?
 #     - Better: have an extra input to the encoder, and then concatenate it to the final Dense layer.
+#   - Estimate coverage of data manifold, e.g. using FID or precision-and-recall (see the latent diffusion
+#     paper by Rombach et al., 2022)
 
 import sys
 
