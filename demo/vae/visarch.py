@@ -1,5 +1,8 @@
 """Visualize the architecture of the model, and an example of each of the resnet block types.
 
+The outputs are aesthetically not very pleasing, and a raster format (such as png) is not ideal
+for use in publications, but the idea is for now to produce *something* automatically.
+
 (Despite the name, "visarch" is not a Warhammer 40k unit.)
 """
 
