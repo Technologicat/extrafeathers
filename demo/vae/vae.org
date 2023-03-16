@@ -1,0 +1,679 @@
+#+STARTUP: latexpreview
+#+STARTUP: entitiespretty
+#+STARTUP: showeverything
+# #+OPTIONS: num:nil
+#+OPTIONS: toc:nil
+#+LATEX_HEADER: \usepackage[margin=2.0cm]{geometry}
+#+LATEX_HEADER: \usepackage{palatino}
+#+LATEX_HEADER: \usepackage{parskip}
+#+LATEX_HEADER_EXTRA: \hypersetup{colorlinks=true,linkcolor=blue}
+#+title: Shortened introduction to variational autoencoders (VAE)
+#+subtitle: Or, how to understand a VAE implementation
+#+author: Juha Jeronen
+
+#+BEGIN_CENTER
+Version 0.3
+#+END_CENTER
+
+# no page number on title page
+\thispagestyle{empty}
+
+\newpage{}
+
+#+TOC: headlines 2
+# #+TOC: listings
+# #+TOC: tables
+
+\newpage{}
+
+* Introduction
+
+The aim of this document is to condense the main points from the tutorial paper by the inventors of VAE, Kingma and Welling (2019), in order to facilitate understanding VAE implementations; especially the loss computation, and how to interpret the outputs of the neural network components of the system.
+
+It should be kept in mind that essentially, a neural network just produces arbitrary numbers. Intuitively, the "magic" is in how we use those numbers (i.e. what we declare them to represent), how we set up our objective function for training the network, and how the optimization process (training) drives those numbers to actually become the thing we arbitrarily declared them to represent.
+
+We cite other studies where they particularly add value. We add our own notes for clarification where we feel it is necessary. We assume familiarity with classical (deterministic) mathematical modeling and numerics, but no background in stochastics.
+
+* Problem setup and the proposed solution
+
+Consider a situation where we have acquired a set of $N$ distinct measurements (observations) $\mathbf{x}$, taken from the same, unchanging system. Beside physical modeling from first principles, there is another fundamental approach for modeling for understanding the behavior of the system, providing a different kind of insight and different possibilities for numerical computation.
+
+This other approach is statistical. The critical insight is that repeated observations of an unchanging system can be thought of as samples drawn from an unknown probability distribution implicitly defined by the system.
+
+To characterize the system, we would like to construct a statistical model that approximates the unknown distribution. Let $\mathcal{D}$ be a finite dataset, consisting of $N$ independently and identically distributed (i.i.d.) data points $\mathbf{x}$, which represent observations of our system. We now ask: given some model $\theta$, what is the probability that drawing $N$ i.i.d. samples from that model produces the dataset $\mathcal{D}$?
+
+Taking a bayesian viewpoint, this probability represents our degree of belief in the model $\theta$. Informally, models that yield a higher probability for the observed dataset are better approximations of the true, unknown distribution.
+
+I.i.d. probabilities combine by multiplication, so the probability of the dataset $\mathcal{D}$ under the model $\theta$ is
+\begin{equation}
+p_{\theta}(\mathcal{D}) = \prod_{\mathbf{x} \in \mathcal{D}} p_{\theta}(\mathbf{x})
+\end{equation}
+In practice, for numerical stability it is better to work with log-probabilities, so we take the logarithm:
+\begin{equation}
+  \log p_{\theta}(\mathcal{D})
+= \log \prod_{\mathbf{x} \in \mathcal{D}} p_{\theta}(\mathbf{x})
+= \sum_{\mathbf{x} \in \mathcal{D}} \log p_{\theta}(\mathbf{x})
+\end{equation}
+In other words, the log-probability of the dataset $\mathcal{D}$ under the model $\theta$ is the sum of log-probabilities of the individual data points $\mathbf{x}$ under that model. By maximizing this log-probability with respect to $\theta$ (over some considered class of models, which we supply), we can find the model --- among those considered --- that is the most likely. This is known as the *maximum log-likelihood* (ML) criterion.
+
+Maximum log-likelihood is a simple stochastic model selection criterion. Kingma and Welling (2019) point out that more advanced bayesian criteria include /maximum a posteriori/ (MAP) estimation, and inference of a full approximate posterior distribution over the parameters. We will use ML for its simplicity.
+
+The quantity $p_{\theta}(\mathbf{x})$, *when interpreted as a function of $\theta$*, is the *likelihood* (of the data point $\mathbf{x}$, given the model $\theta$), also known as the *model evidence*. In other words, $p_{\theta}(\mathbf{x})$ is the probability mass assigned to data point $\mathbf{x}$ by the model $\theta$. In yet other words, it measures the strength of evidence that the data point\nbsp{}$\mathbf{x}$ provides for the model $\theta$.
+
+A likelihood is *not* a probability density function, because in general,
+\begin{equation}
+\int_{\theta \in \Theta} p_{\theta}(\mathbf{x}) \, \mathrm{d}\theta \ne 1
+\end{equation}
+where $\Theta$ is the set of all considered models (which can be continuous if we are working with a family of parameterized models, hence the integral). In other words, for $\theta$ varying and $\mathbf{x}$ fixed, $p_{\theta}(\mathbf{x})$ is *not* a probability density function. Hence the different name /likelihood/.
+
+But for any given model (i.e. fixed $\theta$),
+\begin{equation}
+\int_{\mathbf{x} \in \mathbf{X}} p_{\theta}(\mathbf{x}) \, \mathrm{d}\mathbf{x} = 1
+\end{equation}
+where $\mathbf{X}$ is the set of all possible observations. In other words, for $\theta$ fixed and $\mathbf{x}$ varying, $p_{\theta}(\mathbf{x})$ *is* a probability density function --- it is the probability density of the random variable $\mathbf{x}$ under the model $\theta$.
+
+The likelihood is a slice, /cutting across different models/, of the probability density assigned by each of these models /to a fixed data point/ $\mathbf{x}$. In models with latent (unobserved) variables, $p_{\theta}(\mathbf{x})$ is termed the *marginal likelihood*, because the latent variables $\mathbf{z}$ have been marginalized out (i.e. integrated or summed over, as appropriate).
+
+Some machine-learning models with *latent variables* are especially powerful for *manifold learning*, i.e. the automatic extraction of structure from given data. We will concentrate on a particular subclass of these models: the *variational autoencoder* (VAE).
+
+We denote the latent (unobserved) variables by $\mathbf{z}$. It may help intuition to think of $\mathbf{z}$ as a set of *features* or *explanatory factors* that describe the data $\mathbf{x}$. For example, in a photograph dataset, such features could include the viewing angle and the illumination conditions. These variables are not explicitly provided in the dataset (hence /unobserved/ or /latent/), but if discovered, the data can be explained in terms of them.
+
+In autoencoders, the latent space is chosen to have a much lower dimension than the data space. The idea is that by bottlenecking the reconstruction process through a low-dimensional space, then in order for the model to be able to produce a faithful reconstruction of the input data $\mathbf{x}$, it is forced to make the latent variables\nbsp{}$\mathbf{z}$ to represent higher-level features that explain the observed variation in the data. Informally, this is especially true if the coded representation can be made regular (in some appropriate sense; continuity is necessary but not sufficient) in terms of small perturbations to the data. This is where the variational autoencoder comes in.
+
+Furthermore, we will impose the latent space to have a simple structure. The premise is that in any real-world application, we can expect the features to follow a simple distribution --- provided that we can discover those features. The problem then reduces to learning the (highly nonlinear) mapping between the data space and the latent space --- in other words, discovering how to map the seemingly complex data onto features that follow a simple distribution.[fn:: Note that in general, the choice of the features is not unique.] Thus the optimization of a VAE can also be viewed as a kind of nonlinear PCA (principal component analysis), but with no orthogonality constraint.
+
+An important practical issue is that in realistic applications, the true posterior of the latent variables conditioned on data, $p_{\theta}(\mathbf{z} \vert \mathbf{x})$, is intractable to compute, as is the marginal likelihood of the data, $p_{\theta}(\mathbf{x})$. The now-famous paper by Kingma and Welling (2013) provides a variational method to approximate $p_{\theta}(\mathbf{z} \vert \mathbf{x})$, and to choose the optimal model from a considered class. We will now look at the details of this method.
+
+
+\newpage{}
+
+* The evidence lower bound (ELBO)
+
+The *evidence lower bound*, commonly abbreviated as *ELBO*, is defined for a data point $\mathbf{x}$ as
+#+NAME: eq:ELBO
+\begin{equation}
+   \mathcal{L}_{\theta, \phi}(\mathbf{x})
+:= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   [\log p_{\theta}(\mathbf{x}, \mathbf{z}) - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})]
+\end{equation}
+where $\theta$ are the parameters of the decoder (a.k.a. generative model, or observation model), and $\phi$ are the parameters of the encoder (a.k.a. inference model). The encoder parameters $\phi$ are also known as the *variational parameters* for a reason that will become apparent shortly. Note the expectation over the latent variables $\mathbf{z}$, drawn from an auxiliary distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+Equation ([[eq:ELBO]]) is sometimes called the *joint-contrastive* expression of the ELBO.
+
+# Ferenc on inference.vc says:
+# \begin{equation}
+#   \mathcal{L}_{\theta, \phi}(\mathbf{x})
+# = -\mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+#   \Bigl[ \log \frac{q_{\phi}(\mathbf{z} \vert \mathbf{x})}{p_{\theta}(\mathbf{x}, \mathbf{z})} \Bigr] + \mathrm{const.}
+# \end{equation}
+# Where did the extra constant come from?
+
+What is the motivation behind the ELBO? Following Kingma and Welling (2019), consider
+#+NAME: eq:ELBO-motivation
+\begin{align}
+   \mathcal{L}_{\theta, \phi}(\mathbf{x})
+&\equiv \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \bigl[ \log p_{\theta}(\mathbf{x}, \mathbf{z}) - \log q_{\phi}(\mathbf{z} \vert \mathbf{x}) \bigr]
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \Bigl[ \log \big( p_{\theta}(\mathbf{x}) p_{\theta}(\mathbf{z} \vert \mathbf{x}) \big)
+   - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})
+   \Bigr]
+   \qquad \text{(rewrite joint probability)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \bigl[ \log p_{\theta}(\mathbf{x}) + \log p_{\theta}(\mathbf{z} \vert \mathbf{x})
+   - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})
+   \bigr]
+   \qquad \text{(logarithm arithmetic)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \Bigl[ \log p_{\theta}(\mathbf{x})
+   - \big( \log q_{\phi}(\mathbf{z} \vert \mathbf{x}) - \log p_{\theta}(\mathbf{z} \vert \mathbf{x}) \big)
+   \Bigr]
+   \qquad \text{(regroup)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \biggl[ \log p_{\theta}(\mathbf{x})
+   - \log \frac{q_{\phi}(\mathbf{z} \vert \mathbf{x})}{p_{\theta}(\mathbf{z} \vert \mathbf{x})}
+   \biggr]
+   \qquad \text{(logarithm arithmetic)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})} \log p_{\theta}(\mathbf{x})
+   - \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+     \log \frac{q_{\phi}(\mathbf{z} \vert \mathbf{x})}{p_{\theta}(\mathbf{z} \vert \mathbf{x})}
+   \qquad \text{(linearity of expectation)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})} \log p_{\theta}(\mathbf{x})
+   - D_{KL} ( q_{\phi}(\mathbf{z} \vert \mathbf{x}) \Vert p_{\theta}(\mathbf{z} \vert \mathbf{x}) )
+   \qquad \text{(definition of Kullback--Leibler divergence)}
+   \nonumber \\
+&\equiv \log p_{\theta}(\mathbf{x})
+   - D_{KL} ( q_{\phi}(\mathbf{z} \vert \mathbf{x}) \Vert p_{\theta}(\mathbf{z} \vert \mathbf{x}) )
+   \qquad \text{(evaluate the expectation in the first term)}
+\end{align}
+so the ELBO is the marginal log-likelihood of the model $\theta$ at the data point $\mathbf{x}$, namely $\log p_{\theta}(\mathbf{x})$, minus the KL divergence of $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ from the (intractable) true posterior distribution $p_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+The ELBO can be computed for any probability density $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, and it always gives a guaranteed lower bound for $\log p_{\theta}(\mathbf{x})$, so it yields a variational method to approximate the otherwise intractable marginal log-likelihood $\log p_{\theta}(\mathbf{x})$. The tightness of the bound depends on the chosen $q_{\phi}(\mathbf{z} \vert \mathbf{x})$. As always with variational techniques, a completely inappropriate $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ may give a correct but useless lower bound of $-\infty$, so some care must be taken in choosing $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+Consider now what happens if we maximize the ELBO by varying the distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, while keeping everything else fixed. Since $D_{KL} \ge 0$, the maximum with respect to the distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ is reached when $q_{\phi}(\mathbf{z} \vert \mathbf{x}) = p_{\theta}(\mathbf{z} \vert \mathbf{x})$. The marginal log-likelihood term $\log p_{\theta}(\mathbf{x})$ does not depend on $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, so in this maximization, it is a constant.
+
+Thus, if we can find a distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ that approximates the intractable true posterior $p_{\theta}(\mathbf{z} \vert \mathbf{x})$, the ELBO will approximate the marginal log-likelihood $\log p_{\theta}(\mathbf{x})$, which is our maximization objective for model selection via the ML criterion. Thus we recognize the auxiliary distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ as an *approximate posterior*.
+
+In practice, we will represent $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ using a parametric, pre-chosen family of distributions, so in general, it will not be able to perfectly approximate an arbitrary $p_{\theta}(\mathbf{z} \vert \mathbf{x})$. The bound will not be tight; but if we choose the family $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ to be sufficiently flexible, the bound will however be useful for practical purposes.
+
+Also, in practice we maximize with respect to both $\theta$ and $\phi$ concurrently. This will both approximately maximize $\log p_{\theta}(\mathbf{x})$, and improve the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, making it closer to $p_{\theta}(\mathbf{z} \vert \mathbf{x})$ within the constraints of the chosen family of distributions $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, thus making the bound tighter.
+
+Summing over the ELBOs of all data points $\mathbf{x} \in \mathcal{D}$, we obtain the total ELBO of the model $(\theta, \phi)$. The *ELBO loss* (a.k.a. *VAE loss*) is the negative of the total ELBO; this is our minimization objective for choosing the best model (out of the class considered).
+
+Importantly, the ELBO is computable. We can rewrite it as
+#+NAME: eq:ELBO-computable
+\begin{align}
+   \mathcal{L}_{\theta, \phi}(\mathbf{x})
+&\equiv \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \bigl[ \log p_{\theta}(\mathbf{x}, \mathbf{z}) - \log q_{\phi}(\mathbf{z} \vert \mathbf{x}) \bigr]
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \Bigl[ \log \big( p_{\theta}(\mathbf{z}) p_{\theta}(\mathbf{x} \vert \mathbf{z}) \big)
+   - \log q_{\phi}(\mathbf{z} \vert \mathbf{x}) \Bigr]
+   \qquad \text{(rewrite joint probability the other way)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \bigl[ \underbrace{\log p_{\theta}(\mathbf{z})}_{\text{latent prior}}
+        + \underbrace{\log p_{\theta}(\mathbf{x} \vert \mathbf{z})}_{\text{observation model}}
+        - \underbrace{\log q_{\phi}(\mathbf{z} \vert \mathbf{x})}_{\text{approximate posterior}}
+   \bigr]
+   \qquad \text{(logarithm arithmetic)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \Bigl[ \log p_{\theta}(\mathbf{x} \vert \mathbf{z})
+   - \bigl( \log q_{\phi}(\mathbf{z} \vert \mathbf{x}) - \log p_{\theta}(\mathbf{z}) \bigr)
+   \Bigr]
+   \qquad \text{(regroup)}
+   \nonumber \\
+&= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   \bigl[ \log p_{\theta}(\mathbf{x} \vert \mathbf{z}) \bigr]
+ - D_{KL} ( q_{\phi}(\mathbf{z} \vert \mathbf{x}) \Vert p_{\theta}(\mathbf{z}) )
+   \qquad \text{(similarly as before)}
+\end{align}
+The third (annotated) line is how VAE implementations commonly implement the ELBO, using a single-sample Monte Carlo (MC) estimate of this expectation, discussed below. Importantly, the expectation is taken over\nbsp{}$\mathbf{z}$ drawn from the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, which we have available for sampling. See e.g. Kingma and Welling (2019, algorithm\nbsp{}2).
+
+The conditional distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ is called the *inference model* (i.e. or *approximate posterior*, or *encoder*); the intuition is that it attempts to infer features $\mathbf{z}$ from the given data point $\mathbf{x}$.
+
+The conditional distribution $p_{\theta}(\mathbf{x} \vert \mathbf{z})$ is called the *observation model* (i.e. *generative model*, or *decoder*); it attempts to explain what observations $\mathbf{x}$ could have generated the code point $\mathbf{z}$. Or interpreted differently, given a random code point $\mathbf{z}$, it generates new data that is statistically similar to the members of the dataset $\mathcal{D}$.
+
+The distribution $p_{\theta}(\mathbf{z})$ is termed the *latent prior*, or just the *prior*. This is because it is not conditioned on any observations. In other words, before looking at any data, $p_{\theta}(\mathbf{z})$ is the distribution we believe the code points $\mathbf{z}$ should follow.
+
+The last line of ([[eq:ELBO-computable]]) is sometimes called the *prior-contrastive* expression of the ELBO. It offers an alternative interpretation: we can also view the ELBO as the expectation --- under drawing $\mathbf{z}$ from the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ --- of the log-likelihood of the observation model $p_{\theta}(\mathbf{x} \vert \mathbf{z})$ at the data point $\mathbf{x}$ (the /reconstruction likelihood/); minus the KL divergence of the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ /from the latent prior/\nbsp{}$p_{\theta}(\mathbf{z})$.
+
+So maximizing the ELBO with respect to $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ also has the regularizing effect of pushing the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ closer to the latent prior $p_{\theta}(\mathbf{z})$, leading to a regularizing effect on the latent representation. (This argument is not fully rigorous, because in the prior-contrastive expression, the choice of $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ affects also the first term.)
+
+Some VAE implementations insert a weighting hyperparameter on the $D_{KL}$ term, to tune the relative contributions of the reconstruction quality (measured by the term $\mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})} \bigl[ \log p_{\theta}(\mathbf{x} \vert \mathbf{z}) \bigr]$) and the latent regularization (which arises due to the $D_{KL}$ term). We recognize this as the classical weighting method from multiobjective optimization. Lin et al. (2019) point out that the terms indeed represent conflicting objectives.
+
+Lin et al. (2019) also provide an interesting perspective here, on how to automatically find an optimal balance between reconstruction quality and regularization. We will return to this point when we discuss the choice of the observation model $p_{\theta}(\mathbf{x} \vert \mathbf{z})$ below.
+
+
+* Making the ELBO computable
+
+Following Kingma and Welling (2013), we reparameterize the latent variable $\mathbf{z}$, which follows the distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, as a deterministic transformation of a new random variable $\boldsymbol{\varepsilon}$:
+\begin{equation}
+\mathbf{z} := \mathbf{g}(\boldsymbol{\varepsilon}, \phi, \mathbf{x})
+\end{equation}
+In practice, the transformation is often defined in two parts. A typical $\mathbf{g}$ consists of a simple explicit function, with parameters (that depend on the data $\mathbf{x}$ in a highly nonlinear manner) that are computed by a neural network. We will see an example when we discuss the choice of the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+The variable $\boldsymbol{\varepsilon}$ is termed the *noise variable*. We choose the noise to follow a simple, non-parametric distribution, such as a spherical Gaussian:
+#+NAME: eq:noise-distribution
+\begin{equation}
+p(\boldsymbol{\varepsilon}) := \mathcal{N}(\boldsymbol{\varepsilon}, 0, \mathbf{1})
+\end{equation}
+This is known as /the reparameterization trick/, and is a critically important detail for successful implementation of a VAE. The stochasticity of $\mathbf{z}$ is now isolated into the new non-parametric random variable $\boldsymbol{\varepsilon}$. The original variable $\mathbf{z}$ has become differentiable with respect to the parameters of our transformation\nbsp{}$\mathbf{g}$. When used in neural networks (technically, directed graphical models), this allows backpropagation to work across graph nodes involving $\mathbf{z}$, while maintaining the stochastic nature of $\mathbf{z}$. See Kingma and Welling (2019, figure\nbsp{}2.3).
+
+Using the reparameterization, we change variables in the expectation:
+\begin{equation}
+  \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}[f(\mathbf{z})]
+= \mathbb{E}_{p(\boldsymbol{\varepsilon})}[f(\mathbf{z})]
+\end{equation}
+where $f$ is any differentiable function. Note the integrand on the right-hand side is still written in terms of the original variable $\mathbf{z}$, so no jacobian determinant factor appears.
+
+This change of variable brings the advantage that now the expectation itself no longer depends on the parameters $\phi$, so the gradient $\nabla_{\phi}$ and the expectation $\mathbb{E}_{p(\boldsymbol{\varepsilon})}$ commute. This in turn allows evaluating a single-sample Monte Carlo estimate of the gradient as
+\begin{align}
+   \nabla_{\phi} \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}[f(\mathbf{z})]
+&= \nabla_{\phi} \mathbb{E}_{p(\boldsymbol{\varepsilon})}[f(\mathbf{z})]
+   \nonumber \\
+&= \mathbb{E}_{p(\boldsymbol{\varepsilon})}[\nabla_{\phi} f(\mathbf{z})]
+   \nonumber \\
+&\simeq
+   \nabla_{\phi} f(\mathbf{z})
+\end{align}
+where the symbol $\simeq$ means that one side (here the right-hand side) is an unbiased estimator of the other. On the last line, $\mathbf{z}$ is evaluated by drawing *one* noise sample $\boldsymbol{\varepsilon} \sim p(\boldsymbol{\varepsilon})$, and applying the current iterate of the transformation $\mathbf{g}$ --- so that in effect, $\mathbf{z}$ becomes drawn from the current approximate posterior distribution $q_{\phi}(\mathbf{z} \vert \mathbf{x})$, as we indeed need for approximating the expectation in terms of this distribution. These tricks make the estimate computable, as well as allow us to use stochastic gradient descent (SGD) on the ELBO.
+
+Similarly, a single-sample Monte Carlo estimate of the ELBO itself can be written as
+\begin{align}
+   \mathcal{L}_{\theta, \phi}(\mathbf{x})
+&\equiv \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+   [\log p_{\theta}(\mathbf{x}, \mathbf{z}) - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})]
+   \nonumber \\
+&= \mathbb{E}_{p(\boldsymbol{\varepsilon})}
+   [\log p_{\theta}(\mathbf{x}, \mathbf{z}) - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})]
+   \nonumber \\
+&\simeq
+   \log p_{\theta}(\mathbf{x}, \mathbf{z}) - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})
+\end{align}
+where we evaluate $\mathbf{z}$ by drawing one noise sample $\boldsymbol{\varepsilon} \sim p(\boldsymbol{\varepsilon})$, and applying the current iterate of the transformation $\mathbf{g}$.
+
+Thus to compute the ELBO, given a pair $(\mathbf{x}, \mathbf{z})$, we actually only need to evaluate the log-densities $\log p_{\theta}(\mathbf{x}, \mathbf{z})$ and $\log q_{\phi}(\mathbf{z} \vert \mathbf{x})$. The joint log-density is usually further split into two terms, as on the annotated line of equation ([[eq:ELBO-computable]]). The gradient of the ELBO with respect to $\theta$ and $\phi$ is then obtained by backpropagation (backward mode automatic differentiation).
+
+# Observe that with regard to $\theta$, the gradient of the ELBO can be estimated as
+# \begin{align}
+#    \nabla_{\theta} \mathcal{L}_{\theta, \phi}(\mathbf{x})
+# &= \nabla_{\theta} \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+#    [\log p_{\theta}(\mathbf{x}, \mathbf{z}) - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})]
+#    \nonumber \\
+# &= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+#    [\nabla_{\theta} \log p_{\theta}(\mathbf{x}, \mathbf{z}) - \nabla_{\theta} \log q_{\phi}(\mathbf{z} \vert \mathbf{x})]
+#    \qquad \text{(the expectation does not depend on } \theta \text{)}
+#    \nonumber \\
+# &= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+#    [\nabla_{\theta} \log p_{\theta}(\mathbf{x}, \mathbf{z})]
+#    \qquad \text{(the second term does not depend on } \theta \text{)}
+#    \nonumber \\
+# &\simeq
+#    \nabla_{\theta} \log p_{\theta}(\mathbf{x}, \mathbf{z})
+# \end{align}
+
+# Crucially to the success of implementing a VAE, the joint probability $p_{\theta}(\mathbf{x}, \mathbf{z})$ that appears in the ELBO estimate is tractable. We can rewrite the joint probability as
+# \begin{equation}
+# p_{\theta}(\mathbf{x}, \mathbf{z}) = p_{\theta}(\mathbf{z}) p_{\theta}(\mathbf{x} \vert \mathbf{z})
+# \end{equation}
+# or equivalently for the log-probability,
+# \begin{equation}
+# \log p_{\theta}(\mathbf{x}, \mathbf{z}) = \log p_{\theta}(\mathbf{z}) + \log p_{\theta}(\mathbf{x} \vert \mathbf{z})
+# \end{equation}
+
+Keep in mind that the expectation that appears in the ELBO is $\mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}$, so when evaluating the single-sample Monte Carlo estimate of the ELBO, we must use a $\mathbf{z}$ sampled from $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ in all terms --- especially, also in the log-prior term $p_{\theta}(\mathbf{z})$. That is, for this term, we evaluate the log-density that /the prior distribution/ $p_{\theta}(\mathbf{z})$ assigns to the $\mathbf{z}$ sample drawn /from the approximate posterior/ $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+# Note that if the nonlinear PCA is successful, it will factorize the latent representation, i.e. the latent distribution will have a cartesian product structure. Also, if the features are in fact normally distributed, this is also the appropriate shape.
+#
+# Continuing with the classic VAE of Kingma and Welling (2013), they use
+
+
+* The distributions $p_{\theta}(\mathbf{z})$, $p_{\theta}(\mathbf{x} \vert \mathbf{z})$, and $q_{\phi}(\mathbf{z} \vert \mathbf{x})$
+
+To completely specify a VAE, we need to choose three distributions: a latent prior $p_{\theta}(\mathbf{z})$, a class of observation models $p_{\theta}(\mathbf{x} \vert \mathbf{z})$, and a class of approximate posteriors $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+The *latent prior* $p_{\theta}(\mathbf{z})$ can be taken to be some simple distribution with no parameters; this then imposes a soft restriction on the codes the VAE can produce. (The subscript $\theta$, indicating the decoder parameters, then becomes superfluous, so we could write just $p(\mathbf{z})$.)
+
+The classic VAE by Kingma and Welling (2013) uses a spherical Gaussian latent space, which is still perhaps the most popular latent space for VAEs:
+#+NAME: eq:latent-prior
+\begin{equation}
+p_{\theta}(\mathbf{z}) := \mathcal{N}(\mathbf{z}; 0, \mathbf{1})
+\end{equation}
+Note this is distinct from the spherical Gaussian we used for the noise variable $\boldsymbol{\varepsilon}$. Here we specify the prior for the code points $\mathbf{z}$, whereas $p(\boldsymbol{\varepsilon})$ is just an auxiliary distribution used for reparameterizing the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ to make it usable with optimization algorithms that use backpropagation.
+
+The *observation model* in the classic VAE is a factorized Bernoulli:
+\begin{align}
+  \log p(\mathbf{x} \vert \mathbf{z})
+:= \sum_{j = 1}^{D} \log p(x_{j} \vert \mathbf{z})
+\end{align}
+where
+\begin{equation}
+p(x_{j} \vert \mathbf{z})
+:= \mathrm{Bernoulli}(x_{j}; p_{j})
+\equiv p_{j}^{x_{j}} + (1 - p_{j})^{1 - x_{j}}
+\end{equation}
+which yields the log-density
+\begin{equation}
+  \log p(x_{j} \vert \mathbf{z})
+= x_{j} \log p_{j} + (1 - x_{j}) \log (1 - p_{j})
+\end{equation}
+which is the form used in equation (1.18) in Kingma and Welling (2019). The latent variable $\mathbf{z}$ is mapped to the Bernoulli parameter vector $\mathbf{p}$ by training a *decoder neural network* (NN), parameterized by the decoder parameters $\theta$:
+\begin{equation}
+\mathbf{p} := \mathrm{NN}_{\theta}(\mathbf{z})
+\end{equation}
+The neural network is where "the magic happens": it is the part of the VAE that actually establishes the nonlinear mapping from the code space to the data space.
+
+Many papers and VAE tutorials are based on this classic architecture. Note that the Bernoulli distribution models the data as binary values $\{0, 1\}$, instead of a continuous variable in $[0, 1]$. The focus has shifted after Loaiza-Ganem and Cunningham (2019) pointed out that for generic continuous data, this is simply wrong, and that a much better VAE reconstruction (sharper images for the same dimension of latent space) can be obtained by modifying the Bernoulli distribution into its continuous analogue. In practice, this introduces a scaling factor so that the probability density integrates to $1$ when $x$ is continuous, and changes the computation of the mean (it is no longer simply the Bernoulli parameter $p_{j}$).
+
+Other observation models are also possible. The variance of the observation model (decoded data) is classically taken to be fixed --- so the distribution of the observation model is only parameterized by a learnable mean --- but also models with learnable observation variance have been suggested. Here particularly interesting is the factorized Gaussian observation model, with a global variance parameter $\sigma^{2}$, proposed by Lin et al. (2019):
+\begin{align}
+   \log p(\mathbf{x} \vert \mathbf{z})
+:= \sum_{j = 1}^{D} \log p_{\theta}(x_{j} \vert \mathbf{z})
+\end{align}
+where
+\begin{equation}
+  p_{\theta}(x_{j} \vert \mathbf{z})
+:= \mathcal{N}(x_{j}; \mu_{j}, \sigma^{2})
+\equiv \frac{1}{\sqrt{2 \pi} \sigma}
+   \exp \left( - \frac{[x_{j} - \mu_{j}]^{2}}{2 \sigma^{2}} \right)
+\end{equation}
+The parameter $\sigma^{2}$ reflects the global noise properties of the data. The latent variable $\mathbf{z}$ is mapped to the data-space parameter vector $\boldsymbol{\mu} = \boldsymbol{\mu}_{\theta}(\mathbf{z})$, representing the mean of each component in the data space (as a highly nonlinear function of $\mathbf{z}$), by training a decoder neural network, parameterized by the decoder parameters\nbsp{}$\theta$:
+\begin{equation}
+\boldsymbol{\mu}_{\theta}(\mathbf{z}) := \mathrm{NN}_{\theta}(\mathbf{z})
+\end{equation}
+The idea of automatic regularization tuning is to learn the value of $\sigma$ (starting from an initial value of $1$) as part of the ELBO optimization. The authors also provide a closed-form solution for the optimal $\sigma_{*}$ when $\theta$ and $\phi$ are fixed. The final learned $\sigma$ represents the optimal amount of noise that we must assume the data to have to make our best-fit model fit the data; it thus also measures the quality of the fit.
+
+The variance parameter can also be made local (like the mean $\boldsymbol{\mu}$ already is), which yields even better results as well as a local uncertainty indicator. However, then some care needs to be taken in designing the training algorithm; for details, see the original study by Lin et al. (2019).
+
+Finally, we need to specify the family of distributions we would like to use as the *approximate posterior* $q_{\phi}(\mathbf{z} | \mathbf{x})$. Note that this describes the distribution of code points in the latent space.
+
+Keep in mind that in the posterior, we have reparameterized $\mathbf{z} = \mathbf{g}(\boldsymbol{\varepsilon}, \phi, \mathbf{x})$, so we may start from the noise log-density $\log p(\boldsymbol{\varepsilon})$, and transform that via $\mathbf{g}$. Recall that in equation ([[eq:noise-distribution]]), we chose the noise variable $\boldsymbol{\varepsilon}$ to follow the unit spherical Gaussian distribution,
+\begin{equation*}
+p(\boldsymbol{\varepsilon}) \equiv \mathcal{N}(\boldsymbol{\varepsilon}, 0, \mathbf{1})
+\end{equation*}
+whereas in the ELBO evaluation, the latent variable $\mathbf{z}$ follows the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+Following Kingma and Welling (2019), for a given transformation $\mathbf{z} = \mathbf{g}(\boldsymbol{\varepsilon}, \phi, \mathbf{x})$, the log-densities $\log p(\boldsymbol{\varepsilon})$ and $\log q_{\phi}(\mathbf{z} | \mathbf{x})$ are related by the change of variable in a probability density (which is a relative of the change of variable in an integral):
+#+NAME: eq:chvar
+\begin{equation}
+\log q_{\phi}(\mathbf{z} \vert \mathbf{x}) = \log p(\boldsymbol{\varepsilon}) - \log d_{\phi}(\mathbf{x}, \boldsymbol{\varepsilon})
+\end{equation}
+where
+\begin{equation}
+  \log d_{\phi}(\mathbf{x}, \boldsymbol{\varepsilon})
+= \log \left\vert \det \frac{\partial \mathbf{z}}{\partial \boldsymbol{\varepsilon}} \right\vert
+\end{equation}
+and $\partial \mathbf{z} / \partial \boldsymbol{\varepsilon}$ is the jacobian matrix of the transformation $\mathbf{g}$:
+\begin{equation}
+  \left[ \frac{\partial \mathbf{z}}{\partial \boldsymbol{\varepsilon}} \right]_{ik}
+\equiv \frac{\partial z_{i}}{\partial \varepsilon_{k}}
+\end{equation}
+Note that in equation ([[eq:chvar]]), we have rewritten the right-hand side in terms of $\boldsymbol{\varepsilon}$ instead of $\mathbf{z}$, hence a jacobian determinant term appears. We use the notation $d_{\phi}(\mathbf{x}, \boldsymbol{\varepsilon})$ to emphasize that this quantity depends not only on $\boldsymbol{\varepsilon}$, but also on the data $\mathbf{x}$ and the encoder parameters $\phi$.
+
+Now it remains to choose a suitable transformation $\mathbf{g}$. Doing so will specify the family of approximate posteriors available for use by the VAE. Informally, it is advantageous to choose something flexible (to be able to reasonably approximate an arbitrary unknown true posterior $p_{\theta}(\mathbf{z} \vert \mathbf{x})$), yet having a simple log-determinant $\log d_{\phi}(\mathbf{x}, \boldsymbol{\varepsilon})$. The latter consideration is for simplicity and computational efficiency, since during optimization, we will need to evaluate the single-datapoint ELBO estimate in the innermost loop.
+
+The classic VAE uses, for simplicity, a factorized Gaussian approximate posterior:
+\begin{equation}
+  q_{\phi}(\mathbf{z} \vert \mathbf{x})
+:= \prod_{i} q_{\phi}(z_{i} \vert \mathbf{x})
+:= \prod_{i} \mathcal{N}(z_{i}; \mu_{i}, \sigma_{i}^{2})
+\end{equation}
+How does this fit into the transformation framework? We can parameterize the factorized Gaussian by its mean and log-variance vectors $\boldsymbol{\mu}$ and $\log \boldsymbol{\sigma}$. The data points $\mathbf{x}$ are mapped to the parameters of the approximate posterior by training an *encoder neural network* (NN), parameterized by the encoder parameters $\phi$:
+#+NAME: eq:encoder-NN
+\begin{equation}
+(\boldsymbol{\mu}, \log \boldsymbol{\sigma}) := \mathrm{NN}_{\phi}(\mathbf{x})
+\end{equation}
+Now we can write the transformation (this is the simple explicit function part)
+#+NAME: eq:xform
+\begin{equation}
+\mathbf{z} := \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\varepsilon}
+\end{equation}
+where $\odot$ denotes the elementwise product. In other words, we take the noise distribution $\mathcal{N}(\boldsymbol{\varepsilon}; 0, \mathbf{1})$, and shift and scale each vector component $j$ such that the resulting vector $\mathbf{z}$ follows a factorized Gaussian distribution. When evaluating the ELBO during neural network optimization, we draw a noise sample\nbsp{}$\boldsymbol{\varepsilon}$, and then apply ([[eq:xform]]) to obtain a $\mathbf{z}$ drawn from the current iterate of $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+Equations ([[eq:encoder-NN]]) and ([[eq:xform]]) together form a concrete example of the transformation $\mathbf{z} = \mathbf{g}(\boldsymbol{\varepsilon}, \phi, \mathbf{x})$. In ([[eq:xform]]), the dependences of $\mathbf{z}$ on $\phi$ and $\mathbf{x}$ have been absorbed into $\boldsymbol{\mu} = \boldsymbol{\mu}_{\phi}(\mathbf{x})$ and $\boldsymbol{\sigma} = \boldsymbol{\sigma}_{\phi}(\mathbf{x})$, via the neural network $\mathrm{NN}_{\phi}(\mathbf{x})$.
+
+Again, the neural network is where "the magic happens": it is the part of the VAE that actually establishes the nonlinear mapping from the data space to the code space.
+
+With the choice ([[eq:xform]]), the jacobian of the transformation $\mathbf{g}$ is just
+\begin{equation}
+  \frac{\partial \mathbf{z}}{\partial \boldsymbol{\varepsilon}}
+= \mathrm{diag}(\boldsymbol{\sigma})
+\equiv
+\begin{bmatrix}
+\sigma_{1} & & & \\
+& \sigma_{2} & & \\
+& & \ddots & \\
+& & & \sigma_{N}
+\end{bmatrix}
+\end{equation}
+so the log-determinant is found to be
+\begin{equation}
+  \log d_{\phi}(\mathbf{x}, \boldsymbol{\varepsilon})
+= \log \left\vert \det \frac{\partial \mathbf{z}}{\partial \boldsymbol{\varepsilon}} \right\vert
+= \sum_{i} \log \sigma_{i}
+\end{equation}
+where we have dropped the absolute value since the standard deviations $\sigma_{i}$ are nonnegative. The approximate posterior log-density becomes
+#+NAME: eq:approx-posterior-log-density
+\begin{equation}
+  \log q_{\phi}(\mathbf{z} \vert \mathbf{x})
+= \log p(\boldsymbol{\varepsilon}) - \log d_{\phi}(\mathbf{x}, \boldsymbol{\varepsilon})
+= \sum_{i} \bigl[ \log \mathcal{N}(\varepsilon_{i}; 0, 1) - \log \sigma_{i} \bigr]
+\end{equation}
+This is then evaluated using the same single noise sample $\boldsymbol{\varepsilon}$ as above for evaluating $\mathbf{z}$.
+
+For more details, see Kingma and Welling (2019, sec.\nbsp{}2.4 and\nbsp{}2.5, and algorithm\nbsp{}2).
+
+
+* ELBO and Bayes' theorem
+
+Starting from the tautology
+\begin{equation}
+p_{\theta}(\mathbf{x}, \mathbf{z}) = p_{\theta}(\mathbf{x}, \mathbf{z})
+\end{equation}
+we rewrite both sides, splitting the joint probability both ways:
+#+NAME: eq:split-joint-probability-bothways
+\begin{equation}
+  p_{\theta}(\mathbf{z} \vert \mathbf{x}) p_{\theta}(\mathbf{x})
+= p_{\theta}(\mathbf{x} \vert \mathbf{z}) p_{\theta}(\mathbf{z})
+\end{equation}
+Rearranging yields *Bayes' theorem* in its standard form --- i.e. how to update our beliefs on the latent $\mathbf{z}$ when new data $\mathbf{x}$ arrives:
+#+NAME: eq:bayes-thm-standard
+\begin{equation}
+  p_{\theta}(\mathbf{z} \vert \mathbf{x})
+= \frac{p_{\theta}(\mathbf{x} \vert \mathbf{z}) p_{\theta}(\mathbf{z})}{p_{\theta}(\mathbf{x})}
+\end{equation}
+However, in evaluating the ELBO loss, this is used in the rearranged form
+#+NAME: eq:bayes-thm-for-evidence-update
+\begin{equation}
+  p_{\theta}(\mathbf{x})
+= \frac{p_{\theta}(\mathbf{x} \vert \mathbf{z}) p_{\theta}(\mathbf{z})}{p_{\theta}(\mathbf{z} \vert \mathbf{x})}
+\end{equation}
+to evaluate the marginal likelihood of the model $\theta$, given the other three distributions.[fn:: This form looks slightly suspect in that the left-hand side depends only on $\mathbf{x}$, whereas the right-hand side depends on both $\mathbf{x}$ and $\mathbf{z}$. This suggests that the $\mathbf{z}$ dependences on the right-hand side must cancel out; but to do this rigorously, it is better to start from ([[eq:split-joint-probability-bothways]]), apply the logarithm and the expectation over $\mathbf{z}$, and rearrange only after that has been done.] Now, let us take the logarithm of ([[eq:bayes-thm-for-evidence-update]]), and then marginalize out $\mathbf{z}$ on the right-hand side by taking an expectation over $\mathbf{z} \sim p_{\theta}(\mathbf{z} \vert \mathbf{x})$ on both sides. We have
+\begin{equation}
+  \log p_{\theta}(\mathbf{x})
+= \mathbb{E}_{p_{\theta}(\mathbf{z} \vert \mathbf{x})}
+  \bigl[ \log p_{\theta}(\mathbf{z})
+       + \log p_{\theta}(\mathbf{x} \vert \mathbf{z})
+       - \log p_{\theta}(\mathbf{z} \vert \mathbf{x})
+  \bigr]
+\end{equation}
+Compare to the annotated line of equation ([[eq:ELBO-computable]]), repeated here for convenience:
+\begin{equation}
+  \mathcal{L}_{\theta, \phi}(\mathbf{x})
+= \mathbb{E}_{q_{\phi}(\mathbf{z} \vert \mathbf{x})}
+  \bigl[ \log p_{\theta}(\mathbf{z})
+       + \log p_{\theta}(\mathbf{x} \vert \mathbf{z})
+       - \log q_{\phi}(\mathbf{z} \vert \mathbf{x})
+  \bigr]
+\end{equation}
+Since the true posterior $p_{\theta}(\mathbf{z} \vert \mathbf{x})$ is intractable, we approximate it variationally by $q_{\phi}(\mathbf{z} \vert \mathbf{x})$. Note also the expectation is now taken over $\mathbf{z} \sim q_{\phi}(\mathbf{z} \vert \mathbf{x})$, no longer $\mathbf{z} \sim p_{\theta}(\mathbf{z} \vert \mathbf{x})$. As was shown by algebraic manipulation (equation ([[eq:ELBO-motivation]])), $\mathcal{L}_{\theta, \phi}(\mathbf{x})$ is a variational lower bound for $p_{\theta}(\mathbf{x})$, so maximizing this expression over $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ yields the maximal lower bound for $p_{\theta}(\mathbf{x})$ within the chosen family of posteriors $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+We emphasize that just like when choosing a finite element basis, we must choose a family $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ that can reasonably represent an approximation of the unknown $p_{\theta}(\mathbf{z} \vert \mathbf{x})$; otherwise the obtained lower bound may be useless. A classical numericist observes here that the ELBO optimality guarantee is similar to the residual $L^{2}$ orthogonality guarantee of Galerkin methods, in that the result can only be as good as the chosen basis is at representing a useful approximation of the unknown quantity.
+
+
+\newpage{}
+
+* ELBO loss evaluation
+
+A VAE is trained by minimizing the total ELBO loss (i.e. maximizing the total ELBO) over the dataset $\mathcal{D}$. We now look at the inner loop that evaluates the ELBO loss for a single data point $\mathbf{x} \in \mathcal{D}$.
+
+To evaluate the ELBO, we use the annotated line of equation ([[eq:ELBO-computable]]). One final detail is that since the ELBO loss evaluation must run in the inner loop, we cannot use any expensive methods to evaluate the expectation over $\mathbf{z} \sim q_{\phi}(\mathbf{z} \vert \mathbf{x})$. So we do this approximately, with a single-sample Monte Carlo estimate; we have everything we need to draw a sample from the current iterate of the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+
+The algorithm is as follows:
+
+# # TODO: this caricature is still slightly broken; can we fix it?
+# Let us start with a $30\;000\;\mathrm{ft}$ caricature of what we would like to do, ignoring all practical difficulties:
+#
+#  - *Input*: data point $\mathbf{x}$.
+#  - *Encode*: Evaluate distribution of plausible code points $\mathbf{z}$ for this $\mathbf{x}$, according to posterior $p_{\theta}(\mathbf{z} \vert \mathbf{x})$.
+#  - *Decode*: Evaluate the expectation over $\mathbf{z} \sim p_{\theta}(\mathbf{z} \vert \mathbf{x})$ of observation model $p_{\theta}(\mathbf{x} \vert \mathbf{z})$.
+#  - Use these and the latent prior $p_{\theta}(\mathbf{z})$ in Bayes' theorem. Obtain marginal likelihood $p_{\theta}(\mathbf{x})$.
+#  - *Output*: marginal likelihood loss (negative of the marginal likelihood).
+
+ - *Input*: data point $\mathbf{x}$.
+ - *Encode*: compute $\mathrm{NN}_{\phi}(\mathbf{x})$, obtain parameters for reparameterization transformation $\mathbf{g}$.
+ - Draw *one* noise sample $\boldsymbol{\varepsilon}$ (e.g. from distribution ([[eq:noise-distribution]])).
+ - Plugging the parameters into $\mathbf{g}$, transform the noise sample to obtain one $\mathbf{z}$ drawn from $q_{\phi}(\mathbf{z} \vert \mathbf{x})$.
+ - Using this $\mathbf{z}$ sample, compute a single-sample MC estimate of the ELBO:
+   - Evaluate approximate posterior log-density $\log q_{\phi}(\mathbf{z} \vert \mathbf{x})$ at this $\mathbf{z}$ (e.g. equation ([[eq:approx-posterior-log-density]])).
+   - Evaluate latent prior log-density $\log p_{\theta}(\mathbf{z})$ at this $\mathbf{z}$ (e.g. based on equation ([[eq:latent-prior]])).
+   - *Decode*: compute $\mathrm{NN}_{\theta}(\mathbf{z})$, obtain parameters for observation model.
+   - Using these parameters, evaluate observation log-density $\log p_{\theta}(\mathbf{x} \vert \mathbf{z})$ at the /input/ $\mathbf{x}$.
+ - Combine the three log-densities to obtain the ELBO estimate (see equation ([[eq:ELBO-computable]])).
+ - *Output*: ELBO loss (negative of the ELBO).
+
+We evaluate $\log p_{\theta}(\mathbf{x} \vert \mathbf{z})$ at the /input/ $\mathbf{x}$ for two reasons: our $\mathbf{z}$ drawn from $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ was conditioned on this value of $\mathbf{x}$, and this is the $\mathbf{x}$ value for which we are computing the single-datapoint estimate of $\mathcal{L}_{\theta, \phi}(\mathbf{x})$.
+
+The encode-decode cycle used in autoencoder (AE) training is still there, but it is now somewhat hidden under the various details. In a VAE, instead of directly producing a point in the other space (latent or data), the neural network parts produce parameters for a parametric distribution. Also in a VAE, the optimization objective is no longer a simple mean-square reconstruction error, but rather the approximate model evidence (i.e. the marginal likelihood of model $\theta$ under the dataset $\mathcal{D}$).
+
+Compare the loss evaluation of a classical (non-variational) autoencoder (AE):
+
+ - *Input*: data point $\mathbf{x}$
+ - *Encode*: $\mathbf{z} = \mathrm{NN}_{\phi}(\mathbf{x})$
+ - *Decode*: $\widehat{\mathbf{x}} = \mathrm{NN}_{\theta}(\mathbf{z})$
+ - Compute mean-square reconstruction error: $\mathrm{MSE} := \Vert \widehat{\mathbf{x}} - \mathbf{x} \Vert^{2}$
+ - *Output*: MSE
+
+A classical AE uses a low-dimensional latent representation just like a VAE does, but the AE has no constraints on the regularity of the latent representation. Hence it is free to overfit in order to minimize the MSE on the training dataset.
+
+
+* Concluding notes
+
+What the added complexity of a VAE buys us is that the latent representation $\mathbf{z}$ is continuous, so we can interpolate and extrapolate in the latent space. A continuous latent representation is much more useful.
+
+The classical application are generative models. A VAE decoder can be used as a standalone generative model to produce new data statistically similar to the training inputs. This has applications in computer-generated visual art.
+
+Exploring the latent space visually may allow a researcher to discover what the automatically extracted features represent. For datasets where the relevant features are not clear to a human /a priori/, this may lead to interesting insights, or may at least serve as a catalyst for thinking that may produce such insights.
+
+A particularly interesting application of VAEs is in computational science, where they hold promise for acceleration of physical simulations. Because the latent representation is continuous, it should be possible to use it as a reduced order model for a dynamic simulation based on a partial differential equation model, by training another neural network to act as a time-evolution operator on the VAE-coded latent space. In a continuous coded representation, time evolution over a short timestep $\Delta t$ should correspond to a short move in the latent space, which should be learnable.
+
+Several groups at the ECCOMAS 2022 conference indeed reported successfully using autoencoders (often based on a ResNet architecture) for model order reduction. However, at this writing, this particular variant of the idea remains to be tested.
+
+Finally, summary of some important points:
+
+ - For the low-dimensional latent space where the code points $\mathbf{z}$ live, we choose an arbitrary prior distribution $p_{\theta}(\mathbf{z})$, with no parameters. This is a soft constraint, specifying how we expect the codes to look like, before seeing any data.
+ - The distribution family used for the inference model (i.e. approximate posterior) $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ constrains how the VAE can update its belief of the codes, conditioned on the data $\mathbf{x}$.
+   - The result of the encoding a data point $\mathbf{x}$ is a distribution of plausible code points that could correspond to that data point.
+   - The ELBO optimization will actually push the approximate posterior $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ toward the prior $p_{\theta}(\mathbf{z})$.
+ - The distribution family used for the observation model $p_{\theta}(\mathbf{x} \vert \mathbf{z})$ reflects the distribution we expect the data to follow. Given a code point $\mathbf{z}$, it constrains how the corresponding decoded data can look like.
+   - True to the stochastic nature of the VAE, when given a code point $\mathbf{z}$, the decoder (observation model) in fact yields a distribution of plausible data points that could have generated that code point. It is customary to return the mean of this distribution as the decoded $\mathbf{x}$, but one could also draw a sample, or return the distribution itself.
+ - The mapping between the data and code spaces /is not explicitly specified/.
+   - This mapping --- in the form of parameters for pre-chosen families of probability distributions $p_{\theta}(\mathbf{x} \vert \mathbf{z})$ and $q_{\phi}(\mathbf{z} \vert \mathbf{x})$ --- is discovered by the neural networks $\mathrm{NN}_{\theta}(\mathbf{z})$ and $\mathrm{NN}_{\phi}(\mathbf{x})$, by jointly training them against the dataset $\mathcal{D}$ via the ELBO loss. This neural network optimization, together with the low-dimensional bottleneck, causes the latent space --- which we forced in itself to have a simple structure --- to become a representation for features discovered from the data. The "magic" is in the neural networks.
+
+# We emphasize that given decoder parameters $\theta$ and a code point $\mathbf{z}$, the observation model $p_{\theta}(\mathbf{x} \vert \mathbf{z})$ measures the plausibility of data points $\mathbf{x}$ that could have generated the code $\mathbf{z}$. A popular solution in many VAE implementations is for the decoder to output the mean of this distribution. For many observation models, the mean is conveniently available, and with the decoder parameters $\theta$ held fixed (as they are after training), this yields a deterministic reconstruction $\mathbf{x}$ for each code point $\mathbf{z}$.
+#
+# Alternatively, if we want stochastic output, we can draw a sample from the observation model $p_{\theta}(\mathbf{x} \vert \mathbf{z})$; however, doing so adds visual noise. For example, for a factorized observation model, the pixels of a reconstructed image will each have an independent (but not identical) distribution.
+#
+# A third, perhaps the most correct, option is to state that the distribution itself *is* the output. However, latent models make the most sense with high-dimensional data, where the distribution becomes difficult to visualize.
+#
+# Once the model is trained, to generate new samples similar to the input data, we can explore the code space on a grid, decoding each grid point. The mapping is continuous, so interpolation and extrapolation in the code space will produce something resembling real data when arbitrary code points are decoded (as long as we do not stray too far from the origin of the code space; or into too low-density regions of the posterior, see Lin et al., 2019).
+#
+# Finally, keep in mind that the discovered features are not necessarily orthogonal, and that the mapping is nonlinear.
+
+
+* References
+
+Diederik P Kingma, Max Welling. 2013 (revised 2022). Auto-Encoding Variational Bayes. https://arxiv.org/abs/1312.6114
+
+Diederik P Kingma, Max Welling. 2019. An Introduction to Variational Autoencoders. https://arxiv.org/abs/1906.02691
+
+Gabriel Loaiza-Ganem, John P. Cunningham. 2019. The continuous Bernoulli: fixing a pervasive error in variational autoencoders. https://arxiv.org/abs/1907.06845
+
+Shuyu Lin, Stephen Roberts, Niki Trigoni, Ronald Clark. 2019. Balancing Reconstruction Quality and Regularisation in ELBO for VAEs. https://arxiv.org/abs/1909.03765
+
+
+\newpage{}
+
+* Online resources for further reading
+
+Clicky clicky. Currently a link dump without much regard to formatting; may organize later.
+
+Also the cited papers are highly recommended, for providing important ideas in a clearly written form that is easy to follow.
+
+*VAE-related* \\
+https://www.deeplearningbook.org/contents/generative_models.html (the Deep Learning book by Goodfellow et al. (2016) includes a section on VAEs) \\
+https://danijar.com/building-variational-auto-encoders-in-tensorflow/ \\
+https://www.cs.toronto.edu/~frossard/post/vgg16/  (excellent network structure diagram) \\
+https://wizardforcel.gitbooks.io/tensorflow-examples-aymericdamien/content/3.10_variational_autoencoder.html \\
+https://linux-blog.anracom.com/2022/10/06/variational-autoencoder-with-tensorflow-2-8-x-vae-application-to-celeba-images/ \\
+https://linux-blog.anracom.com/2022/10/22/variational-autoencoder-with-tensorflow-2-8-xi-image-creation-by-a-vae-trained-on-celeba/ \\
+https://linux-blog.anracom.com/2022/11/07/variational-autoencoder-with-tensorflow-2-8-xiii-does-a-vae-with-tiny-kl-loss-behave-like-an-ae-and-if-so-why/ \\
+https://towardsdatascience.com/understanding-variational-autoencoders-vaes-f70510919f73 \\
+https://towardsdatascience.com/understanding-generative-adversarial-networks-gans-cd6e4651a29 \\
+https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29 \\
+https://learnopencv.com/autoencoder-in-tensorflow-2-beginners-guide/ \\
+https://learnopencv.com/variational-autoencoder-in-tensorflow/ \\
+https://www.inference.vc/choice-of-recognition-models-in-vaes-a-regularisation-view/ \\
+https://www.inference.vc/variational-inference-using-implicit-models/ \\
+https://www.inference.vc/how-to-train-your-generative-models-why-generative-adversarial-networks-work-so-well-2/ \\
+
+*Basic concepts* \\
+https://www.baeldung.com/cs/k-fold-cross-validation \\
+https://machinelearningmastery.com/difference-test-validation-datasets/ \\
+https://towardsdatascience.com/weight-initialization-in-neural-networks-a-journey-from-the-basics-to-kaiming-954fb9b47c79 \\
+https://www.quora.com/What-is-the-difference-between-skip-peephole-and-residual-connections-in-neural-networks \\
+https://andrewcharlesjones.github.io/journal/convergence.html  (convergence in probability vs. almost sure conv.) \\
+https://github.com/y0ast/VAE-TensorFlow/issues/3  (why Bernoulli distribution in VAE decoder) \\
+https://mbernste.github.io/posts/elbo/ \\
+
+*Backpropagation* (i.e. backward-mode automatic differentiation for neural networks) \\
+https://cs231n.github.io/optimization-1/#gd \\
+https://cs231n.github.io/neural-networks-case-study/#grad \\
+https://dustinstansbury.github.io/theclevermachine/derivation-backpropagation \\
+https://karpathy.medium.com/yes-you-should-understand-backprop-e2f06eab496b \\
+
+*Various AI/NN tutorials* \\
+https://dennybritz.com/posts/wildml/implementing-a-neural-network-from-scratch/ \\
+https://dennybritz.com/posts/wildml/recurrent-neural-networks-tutorial-part-4/ \\
+https://mkffl.github.io/2019/07/08/minimalist-RNN.html \\
+https://colah.github.io/posts/2015-08-Understanding-LSTMs/ \\
+https://kvfrans.com/variational-autoencoders-explained/ \\
+https://towardsdatascience.com/applied-deep-learning-part-3-autoencoders-1c083af4d798 \\
+https://spinningup.openai.com/en/latest/user/introduction.html  (reinforcement learning tutorial) \\
+https://neptune.ai/blog/reinforcement-learning-agents-training-debug  (how to debug RL) \\
+
+*Series on high-resolution image generation from examples* \\
+https://blog.otoro.net/2016/03/25/generating-abstract-patterns-with-tensorflow/ (CPPN) \\
+https://blog.otoro.net/2016/04/01/generating-large-images-from-latent-vectors/ (VAE + GAN) \\
+https://blog.otoro.net/2016/06/02/generating-large-images-from-latent-vectors-part-two/ (condition to diversify) \\
+
+*Wikipedia* \\
+https://en.wikipedia.org/wiki/Training%2C_validation%2C_and_test_data_sets \\
+https://en.wikipedia.org/wiki/Logistic_distribution \\
+https://en.wikipedia.org/wiki/Logit \\
+https://en.wikipedia.org/wiki/Bernoulli_distribution \\
+https://en.wikipedia.org/wiki/Continuous_Bernoulli_distribution (new, 2019!) \\
+https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding \\
+https://en.wikipedia.org/wiki/Residual_neural_network (skip-connections) \\
+https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence \\
+https://en.wikipedia.org/wiki/Compositional_pattern-producing_network (how to teach AI abstract visual art) \\
+https://en.wikipedia.org/wiki/Neuroevolution \\
+
+*Web demos* \\
+https://laion.ai/blog/laion-5b/ \\
+https://stablediffusionweb.com/ \\
+https://prostheticknowledge.tumblr.com/post/136696656421/dcgan-face-generator-online-image-generator-can \\
+https://qiita.com/mattya/items/e5bfe5e04b9d2f0bbd47  (Chainer - generate anime portraits via GAN) \\
+
+*Code examples* \\
+https://blog.fastforwardlabs.com/2016/02/24/hello-world-in-keras-or-scikit-learn-versus-keras.html \\
+https://keras.io/examples/generative/vae/ \\
+https://www.tensorflow.org/tutorials/generative/autoencoder \\
+https://www.tensorflow.org/tutorials/generative/cvae \\
+https://github.com/ChengBinJin/VAE-Tensorflow/tree/master/src \\
+https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/norm_vae_mnist.ipynb \\
+https://github.com/cunningham-lab/cb_and_cc/blob/master/cb/utils.py  (the original continuous Bernoulli implementation) \\
+https://github.com/farrell236/ResNetAE/blob/master/ResNetAE.py \\
+https://github.com/openai/improved-gan \\
+https://github.com/wxs/keras-mnist-tutorial/blob/master/MNIST%20in%20Keras.ipynb \\
+https://www.tensorflow.org/guide/keras/custom_layers_and_models#putting_it_all_together_an_end-to-end_example \\
+https://www.nltk.org/ \\
+https://github.com/pietrobarbiero/pytorch_explain \\
+https://github.com/kvfrans/variational-autoencoder \\
+https://jmetzen.github.io/2015-11-27/vae.html \\
+
+*API docs* \\
+https://www.tensorflow.org/api_docs/python/tf/keras/applications/resnet50/ResNet50 \\
+https://simplegan.readthedocs.io/en/latest/modules/autoencoder.html \\
+https://keras.io/api/layers/convolution_layers/convolution2d/ \\
+https://keras.io/api/layers/convolution_layers/convolution2d_transpose/ \\
+https://developer.nvidia.com/blog/optimizing-gpu-performance-tensor-cores/ \\
+https://docs.nvidia.com/deeplearning/frameworks/tensorflow-user-guide/index.html \\
+
+*Various blog posts* \\
+https://karpathy.github.io/2015/05/21/rnn-effectiveness/ \\
+https://gist.github.com/karpathy/d4dee566867f8291f086  (code for above; minimal character-level RNN in NumPy) \\
+https://towardsdatascience.com/classification-model-for-source-code-programming-languages-40d1ab7243c2 \\
+
+*Various AI-related code snippets* \\
+https://github.com/stratospark/keras-multiprocess-image-data-generator \\
+https://github.com/bckenstler/CLR  (cyclical learning rate plugin for Keras) \\
