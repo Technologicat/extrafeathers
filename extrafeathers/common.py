@@ -190,6 +190,32 @@ def minmax(p: dolfin.Function, *,
                 If `False`, then compute `min(...)` and `max(...)`.
 
                 Ignored when `mode="l2"`.
+
+
+    **Note**
+
+    The civilized way would be something like this, shown here for computing the
+    l2 min/max for a vector field::
+
+        # Here `u_` is a `Function` on vector function space `V`
+        magu_expr = Expression("pow(pow(u0, 2) + pow(u1, 2), 0.5)",
+                               degree=V.ufl_element().degree(),
+                               u0=u_.sub(0), u1=u_.sub(1))
+        magu = interpolate(magu_expr, V.sub(0).collapse())
+        uvec = np.array(magu.vector())
+
+        minu_local = uvec.min()
+        minu_global = MPI.comm_world.allgather(minu_local)
+        minu = min(minu_global)
+
+        maxu_local = uvec.max()
+        maxu_global = MPI.comm_world.allgather(maxu_local)
+        maxu = max(maxu_global)
+
+    This `minmax` function is useful mainly because on quad elements, the above won't work:
+
+      - `dolfin.interpolate` doesn't work (point/cell intersection only implemented for simplices),
+      - `dolfin.project` doesn't work for `dolfin.Expression`, either; same reason.
     """
     assert mode in ("raw", "l2", "components")
 
