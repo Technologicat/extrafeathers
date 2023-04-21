@@ -17,7 +17,7 @@ from .config import mesh_filename, Boundaries
 def main():
     assert dolfin.MPI.comm_world.size == 1, "Mesh can only be generated in serial mode, please run without mpirun."
 
-    N = 16
+    N = 64
 
     # https://fenicsproject.org/olddocs/dolfin/latest/cpp/de/dac/classdolfin_1_1UnitSquareMesh.html#a0cff260683cd6632fa569ddda6529a0d
     # 'std::string diagonal ("left", "right", "right/left", "left/right", or "crossed")
@@ -25,8 +25,8 @@ def main():
     # mesh = dolfin.UnitSquareMesh(N, N)
     # mesh = dolfin.UnitSquareMesh(N, N, "crossed")
     # mesh = meshmagic.trimesh(N, N)  # rows of equilateral triangles
-    # mesh = meshmagic.trimesh(N, N, align="y")  # columns of equilateral triangles
-    mesh = dolfin.UnitSquareMesh.create(N, N, dolfin.CellType.Type.quadrilateral)
+    mesh = meshmagic.trimesh(N, N, align="y")  # columns of equilateral triangles
+    # mesh = dolfin.UnitSquareMesh.create(N, N, dolfin.CellType.Type.quadrilateral)
 
     from dolfin import ALE, Constant, FunctionSpace
     ALE.move(mesh, Constant((-0.5, -0.5)))

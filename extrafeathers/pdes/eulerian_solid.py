@@ -1875,6 +1875,24 @@ class EulerianSolidPrimal:
     iteration counts are just meaningless placeholders to provide a unified API.
 
     NOTE: The equation system is monolithic, so no system iterations are needed.
+
+    Parameters:
+
+        `V`: vector function space for `u` and `v`
+        `Q`: tensor function space for visualizing `σ` (visualization only)
+        `P`: tensor function space for visualizing `ε` (visualization only)
+        `ρ`: density [kg/m³]
+        `λ`: Lamé's first parameter [Pa]
+        `μ`: shear modulus [Pa]
+        `τ`: Kelvin-Voigt retardation time [s]
+        `V0`: axial drive velocity [m/s]
+        `bcu`: Dirichlet boundary conditions for `u` [m]
+        `bcv`: Dirichlet boundary conditions for `v`. API consistency;
+               not needed by this formulation. Can be the empty list. [m/s]
+        `bcσ`: Neumann boundary condition for `σ`. Used automatically
+               on boundaries which have no Dirichlet BC for `u`. [Pa]
+        `dt`: timestep size [s]
+        `θ`: parameter of the theta time integrator.
     """
     def __init__(self, V: VectorFunctionSpace,
                  Q: TensorFunctionSpace,
@@ -1900,6 +1918,7 @@ class EulerianSolidPrimal:
         u_n, v_n = split(s_n)
 
         # For separate equation, for stress visualization
+        # (We use the trial and test functions to compute the L2 projection for visualization.)
         σ = TrialFunction(Q)
         φ = TestFunction(Q)
         σ_ = Function(Q)
@@ -1907,7 +1926,8 @@ class EulerianSolidPrimal:
         self.V = V
         self.Q = Q
 
-        # This algorithm uses `P` only for strain visualization.
+        # This algorithm uses `P` only for visualization of strain and strain rate.
+        # (We use the trial and test functions to compute the L2 projection for visualization.)
         self.P = P
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
@@ -2083,7 +2103,7 @@ class EulerianSolidPrimal:
 
         # SUPG (doesn't seem to actually do much here)
         deg = Constant(self.V.ufl_element().degree())
-        moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))
+        moo = Constant(max(self.λ, 2 * self.μ, self.τ * self.λ, self.τ * 2 * self.μ))  # representative diffusivity
         τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
         R = (ρ * (dvdt + advs(a, V)) - div(Σ) - ρ * b)
         F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
@@ -2706,6 +2726,9 @@ def step_adaptive(solver: typing.Union[EulerianSolid, EulerianSolidAlternative],
         old_un.assign(solver.u_n)
         old_vn.assign(solver.v_n)
         old_σn.assign(solver.σ_n)
+        if hasattr(solver, "T_n"):  # thermal terms in advanced solver
+            old_Tn = Function(solver.V_rank0)
+            old_Tn.assign(solver.T_n)
         try:
             solver.dt = dt
             yield
@@ -2714,6 +2737,8 @@ def step_adaptive(solver: typing.Union[EulerianSolid, EulerianSolidAlternative],
             solver.u_n.assign(old_un)
             solver.v_n.assign(old_vn)
             solver.σ_n.assign(old_σn)
+            if hasattr(solver, "T_n"):  # thermal terms in advanced solver
+                solver.T_n.assign(old_Tn)
 
     def solve_in_n_substeps(n):
         substep_sysits = []
@@ -2730,7 +2755,7 @@ def step_adaptive(solver: typing.Union[EulerianSolid, EulerianSolidAlternative],
             #     print(f"substep {k}, sysit = {sysit}, e = {e:0.6g}")
             if e >= solver.tol:  # timestep still too large; cancel
                 return sum(substep_it1s), sum(substep_it2s), sum(substep_it3s), (sum(substep_sysits), e)
-            solver.commit()  # temporarily; the context manager rolls this back
+            solver.commit()  # temporarily; the context manager eventually rolls this back when we're done
         return sum(substep_it1s), sum(substep_it2s), sum(substep_it3s), (sum(substep_sysits), e)
 
     class Converged(Exception):
@@ -2758,7 +2783,8 @@ def step_adaptive(solver: typing.Union[EulerianSolid, EulerianSolidAlternative],
                 # if dolfin.MPI.comm_world.rank == 0:  # DEBUG
                 #     print(f"No convergence at {int(n / 2)} substeps at dt={2 * dt:0.6g} s (e = {e:0.6g} > tol = {self.tol:0.6g}); trying again with {n} substeps at dt={dt:0.6g} s")
 
-                # IMPORTANT: After failed attempt, restore the initial guess to the original old field
+                # IMPORTANT: After failed attempt, restore the initial guess of the unknowns to the original old field
+                # In the thermomechanical solver, we don't need to (and shouldn't) touch `T_`, since it is a driver, not an unknown.
                 solver.u_.assign(solver.u_n)
                 solver.v_.assign(solver.v_n)
                 solver.σ_.assign(solver.σ_n)

@@ -1,11 +1,48 @@
 # -*- coding: utf-8; -*-
 """Mathematically flavored utilities."""
 
-__all__ = ["ε", "vol",
+__all__ = ["Min", "Max", "Minn", "Maxx",
+           "ε", "vol",
            "mag",
            "advw", "advs"]
 
-from dolfin import sym, nabla_grad, dot, div, Identity, tr, dx, ds
+from dolfin import sym, nabla_grad, dot, div, Identity, tr, dx, ds, Constant
+
+def Min(a, b):
+    """UFL expression for the min of expressions `a` and `b`.
+
+    Based on:
+        https://fenicsproject.org/qa/10199/using-min-max-in-a-variational-form/
+    """
+    return (a + b - abs(a - b)) / Constant(2)
+
+def Max(a, b):
+    """UFL expression for the max of expressions `a` and `b`.
+
+    Based on:
+        https://fenicsproject.org/qa/10199/using-min-max-in-a-variational-form/
+    """
+    return (a + b + abs(a - b)) / Constant(2)
+
+def Minn(*terms):
+    """UFL expression for the min of expressions in `terms`.
+
+    Implemented recursively in terms of `Min`, which see.
+    """
+    a, *rest = terms
+    if len(rest) == 1:
+        return Min(a, rest[0])
+    return Min(a, Minn(*rest))
+
+def Maxx(*terms):
+    """UFL expression for the max of expressions in `terms`.
+
+    Implemented recursively in terms of `Max`, which see.
+    """
+    a, *rest = terms
+    if len(rest) == 1:
+        return Max(a, rest[0])
+    return Max(a, Maxx(*rest))
 
 def ε(u):
     """UFL expression for the symmetric gradient of the field `u`.
@@ -57,6 +94,8 @@ def advw(a, u, v, n, *, mode="divergence-free"):
     `u`: quantity being advected
     `v`: test function of the quantity `u`
          `u` and `v` must be at least C0-continuous.
+         `u` and `v` must be the same kind; scalar and vector are supported.
+         When `mode="general"`, `a` must be at least C0-continuous.
     `n`: facet normal of mesh
 
     `mode`: one of "general" or "divergence-free".
@@ -89,6 +128,9 @@ def advw(a, u, v, n, *, mode="divergence-free"):
 
     This is consistent when `div(a) ≡ 0`, and in Navier-Stokes, necessary for
     unconditional time stability for schemes that are able to provide it.
+
+    Zang (1991) hints that this is due to better conservation properties
+    of the skew-symmetric form (momentum, kinetic energy).
 
     To see the equivalence, consider the conversion of the modified term
     into weak form:
@@ -128,10 +170,56 @@ def advw(a, u, v, n, *, mode="divergence-free"):
     as claimed. Keep in mind the boundary term, which contributes on boundaries
     through which there is flow (i.e. inlets and outlets) - we do not want to
     introduce an extra boundary condition. This is why this routine returns
-    a UFL **form**; this generates both interior and boundary terms.
+    a UFL **form**; the skew-symmetric discretization of the advection operator
+    generates both interior and boundary terms.
 
-    Another way to view the role of the extra term in the skew-symmetric form is to
-    consider the Helmholtz decomposition of the advection velocity `a`:
+    If `mode="general"`, i.e. `div(a) ≢ 0` is allowed, this routine uses the form
+
+        [(a·∇) u + (1/2) (∇·a) u] - (1/2) (∇·a) u
+
+    The integration by parts absorbs the first `(1/2) (∇·a) u`, as above; the second
+    one is kept as `-∫ (1/2) (∇·a) u · v dx`. Thus, when `mode="general"`, an extra
+    symmetric term is produced.
+
+
+    **Remark 1**
+
+    Why does skew-symmetric advection help stability for incompressible flow simulations?
+    From https://en.wikipedia.org/wiki/Advection :
+
+        Since skew symmetry implies only imaginary eigenvalues, this form reduces the "blow up"
+        and "spectral blocking" often experienced in numerical solutions with sharp discontinuities
+        (see Boyd, 2000).
+
+
+    **Remark 2**
+
+    Role of the extra terms? Let's consider `mode="general"`, and flip the sign for clarity.
+
+      - For any test function `v` with support on a part of ∂Ω, the extra terms are:
+
+          ∫ [∇·a]u · v dx - ∫ [n·a]u · v ds
+
+        This represents a continuum balance of how much `u` enters the support of `v`:
+        the source of `u` due to [∇·a], minus the outward flow of `u` through ∂Ω.
+        (Sign: if ∇·a > 0 at a point, the velocity field flows outward from that point.)
+
+      - For any test function `v` whose support is contained in the interior of Ω,
+        we have just one extra term:
+
+          ∫ [∇·a]u · v dx
+
+        which describes the source of `u` due to [∇·a].
+
+    Thus, what this technique essentially does is that it splits the advection operator
+    into a skew-symmetric divergence-free (incompressible) transport operator, plus a
+    symmetric operator that accounts for sources/sinks.
+
+
+    **Remark 3**
+
+    Another way to view the role of the extra term is to consider the Helmholtz
+    decomposition of the advection velocity `a`:
 
       a = ∇φ + ∇×A
 
@@ -144,46 +232,79 @@ def advw(a, u, v, n, *, mode="divergence-free"):
 
       (∇·a) u = (∇²φ) u
 
+    This obviously hints at the same conclusion as above.
 
-    If `mode="general"`, i.e. `div(a) ≢ 0` is allowed, this routine uses the form
 
-        [(a·∇) u + (1/2) (∇·a) u] - (1/2) (∇·a) u
+    **Remark 4**
 
-    The integration by parts absorbs the first `(1/2) (∇·a) u`; the second one is
-    converted to weak form simply as `∫ (1/2) (∇·a) u v dx`. Thus, in general mode,
-    an extra symmetric term is produced.
+    For incompressible Navier-Stokes, Zang (1991) writes the skew-symmetric form as:
+
+        (1/2) u·∇u + (1/2) ∇·(uu)
+
+    The terms  u·∇u  and  ∇·(uu)  are known, respectively, as the /convection/ and
+    /divergence/ forms of the Navier-Stokes advection term. The skew-symmetric form
+    is their arithmetic mean. There is a large literature on these various forms
+    as applied to the incompressible Navier-Stokes equations, particularly in the
+    context of finite difference and finite volume discretizations.
+
+    In our notation, the divergence form is
+
+          ∇·(u ⊗ u)
+        ≡ ∂i (ui uk)
+        = (∂i ui) uk + ui (∂i uk)
+        ≡ (∇·u) u + u·∇u
+
+    or for a general velocity field `a`:
+
+          ∇·(a ⊗ u)
+        ≡ ∂i (ai uk)
+        = (∂i ai) uk + ai (∂i uk)
+        ≡ (∇·a) u + a·∇u
+
+    which is exactly what we had in the arguments above.
 
 
     **References**:
 
         Jean Donea and Antonio Huerta. 2003. Finite Element Methods
         for Flow Problems. Wiley. ISBN 0-471-49666-9.
+
+        Thomas Zang. 1991. On the rotation and skew-symmetric forms for incompressible flow simulations.
+        Applied Numerical Mathematics. 7: 27–40. doi:10.1016/0168-9274(91)90102-6
+
+        John P. Boyd. 2000. Chebyshev and Fourier Spectral Methods 2nd edition. Dover. p. 213.
     """
     if mode not in ("general", "divergence-free"):
         raise ValueError(f"Expected `mode` to be one of 'general', 'divergence-free'; got {mode}")
 
     if mode == "general":
         # This is the weak form of `[(a·∇) u + (1/2) (∇·a) u] - (1/2) (∇·a) u`,
-        # where the first `(1/2) (∇·a) u` is absorbed by the integration by parts.
+        # where the first `(1/2) (∇·a) u` is absorbed by the integration by parts,
+        # producing the boundary term. The second `(1/2) (∇·a) u` is kept as-is.
         return (1 / 2) * ((dot(dot(a, nabla_grad(u)), v) -
                            dot(dot(a, nabla_grad(v)), u)) * dx +
                           dot(n, a) * dot(u, v) * ds -
-                          div(a) * u * v * dx)  # the second (1/2) (∇·a) u
+                          div(a) * dot(u, v) * dx)  # the second (1/2) (∇·a) u
     else:  # mode == "divergence-free":
         # This is the skew-symmetric weak form of `(a·∇) u + (1/2) (∇·a) u`,
-        # intended to be used when `div(a) ≡ 0`.
+        # intended to be used when `div(a) ≡ 0`. Note that for consistency,
+        # we must still account for the flow of `u` through ∂Ω.
         return (1 / 2) * ((dot(dot(a, nabla_grad(u)), v) -
                            dot(dot(a, nabla_grad(v)), u)) * dx +
                            dot(n, a) * dot(u, v) * ds)
 
 def advs(a, u, *, mode="divergence-free"):
-    """Advection operator, strong form (for SUPG residual).
+    """Advection operator, strong form.
 
-    Corresponds to the weak form produced by `advw`, which see.
+    Useful in computing the strong-form residual for SUPG stabilization.
+
+    The result is consistent with the weak form produced by `advw` with the
+    same `mode` setting, which see.
 
     `a`: advection velocity
     `u`: quantity being advected
          `a` and `u` must be at least C0-continuous.
+         `u` must be scalar or vector.
     `mode`: like `mode` of `advw`.
 
     Return value is an UFL expression representing the advection term.
@@ -192,14 +313,14 @@ def advs(a, u, *, mode="divergence-free"):
         raise ValueError(f"Expected `mode` to be one of 'general', 'divergence-free'; got {mode}")
 
     if mode == "general":
-        # Here the modifications cancel in the strong form;
-        # we both add and subtract `(1/2) (∇·a) u`.
+        # In this mode, our modifications cancel; we both add and subtract `(1/2) (∇·a) u`.
+        # Thus we are left with just the original convection form.
         return dot(a, nabla_grad(u))
     else:  # mode == "divergence-free":
-        # To match `advw`, we must include the `(1/2) (∇·a) u` term that was added,
-        # in case `a` is not actually exactly divergence-free.
+        # To make the result consistent with the weak form returned by `advw` in the same mode,
+        # we must include the extra `(1/2) (∇·a) u` term - which we initially add, but then absorb
+        # into the integration by parts.
         #
-        # `advs` is most often used for computing the residual in SUPG
-        # stabilization, so it needs to see the numerical error caused
-        # by any nonzero values in the field `div(a)`.
+        # This is because in practice, `a` might be only approximately divergence-free
+        # (such as a velocity field produced by an incompressible Navier-Stokes solver).
         return dot(a, nabla_grad(u)) + (1 / 2) * div(a) * u
