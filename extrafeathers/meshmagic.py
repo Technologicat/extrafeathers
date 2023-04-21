@@ -213,7 +213,7 @@ def my_cells(V: dolfin.FunctionSpace, *,
             # - DOFs 3, 4 are on the side opposite to 0
             # - DOFs 5, 6 are on the side opposite to 1
             # - DOFs 7, 8 are on the side opposite to 2
-            # - DOF 8 is at the center of the triangle
+            # - DOF 9 is at the center of the triangle
             #
             # ASCII diagram:
             #
