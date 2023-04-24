@@ -230,7 +230,10 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 # --------------------------------------------------------------------------------
 # Thermal source term
 
-# This represents cooling perpendicular to the plane. For simplicity, we use Newton's law of cooling:
+# This represents cooling into the environment, in the direction perpendicular to the 2D sheet modeled.
+# Heat flux through the 2D boundaries should be treated by a nonhomogeneous Neumann boundary condition instead.
+#
+# For simplicity, we use Newton's law of cooling:
 #
 #    h = -r [T - T_ext]
 #
@@ -243,6 +246,7 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 #
 # Consider a differential element of the sheet. We have:
 #   dA = dx dy,                   exposed area when one side is exposed to air
+#                                 (other side not included in dA, so it is perfectly insulated)
 #   dm = ρ dx dy dz ≈ ρ dx dy H,  where H is the thickness of the sheet
 # so
 #   dA/dm = 1 / (ρ H)
