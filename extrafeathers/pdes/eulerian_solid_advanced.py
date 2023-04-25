@@ -186,6 +186,11 @@ class LinearMomentumBalance:
 
                    stress_neumann_bc.σ11 = axial_pull_strength(t)
 
+               And if you prefer to populate the Neumann BC list after instantiation
+               (passing in an empty list initially, then adding BCs to it later),
+               call `.compile_forms()` to refresh the equations to use the latest
+               definitions.
+
         `dt`: timestep size [s]
         `θ`: parameter of the theta time integrator.
 
@@ -829,6 +834,11 @@ class InternalEnergyBalance:
                        # ...much later, during timestep loop...
 
                        heat_flux_neumann_bc.q0 = heat_flux_strength(t)
+
+                   And if you prefer to populate the Neumann BC list after instantiation
+                   (passing in an empty list initially, then adding BCs to it later),
+                   call `.compile_forms()` to refresh the equations to use the latest
+                   definitions.
 
             `dt`: timestep size [s]
             `θ`: parameter of the theta time integrator.
