@@ -32,7 +32,7 @@ from extrafeathers import plotmagic
 from extrafeathers.pdes import (LinearMomentumBalance,
                                 InternalEnergyBalance)
 from extrafeathers.pdes.eulerian_solid_advanced import ε
-from extrafeathers.pdes.numutil import mag
+from extrafeathers.pdes.numutil import mag, Minn
 from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, H1_tol, maxit,
                      lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
                      nsave_total, vis_every, enable_SUPG, show_mesh,
@@ -879,20 +879,40 @@ for n in range(nt):
             maxa_global = MPI.comm_world.allgather(maxa_local)
             maxa = max(maxa_global)
 
-            # Courant number
+            # Courant number (advection of `T` in thermal solver)
             Co_adv = project(maga * Constant(dt) / thermal_solver.he, V_rank0)
             maxCo_local = np.array(Co_adv.vector()).max()
             maxCo_global = MPI.comm_world.allgather(maxCo_local)
-            maxCo = max(maxCo_global)
+            maxCo_thermal = max(maxCo_global)
 
-            # Péclet number (ratio of advective vs. diffusive effects), rough approximation.
+            # Péclet number (ratio of advective vs. diffusive effects) of thermal solver, rough approximation.
             d = thermal_solver.s_.geometric_dimension()
             ν = project(((1 / d) * tr(thermal_solver.k(T_))) / (thermal_solver.ρ * thermal_solver.c(T_)), V_rank0)  # diffusivity
             minν_local = np.array(ν.vector()).min()
             minν_global = MPI.comm_world.allgather(minν_local)
             minν = min(minν_global)
             L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
-            maxPe = maxa * L / minν
+            maxPe_thermal = maxa * L / minν
+
+            # Courant number (advection of `v` in linear momentum solver)
+            # The velocity field in the advection operator is the axial drive field (V0, 0).
+            # v_el = project(sqrt(E_func(T_) / Constant(rho)), V_rank0)  # elastic wave propagation speed, irrelevant here
+            Co_mech = project(Constant(V0) * Constant(dt) / linmom_solver.he, V_rank0)
+            maxCo_local = np.array(Co_mech.vector()).max()
+            maxCo_global = MPI.comm_world.allgather(maxCo_local)
+            maxCo_mech = max(maxCo_global)
+
+            # Péclet number, advection vs. diffusion of `v`, rough approximation.
+            maxa = V0
+            λ = linmom_solver.λ(T_)
+            μ = linmom_solver.μ(T_)
+            τ = linmom_solver._τ  # the UFL Constant object
+            ν = project(τ * Minn(λ, 2 * μ) / Constant(rho), V_rank0)  # representative diffusivity of velocity, τ ‖E‖ / ρ
+            minν_local = np.array(ν.vector()).min()
+            minν_global = MPI.comm_world.allgather(minν_local)
+            minν = min(minν_global)
+            L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
+            maxPe_mech = maxa * L / minν
 
             # maximum in-domain cooling rate [W/m²]
             maxh_local = -1.0 * thermal_solver.h_.vector().min() * rho * H
@@ -917,7 +937,7 @@ for n in range(nt):
     E = elastic_strain_energy()
     K = kinetic_energy()
     if my_rank == 0:  # DEBUG
-        print(f"Timestep {n + 1}/{nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; Pe = {maxPe:0.2g}; Co = {maxCo:0.2g}; max cooling rate = {maxh:0.2g} W/m²; E = ∫ (1/2) σ:εel dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; K + E = {K + E:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
+        print(f"Timestep {n + 1}/{nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; Pe_th = {maxPe_thermal:0.2g}; Co_th = {maxCo_thermal:0.2g}; Pe_mech = {maxPe_mech:0.2g}; Co_mech = {maxCo_mech:0.2g}; max cooling rate = {maxh:0.2g} W/m²; E = ∫ (1/2) σ:εel dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
 
     # In MPI mode, one of the worker processes may have a larger slice of the domain
     # (or require more Krylov iterations to converge) than the root process.
@@ -931,7 +951,7 @@ for n in range(nt):
         max_vis_step_walltime = item_with_max_vis_step_walltime[0]
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{SUPG_str}{n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n_system_iterations} iterations; Pe = {maxPe:0.2g}; Co = {maxCo:0.2g}; V₀ = {V0} m/s; τ = {tau:0.3g} s; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
+    msg = f"{SUPG_str}{n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n_system_iterations} iterations; $\\mathrm{{Pe}}_\\mathrm{{th}}$ = {maxPe_thermal:0.2g}; $\\mathrm{{Co}}_\\mathrm{{th}}$ = {maxCo_thermal:0.2g}; $\\mathrm{{Pe}}_\\mathrm{{mech}}$ = {maxPe_mech:0.2g}; $\\mathrm{{Co}}_\\mathrm{{mech}}$ = {maxCo_mech:0.2g}; V₀ = {V0} m/s; τ = {tau:0.3g} s; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
 
     # Loop-and-a-half situation, so draw one more time to update title.
     if visualize and my_rank == 0:
