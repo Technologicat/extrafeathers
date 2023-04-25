@@ -547,7 +547,7 @@ class LinearMomentumBalance:
         #
         # Because the Cauchy stress tensor is symmetric, we can symmetrize the test part of
         # the stress term:  ∇w → symm(∇w).
-        F_u = (ρ * (dot(dvdt, w) * dx + advw(a, V, w, n)) +         # rate terms (advection of `v`)
+        F_u = (ρ * (dot(dvdt, w) * dx + advw(a, V, w, n)) +         # rate terms (axially comoving rate of `v`)
                inner(Σ.T, ε(w)) * dx -                              # stress
                ρ * dot(b, w) * dx)                                  # body force
         # Neumann BC for stress [Pa]. It is specified as the value of the Cauchy stress tensor,
@@ -1099,7 +1099,9 @@ class InternalEnergyBalance:
         if self.advection != "off":
             assert self.advection in ("divergence-free", "general")
 
-            # Material rate. This equation essentially just defines `v` as the advection of `u`.
+            # The equation of `u` has no advection terms, so it needs no stabilization.
+
+            # Material rate. This equation essentially just defines `v` as the material rate of `u`.
             #
             # Splitting this into a separate equation isolates the numerically tricky
             # advection effect, allowing us to easily apply stabilization techniques,
@@ -1115,6 +1117,7 @@ class InternalEnergyBalance:
 
             # SUPG stabilization for `v`. τ_SUPG as in a pure advection problem.
             # Residual evaluated using values at the end of the timestep.
+            # Here the stabilization helps.
             deg = Constant(self.V.ufl_element().degree())
             τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
             R = (v - (dudt + advs(a, u, mode=self.advection)))
