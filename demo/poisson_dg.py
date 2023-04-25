@@ -137,7 +137,18 @@ f = Expression("10*exp(-(pow(x[0] - 0.5, 2) + pow(x[1] - 0.5, 2)) / 0.02)", degr
 # On the external boundary `ds`, the added terms must be applied only on the
 # Dirichlet boundaries (which are here enforced weakly, with the Nitsche trick).
 # If we have any Neumann or Robin BCs, we must set up subdomains for `ds`.
+# We must split `ds` to apply BCs selectively by boundary tag, and
+# include a list of boundary tags in the Neumann BC specification.
 # This is not done in this simple demo.
+#
+# See the tutorial:
+#   https://fenicsproject.org/pub/tutorial/sphinx1/._ftut1005.html#fenics-implementation-14
+# particularly, how to redefine the measure `ds` in terms of boundary markers:
+#
+#   ds = dolfin.Measure('ds', domain=mesh, subdomain_data=boundary_parts)
+#
+# Then use `ds(i)` as the integration symbol, where `i` is the boundary number
+# in the mesh data, e.g. `Boundaries.LEFT.value` from the problem configuration.
 #
 γ = Constant(10 * V.ufl_element().degree()**2)  # Nitsche parameter
 α = Constant(10 * γ)  # stabilization parameter
