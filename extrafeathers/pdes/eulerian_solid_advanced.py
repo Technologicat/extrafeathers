@@ -560,53 +560,60 @@ class LinearMomentumBalance:
                     raise ValueError("`boundary_parts` must be supplied to build `ds` when Neumann BCs are applied on individual boundary parts.")
                 F_u -= dot(dot(n, Σ0.T), w) * self.ds(tag)
 
-        # SUPG stabilization for `u`. τ_SUPG as in an advection-diffusion problem (or as in Navier-Stokes).
-        # Residual evaluated using values at the end of the timestep.
-        # In practice, this doesn't seem to actually do much.
-        deg = Constant(self.V.ufl_element().degree())
-        λ = self.λ(T)
-        μ = self.μ(T)
-        moo = Maxx(λ, 2 * μ, τ * λ, τ * 2 * μ)  # representative diffusivity (note this is now a FEM field)
-        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
-        R = (ρ * (dvdt + advs(a, v)) - div(Σ_) - ρ * b)
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
-        F_u += F_SUPG
+        if self.V0 != 0.0:  # axial motion enabled?
+            # SUPG stabilization for `u`. τ_SUPG as in an advection-diffusion problem (or as in Navier-Stokes).
+            # Residual evaluated using values at the end of the timestep.
+            # In practice, SUPG-stabilizing this equation doesn't seem to actually do much.
+            deg = Constant(self.V.ufl_element().degree())
+            λ = self.λ(T)
+            μ = self.μ(T)
+            moo = Maxx(λ, 2 * μ, τ * λ, τ * 2 * μ)  # representative diffusivity (note this is now a FEM field)
+            τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
+            R = (ρ * (dvdt + advs(a, v)) - div(Σ_) - ρ * b)
+            F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
+            F_u += F_SUPG
 
-        # Velocity variable.
-        #
-        # There are a few important technical points here:
-        #   - In terms of `u`, the linear momentum balance is second order in time. To use standard time integrators,
-        #     we need to define some auxiliary velocity variable `v`, to transform the equation into a first-order system.
-        #   - It is useful to choose `v` not as the local Eulerian rate of displacement in the laboratory, `∂u/∂t`, but instead
-        #     as the co-moving derivative `du/dt`. Unlike the local Eulerian rate, this is a physically meaningful quantity:
-        #     up to first order in the small quantities, it is the actual physical velocity of the material parcels,
-        #     as measured against the co-moving frame.
-        #   - Inserting this `v` into the Kelvin-Voigt constitutive law, we avoid the need for the extra space derivative
-        #     that otherwise arises in the viscous terms when the material is undergoing axial motion. This allows us to
-        #     apply standard C0-continuous FEM to an axially moving Kelvin-Voigt problem.
-        #
-        # (A programmer would say that the appearance of the extra space derivative, in the classical approach, hints of an
-        #  /impedance mismatch/ (in the software engineering sense) between the classical auxiliary variable ∂u/∂t and the
-        #  constitutive law being treated. In hindsight, it is obvious that the co-moving rate is a better choice, because
-        #  the Kelvin-Voigt law explicitly talks about the co-moving rate of `u`. By representing that co-moving rate
-        #  explicitly, the impedance mismatch goes away.)
-        #
-        # This equation essentially just defines `v` as the advection of `u` by the axial drive velocity field `a`.
-        # Keep in mind the MLE representation; `u` is parameterized by the laboratory coordinate `x`, but measures
-        # displacement from a state with constant-velocity axial motion at velocity `a`.
-        #
-        # We use skew-symmetric advection for numerical stabilization. Since `a` is the (divergence-free) axial drive
-        # velocity field, we may use the default mode of `advw` and `advs`.
-        F_v = (dot(V, ψ) * dx -
-               (dot(dudt, ψ) * dx + advw(a, U, ψ, n)))
+            # Velocity variable.
+            #
+            # There are a few important technical points here:
+            #   - In terms of `u`, the linear momentum balance is second order in time. To use standard time integrators,
+            #     we need to define some auxiliary velocity variable `v`, to transform the equation into a first-order system.
+            #   - It is useful to choose `v` not as the local Eulerian rate of displacement in the laboratory, `∂u/∂t`, but instead
+            #     as the co-moving derivative `du/dt`. Unlike the local Eulerian rate, this is a physically meaningful quantity:
+            #     up to first order in the small quantities, it is the actual physical velocity of the material parcels,
+            #     as measured against the co-moving frame.
+            #   - Inserting this `v` into the Kelvin-Voigt constitutive law, we avoid the need for the extra space derivative
+            #     that otherwise arises in the viscous terms when the material is undergoing axial motion. This allows us to
+            #     apply standard C0-continuous FEM to an axially moving Kelvin-Voigt problem.
+            #
+            # (A programmer would say that the appearance of the extra space derivative, in the classical approach, hints of an
+            #  /impedance mismatch/ (in the software engineering sense) between the classical auxiliary variable ∂u/∂t and the
+            #  constitutive law being treated. In hindsight, it is obvious that the co-moving rate is a better choice, because
+            #  the Kelvin-Voigt law explicitly talks about the co-moving rate of `u`. By representing that co-moving rate
+            #  explicitly, the impedance mismatch goes away.)
+            #
+            # This equation essentially just defines `v` as the axially comoving rate of `u`. Keep in mind the MLE representation;
+            # `u` is parameterized by the laboratory coordinate `x`, but measures displacement from a state with constant-velocity
+            # axial motion at velocity `a`.
+            #
+            # We use skew-symmetric advection for numerical stabilization. Since `a` is the (divergence-free) axial drive
+            # velocity field, we may use the default mode of `advw` and `advs`.
+            F_v = (dot(V, ψ) * dx -
+                   (dot(dudt, ψ) * dx + advw(a, U, ψ, n)))
 
-        # SUPG stabilization for `v`. τ_SUPG as in a pure advection problem.
-        # Residual evaluated using values at the end of the timestep.
-        deg = Constant(self.V.ufl_element().degree())
-        τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
-        R = (v - (dudt + advs(a, u)))
-        F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
-        F_v += F_SUPG
+            # SUPG stabilization for `v`. τ_SUPG as in a pure advection problem.
+            # Residual evaluated using values at the end of the timestep.
+            # Here the stabilization helps.
+            deg = Constant(self.V.ufl_element().degree())
+            τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
+            R = (v - (dudt + advs(a, u)))
+            F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ), R) * dx
+            F_v += F_SUPG
+        else:  # V0 == 0.0:
+            # No axial motion, so the comoving rate reduces to the Eulerian rate.
+            # We can drop the advection operator, and skip the SUPG stabilization, since it's not needed.
+            F_v = (dot(V, ψ) * dx -
+                   dot(dudt, ψ) * dx)
 
         # Assemble the equations
         F = F_u + F_v
