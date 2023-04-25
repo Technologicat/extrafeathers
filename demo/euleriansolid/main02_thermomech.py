@@ -284,14 +284,15 @@ xdmffile_T = XDMFFile(MPI.comm_world, vis_T_filename)
 xdmffile_dTdt = XDMFFile(MPI.comm_world, vis_dTdt_filename)
 xdmffile_σ = XDMFFile(MPI.comm_world, vis_σ_filename)
 
-for xdmffile in (xdmffile_u, xdmffile_v, xdmffile_T, xdmffile_dTdt, xdmffile_σ):
+# ParaView doesn't have a filter for von Mises stress, so we compute it ourselves.
+# This is only for visualization.
+xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
+vonMises = Function(Q_rank0)
+
+for xdmffile in (xdmffile_u, xdmffile_v, xdmffile_T, xdmffile_dTdt, xdmffile_σ, xdmffile_vonMises):
     xdmffile.parameters["flush_output"] = True
     xdmffile.parameters["rewrite_function_mesh"] = False
 del xdmffile  # clean up loop counter from module-global scope
-
-# ParaView doesn't have a filter for von Mises stress, so we compute it ourselves.
-xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
-vonMises = Function(Q_rank0)
 
 # Create time series (for use in other FEniCS solvers)
 timeseries_u = TimeSeries(sol_u_filename)
