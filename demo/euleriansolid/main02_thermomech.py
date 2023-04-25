@@ -585,7 +585,7 @@ def plotit():
     # plot_one(E, prep_Q_rank0,
     #          row=2, col=0,
     #          name="elastic strain energy", title=r"$(1/2) \sigma : \varepsilon_{\mathrm{el}}$ [J/m³]", vrange_func=vrange, cmap="viridis")
-    # K = project((1 / 2) * linmom_solver._ρ * dot(v_, v_), V_rank0)  # kinetic energy
+    # K = project((1 / 2) * linmom_solver._ρ * dot(v_, v_), V_rank0)  # kinetic energy (as seen by observer in axially co-moving frame)
     # plot_one(K, prep_V_rank0,
     #          row=2, col=1,
     #          name"kinetic energy", title=r"$(1/2) \rho v^2$ [J/m³]", vrange_func=vrange, cmap="viridis")
