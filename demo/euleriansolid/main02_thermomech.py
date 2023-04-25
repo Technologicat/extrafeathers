@@ -97,23 +97,19 @@ if my_rank == 0:
 # --------------------------------------------------------------------------------
 # Set up the solvers
 
-# The stress uses a Neumann BC, with the boundary stress field set here.
-# The stress field given here is evaluated (and projected into the outer normal direction)
-# on the boundaries that have no Dirichlet boundary condition on `u`.
+# Boundary condition lists.
 #
-# The format for Neumann BCs in the advanced solver is [(fenics_expression, boundary_tag or None), ...].
-# The boundary tags are as in `boundary_parts`, and `None` means "apply this BC to the whole Neumann boundary".
-bcσ = [(Constant(((1e8, 0), (0, 0))), None)]  # [Pa]
+# We create the lists now, because the solver constructor needs to store a reference to the list instance.
+# But to actually set up Dirichlet BCs, we need a reference to the subspaces created by solver initialization.
+# So we will fill these lists later. (And for consistency of presentation, we will also fill in the Neumann BCs later.)
 
-# The heat flux uses uses a Neumann BC, with the boundary scalar flux
-# (in the direction of the outer normal) set here.
-# Same format as above.
-bcq = [(Constant(0), None)]  # [W/m²]
-
-# Dirichlet boundary condition lists. We create the lists now, because the solver constructor needs to store a reference to the list instance.
-# But to actually set up Dirichlet BCs, we need a reference to the subspaces created by solver initialization. So we will fill these lists later.
+# Dirichlet BCs
 bcu = []
 bcT = []
+
+# Neumann BCs
+bcσ = []
+bcq = []
 
 # Instantiate the solvers for our multiphysics problem.
 # We use backward Euler time integration (θ = 1) to help stabilize the numerics.
@@ -152,7 +148,7 @@ fields = {"u": linmom_solver.s_.sub(0),
 subspaces = {k: v.function_space() for k, v in fields.items()}  # for setting boundary conditions
 
 # --------------------------------------------------------------------------------
-# Dirichlet boundary conditions, mechanical subproblem
+# Boundary conditions, mechanical subproblem
 
 # In our examples the initial field for `u` is zero, which is also the default.
 
@@ -199,8 +195,16 @@ u0_func = lambda t: 0.0
 bcu_left = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
 bcu.append(bcu_left)
 
+# The stress [Pa] uses a Neumann BC, with the boundary stress field set here.
+# The stress field given here is evaluated (and projected into the outer normal direction)
+# on the boundaries that have no Dirichlet boundary condition on `u`.
+#
+# The format for Neumann BCs in the advanced solver is [(fenics_expression, boundary_tag or None), ...].
+# The boundary tags are as in `boundary_parts`, and `None` means "apply this BC to the whole Neumann boundary".
+bcσ.append((Constant(((1e8, 0), (0, 0))), None))
+
 # --------------------------------------------------------------------------------
-# Dirichlet boundary conditions, thermal subproblem
+# Boundary conditions, thermal subproblem
 
 T_left = T0
 # T_right = T0
@@ -209,6 +213,10 @@ T_left = T0
 # Don't set anything at the right - the default zero Neumann (no change in temperature in axial direction i.e. steady outflow) is appropriate.
 bcT_left = DirichletBC(subspaces["T"], Constant(T_left), boundary_parts, Boundaries.LEFT.value)
 bcT.append(bcT_left)
+
+# The heat flux [W/m²] uses uses a Neumann BC, with the boundary scalar flux
+# (in the direction of the outer normal) set here. Same format as above.
+bcq.append((Constant(0), None))
 
 # --------------------------------------------------------------------------------
 # Initial conditions, thermal subproblem
