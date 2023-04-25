@@ -2597,6 +2597,9 @@ class SteadyStateEulerianSolidPrimal:
         #
         #   ds = dolfin.Measure('ds', domain=mesh, subdomain_data=boundary_parts)
         #
+        # Then use `ds(i)` as the integration symbol, where `i` is the boundary number
+        # in the mesh data, e.g. `Boundaries.LEFT.value` from the problem configuration.
+        #
         # For this, we need to pass `boundary_parts` from the main script into the
         # solver. Maybe also start using a dictionary (like the tutorial does) for
         # defining the BCs; this is more flexible when there are several options.
