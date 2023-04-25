@@ -101,15 +101,15 @@ if my_rank == 0:
 #
 # We create the lists now, because the solver constructor needs to store a reference to the list instance.
 # But to actually set up Dirichlet BCs, we need a reference to the subspaces created by solver initialization.
-# So we will fill these lists later. (And for consistency of presentation, we will also fill in the Neumann BCs later.)
+# So we will fill these lists later. For consistency of presentation, we fill in also the Neumann BCs later.
 
 # Dirichlet BCs
-bcu = []
-bcT = []
+bcu = []  # displacement [m]
+bcT = []  # temperature [K]
 
 # Neumann BCs
-bcσ = []
-bcq = []
+bcσ = []  # Cauchy stress tensor [Pa], projected automatically to the direction of the outer normal
+bcq = []  # scalar heat flux in direction of outer normal [W/m²]
 
 # Instantiate the solvers for our multiphysics problem.
 # We use backward Euler time integration (θ = 1) to help stabilize the numerics.
@@ -128,8 +128,8 @@ thermal_solver = InternalEnergyBalance(V_rank0,
 # Plotting labels for the rate operator. This model uses the advective rate "d/dt".
 #   - The displacement solver is mixed Lagrangean-Eulerian (MLE); the advection velocity is the axial drive velocity.
 #     The displacement `u` and the material parcel velocity `du/dt` are measured against the axially co-moving frame.
-#   - The thermal solver is pure Eulerian; the advection velocity is the full velocity of the material parcels in the laboratory frame.
-#     The temperature rate `dT/dt` is the *material* derivative of the temperature `T`.
+#   - The thermal solver is pure Eulerian; the advection velocity is the full velocity of the material parcels in the
+#     laboratory frame. The temperature rate `dT/dt` is the *material* derivative of the temperature `T`.
 dlatex = r"\mathrm{d}"
 dtext = "d"
 
@@ -137,7 +137,8 @@ if my_rank == 0:
     print(f"Number of DOFs: u {V_rank1.dim()}, {dtext}u/{dtext}t {V_rank1.dim()}, T {V_rank0.dim()}, {dtext}T/{dtext}t {V_rank0.dim()}")
 
 # NOTE: Accessing the `.sub(j)` of a mixed field (e.g. `s_` here) seems to create a new copy of the subfield every time.
-# So e.g. `fields["T"]` gives read access; but to write to a mixed field, we must use a `FunctionAssigner`. Examples further below.
+# So e.g. `fields["T"]` gives read access; but to write to a subfield of a mixed field, we must use a `FunctionAssigner`.
+# Examples further below.
 fields = {"u": linmom_solver.s_.sub(0),
           "du/dt": linmom_solver.s_.sub(1),
           "T": thermal_solver.s_.sub(0),
@@ -169,7 +170,8 @@ u0_func = lambda t: 0.0
 # bcu.append(bcu_left)
 # bcu.append(bcu_right)
 
-# # Left and right edges: fixed left end, displacement-controlled *u1 only* at right end
+# # Left and right edges: fixed left end, displacement-controlled *u1 only* at right end.
+# # Since we don't set the u2 component by a Dirichlet BC, it gets the Neumann BC for stress.
 # bcu_left = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
 # from fenics import Expression
 # u0_func = lambda t: 1e-2 * t
