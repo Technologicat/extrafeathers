@@ -100,10 +100,14 @@ if my_rank == 0:
 # The stress uses a Neumann BC, with the boundary stress field set here.
 # The stress field given here is evaluated (and projected into the outer normal direction)
 # on the boundaries that have no Dirichlet boundary condition on `u`.
+#
+# The format for Neumann BCs in the advanced solver is [(fenics_expression, boundary_tag or None), ...].
+# The boundary tags are as in `boundary_parts`, and `None` means "apply this BC to the whole Neumann boundary".
 bcσ = [(Constant(((1e8, 0), (0, 0))), None)]  # [Pa]
 
 # The heat flux uses uses a Neumann BC, with the boundary scalar flux
 # (in the direction of the outer normal) set here.
+# Same format as above.
 bcq = [(Constant(0), None)]  # [W/m²]
 
 # Dirichlet boundary condition lists. We create the lists now, because the solver constructor needs to store a reference to the list instance.
@@ -117,11 +121,13 @@ linmom_solver = LinearMomentumBalance(V_rank1, Q_rank2, Q_rank2,
                                       rho, lamda_func, mu_func, tau,
                                       α_func, dαdT_func, T0,
                                       V0,
-                                      bcu, bcσ, dt, θ=1.0)
+                                      bcu, bcσ, dt, θ=1.0,
+                                      boundary_parts=boundary_parts)
 thermal_solver = InternalEnergyBalance(V_rank0,
                                        rho, c_func, dcdT_func, k_func, T0,
                                        bcT, bcq, dt, θ=1.0,
-                                       advection="general", use_stress=True)
+                                       advection="general", use_stress=True,
+                                       boundary_parts=boundary_parts)
 
 # Plotting labels for the rate operator. This model uses the advective rate "d/dt".
 #   - The displacement solver is mixed Lagrangean-Eulerian (MLE); the advection velocity is the axial drive velocity.
