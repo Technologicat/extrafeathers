@@ -100,11 +100,11 @@ if my_rank == 0:
 # The stress uses a Neumann BC, with the boundary stress field set here.
 # The stress field given here is evaluated (and projected into the outer normal direction)
 # on the boundaries that have no Dirichlet boundary condition on `u`.
-bcσ = Constant(((1e8, 0), (0, 0)))  # [Pa]
+bcσ = [(Constant(((1e8, 0), (0, 0))), None)]  # [Pa]
 
 # The heat flux uses uses a Neumann BC, with the boundary scalar flux
 # (in the direction of the outer normal) set here.
-bcq = Constant(0)  # [W/m²]
+bcq = [(Constant(0), None)]  # [W/m²]
 
 # Dirichlet boundary condition lists. We create the lists now, because the solver constructor needs to store a reference to the list instance.
 # But to actually set up Dirichlet BCs, we need a reference to the subspaces created by solver initialization. So we will fill these lists later.
