@@ -581,7 +581,9 @@ def plotit():
     # # In the original pure mechanical variant, we used to have 13 plots, but 15 subplot slots,
     # # so we used the last two to plot the energy. But the thermomechanical variant of the model has 15 plots.
     # # Could also be useful to see the thermal and mechanical strains separately.
-    # E = project((1 / 2) * inner(σ_, ε(u_)), Q_rank0)  # elastic strain energy
+    # εth = linmom_solver.α(T_) * (T_ - Constant(T0))
+    # εel = ε(u_) - εth
+    # E = project((1 / 2) * inner(σ_, εel), Q_rank0)  # elastic strain energy
     # plot_one(E, prep_Q_rank0,
     #          row=2, col=0,
     #          name="elastic strain energy", title=r"$(1/2) \sigma : \varepsilon_{\mathrm{el}}$ [J/m³]", vrange_func=vrange, cmap="viridis")
