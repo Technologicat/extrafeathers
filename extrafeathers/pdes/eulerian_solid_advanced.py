@@ -159,8 +159,12 @@ class LinearMomentumBalance:
         `V0`: axial drive velocity in the +x direction [m/s]
         `bcu`: Dirichlet boundary conditions for `u` [m]
         `bcσ`: Neumann boundary condition for `σ`. [Pa]
-               Used automatically on boundaries which have no Dirichlet BC for `u`.
-               If not given, defaults to zero Neumann (i.e. free of tractions).
+
+               The Neumann boundary is defined as that part of the domain boundary
+               for which no Dirichlet BCs for `u` have been given.
+
+               Any part of the Neumann boundary for which a Neumann BC expression
+               is not given, defaults to zero Neumann (i.e. free of tractions).
 
                The format is `[(fenics_expression, boundary_tag or None), ...]` where
                `None` means to use the expression on the whole Neumann boundary.
@@ -792,8 +796,12 @@ class InternalEnergyBalance:
 
             `bcT`: Dirichlet boundary conditions for `u` [K]
             `bcq`: Neumann boundary conditions for heat flux `n·(k·∇u)` [W/m²]
-                   Used automatically on boundaries which have no Dirichlet BC for `u`.
-                   If not given, defaults to zero Neumann (i.e. perfect thermal insulator).
+
+                   The Neumann boundary is defined as that part of the domain boundary
+                   for which no Dirichlet BCs for `u` have been given.
+
+                   Any part of the Neumann boundary for which a Neumann BC expression
+                   is not given, defaults to zero Neumann (i.e. perfect thermal insulator).
 
                    The format is `[(fenics_expression, boundary_tag or None), ...]` where
                    `None` means to use the expression on the whole Neumann boundary.
