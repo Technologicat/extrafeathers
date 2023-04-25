@@ -185,7 +185,7 @@ class LinearMomentumBalance:
         `dt`: timestep size [s]
         `θ`: parameter of the theta time integrator.
 
-        `boundary_parts`: A facet `MeshFunction` that numbers the logical boundaries in the problem
+        `boundary_parts`: A facet `MeshFunction` that numbers the physical boundaries in the problem
                           (such as left edge, inlet, etc.).
 
                           This is the same `boundary_parts` that is used (in the main program of
@@ -818,7 +818,7 @@ class InternalEnergyBalance:
             `dt`: timestep size [s]
             `θ`: parameter of the theta time integrator.
 
-            `boundary_parts`: A facet `MeshFunction` that numbers the logical boundaries in the problem
+            `boundary_parts`: A facet `MeshFunction` that numbers the physical boundaries in the problem
                               (such as left edge, inlet, etc.).
 
                               This is the same `boundary_parts` that is used (in the main program of
