@@ -730,6 +730,143 @@ class LinearMomentumBalance:
 # --------------------------------------------------------------------------------
 
 class InternalEnergyBalance:
+    """Eulerian internal energy balance law for a general anisotropic moving continuum.
+
+    (A.k.a. the first law of thermodynamics for a continuum.)
+
+    Keep in mind the heat equation is a parabolic problem. Thus, roughly speaking, to make
+    the implicit midpoint rule (IMR) von Neumann stable, this solver needs  Δt ∝ he².
+    This is unlike the linear momentum solver; linear momentum is a hyperbolic problem,
+    which requires only  Δt ∝ he  for von Neumann stability. One possible solution is to
+    use backward Euler (by setting θ = 1), which is A-stable, but has only O(Δt) accuracy.
+
+    If `∂c/∂T ≠ 0`, and/or if `c` or `k` depend on temperature, then the PDE is nonlinear.
+
+    This solver supports an iterative Picard linearization scheme. Calling `.step()` computes
+    the next Picard iterate. It can be called several times to iteratively refine the solution.
+    Call `.commit()` only after you are satisfied with the result for the current timestep.
+    The previous Picard iterate is available in `self.s_prev`, for convergence monitoring by user.
+
+    Also note that when the stress field is enabled (for the mechanical work contribution),
+    the stress is typically a function of the temperature for thermomechanical reasons.
+    So you may need to compute and send in a new `σ` (using the latest temperature field)
+    after each Picard iteration. You can use the `LinearMomentumBalance` solver to do that.
+
+    This equation is written purely in the *laboratory* frame; the mixed-Lagrangean-Eulerian
+    (MLE) representation only applies to the linear momentum balance.
+
+    Parameters:
+        `V`: scalar function space. One copy is used for `u` and one for `v`.
+        `ρ`: density [kg/m³]
+        `c`: specific heat capacity [J / (kg K)]; temperature-dependent, callable: T -> Expression
+             Scalar.
+        `dcdT`: ∂c/∂T [J / (kg K²)]; temperature-dependent, callable: T -> Expression
+                Scalar.
+        `k`: heat conductivity [W / (m K)]; temperature-dependent, callable: T -> Expression
+             Rank-2 tensor. For isotropic material, use  k' * Identity(2),  where k' is the
+             scalar heat conductivity.
+        `T0`: reference temperature for thermal expansion, at which
+              the thermal expansion effect is considered zero [K]
+
+              The value is stored as a UFL `Constant` in `self._T0`; if needed, this can be
+              used in the expressions for the temperature-dependent parameters.
+
+              To make it harder to create trivial bugs that may be difficult to track down,
+              this parameter is mandatory. It is used for initializing the temperature field
+              to a physically sensible value, so that this subproblem won't accidentally start
+              at zero Kelvin.
+
+              (The `LinearMomentumBalance` solver requires `T0` in any case, so forgetting to
+               initialize the temperature field for that subproblem is much less likely; and
+               these two solvers are meant to work together to solve the same thermomechanical
+               problem.)
+
+              The automatic initialization to `T0` is done for both the old value (initial condition),
+              as well as the latest Picard iterate (initial guess for the first new value).
+              The corresponding material derivative fields `dT/dt` are initialized to zero.
+
+              If you want to use some other initial condition, do this after instantiating
+              the solver::
+
+                  my_initial_T = project(..., V)     # <-- your scalar field here
+                  my_initial_dTdt = project(..., V)  # <-- your scalar field here
+                  assigner = FunctionAssigner(S, [V, V])  # FunctionAssigner(receiving_space, assigning_space)
+                  assigner.assign(solver.s_n, [my_initial_T, my_initial_dTdt])  # old value: the actual initial condition
+                  solver.s_.assign(solver.s_n)  # latest Picard iterate: initial guess for new value
+
+        `bcT`: Dirichlet boundary conditions for `u` [K]
+        `bcq`: Neumann boundary conditions for heat flux `n·(k·∇u)` [W/m²]
+
+               The Neumann boundary is defined as that part of the domain boundary
+               for which no Dirichlet BCs for `u` have been given.
+
+               Any part of the Neumann boundary for which a Neumann BC expression
+               is not given, defaults to zero Neumann (i.e. perfect thermal insulator).
+
+               The format is `[(fenics_expression, boundary_tag or None), ...]` where
+               `None` means to use the expression on the whole Neumann boundary.
+
+               A `boundary_tag` is an `int` that matches a boundary number in
+               `boundary_parts`, which see. This means to use the expression
+               on the specified part of the Neumann boundary only.
+
+               IMPORTANT: the Neumann BC expressions are compiled just once, when the solver
+               is instantiated. If you need to update a coefficient inside a Neumann BC
+               during a simulation, give your `Expression` some updatable parameters::
+
+                   heat_flux_strength = lambda t: 1e3 * min(t, 1.0)  # for example
+                   heat_flux_neumann_bc = Expression("q0",
+                                                     degree=1,
+                                                     q0=heat_flux_strength(0.0))
+
+                   # ...much later, during timestep loop...
+
+                   heat_flux_neumann_bc.q0 = heat_flux_strength(t)
+
+               And if you prefer to populate the Neumann BC list after instantiation
+               (passing in an empty list initially, then adding BCs to it later),
+               call `.compile_forms()` to refresh the equations to use the latest
+               definitions.
+
+        `dt`: timestep size [s]
+        `θ`: parameter of the theta time integrator.
+
+        `boundary_parts`: A facet `MeshFunction` that numbers the physical boundaries in the problem
+                          (such as left edge, inlet, etc.).
+
+                          This is the same `boundary_parts` that is used (in the main program of
+                          a solver) to specify which boundaries Dirichlet BCs apply to; see the
+                          example solvers. Produced by mesh generation with a suitable setup.
+
+        `advection`, `velocity_degree`, `use_stress`, `stress_degree`:
+            Same as in `extrafeathers.pdes.advection_diffusion.AdvectionDiffusion`.
+
+    External field inputs:
+        All these fields live on a vector/tensor element (as appropriate) of the same kind as `V`.
+        By default (if `velocity_degree`, `stress_degree` are not given), the element uses the
+        same degree as `V`.
+
+        The degree must match the data you are sending in!
+
+        Use `solver.xxx.assign(...)` to send in field values, where `xxx` is `a_` (new velocity),
+        `a_n` (old velocity), `σ_`, or `σ_n`, as appropriate.
+
+        `a`: Advection velocity field [m/s]. **Full velocity in the laboratory frame**,
+             not just the velocity of material parcels in the co-moving frame.
+
+             Used only if `advection != "off"`.
+
+        `σ`: Cauchy stress tensor field [Pa], for mechanical work contribution.
+             The term is  -σ : ∇a,  so it appears only when 1) advection is present,
+             and 2) the velocity field `a` is non-uniform.
+
+             Because `σ` is symmetric, we have  -σ : ∇a = -symm(σ) : ∇a = -σ : symm(∇a),
+             so only the symmetric part of  ∇a  actually contributes to the mechanical work.
+             This solver actually performs this symmetrization internally, to improve the
+             numerical representation of the mechanical work term.
+
+             Used only if `use_stress and advection != "off"`.
+    """
     def __init__(self, V: FunctionSpace,
                  ρ: float,
                  c: typing.Callable, dcdT: typing.Callable,
@@ -742,143 +879,6 @@ class InternalEnergyBalance:
                  velocity_degree: int = None,
                  use_stress: bool = False,
                  stress_degree: int = None):
-        """Eulerian internal energy balance law for a general anisotropic moving continuum.
-
-        (A.k.a. the first law of thermodynamics for a continuum.)
-
-        Keep in mind the heat equation is a parabolic problem. Thus, roughly speaking, to make
-        the implicit midpoint rule (IMR) von Neumann stable, this solver needs  Δt ∝ he².
-        This is unlike the linear momentum solver; linear momentum is a hyperbolic problem,
-        which requires only  Δt ∝ he  for von Neumann stability. One possible solution is to
-        use backward Euler (by setting θ = 1), which is A-stable, but has only O(Δt) accuracy.
-
-        If `∂c/∂T ≠ 0`, and/or if `c` or `k` depend on temperature, then the PDE is nonlinear.
-
-        This solver supports an iterative Picard linearization scheme. Calling `.step()` computes
-        the next Picard iterate. It can be called several times to iteratively refine the solution.
-        Call `.commit()` only after you are satisfied with the result for the current timestep.
-        The previous Picard iterate is available in `self.s_prev`, for convergence monitoring by user.
-
-        Also note that when the stress field is enabled (for the mechanical work contribution),
-        the stress is typically a function of the temperature for thermomechanical reasons.
-        So you may need to compute and send in a new `σ` (using the latest temperature field)
-        after each Picard iteration. You can use the `LinearMomentumBalance` solver to do that.
-
-        This equation is written purely in the *laboratory* frame; the mixed-Lagrangean-Eulerian
-        (MLE) representation only applies to the linear momentum balance.
-
-        Parameters:
-            `V`: scalar function space. One copy is used for `u` and one for `v`.
-            `ρ`: density [kg/m³]
-            `c`: specific heat capacity [J / (kg K)]; temperature-dependent, callable: T -> Expression
-                 Scalar.
-            `dcdT`: ∂c/∂T [J / (kg K²)]; temperature-dependent, callable: T -> Expression
-                    Scalar.
-            `k`: heat conductivity [W / (m K)]; temperature-dependent, callable: T -> Expression
-                 Rank-2 tensor. For isotropic material, use  k' * Identity(2),  where k' is the
-                 scalar heat conductivity.
-            `T0`: reference temperature for thermal expansion, at which
-                  the thermal expansion effect is considered zero [K]
-
-                  The value is stored as a UFL `Constant` in `self._T0`; if needed, this can be
-                  used in the expressions for the temperature-dependent parameters.
-
-                  To make it harder to create trivial bugs that may be difficult to track down,
-                  this parameter is mandatory. It is used for initializing the temperature field
-                  to a physically sensible value, so that this subproblem won't accidentally start
-                  at zero Kelvin.
-
-                  (The `LinearMomentumBalance` solver requires `T0` in any case, so forgetting to
-                   initialize the temperature field for that subproblem is much less likely; and
-                   these two solvers are meant to work together to solve the same thermomechanical
-                   problem.)
-
-                  The automatic initialization to `T0` is done for both the old value (initial condition),
-                  as well as the latest Picard iterate (initial guess for the first new value).
-                  The corresponding material derivative fields `dT/dt` are initialized to zero.
-
-                  If you want to use some other initial condition, do this after instantiating
-                  the solver::
-
-                      my_initial_T = project(..., V)     # <-- your scalar field here
-                      my_initial_dTdt = project(..., V)  # <-- your scalar field here
-                      assigner = FunctionAssigner(S, [V, V])  # FunctionAssigner(receiving_space, assigning_space)
-                      assigner.assign(solver.s_n, [my_initial_T, my_initial_dTdt])  # old value: the actual initial condition
-                      solver.s_.assign(solver.s_n)  # latest Picard iterate: initial guess for new value
-
-            `bcT`: Dirichlet boundary conditions for `u` [K]
-            `bcq`: Neumann boundary conditions for heat flux `n·(k·∇u)` [W/m²]
-
-                   The Neumann boundary is defined as that part of the domain boundary
-                   for which no Dirichlet BCs for `u` have been given.
-
-                   Any part of the Neumann boundary for which a Neumann BC expression
-                   is not given, defaults to zero Neumann (i.e. perfect thermal insulator).
-
-                   The format is `[(fenics_expression, boundary_tag or None), ...]` where
-                   `None` means to use the expression on the whole Neumann boundary.
-
-                   A `boundary_tag` is an `int` that matches a boundary number in
-                   `boundary_parts`, which see. This means to use the expression
-                   on the specified part of the Neumann boundary only.
-
-                   IMPORTANT: the Neumann BC expressions are compiled just once, when the solver
-                   is instantiated. If you need to update a coefficient inside a Neumann BC
-                   during a simulation, give your `Expression` some updatable parameters::
-
-                       heat_flux_strength = lambda t: 1e3 * min(t, 1.0)  # for example
-                       heat_flux_neumann_bc = Expression("q0",
-                                                         degree=1,
-                                                         q0=heat_flux_strength(0.0))
-
-                       # ...much later, during timestep loop...
-
-                       heat_flux_neumann_bc.q0 = heat_flux_strength(t)
-
-                   And if you prefer to populate the Neumann BC list after instantiation
-                   (passing in an empty list initially, then adding BCs to it later),
-                   call `.compile_forms()` to refresh the equations to use the latest
-                   definitions.
-
-            `dt`: timestep size [s]
-            `θ`: parameter of the theta time integrator.
-
-            `boundary_parts`: A facet `MeshFunction` that numbers the physical boundaries in the problem
-                              (such as left edge, inlet, etc.).
-
-                              This is the same `boundary_parts` that is used (in the main program of
-                              a solver) to specify which boundaries Dirichlet BCs apply to; see the
-                              example solvers. Produced by mesh generation with a suitable setup.
-
-            `advection`, `velocity_degree`, `use_stress`, `stress_degree`:
-                Same as in `extrafeathers.pdes.advection_diffusion.AdvectionDiffusion`.
-
-        External field inputs:
-            All these fields live on a vector/tensor element (as appropriate) of the same kind as `V`.
-            By default (if `velocity_degree`, `stress_degree` are not given), the element uses the
-            same degree as `V`.
-
-            The degree must match the data you are sending in!
-
-            Use `solver.xxx.assign(...)` to send in field values, where `xxx` is `a_` (new velocity),
-            `a_n` (old velocity), `σ_`, or `σ_n`, as appropriate.
-
-            `a`: Advection velocity field [m/s]. **Full velocity in the laboratory frame**,
-                 not just the velocity of material parcels in the co-moving frame.
-
-                 Used only if `advection != "off"`.
-
-            `σ`: Cauchy stress tensor field [Pa], for mechanical work contribution.
-                 The term is  -σ : ∇a,  so it appears only when 1) advection is present,
-                 and 2) the velocity field `a` is non-uniform.
-
-                 Because `σ` is symmetric, we have  -σ : ∇a = -symm(σ) : ∇a = -σ : symm(∇a),
-                 so only the symmetric part of  ∇a  actually contributes to the mechanical work.
-                 This solver actually performs this symmetrization internally, to improve the
-                 numerical representation of the mechanical work term.
-
-                 Used only if `use_stress and advection != "off"`.
-        """
         if advection not in ("off", "divergence-free", "general"):
             raise ValueError(f"`advection` must be one of 'off', 'divergence-free', 'general'; got {type(advection)} with value {advection}")
 
