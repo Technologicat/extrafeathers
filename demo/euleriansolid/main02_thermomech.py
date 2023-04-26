@@ -159,7 +159,8 @@ u0_left = None
 u0_right = None
 u0_func = lambda t: 0.0
 
-# Here are some examples of how to make a time-dependent boundary condition for `u`:
+# Here are some examples of how to make a time-dependent boundary condition for `u`.
+# The value can then be updated by e.g. `u0_right.u0 = u0_func(t)`.
 #
 # # Left and right edges: fixed left end, displacement-controlled pull at right end
 # bcu_left = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
