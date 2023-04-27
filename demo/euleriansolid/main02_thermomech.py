@@ -222,7 +222,7 @@ u0_func = lambda t: 0.0
 # bcu.append(bcu_left)
 # bcu.append(bcu_right)
 
-# Left and right edges: fixed left end, stress-controlled pull at right end (Kurki et al. 2016).
+# Fixed left end (with stress-controlled pull at right end, matches Kurki et al., 2016).
 bcu_left = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
 bcu.append(bcu_left)
 
