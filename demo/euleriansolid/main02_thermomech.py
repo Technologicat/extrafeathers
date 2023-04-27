@@ -234,7 +234,7 @@ bcu.append(bcu_left)
 # The format for Neumann BCs in the advanced solver is [(fenics_expression, boundary_tag or None), ...].
 # The boundary tags are as in `boundary_parts`, and `None` means "apply this BC to the whole Neumann boundary".
 
-# Heaviside step load at t = 0
+# Heaviside step load at right edge at t = 0
 bcσ.append((Constant(((σ0, 0), (0, 0))), Boundaries.RIGHT.value))
 
 # # Ramp-up: linearly increase the load to its full value during the first 10% of the simulation, then stay at the full value.
@@ -245,13 +245,11 @@ bcσ.append((Constant(((σ0, 0), (0, 0))), Boundaries.RIGHT.value))
 # σ0_right = Expression((("σ0", "0"), ("0", "0")), σ0=σ0_func(0.0), degree=1)
 # bcσ.append((σ0_right, Boundaries.RIGHT.value))
 
-# # Left and right edges: stress-controlled pull at both ends (no BC on `u`)
-# #
-# # This does not work as-is, we would need a rigid-body mode remover to prevent a runaway excitation.
-# # But obviously, if we fix the displacement at one point, the solution will be unique.
-# # Note that to do this in the interior of the domain needs a regular mesh to work properly,
-# # because we need to have a DOF exactly (up to rounding) at the point where we are fixing
-# # the displacement.
+# # Pure Neumann BCs for the mechanical problem don't work as-is, we would need a rigid-body mode remover
+# # to prevent a runaway excitation. But obviously, if we fix the displacement at one point, the solution
+# # will be unique. Note that to do this in the interior of the domain needs a regular mesh to work
+# # properly, because we need to have a DOF exactly (up to rounding) at the point where we are fixing the
+# # displacement.
 # #
 # # How to apply a "pointwise BC":
 # #   https://fenicsproject.org/qa/10273/pointwise-bc/
