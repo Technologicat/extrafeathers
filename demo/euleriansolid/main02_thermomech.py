@@ -308,13 +308,24 @@ bcT.append(bcT_left)
 thermal_solver.compile_forms()
 
 # --------------------------------------------------------------------------------
+# Initial conditions, mechanical subproblem
+
+# In our examples the initial field for `u` is zero, which is also the default.
+
+# --------------------------------------------------------------------------------
 # Initial conditions, thermal subproblem
 
-# Our domain is Ω = (-0.5, 0.5)².
+# A linear function of x is at least a trivial steady-state solution of the standard heat equation,
+# so we can use something like that.
 
-# A linear function of x is at least a trivial steady-state solution of the standard heat equation, so we can use something like that.
+# # Our domain is Ω = (-0.5, 0.5)².
 # from fenics import Expression
 # initial_T = project(Expression("T_left + (T_right - T_left) * (x[0] + 0.5)", degree=1, T_left=T_left, T_right=T_right), V_rank0)
+
+# But in the axially moving case, we don't actually know how much the material
+# naturally cools in a steady state as it travels through the domain - whereas
+# the dynamic simulation will attempt to reach that steady state. So it is better
+# to initialize to a uniform temperature field, which will likely get us there faster.
 initial_T = project(Constant(T_left), V_rank0)
 initial_dTdt = Function(V_rank0)  # zeroes
 
