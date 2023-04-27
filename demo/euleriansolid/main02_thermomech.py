@@ -175,6 +175,8 @@ subspaces = {k: v.function_space() for k, v in fields.items()}  # for setting bo
 # --------------------------------------------------------------------------------
 # Boundary conditions, mechanical subproblem
 
+σ0 = 1e8  # Axial pull strength, [Pa], for examples that use it.
+
 # These are used only by cases with a time-dependent boundary condition,
 # but the main loop expects the variables to exist (to detect whether to use them or not).
 u0_left = None
@@ -231,8 +233,6 @@ bcu.append(bcu_left)
 #
 # The format for Neumann BCs in the advanced solver is [(fenics_expression, boundary_tag or None), ...].
 # The boundary tags are as in `boundary_parts`, and `None` means "apply this BC to the whole Neumann boundary".
-
-σ0 = 1e8  # Axial pull strength, [Pa], for examples that use it.
 
 # Heaviside step load at t = 0
 bcσ.append((Constant(((σ0, 0), (0, 0))), Boundaries.RIGHT.value))
