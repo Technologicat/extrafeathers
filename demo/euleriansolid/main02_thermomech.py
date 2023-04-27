@@ -29,6 +29,7 @@ from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace,
 
 # custom utilities for FEniCS
 from extrafeathers import common
+from extrafeathers import meshfunction
 from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic
 from extrafeathers import plotmagic
@@ -37,8 +38,8 @@ from extrafeathers.pdes import (LinearMomentumBalance,
                                 InternalEnergyBalance)
 from extrafeathers.pdes.eulerian_solid_advanced import ε
 from extrafeathers.pdes.numutil import mag, Minn
-from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, H1_tol, maxit,
-                     lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
+from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T, H1_tol, maxit,
+                     E_func, lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
                      nsave_total, vis_every, enable_SUPG, show_mesh,
                      Boundaries,
                      mesh_filename,
@@ -94,9 +95,28 @@ with timer() as tim:
     xmax = np.max(nodes_array[:, 0])
     ymin = np.min(nodes_array[:, 1])
     ymax = np.max(nodes_array[:, 1])
+
+    L = xmax - xmin
+    W = ymax - ymin
+    A = L * W
+    v_el_T0 = (E_func(T0) / rho)**0.5
+
+    W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
+    he = meshfunction.cell_mf_to_expression(meshfunction.meshsize(mesh))
+    avg_he = float(project(he, W)) / A
+
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
-    print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}], y ∈ [{ymin:0.6g}, {ymax:0.6g}].")
+    print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}] m, y ∈ [{ymin:0.6g}, {ymax:0.6g}] m.")
+    print(f"Domain length L = {L:0.6g} m; timestep Δt = {dt} s")
+
+    print(f"Mean of longest edge length in mesh {avg_he:0.6g} m")
+    print(f"With elements of average size: {1 / avg_he:0.6g} el/m; {L / avg_he:0.6g} el over domain length")
+
+    print(f"At reference temperature T0 = {T0:0.6g} K, Young modulus E(T0) = {E_func(T0):0.6g} Pa")
+    print("Longitudinal elastic waves:")
+    print(f"    Propagation speed at reference temperature v_el(T0) = {v_el_T0:0.6g} m/s (one domain length in {L / v_el_T0:0.6g} s)")
+    print(f"    Courant number at reference temperature Co(T0) = {v_el_T0 * dt / avg_he:0.6g}")
 
 # --------------------------------------------------------------------------------
 # Set up the solvers
