@@ -161,11 +161,13 @@ vis_every = 5.0 / 100
 
 # Simulation end time
 #
-# T = 0.01  # [s]
-# Two transports of whole domain length. One to advect out the initial field that
-# might not be a solution of the steady-state PDE (so the results may not be reliable
-# until we get rid of it); one more to reach a steady state (with reasonable damping).
-T = 2 * (1 / V0)  # [s]
+if V0 != 0.0:
+    # Two transports of whole domain length. One to advect out the initial field that
+    # might not be a solution of the steady-state PDE (so the results may not be reliable
+    # until we get rid of it); one more to reach a steady state (with reasonable damping).
+    T = 2 * (1 / V0)  # [s]
+else:
+    T = 2 * 0.01  # [s]
 
 # Number of timesteps
 #
