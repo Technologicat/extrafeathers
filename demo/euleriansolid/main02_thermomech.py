@@ -222,9 +222,27 @@ u0_func = lambda t: 0.0
 # bcu.append(bcu_left)
 # bcu.append(bcu_right)
 
-# Fixed left end (with stress-controlled pull at right end, matches Kurki et al., 2016).
-bcu_left = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
-bcu.append(bcu_left)
+# # Fixed left end (with stress-controlled pull at right end, matches Kurki et al., 2016).
+# bcu_left = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.LEFT.value)
+# bcu.append(bcu_left)
+
+# # Fixed bottom edge (3D printing)
+# bcu_bottom = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.BOTTOM.value)
+# bcu.append(bcu_bottom)
+
+# 3D printing: u1 fixed at left edge, u2 fixed at bottom edge
+# bcu1_left = DirichletBC(subspaces["u"].sub(0), Constant(0), boundary_parts, Boundaries.LEFT.value)
+# bcu.append(bcu1_left)
+bcu2_bottom = DirichletBC(subspaces["u"].sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)
+bcu.append(bcu2_bottom)
+
+# 3D printing: u fixed at upper left corner (where the material exits the laser focus spot and has just solidified)
+from fenics import CompiledSubDomain
+upper_left = CompiledSubDomain(f"near(x[0], {xmin}) && near(x[1], {ymax})")
+bcu1_upperleft = DirichletBC(subspaces["u"].sub(0), Constant(0), upper_left, method="pointwise")
+bcu.append(bcu1_upperleft)
+# bcu2_upperleft = DirichletBC(subspaces["u"].sub(1), Constant(0), upper_left, method="pointwise")
+# bcu.append(bcu2_upperleft)
 
 # The stress [Pa] uses a Neumann BC, with the boundary stress field set here.
 # The Cauchy stress tensor given here is evaluated (and automatically projected
@@ -234,8 +252,8 @@ bcu.append(bcu_left)
 # The format for Neumann BCs in the advanced solver is [(fenics_expression, boundary_tag or None), ...].
 # The boundary tags are as in `boundary_parts`, and `None` means "apply this BC to the whole Neumann boundary".
 
-# Heaviside step load at right edge at t = 0
-bcσ.append((Constant(((σ0, 0), (0, 0))), Boundaries.RIGHT.value))
+# # Heaviside step load at right edge at t = 0
+# bcσ.append((Constant(((σ0, 0), (0, 0))), Boundaries.RIGHT.value))
 
 # # Ramp-up: linearly increase the load to its full value during the first 10% of the simulation, then stay at the full value.
 # from fenics import Expression
@@ -289,10 +307,20 @@ linmom_solver.compile_forms()
 
 T_left = T0
 # T_right = T0
+T_vertical_diff = 10.0  # [K], at left edge, across the domain height
 
 # Axially moving continuum: specify the temperature of the material parcels that enter the domain at the left.
 # Don't set anything at the right - the default zero Neumann (no change in temperature in axial direction i.e. steady outflow) is appropriate.
-bcT_left = DirichletBC(subspaces["T"], Constant(T_left), boundary_parts, Boundaries.LEFT.value)
+
+# # Temperature profile at left edge
+# T_profile = project(Constant(T_left), V_rank0)
+
+# bcT_left = DirichletBC(subspaces["T"], Constant(T_left), boundary_parts, Boundaries.LEFT.value)
+# bcT.append(bcT_left)
+
+from fenics import Expression
+T_profile = Expression("T0 - (1.0 - (x[1] + 0.5)) * T_vertical_diff", degree=1, T0=T0, T_vertical_diff=T_vertical_diff)
+bcT_left = DirichletBC(subspaces["T"], T_profile, boundary_parts, Boundaries.LEFT.value)
 bcT.append(bcT_left)
 
 # The heat flux [W/m²] uses uses a Neumann BC, with the boundary scalar flux
@@ -324,7 +352,7 @@ thermal_solver.compile_forms()
 # naturally cools in a steady state as it travels through the domain - whereas
 # the dynamic simulation will attempt to reach that steady state. So it is better
 # to initialize to a uniform temperature field, which will likely get us there faster.
-initial_T = project(Constant(T_left), V_rank0)
+initial_T = project(T_profile, V_rank0)
 initial_dTdt = Function(V_rank0)  # zeroes
 
 # Send the initial field to the thermal solver.
