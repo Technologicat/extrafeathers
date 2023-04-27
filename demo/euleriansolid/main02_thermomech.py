@@ -298,7 +298,11 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 # This represents cooling into the environment, in the direction perpendicular to the 2D sheet modeled.
 # Heat flux through the 2D boundaries should be treated by a nonhomogeneous Neumann boundary condition instead.
 #
-# For simplicity, we use Newton's law of cooling:
+# We could use a Stefan--Boltzmann radiative cooling law:
+#
+#    h = -r [T⁴ - T_ext⁴]
+#
+# But for simplicity, for now we use Newton's law of cooling:
 #
 #    h = -r [T - T_ext]
 #
