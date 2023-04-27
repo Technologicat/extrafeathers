@@ -175,13 +175,15 @@ subspaces = {k: v.function_space() for k, v in fields.items()}  # for setting bo
 # --------------------------------------------------------------------------------
 # Boundary conditions, mechanical subproblem
 
-# In our examples the initial field for `u` is zero, which is also the default.
-
-# These are used only by cases with a time-dependent boundary condition on `u`,
+# These are used only by cases with a time-dependent boundary condition,
 # but the main loop expects the variables to exist (to detect whether to use them or not).
 u0_left = None
 u0_right = None
 u0_func = lambda t: 0.0
+
+σ0_left = None
+σ0_right = None
+σ0_func = lambda t: 0.0
 
 # Here are some examples of how to make a time-dependent boundary condition for `u`.
 # The value can then be updated by e.g. `u0_right.u0 = u0_func(t)`.
@@ -223,12 +225,25 @@ bcu_left = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundar
 bcu.append(bcu_left)
 
 # The stress [Pa] uses a Neumann BC, with the boundary stress field set here.
-# The stress field given here is evaluated (and projected into the outer normal direction)
-# on the boundaries that have no Dirichlet boundary condition on `u`.
+# The Cauchy stress tensor given here is evaluated (and automatically projected
+# into the outer normal direction) on the boundaries that have no Dirichlet boundary
+# condition on `u`.
 #
 # The format for Neumann BCs in the advanced solver is [(fenics_expression, boundary_tag or None), ...].
 # The boundary tags are as in `boundary_parts`, and `None` means "apply this BC to the whole Neumann boundary".
-bcσ.append((Constant(((1e8, 0), (0, 0))), None))
+
+σ0 = 1e8  # Axial pull strength, [Pa], for examples that use it.
+
+# Heaviside step load at t = 0
+bcσ.append((Constant(((σ0, 0), (0, 0))), Boundaries.RIGHT.value))
+
+# # Ramp-up: linearly increase the load to its full value during the first 10% of the simulation, then stay at the full value.
+# from fenics import Expression
+# σ0_func = lambda t: min(10 * (t / T), 1.0) * σ0
+# # σ0_left = Expression((("σ0", "0"), ("0", "0")), σ0=σ0_func(0.0), degree=1)
+# # bcσ.append((σ0_left, Boundaries.LEFT.value))
+# σ0_right = Expression((("σ0", "0"), ("0", "0")), σ0=σ0_func(0.0), degree=1)
+# bcσ.append((σ0_right, Boundaries.RIGHT.value))
 
 # # Left and right edges: stress-controlled pull at both ends (no BC on `u`)
 # #
@@ -284,7 +299,10 @@ bcT.append(bcT_left)
 
 # The heat flux [W/m²] uses uses a Neumann BC, with the boundary scalar flux
 # (in the direction of the outer normal) set here. Same format as above.
-bcq.append((Constant(0), None))
+#
+# # To use a zero Neumann BC, which is the classic do-nothing BC, we can simply omit the term.
+# # The solver will then run marginally faster, as the equation doesn't include this term.
+# bcq.append((Constant(0), None))
 
 # Recompile to include the Neumann BCs
 thermal_solver.compile_forms()
@@ -849,6 +867,9 @@ for n in range(nt):
     for expr in (u0_left, u0_right):
         if expr:
             expr.u0 = u0_func(t)
+    for expr in (σ0_left, σ0_right):
+        if expr:
+            expr.σ0 = σ0_func(t)
 
     # Solve one timestep.
     # Multiphysics problem with weak coupling between subproblems.
