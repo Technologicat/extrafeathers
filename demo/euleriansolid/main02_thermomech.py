@@ -4,6 +4,10 @@
 Thermomechanical variant; models also thermal expansion.
 """
 
+# TODO: make the thermal part optional, to facilitate finding good time integration settings for the mechanical subproblem (before solving coupled problem)
+
+import warnings
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -922,13 +926,23 @@ for n in range(nt):
             maxCo_thermal = max(maxCo_global)
 
             # Péclet number (ratio of advective vs. diffusive effects) of thermal solver, rough approximation.
-            d = thermal_solver.s_.geometric_dimension()
-            ν = project(((1 / d) * tr(thermal_solver.k(T_))) / (thermal_solver.ρ * thermal_solver.c(T_)), V_rank0)  # diffusivity
-            minν_local = np.array(ν.vector()).min()
-            minν_global = MPI.comm_world.allgather(minν_local)
-            minν = min(minν_global)
-            L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
-            maxPe_thermal = maxa * L / minν
+            if maxa != 0.0:
+                d = thermal_solver.s_.geometric_dimension()
+                ν = project(((1 / d) * tr(thermal_solver.k(T_))) / (thermal_solver.ρ * thermal_solver.c(T_)), V_rank0)  # diffusivity
+                minν_local = np.array(ν.vector()).min()
+                minν_global = MPI.comm_world.allgather(minν_local)
+                minν = min(minν_global)
+                L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
+                # If minν = 0, the division will emit a "RuntimeWarning: divide by zero encountered in double_scalars".
+                # Under these circumstances the correct answer is indeed Pe = ∞, so ignore the warning.
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(action="ignore",
+                                            message="^divide by zero .*$",
+                                            category=RuntimeWarning,
+                                            module="__main__")
+                    maxPe_thermal = maxa * L / minν
+            else:
+                maxPe_thermal = 0.0
 
             # Courant number (advection of `v` in linear momentum solver)
             # The velocity field in the advection operator is the axial drive field (V0, 0).
@@ -939,16 +953,28 @@ for n in range(nt):
             maxCo_mech = max(maxCo_global)
 
             # Péclet number, advection vs. diffusion of `v`, rough approximation.
-            maxa = V0
-            λ = linmom_solver.λ(T_)
-            μ = linmom_solver.μ(T_)
-            τ = linmom_solver._τ  # the UFL Constant object
-            ν = project(τ * Minn(λ, 2 * μ) / Constant(rho), V_rank0)  # representative diffusivity of velocity, τ ‖E‖ / ρ
-            minν_local = np.array(ν.vector()).min()
-            minν_global = MPI.comm_world.allgather(minν_local)
-            minν = min(minν_global)
-            L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
-            maxPe_mech = maxa * L / minν
+            # Here the velocity field is the axial drive velocity.
+            if V0 != 0.0:
+                maxa = V0
+                λ = linmom_solver.λ(T_)
+                μ = linmom_solver.μ(T_)
+                τ = linmom_solver._τ  # the UFL Constant object
+                ν = project(τ * Minn(λ, 2 * μ) / Constant(rho), V_rank0)  # representative diffusivity of velocity, τ ‖E‖ / ρ
+                minν_local = np.array(ν.vector()).min()
+                minν_global = MPI.comm_world.allgather(minν_local)
+                minν = min(minν_global)
+                L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
+                # If τ = 0, then minν = 0, and the division will emit a
+                # "RuntimeWarning: divide by zero encountered in double_scalars".
+                # Under these circumstances the correct answer is indeed Pe = ∞, so ignore the warning.
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(action="ignore",
+                                            message="^divide by zero .*$",
+                                            category=RuntimeWarning,
+                                            module="__main__")
+                    maxPe_mech = maxa * L / minν
+            else:
+                maxPe_mech = 0.0
 
             # maximum in-domain cooling rate [W/m²]
             maxh_local = -1.0 * thermal_solver.h_.vector().min() * rho * H
