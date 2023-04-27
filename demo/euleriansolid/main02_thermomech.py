@@ -283,7 +283,7 @@ bcσ.append((Constant(((σ0, 0), (0, 0))), Boundaries.RIGHT.value))
 # bcu.append(bcu_center1)
 # bcu.append(bcu_center2)
 
-# Recompile to include the Neumann BCs
+# Recompile to refresh the Neumann BCs
 linmom_solver.compile_forms()
 
 # --------------------------------------------------------------------------------
@@ -304,7 +304,7 @@ bcT.append(bcT_left)
 # # The solver will then run marginally faster, as the equation doesn't include this term.
 # bcq.append((Constant(0), None))
 
-# Recompile to include the Neumann BCs
+# Recompile to refresh the Neumann BCs
 thermal_solver.compile_forms()
 
 # --------------------------------------------------------------------------------
