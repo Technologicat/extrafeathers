@@ -1129,9 +1129,9 @@ class InternalEnergyBalance:
             # Residual evaluated using values at the end of the timestep.
             # Here the stabilization helps.
             deg = Constant(self.V.ufl_element().degree())
-            τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he)**-1  # [τ] = s
-            R = (v - (dudt + advs(a, u, mode=self.advection)))
-            F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, ψ, mode=self.advection), R) * dx
+            τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a_) / he)**-1  # [τ] = s
+            R = (v - (dudt + advs(a_, u, mode=self.advection)))
+            F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a_, ψ, mode=self.advection), R) * dx
             F_v += F_SUPG
         else:
             # No advection, so the material rate reduces to the Eulerian rate.
