@@ -152,28 +152,28 @@ class AdvectionDiffusion:
         self.v = TestFunction(V)
 
         # Functions for solution at previous and current time steps
-        self.u_n = Function(V)  # suffix _n: the old value (end of previous timestep)
-        self.u_ = Function(V)  # suffix _: the latest computed value
+        self.u_n = Function(V, name="u_n")  # suffix _n: the old value (end of previous timestep)
+        self.u_ = Function(V, name="u")  # suffix _: the latest computed value
 
         # Local mesh size (for stabilization terms)
         self.he = cell_mf_to_expression(meshsize(self.mesh))
 
         # Specific heat source
-        self.h = Function(V)
+        self.h = Function(V, name="h")
         self.h.vector()[:] = 0.0  # placeholder value
 
         # Convection velocity. FEM function for maximum generality.
         self.advection = advection
         a_degree = velocity_degree if velocity_degree is not None else V.ufl_element().degree()
         V_rank1 = VectorFunctionSpace(self.mesh, V.ufl_element().family(), a_degree)
-        self.a = Function(V_rank1)
+        self.a = Function(V_rank1, name="a")
         self.a.vector()[:] = 0.0
 
         # Stress. FEM function for maximum generality.
         self.use_stress = use_stress and self.advection != "off"
         σ_degree = stress_degree if stress_degree is not None else V.ufl_element().degree()
         V_rank2 = TensorFunctionSpace(self.mesh, V.ufl_element().family(), σ_degree)
-        self.σ = Function(V_rank2)
+        self.σ = Function(V_rank2, name="sigma")
         self.σ.vector()[:] = 0.0
 
         # Parameters.

@@ -295,12 +295,12 @@ class EulerianSolid:
         σ = TrialFunction(Q)
         φ = TestFunction(Q)
 
-        u_ = Function(V)  # suffix _: latest computed approximation
-        u_n = Function(V)  # suffix _n: old value (end of previous timestep)
-        v_ = Function(V)
-        v_n = Function(V)
-        σ_ = Function(Q)
-        σ_n = Function(Q)
+        u_ = Function(V, name="u")  # suffix _: latest computed approximation
+        u_n = Function(V, name="u_n")  # suffix _n: old value (end of previous timestep)
+        v_ = Function(V, name="dudt_eulerian")
+        v_n = Function(V, name="dudt_eulerian_n")
+        σ_ = Function(Q, name="sigma")
+        σ_n = Function(Q, name="sigma_n")
 
         self.V = V
         self.Q = Q
@@ -313,8 +313,8 @@ class EulerianSolid:
         self.w = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
-        self.εu_ = Function(P)
-        self.εv_ = Function(P)
+        self.εu_ = Function(P, name="eps")
+        self.εv_ = Function(P, name="depsdt_eulerian")
 
         self.v, self.σ = v, σ  # trials
         self.ψ, self.φ = ψ, φ  # tests
@@ -340,7 +340,7 @@ class EulerianSolid:
         self.a = Constant((V0, 0))
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
-        self.b = Function(V)
+        self.b = Function(V, name="b")
         self.b.vector()[:] = 0.0  # placeholder value
 
         # Parameters.
@@ -783,7 +783,7 @@ class EulerianSolid:
 
         begin("Solve timestep")
 
-        v_prev = Function(self.V)
+        v_prev = Function(self.V, name="dudt_eulerian_prev")
         it1s = []
         it2s = []
         it3s = []
@@ -959,7 +959,7 @@ class SteadyStateEulerianSolid:
         S = FunctionSpace(self.mesh, e)
         u, σ = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         ψ, φ = TestFunctions(S)
-        s_ = Function(S)
+        s_ = Function(S, name="u_and_sigma")  # subfields can't be named separately; will be automatically named "u_and_sigma-0" and "u_and_sigma-1"
         u_, σ_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, σ_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
 
@@ -973,8 +973,8 @@ class SteadyStateEulerianSolid:
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
-        self.εu_ = Function(P)
-        self.εv_ = Function(P)
+        self.εu_ = Function(P, name="eps")
+        self.εv_ = Function(P, name="depsdt_eulerian")
 
         self.u, self.σ = u, σ  # trials
         self.ψ, self.φ = ψ, φ  # tests
@@ -984,8 +984,8 @@ class SteadyStateEulerianSolid:
         self.s_ = s_
 
         # Unused, all zeros, but provided for API reasons (all solvers supply a plottable velocity field;
-        # for this one, the velocity is zero).
-        self.v_ = Function(V)
+        # for this one, the velocity (here Eulerian rate) is zero).
+        self.v_ = Function(V, name="dudt_eulerian")
 
         # Set up the null space for removal in the Krylov solver.
         fus = null_space_fields(self.mesh.geometric_dimension())
@@ -1016,7 +1016,7 @@ class SteadyStateEulerianSolid:
         self.a = Constant((V0, 0))
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
-        self.b = Function(V)
+        self.b = Function(V, name="b")
         self.b.vector()[:] = 0.0  # placeholder value
 
         # Parameters.
@@ -1264,12 +1264,12 @@ class EulerianSolidAlternative:
         σ = TrialFunction(Q)
         φ = TestFunction(Q)
 
-        u_ = Function(V)  # suffix _: latest computed approximation
-        u_n = Function(V)  # suffix _n: old value (end of previous timestep)
-        v_ = Function(V)
-        v_n = Function(V)
-        σ_ = Function(Q)
-        σ_n = Function(Q)
+        u_ = Function(V, name="u")  # suffix _: latest computed approximation
+        u_n = Function(V, name="u_n")  # suffix _n: old value (end of previous timestep)
+        v_ = Function(V, name="dudt")  # yes, co-moving rate!
+        v_n = Function(V, name="dudt_n")
+        σ_ = Function(Q, name="sigma")
+        σ_n = Function(Q, name="sigma_n")
 
         self.V = V
         self.Q = Q
@@ -1279,8 +1279,8 @@ class EulerianSolidAlternative:
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
-        self.εu_ = Function(P)
-        self.εv_ = Function(P)
+        self.εu_ = Function(P, name="eps")
+        self.εv_ = Function(P, name="depsdt")
 
         self.u, self.v, self.σ = u, v, σ  # trials
         self.w, self.ψ, self.φ = w, ψ, φ  # tests
@@ -1308,7 +1308,7 @@ class EulerianSolidAlternative:
         self.a = Constant((V0, 0))
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
-        self.b = Function(V)
+        self.b = Function(V, name="b")
         self.b.vector()[:] = 0.0  # placeholder value
 
         # Parameters.
@@ -1513,7 +1513,7 @@ class EulerianSolidAlternative:
 
         begin("Solve timestep")
 
-        v_prev = Function(self.V)
+        v_prev = Function(self.V, name="dudt_prev")
         it1s = []
         it2s = []
         it3s = []
@@ -1642,7 +1642,7 @@ class SteadyStateEulerianSolidAlternative:
         S = FunctionSpace(self.mesh, e)
         u, v, σ = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         w, ψ, φ = TestFunctions(S)
-        s_ = Function(S)
+        s_ = Function(S, name="u_v_and_sigma")  # subfields can't be named separately; will be automatically named as "...-0", "...-1", "...-2"
         u_, v_, σ_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, v_, σ_ = s_.sub(0), s_.sub(1), s_.sub(2)  # if you want the `Function` (for plotting etc.)
 
@@ -1654,8 +1654,8 @@ class SteadyStateEulerianSolidAlternative:
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
-        self.εu_ = Function(P)
-        self.εv_ = Function(P)
+        self.εu_ = Function(P, name="eps")
+        self.εv_ = Function(P, name="depsdt")  # yes, co-moving rate!
 
         self.u, self.v, self.σ = u, v, σ  # trials
         self.w, self.ψ, self.φ = w, ψ, φ  # tests
@@ -1698,7 +1698,7 @@ class SteadyStateEulerianSolidAlternative:
         self.a = Constant((V0, 0))
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
-        self.b = Function(V)
+        self.b = Function(V, name="b")
         self.b.vector()[:] = 0.0  # placeholder value
 
         # Parameters.
@@ -1911,17 +1911,17 @@ class EulerianSolidPrimal:
         S = FunctionSpace(self.mesh, e)
         u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         w, ψ = TestFunctions(S)
-        s_ = Function(S)  # suffix _: latest computed approximation
+        s_ = Function(S, name="u_and_v")  # suffix _: latest computed approximation
         u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
-        s_n = Function(S)  # suffix _n: old value (end of previous timestep)
+        s_n = Function(S, name="u_and_v_n")  # suffix _n: old value (end of previous timestep)
         u_n, v_n = split(s_n)
 
         # For separate equation, for stress visualization
         # (We use the trial and test functions to compute the L2 projection for visualization.)
         σ = TrialFunction(Q)
         φ = TestFunction(Q)
-        σ_ = Function(Q)
+        σ_ = Function(Q, name="sigma")
 
         self.V = V
         self.Q = Q
@@ -1932,8 +1932,8 @@ class EulerianSolidPrimal:
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
-        self.εu_ = Function(P)
-        self.εv_ = Function(P)
+        self.εu_ = Function(P, name="eps")
+        self.εv_ = Function(P, name="depsdt")  # yes, co-moving rate!
 
         self.u, self.v, self.σ = u, v, σ  # trials
         self.w, self.ψ, self.φ = w, ψ, φ  # tests
@@ -1978,7 +1978,7 @@ class EulerianSolidPrimal:
         self.a = Constant((V0, 0))
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
-        self.b = Function(V)
+        self.b = Function(V, name="b")
         self.b.vector()[:] = 0.0  # placeholder value
 
         # Parameters.
@@ -2233,14 +2233,14 @@ class SteadyStateEulerianSolidPrimal:
         S = FunctionSpace(self.mesh, e)
         u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         w, ψ = TestFunctions(S)
-        s_ = Function(S)
+        s_ = Function(S, name="u_and_v")  # subfields can't be named separately; will be automatically named "u_and_v-0", "u_and_v-1"
         u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
 
         # For separate equation, for stress visualization
         σ = TrialFunction(Q)
         φ = TestFunction(Q)
-        σ_ = Function(Q)
+        σ_ = Function(Q, name="sigma")
 
         self.V = V
         self.Q = Q
@@ -2250,8 +2250,8 @@ class SteadyStateEulerianSolidPrimal:
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
-        self.εu_ = Function(P)
-        self.εv_ = Function(P)
+        self.εu_ = Function(P, name="eps")
+        self.εv_ = Function(P, name="depsdt")
 
         self.u, self.v, self.σ = u, v, σ  # trials
         self.w, self.ψ, self.φ = w, ψ, φ  # tests
@@ -2294,7 +2294,7 @@ class SteadyStateEulerianSolidPrimal:
         self.a = Constant((V0, 0))
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
-        self.b = Function(V)
+        self.b = Function(V, name="b")
         self.b.vector()[:] = 0.0  # placeholder value
 
         # Parameters.

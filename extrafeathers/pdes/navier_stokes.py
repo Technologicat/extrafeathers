@@ -235,16 +235,17 @@ class NavierStokes:
         self.q = TestFunction(Q)
 
         # Functions for solution at previous and current time steps
-        self.u_n = Function(V)  # suffix _n: the old value (end of previous timestep)
-        self.u_ = Function(V)  # suffix _: the latest computed approximation
-        self.p_n = Function(Q)
-        self.p_ = Function(Q)
+        self.u_n = Function(V, name="u_n")  # suffix _n: the old value (end of previous timestep)
+        self.u_ = Function(V, name="u")  # suffix _: the latest computed approximation
+        self.p_n = Function(Q, name="p_n")
+        self.p_ = Function(Q, name="p")
 
         # Local mesh size (for stabilization terms)
         self.he = cell_mf_to_expression(meshsize(self.mesh))
 
         # Specific body force. FEM function for maximum generality.
-        self.f = Function(V)
+        # Note this is the value at the θ-point inside the timestep.
+        self.f = Function(V, name="f")
         self.f.vector()[:] = 0.0  # placeholder value
 
         # Parameters.
