@@ -110,7 +110,7 @@ with timer() as tim:
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
     print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}] m, y ∈ [{ymin:0.6g}, {ymax:0.6g}] m.")
-    print(f"Domain length L = {domain_length:0.6g} m; timestep Δt = {dt} s")
+    print(f"Domain length L = {domain_length:0.6g} m; simulation end time T = {T} s; timestep Δt = {dt} s")
 
     print(f"Mean of longest edge length in mesh {mean_he:0.6g} m")
     print(f"With elements of mean size: {1 / mean_he:0.6g} el/m; {domain_length / mean_he:0.6g} el over domain length")
