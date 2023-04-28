@@ -51,7 +51,7 @@ gh = dolfin.interpolate(g, V1)
 
 def doit(suptitle, error=None):
     # Add simulated checkerboard oscillation
-    fh_distorted = dolfin.Function(fh.function_space())
+    fh_distorted = dolfin.Function(fh.function_space(), name="fh_distorted")
     if error:
         fh_distorted.vector()[:] = fh.vector()[:] + error.vector()[:]
     else:

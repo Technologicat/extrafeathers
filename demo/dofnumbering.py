@@ -75,7 +75,7 @@ if dolfin.MPI.comm_world.rank == 0:
     fig, ax = plt.subplots(1, 1, constrained_layout=True, figsize=(8, 8))
 
 # Plot a scalar function whose value is the global DOF number.
-f = dolfin.Function(V)
+f = dolfin.Function(V, name="f")
 f.vector()[:] = my_owned
 theplot = plotmagic.mpiplot(f)
 if dolfin.MPI.comm_world.rank == 0:

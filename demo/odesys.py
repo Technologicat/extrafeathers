@@ -40,13 +40,13 @@ def main(ncells):
     # Splitting by introducing the auxiliary variable p = u':
     #
     #   u' = p
-    #   p' = u - 2 sin(x)
+    #   p' = u - f(x)
     #   u(0) = 0
     #   p(0) = 1
     #
     u, p = split(TrialFunction(W))
     v, q = split(TestFunction(W))
-    source = Expression('2.0*sin(x[0])', degree=2)
+    f = Expression('2.0*sin(x[0])', degree=2)
 
     # Weak forms:
     #
@@ -57,9 +57,9 @@ def main(ncells):
     #
     #   ∫ u' v dx - ∫ p v dx + ∫ p' q dx - ∫ u q dx + ∫ f q dx = 0
     #
-    weak_form = u.dx(0) * v * dx - p * v * dx + p.dx(0) * q * dx - u * q * dx + source * q * dx
-    # weak_form = grad(u)[0] * v * dx - p * v * dx + grad(p)[0] * q * dx - u * q * dx + source * q * dx
-    # weak_form = Dx(u, 0) * v * dx - p * v * dx + Dx(p, 0) * q * dx - u * q * dx + source * q * dx
+    weak_form = u.dx(0) * v * dx - p * v * dx + p.dx(0) * q * dx - u * q * dx + f * q * dx
+    # weak_form = grad(u)[0] * v * dx - p * v * dx + grad(p)[0] * q * dx - u * q * dx + f * q * dx
+    # weak_form = Dx(u, 0) * v * dx - p * v * dx + Dx(p, 0) * q * dx - u * q * dx + f * q * dx
 
     # solve as nonlinear problem (since it's linear, the Newton algorithm will converge in one iteration)
     # solve(weak_form == 0, up, bcs=bcsys)
@@ -71,14 +71,14 @@ def main(ncells):
     a = lhs(weak_form)
     L = rhs(weak_form)
 
-    up = Function(W)
+    up = Function(W, name="u_and_p")  # subfields can't be named separately; they will be automatically named "u_and_p-0", "u_and_p-1"
     solve(a == L, up, bcs=bcsys)
 
     u, p = split(up)
     x, = SpatialCoordinate(mesh)
 
     print('ncells =', ncells)
-    print('u L2 error', sqrt(abs(assemble(inner(u - sin(x), u - sin(x)) * dx))))
+    print('u L2 error', sqrt(abs(assemble(inner(u - sin(x), u - sin(x)) * dx))))  # compare to known solution
     print('p L2 error', sqrt(abs(assemble(inner(p - cos(x), p - cos(x)) * dx))))
 
     # https://fenicsproject.org/qa/11979/significance-of-collapsing/

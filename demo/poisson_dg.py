@@ -176,7 +176,7 @@ a = lhs(F)
 L = rhs(F)
 
 # # Compute solution
-# u_ = Function(V)
+# u_ = Function(V, name="u")
 # solve(a == L, u_, bc)
 
 A = assemble(a)
@@ -187,7 +187,7 @@ b = assemble(L)
 
 # bc.apply(A)
 # bc.apply(b)
-u_ = Function(V)
+u_ = Function(V, name="u")
 it = solve(A, u_.vector(), b, 'cg', 'sor')
 # it = solve(A, u_.vector(), b, 'bicgstab', 'hypre_amg')  # umm, no.
 if MPI.comm_world.rank == 0:

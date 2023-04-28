@@ -243,10 +243,10 @@ p = TrialFunction(Q)
 q = TestFunction(Q)
 
 # Functions for solution at previous and current time steps
-u_n = Function(V)  # suffix _n: the old value (end of previous timestep)
-u_ = Function(V)  # suffix _: the latest computed approximation
-p_n = Function(Q)
-p_ = Function(Q)
+u_n = Function(V, name="u_n")  # suffix _n: the old value (end of previous timestep)
+u_ = Function(V, name="u")  # suffix _: the latest computed approximation
+p_n = Function(Q, name="p_n")
+p_ = Function(Q, name="p")
 
 # TODO: Initialize u_ and p_ from a potential-flow approximation to have a physically reasonable initial state.
 # TODO: We need to implement a potential-flow solver to be able to do that. It's just a Poisson equation,

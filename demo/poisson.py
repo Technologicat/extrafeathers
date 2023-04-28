@@ -60,7 +60,7 @@ a = inner(grad(u), grad(v)) * dx
 L = f * v * dx + g * v * ds
 
 # Compute solution
-u = Function(V)
+u = Function(V, name="u")
 begin("Solving...")
 solve(a == L, u, bc)
 begin(f"max(u) = {np.array(u.vector()).max():0.6g}")  # just for MPI-enabled print
