@@ -851,18 +851,19 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
     # exists), not 3D under plane stress. For the latter, we would use the standard 3D
     # formulas as-is.
     #
-    def dev(T):
-        """Deviatoric (traceless) part of rank-2 tensor `T`.
+    def dev(tensor):
+        """Deviatoric (traceless) part of a rank-2 tensor.
 
-        This is the true traceless part, taking the dimensionality of `T` as-is.
+        This is the true traceless part, using a scaling factor of `1 / d`,
+        where `d` is the geometric dimensionality, not a hard-coded `1 / 3`.
         """
-        d = T.geometric_dimension()
-        return T - (1 / d) * tr(T) * Identity(d)
-    s = dev(σ_)
-    d = s.geometric_dimension()
+        d = tensor.geometric_dimension()
+        return tensor - (1 / d) * tr(tensor) * Identity(d)
+    s_ = dev(σ_)
+    d = s_.geometric_dimension()
     dim_to_scale_factor = {3: sqrt(3 / 2), 2: sqrt(2)}
     scale = dim_to_scale_factor[d]
-    vonMises_expr = scale * sqrt(inner(s, s))
+    vonMises_expr = scale * sqrt(inner(s_, s_))
     vonMises.assign(project(vonMises_expr, Q_rank0))
     xdmffile_vonMises.write(vonMises, t)
 
