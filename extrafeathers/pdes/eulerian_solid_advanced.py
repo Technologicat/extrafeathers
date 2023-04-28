@@ -280,14 +280,17 @@ class LinearMomentumBalance:
         S = FunctionSpace(self.mesh, e)
         u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         w, ψ = TestFunctions(S)
-        s_ = Function(S)  # suffix _: latest computed approximation
+        # Name the function for XDMF exports. The mixed field contains both `u` and `du/dt`, but the subfields
+        # can't be named separately (at least in FEniCS 2019). The subfields are automatically named `u-0` and `u-1`;
+        # see the source code of `dolfin.function.Function.__init__`. Even so, this is much more descriptive than "f_97-0" etc.
+        s_ = Function(S, name="u")  # suffix _: latest computed approximation
         u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
-        s_n = Function(S)  # suffix _n: old value (end of previous timestep)
+        s_n = Function(S, name="u_n")  # suffix _n: old value (end of previous timestep)
         u_n, v_n = split(s_n)
 
         # Previous Picard iterate, for convergence monitoring by user
-        s_prev = Function(S)
+        s_prev = Function(S, name="u_prev")
 
         self.u, self.v = u, v  # trials
         self.w, self.ψ = w, ψ  # tests
@@ -330,8 +333,8 @@ class LinearMomentumBalance:
         # For consistency, in the θ time integrator, we evaluate the thermal fields
         # at the same point of time as the mechanical fields. Thus we need both
         # old and new values.
-        T_ = Function(V_rank0)   # new value (end of timestep)
-        T_n = Function(V_rank0)  # old value (start of timestep)
+        T_ = Function(V_rank0, name="T")   # new value (end of timestep)
+        T_n = Function(V_rank0, name="T_n")  # old value (start of timestep)
         T_.vector()[:] = T0
         T_n.vector()[:] = T0
         self.T_ = T_
@@ -349,8 +352,8 @@ class LinearMomentumBalance:
         # When solving a thermomechanical problem, this can come from an auxiliary variable
         # for the internal energy balance law, playing a role similar to our `v`.
         # You can obtain this from the `InternalEnergyBalance` solver.
-        dTdt_ = Function(V_rank0)
-        dTdt_n = Function(V_rank0)  # old value
+        dTdt_ = Function(V_rank0, name="dTdt")
+        dTdt_n = Function(V_rank0, name="dTdt_n")  # old value
         dTdt_.vector()[:] = 0.0
         dTdt_n.vector()[:] = 0.0
         self.dTdt_ = dTdt_
@@ -358,9 +361,9 @@ class LinearMomentumBalance:
 
         # Specific body force (N / kg = m / s²). FEM function for maximum generality.
         # θ integration, so we need both old and new values for this too.
-        self.b_ = Function(V)
+        self.b_ = Function(V, name="b")
         self.b_.vector()[:] = 0.0
-        self.b_n = Function(V)
+        self.b_n = Function(V, name="b_n")
         self.b_n.vector()[:] = 0.0
 
         # Dirichlet boundary conditions
@@ -390,13 +393,13 @@ class LinearMomentumBalance:
         self.Q = Q
         self.σ = TrialFunction(Q)
         self.φ = TestFunction(Q)
-        self.σ_ = Function(Q)
+        self.σ_ = Function(Q, name="sigma")
         self.P = P
         self.q = TestFunction(P)
         self.εu = TrialFunction(P)
         self.εv = TrialFunction(P)
-        self.εu_ = Function(P)
-        self.εv_ = Function(P)
+        self.εu_ = Function(P, name="eps")
+        self.εv_ = Function(P, name="depsdt")
 
         # Numerical stabilizer on/off flags.
         self.stabilizers = StabilizerFlags()
@@ -906,14 +909,17 @@ class InternalEnergyBalance:
         S = FunctionSpace(self.mesh, e)
         u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         w, ψ = TestFunctions(S)
-        s_ = Function(S)  # suffix _: latest computed approximation
+        # Name the function for XDMF exports. The mixed field contains both `T` and `dT/dt`, but the subfields
+        # can't be named separately (at least in FEniCS 2019). The subfields are automatically named `T-0` and `T-1`;
+        # see the source code of `dolfin.function.Function.__init__`. Even so, this is much more descriptive than "f_97-0" etc.
+        s_ = Function(S, name="T")  # suffix _: latest computed approximation
         u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
-        s_n = Function(S)  # suffix _n: old value (end of previous timestep)
+        s_n = Function(S, name="T_n")  # suffix _n: old value (end of previous timestep)
         u_n, v_n = split(s_n)
 
         # Previous Picard iterate, for convergence monitoring by user
-        s_prev = Function(S)
+        s_prev = Function(S, name="T_prev")
 
         # Initialize T and dT/dt
         #
@@ -966,25 +972,25 @@ class InternalEnergyBalance:
         # Advection velocity [m/s]. FEM function for maximum generality.
         # θ integration, so we need both old and new values for this too.
         self.advection = advection
-        self.a_ = Function(V_rank1)
+        self.a_ = Function(V_rank1, name="a")
         self.a_.vector()[:] = 0.0
-        self.a_n = Function(V_rank1)
+        self.a_n = Function(V_rank1, name="a_n")
         self.a_n.vector()[:] = 0.0
 
         # Stress [Pa]. FEM function for maximum generality.
         # θ integration, so we need both old and new values for this too.
         # Note the term is  -σ : ∇a,  so it only appears when advection is enabled.
         self.use_stress = use_stress and self.advection != "off"
-        self.σ_ = Function(V_rank2)
+        self.σ_ = Function(V_rank2, name="sigma")
         self.σ_.vector()[:] = 0.0
-        self.σ_n = Function(V_rank2)
+        self.σ_n = Function(V_rank2, name="sigma_n")
         self.σ_n.vector()[:] = 0.0
 
         # External specific heat source [W/kg]. FEM function for maximum generality.
         # Note the actual source term is  ρ h  [W/m³]; the solver automatically multiplies by ρ.
-        self.h_ = Function(V)
+        self.h_ = Function(V, name="h")
         self.h_.vector()[:] = 0.0
-        self.h_n = Function(V)
+        self.h_n = Function(V, name="h_n")
         self.h_n.vector()[:] = 0.0
 
         # Constant parameters.

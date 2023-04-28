@@ -433,7 +433,7 @@ xdmffile_σ = XDMFFile(MPI.comm_world, vis_σ_filename)
 # ParaView doesn't have a filter for von Mises stress, so we compute it ourselves.
 # This is only for visualization.
 xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
-vonMises = Function(Q_rank0)
+vonMises = Function(Q_rank0, name="vonMises")
 
 for xdmffile in (xdmffile_u, xdmffile_v, xdmffile_T, xdmffile_dTdt, xdmffile_σ, xdmffile_vonMises):
     xdmffile.parameters["flush_output"] = True
@@ -791,11 +791,13 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
         # Save the displacement visualization at full nodal resolution.
         u_.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `u_` to `v_rank1_vec_copy`
         v_rank1_P1.vector()[:] = v_rank1_vec_copy[my_V_rank1_dofs]  # LHS MPI-local; RHS global
+        v_rank1_P1.name = fields["u"].name
         xdmffile_u.write(v_rank1_P1, t)
 
         # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
         v_.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `v_` to `v_rank1_vec_copy`
         v_rank1_P1.vector()[:] = v_rank1_vec_copy[my_V_rank1_dofs]  # LHS MPI-local; RHS global
+        v_rank1_P1.name = fields["du/dt"].name
         xdmffile_v.write(v_rank1_P1, t)
     else:  # save at P1 resolution
         xdmffile_u.write(u_, t)
@@ -805,11 +807,13 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
         # Save the displacement visualization at full nodal resolution.
         T_.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `T_` to `v_rank0_vec_copy`
         v_rank0_P1.vector()[:] = v_rank0_vec_copy[my_V_rank0_dofs]  # LHS MPI-local; RHS global
+        v_rank0_P1.name = fields["T"].name
         xdmffile_T.write(v_rank0_P1, t)
 
         # `dT/dt` lives on a copy of the same function space as `T`; recycle the temporary vector
         dTdt_.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `dTdt_` to `v_rank0_vec_copy`
         v_rank0_P1.vector()[:] = v_rank0_vec_copy[my_V_rank0_dofs]  # LHS MPI-local; RHS global
+        v_rank0_P1.name = fields["dT/dt"].name
         xdmffile_dTdt.write(v_rank0_P1, t)
     else:  # save at P1 resolution
         xdmffile_T.write(T_, t)
@@ -818,6 +822,7 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
     if highres_export_Q_rank2:
         σ_.vector().gather(q_rank2_vec_copy, all_Q_rank2_dofs)
         q_rank2_P1.vector()[:] = q_rank2_vec_copy[my_Q_rank2_dofs]
+        q_rank2_P1.name = fields["σ"].name
         xdmffile_σ.write(q_rank2_P1, t)
     else:  # save at P1 resolution
         xdmffile_σ.write(σ_, t)
