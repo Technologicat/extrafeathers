@@ -35,7 +35,7 @@ V0 = 1.0
 # V0 = 3300.0  # 3.3 km/s: maximum stable for steady state with fixed displacement (main01_solve)
 
 # --------------------------------------------------------------------------------
-# Physical parameters
+# Physical parameters (basic solver)
 #
 # This section is for the pure mechanical solver, main01_solve.
 
@@ -44,7 +44,7 @@ lamda = E * ν / ((1 + ν) * (1 - 2 * ν))  # first Lamé parameter [Pa]
 mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 
 # --------------------------------------------------------------------------------
-# Physical parameters
+# Physical parameters (advanced solver)
 #
 # This section is for the thermomechanical solver, main02_thermomech.
 
