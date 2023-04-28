@@ -513,7 +513,7 @@ xdmffile_σ.parameters["rewrite_function_mesh"] = False
 xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
 xdmffile_vonMises.parameters["flush_output"] = True
 xdmffile_vonMises.parameters["rewrite_function_mesh"] = False
-vonMises = Function(Qscalar)
+vonMises = Function(Qscalar, name="vonMises")
 
 # Create time series (for use in other FEniCS solvers)
 timeseries_u = TimeSeries(sol_u_filename)
@@ -969,11 +969,13 @@ def export_fields(u_, v_, σ_, *, t):
         # Save the displacement visualization at full nodal resolution.
         u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
         v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        v_P1.rename(fields[type(solver)]["u"](solver).name)
         xdmffile_u.write(v_P1, t)
 
         # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
         v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
         v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+        v_P1.rename(fields[type(solver)]["v"](solver).name)
         xdmffile_v.write(v_P1, t)
     else:  # save at P1 resolution
         xdmffile_u.write(u_, t)
@@ -982,6 +984,7 @@ def export_fields(u_, v_, σ_, *, t):
     if highres_export_Q:
         σ_.vector().gather(q_vec_copy, all_Q_dofs)
         q_P1.vector()[:] = q_vec_copy[my_Q_dofs]
+        q_P1.rename(fields[type(solver)]["σ"](solver).name)
         xdmffile_σ.write(q_P1, t)
     else:  # save at P1 resolution
         xdmffile_σ.write(σ_, t)
