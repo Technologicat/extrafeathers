@@ -84,14 +84,17 @@ mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_f
 # The rank-0 spaces are also used in visualization, when there is a need to L2-project
 # a scalar expression into a FEM space suitable for plotting.
 #
-# Using P2 elements for V is recommended; P1 tends to produce bad derivatives (strain!).
-# Note that the strain visualization computed by ParaView (from the displacement,
-# using the Compute Derivatives filter) is still dP0, and looks bad (checkerboard);
-# but the P1 visualizations produced by this solver itself look fine.
+# Using P2 elements for V is recommended; P1 tends to produce bad gradients (strain!)
+# with checkerboard oscillations.
+#
+# Note that P2 fields are exported as the corresponding full nodal resolution P1 field.
+# The strain visualization computed by ParaView (from the displacement, using the
+# Compute Derivatives filter) is still dP0, and looks bad (checkerboard).
+# But the P1 stress/strain fields exported by this solver are fine.
 V_rank1 = VectorFunctionSpace(mesh, 'P', 2)
 V_rank0 = V_rank1.sub(0).collapse()
 Q_rank2 = TensorFunctionSpace(mesh, 'P', 1)
-# Q_rank2 = TensorFunctionSpace(mesh, 'DP', 0)  # DP0; use this when V is P1.
+# Q_rank2 = TensorFunctionSpace(mesh, 'DP', 0)  # Use this when V is P1.
 Q_rank0 = Q_rank2.sub(0).collapse()
 
 # Function space of ℝ (single global DOF). By projecting onto this space,
