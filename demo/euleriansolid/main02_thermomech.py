@@ -913,6 +913,7 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
 # --------------------------------------------------------------------------------
 # Compute dynamic solution
 
+# FunctionAssigner(receiving_space, assigning_space)
 assigner = FunctionAssigner([linmom_solver.T_.function_space(),
                              linmom_solver.dTdt_.function_space()],
                             thermal_solver.S)  # mixed function space of thermal solver, containing both T and dT/dt
