@@ -84,12 +84,18 @@ mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_f
 # The rank-0 spaces are also used in visualization, when there is a need to L2-project
 # a scalar expression into a FEM space suitable for plotting.
 #
-V_rank1 = VectorFunctionSpace(mesh, 'P', 1)
+# Using P2 elements for V is recommended; P1 tends to produce bad derivatives (strain!).
+# Note that the strain visualization computed by ParaView (from the displacement,
+# using the Compute Derivatives filter) is still dP0, and looks bad (checkerboard);
+# but the P1 visualizations produced by this solver itself look fine.
+V_rank1 = VectorFunctionSpace(mesh, 'P', 2)
 V_rank0 = V_rank1.sub(0).collapse()
-Q_rank2 = TensorFunctionSpace(mesh, 'DP', 0)
+Q_rank2 = TensorFunctionSpace(mesh, 'P', 1)
+# Q_rank2 = TensorFunctionSpace(mesh, 'DP', 0)  # DP0; use this when V is P1.
 Q_rank0 = Q_rank2.sub(0).collapse()
 
-# Function space of ℝ (single global DOF), for computing summary statistics integrated over the whole domain.
+# Function space of ℝ (single global DOF). By projecting onto this space,
+# we can compute summary statistics over the whole domain.
 W = FunctionSpace(mesh, "R", 0)
 
 # Start by detecting the bounding box - this can be used e.g. for fixing the
