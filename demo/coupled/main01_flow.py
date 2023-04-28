@@ -275,7 +275,7 @@ for n in range(nt):
         # DOFs on W:
         solver.u_.vector().gather(u_copy, all_V_dofs)  # allgather to `u_copy`
         u_P1.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        u_P1.rename(solver.u_.name, "a Function")
+        u_P1.rename(solver.u_.name(), "a Function")
         # Now `u_P1` is a refined P1 representation of the velocity field.
 
         # TODO: refactor access to u_, p_?

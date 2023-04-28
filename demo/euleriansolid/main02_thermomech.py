@@ -806,13 +806,13 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
         # Save the displacement visualization at full nodal resolution.
         u_.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `u_` to `v_rank1_vec_copy`
         v_rank1_P1.vector()[:] = v_rank1_vec_copy[my_V_rank1_dofs]  # LHS MPI-local; RHS global
-        v_rank1_P1.rename(fields["u"].name, "a Function")
+        v_rank1_P1.rename(fields["u"].name(), "a Function")
         xdmffile_u.write(v_rank1_P1, t)
 
         # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
         v_.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `v_` to `v_rank1_vec_copy`
         v_rank1_P1.vector()[:] = v_rank1_vec_copy[my_V_rank1_dofs]  # LHS MPI-local; RHS global
-        v_rank1_P1.rename(fields["du/dt"].name, "a Function")
+        v_rank1_P1.rename(fields["du/dt"].name(), "a Function")
         xdmffile_v.write(v_rank1_P1, t)
     else:  # save at P1 resolution
         xdmffile_u.write(u_, t)
@@ -822,13 +822,13 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
         # Save the displacement visualization at full nodal resolution.
         T_.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `T_` to `v_rank0_vec_copy`
         v_rank0_P1.vector()[:] = v_rank0_vec_copy[my_V_rank0_dofs]  # LHS MPI-local; RHS global
-        v_rank0_P1.rename(fields["T"].name, "a Function")
+        v_rank0_P1.rename(fields["T"].name(), "a Function")
         xdmffile_T.write(v_rank0_P1, t)
 
         # `dT/dt` lives on a copy of the same function space as `T`; recycle the temporary vector
         dTdt_.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `dTdt_` to `v_rank0_vec_copy`
         v_rank0_P1.vector()[:] = v_rank0_vec_copy[my_V_rank0_dofs]  # LHS MPI-local; RHS global
-        v_rank0_P1.rename(fields["dT/dt"].name, "a Function")
+        v_rank0_P1.rename(fields["dT/dt"].name(), "a Function")
         xdmffile_dTdt.write(v_rank0_P1, t)
     else:  # save at P1 resolution
         xdmffile_T.write(T_, t)
@@ -837,7 +837,7 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
     if highres_export_Q_rank2:
         σ_.vector().gather(q_rank2_vec_copy, all_Q_rank2_dofs)
         q_rank2_P1.vector()[:] = q_rank2_vec_copy[my_Q_rank2_dofs]
-        q_rank2_P1.rename(fields["σ"].name, "a Function")
+        q_rank2_P1.rename(fields["σ"].name(), "a Function")
         xdmffile_σ.write(q_rank2_P1, t)
     else:  # save at P1 resolution
         xdmffile_σ.write(σ_, t)
