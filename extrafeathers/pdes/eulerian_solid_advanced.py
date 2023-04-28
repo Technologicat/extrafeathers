@@ -918,6 +918,7 @@ class InternalEnergyBalance:
         # Initialize T and dT/dt
         #
         # Each call to `.sub(j)` of a `Function` on a `MixedElement` seems to create a new copy.
+        # (Indeed, look at `dolfin.function.Function.sub` and `dolfin.function.Function.__init__`.)
         # We need `FunctionAssigner` to set values on the original `Function`, so that the field
         # does not vanish into a copy that is not used by the solver.
         assigner = FunctionAssigner(S, [V, V])  # FunctionAssigner(receiving_space, assigning_space)

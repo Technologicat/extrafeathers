@@ -443,6 +443,7 @@ if not dynamic:
     # TODO: update this
     # # Set nonzero initial guess for `σ`
     # σ = fields[type(solver)]["σ"](solver)  # each call seems to create a new copy?
+    # # (Indeed, look at `dolfin.function.Function.sub` and `dolfin.function.Function.__init__`.)
     # σ11 = σ.sub(0)
     # # from fenics import Expression
     # # σ.assign(project(Expression((("1e6 * cos(2 * pi * x[0])", 0), (0, 0)), degree=2), Qsubspace.collapse()))  # DEBUG testing
@@ -457,6 +458,7 @@ if not dynamic:
     # TODO: update this
     # # To set the IG reliably in the monolithic case:
     # # Each call to `.sub(j)` of a `Function` on a `MixedElement` seems to create a new copy.
+    # # (Indeed, look at `dolfin.function.Function.sub` and `dolfin.function.Function.__init__`.)
     # # We need `FunctionAssigner` to set values on the original `Function`, so that the field
     # # does not vanish into a copy that is not used by the solver.
     # from fenics import Expression, FunctionAssigner

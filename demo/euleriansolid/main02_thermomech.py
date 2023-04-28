@@ -161,6 +161,7 @@ if my_rank == 0:
     print(f"Number of DOFs: u {V_rank1.dim()}, {dtext}u/{dtext}t {V_rank1.dim()}, T {V_rank0.dim()}, {dtext}T/{dtext}t {V_rank0.dim()}")
 
 # NOTE: Accessing the `.sub(j)` of a mixed field (e.g. `s_` here) seems to create a new copy of the subfield every time.
+# (Indeed, look at `dolfin.function.Function.sub` and `dolfin.function.Function.__init__`.)
 # So e.g. `fields["T"]` gives read access; but to write to a subfield of a mixed field, we must use a `FunctionAssigner`.
 # Examples further below.
 fields = {"u": linmom_solver.s_.sub(0),
@@ -358,6 +359,7 @@ initial_dTdt = Function(V_rank0)  # zeroes
 # Send the initial field to the thermal solver.
 #
 # Each call to `.sub(j)` of a `Function` on a `MixedElement` seems to create a new copy.
+# (Indeed, look at `dolfin.function.Function.sub` and `dolfin.function.Function.__init__`.)
 # We need `FunctionAssigner` to set values on the original `Function`, so that the field
 # does not vanish into a copy that is not used by the solver.
 #
