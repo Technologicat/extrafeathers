@@ -17,7 +17,7 @@ from .config import mesh_filename, Boundaries
 def main():
     assert dolfin.MPI.comm_world.size == 1, "Mesh can only be generated in serial mode, please run without mpirun."
 
-    N = 64
+    N = 32
 
     # https://fenicsproject.org/olddocs/dolfin/latest/cpp/de/dac/classdolfin_1_1UnitSquareMesh.html#a0cff260683cd6632fa569ddda6529a0d
     # 'std::string diagonal ("left", "right", "right/left", "left/right", or "crossed")
