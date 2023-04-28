@@ -60,6 +60,7 @@ H = 1e-3             # Thickness of the sheet [m]
 # unlikely to need anything more complicated for modeling these.
 #
 # The separate fit for η is unused - in our model,  η = τ E.
+# Also, in our model, ρ is constant.
 #
 #     Model settings:
 #     T₀ = 1700 K
