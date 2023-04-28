@@ -99,9 +99,9 @@ with timer() as tim:
     ymin = np.min(nodes_array[:, 1])
     ymax = np.max(nodes_array[:, 1])
 
-    L = xmax - xmin
-    W = ymax - ymin
-    A = L * W
+    domain_length = xmax - xmin
+    domain_width = ymax - ymin
+    A = domain_length * domain_width
     v_el_T0 = (E_func(T0) / rho)**0.5
 
     he = meshfunction.cell_mf_to_expression(meshfunction.meshsize(mesh))
@@ -110,14 +110,14 @@ with timer() as tim:
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
     print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}] m, y ∈ [{ymin:0.6g}, {ymax:0.6g}] m.")
-    print(f"Domain length L = {L:0.6g} m; timestep Δt = {dt} s")
+    print(f"Domain length L = {domain_length:0.6g} m; timestep Δt = {dt} s")
 
     print(f"Mean of longest edge length in mesh {mean_he:0.6g} m")
-    print(f"With elements of mean size: {1 / mean_he:0.6g} el/m; {L / mean_he:0.6g} el over domain length")
+    print(f"With elements of mean size: {1 / mean_he:0.6g} el/m; {domain_length / mean_he:0.6g} el over domain length")
 
     print(f"At reference temperature T0 = {T0:0.6g} K, Young modulus E(T0) = {E_func(T0):0.6g} Pa")
     print("Longitudinal elastic waves:")
-    print(f"    Propagation speed at reference temperature v_el(T0) = {v_el_T0:0.6g} m/s (one domain length in {L / v_el_T0:0.6g} s)")
+    print(f"    Propagation speed at reference temperature v_el(T0) = {v_el_T0:0.6g} m/s (one domain length in {domain_length / v_el_T0:0.6g} s)")
     print(f"    Courant number at reference temperature Co(T0) = {v_el_T0 * dt / mean_he:0.6g}")
 
 # --------------------------------------------------------------------------------
@@ -1028,7 +1028,7 @@ for n in range(nt):
                 minν_local = np.array(ν.vector()).min()
                 minν_global = MPI.comm_world.allgather(minν_local)
                 minν = min(minν_global)
-                L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
+                domain_length = xmax - xmin  # characteristic length (TODO: parameterize this)
                 # If minν = 0, the division will emit a "RuntimeWarning: divide by zero encountered in double_scalars".
                 # Under these circumstances the correct answer is indeed Pe = ∞, so ignore the warning.
                 with warnings.catch_warnings():
@@ -1036,7 +1036,7 @@ for n in range(nt):
                                             message="^divide by zero .*$",
                                             category=RuntimeWarning,
                                             module="__main__")
-                    maxPe_thermal = maxa * L / minν
+                    maxPe_thermal = maxa * domain_length / minν
             else:
                 maxPe_thermal = 0.0
 
@@ -1059,7 +1059,7 @@ for n in range(nt):
                 minν_local = np.array(ν.vector()).min()
                 minν_global = MPI.comm_world.allgather(minν_local)
                 minν = min(minν_global)
-                L = xmax - xmin  # characteristic length; here we use the domain length (TODO: parameterize this)
+                domain_length = xmax - xmin  # characteristic length; TODO: parameterize this
                 # If τ = 0, then minν = 0, and the division will emit a
                 # "RuntimeWarning: divide by zero encountered in double_scalars".
                 # Under these circumstances the correct answer is indeed Pe = ∞, so ignore the warning.
@@ -1068,7 +1068,7 @@ for n in range(nt):
                                             message="^divide by zero .*$",
                                             category=RuntimeWarning,
                                             module="__main__")
-                    maxPe_mech = maxa * L / minν
+                    maxPe_mech = maxa * domain_length / minν
             else:
                 maxPe_mech = 0.0
 
