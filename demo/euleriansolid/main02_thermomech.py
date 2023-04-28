@@ -40,7 +40,7 @@ from extrafeathers.pdes.eulerian_solid_advanced import ε
 from extrafeathers.pdes.numutil import mag, Minn
 from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T, H1_tol, maxit,
                      E_func, lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
-                     nsave_total, vis_every, enable_SUPG, show_mesh, project_dG0_fields,
+                     nsave_total, vis_every, enable_SUPG, show_mesh, project_lower_degree_fields_to_V,
                      mechanical_solver_enabled, thermal_solver_enabled,
                      Boundaries,
                      mesh_filename,
@@ -685,7 +685,7 @@ def plotit():
              row=1, col=1,
              name=f"v2 ≡ {dtext}u2/{dtext}t", title=f"$v_{{2}} \\equiv {dlatex} u_{{2}} / {dlatex} t$ [m/s]", vrange_func=symmetric_vrange)
 
-    if project_dG0_fields:
+    if project_lower_degree_fields_to_V:
         # eliminate checkerboard pattern by postprocessing the dG0 function onto a C0 continuous space
         plot_one(project(ε_.sub(0), V_rank0), prep_V_rank0,
                  row=0, col=2,
@@ -711,7 +711,7 @@ def plotit():
                  row=2, col=2,
                  name="ε22", title=r"$\varepsilon_{22}$", vrange_func=symmetric_vrange)
 
-    if project_dG0_fields:
+    if project_lower_degree_fields_to_V:
         plot_one(project(dεdt_.sub(0), V_rank0), prep_V_rank0,
                  row=0, col=3,
                  name=f"{dtext}ε11/{dtext}t", title=f"${dlatex} \\varepsilon_{{11}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
@@ -736,7 +736,7 @@ def plotit():
                  row=2, col=3,
                  name=f"{dtext}ε22/{dtext}t", title=f"${dlatex} \\varepsilon_{{22}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
 
-    if project_dG0_fields:
+    if project_lower_degree_fields_to_V:
         plot_one(project(σ_.sub(0), V_rank0), prep_V_rank0,
                  row=0, col=4,
                  name="σ11", title=r"$\sigma_{11}$ [Pa]", vrange_func=symmetric_vrange)
@@ -771,7 +771,7 @@ def plotit():
                  row=2, col=1,
                  name=f"{dtext}T/{dtext}t", title=f"${dlatex} T / {dlatex} t$ [K/s]", vrange_func=symmetric_vrange)
     else:
-        if project_dG0_fields:
+        if project_lower_degree_fields_to_V:
             E = project(elastic_strain_energy(), V_rank0)
             plot_one(E, prep_V_rank0,
                      row=2, col=0,

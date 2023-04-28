@@ -144,10 +144,12 @@ enable_SUPG = True
 # show_mesh = True
 show_mesh = False
 
-# Project strain, stress, elastic energy onto V function space for visualization?
-# This is useful when V is P1, and those fields are dG0.
-# This effectively patch-averages them, thus eliminating most checkerboard artifacts.
-project_dG0_fields = False
+# Project strain, stress, elastic energy onto the main function space (`V`) for online (during simulation )visualization?
+# Exported fields are not affected.
+#
+# This is useful when `V` is P1, which naturally makes those fields dG0. Projecting a dG0 field onto a P1 space effectively
+# patch-averages it, thus reducing checkerboard artifacts.
+project_lower_degree_fields_to_V = False
 
 # Solver mode (main01_solve only):
 #   `True`: run dynamic simulation
