@@ -525,21 +525,28 @@ def roundsig(x, significant_digits):
     return round(x, decimal_digits)
 
 def elastic_strain_energy():
-    """Compute and return total elastic strain energy, ∫ (1/2) σ : εel dΩ  [J].
+    """Form an UFL expression for elastic strain energy,  (1/2) σ : εel  [J].
 
     This automatically extracts the elastic strain εel from the total strain ε.
     """
     εth = linmom_solver.α(fields["T"]) * (fields["T"] - Constant(T0))
     εel = ε(fields["u"]) - εth
-    return float(project((1 / 2) * inner(fields["σ"], εel), W))
+    return (1 / 2) * inner(fields["σ"], εel)
 def kinetic_energy():
-    """Compute and return total kinetic energy, ∫ (1/2) ρ v² dΩ  [J].
+    """Form an UFL expression for kinetic energy,  (1/2) ρ v²  [J].
 
     Note the velocity is measured against the axially co-moving frame,
     so this is the kinetic energy seen by an observer in that frame.
     """
     # Note `linmom_solver._ρ`; we need the UFL `Constant` object here.
-    return float(project((1 / 2) * linmom_solver._ρ * dot(fields["du/dt"], fields["du/dt"]), W))
+    return (1 / 2) * linmom_solver._ρ * dot(fields["du/dt"], fields["du/dt"])
+
+def total_elastic_strain_energy():
+    """Compute and return total elastic strain energy, ∫ (1/2) σ : εel dΩ  [J]."""
+    return float(project(elastic_strain_energy(), W))  # project to ℝ (single global DOF)
+def total_kinetic_energy():
+    """Compute and return total kinetic energy, ∫ (1/2) ρ v² dΩ  [J]."""
+    return float(project(kinetic_energy(), W))
 
 # TODO: track and compute the total internal energy
 #
@@ -761,13 +768,11 @@ def plotit():
     # # In the original pure mechanical variant, we used to have 13 plots, but 15 subplot slots,
     # # so we used the last two to plot the energy. But the thermomechanical variant of the model has 15 plots.
     # # Could also be useful to see the thermal and mechanical strains separately.
-    # εth = linmom_solver.α(T_) * (T_ - Constant(T0))
-    # εel = ε(u_) - εth
-    # E = project((1 / 2) * inner(σ_, εel), Q_rank0)  # elastic strain energy
+    # E = project(elastic_strain_energy(), Q_rank0)
     # plot_one(E, prep_Q_rank0,
     #          row=2, col=0,
     #          name="elastic strain energy", title=r"$(1/2) \sigma : \varepsilon_{\mathrm{el}}$ [J/m³]", vrange_func=vrange, cmap="viridis")
-    # K = project((1 / 2) * linmom_solver._ρ * dot(v_, v_), V_rank0)  # kinetic energy (as seen by observer in axially co-moving frame)
+    # K = project(kinetic_energy(), V_rank0)  # kinetic energy (as seen by observer in axially co-moving frame)
     # plot_one(K, prep_V_rank0,
     #          row=2, col=1,
     #          name"kinetic energy", title=r"$(1/2) \rho v^2$ [J/m³]", vrange_func=vrange, cmap="viridis")
@@ -1087,8 +1092,8 @@ for n in range(nt):
     dt_avg = sum(est.que) / len(est.que)
     vis_step_walltime_local = nvismod * dt_avg
 
-    E = elastic_strain_energy()
-    K = kinetic_energy()
+    E = total_elastic_strain_energy()
+    K = total_kinetic_energy()
     if my_rank == 0:  # DEBUG
         print(f"Timestep {n + 1}/{nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; Pe_th = {maxPe_thermal:0.2g}; Co_th = {maxCo_thermal:0.2g}; Pe_mech = {maxPe_mech:0.2g}; Co_mech = {maxCo_mech:0.2g}; max cooling rate = {maxh:0.2g} W/m²; E = ∫ (1/2) σ:εel dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
 
