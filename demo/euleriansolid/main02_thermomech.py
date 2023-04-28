@@ -49,6 +49,8 @@ from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T, H1_tol, maxit,
                      vis_T_filename, sol_T_filename,
                      vis_dTdt_filename, sol_dTdt_filename,
                      vis_σ_filename, sol_σ_filename,
+                     vis_εu_filename, sol_εu_filename,
+                     vis_εv_filename, sol_εv_filename,
                      vis_vonMises_filename,
                      fig_output_dir, fig_basename, fig_format)
 
@@ -444,13 +446,16 @@ xdmffile_v = XDMFFile(MPI.comm_world, vis_v_filename)
 xdmffile_T = XDMFFile(MPI.comm_world, vis_T_filename)
 xdmffile_dTdt = XDMFFile(MPI.comm_world, vis_dTdt_filename)
 xdmffile_σ = XDMFFile(MPI.comm_world, vis_σ_filename)
+xdmffile_εu = XDMFFile(MPI.comm_world, vis_εu_filename)
+xdmffile_εv = XDMFFile(MPI.comm_world, vis_εv_filename)
 
 # ParaView doesn't have a filter for von Mises stress, so we compute it ourselves.
 # This is only for visualization.
 xdmffile_vonMises = XDMFFile(MPI.comm_world, vis_vonMises_filename)
 vonMises = Function(Q_rank0, name="vonMises")
 
-for xdmffile in (xdmffile_u, xdmffile_v, xdmffile_T, xdmffile_dTdt, xdmffile_σ, xdmffile_vonMises):
+for xdmffile in (xdmffile_u, xdmffile_v, xdmffile_T, xdmffile_dTdt,
+                 xdmffile_σ, xdmffile_vonMises, xdmffile_εu, xdmffile_εv):
     xdmffile.parameters["flush_output"] = True
     xdmffile.parameters["rewrite_function_mesh"] = False
 del xdmffile  # clean up loop counter from module-global scope
@@ -461,6 +466,10 @@ timeseries_v = TimeSeries(sol_v_filename)
 timeseries_T = TimeSeries(sol_T_filename)
 timeseries_dTdt = TimeSeries(sol_dTdt_filename)
 timeseries_σ = TimeSeries(sol_σ_filename)
+timeseries_εu = TimeSeries(sol_εu_filename)
+timeseries_εv = TimeSeries(sol_εv_filename)
+
+# von Mises stress has no time series, because it's easily computed in FEniCS, given the stress field.
 
 # Create progress bar
 progress = Progress('Time-stepping', nt)
@@ -807,7 +816,7 @@ def plotit():
         print("DEBUG: plotting done")
 
 
-def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
+def export_fields(u_, v_, T_, dTdt_, σ_, εu_, εv_, *, t):
     """Export solution fields to `.xdmf`."""
 
     if highres_export_V_rank1:
@@ -862,14 +871,30 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
         xdmffile_T.write(T_, t)
         xdmffile_dTdt.write(dTdt_, t)
 
+    # The fields that live on Q live on a non-mixed space, so here we don't need any special processing.
     if highres_export_Q_rank2:
-        # The stress lives on a non-mixed space, so here we don't need any special processing.
         σ_.vector().gather(q_rank2_vec_copy, all_Q_rank2_dofs)
         q_rank2_P1.vector()[:] = q_rank2_vec_copy[my_Q_rank2_dofs]
         q_rank2_P1.rename(fields["σ"].name(), "a Function")
         xdmffile_σ.write(q_rank2_P1, t)
     else:  # save at P1 resolution
         xdmffile_σ.write(σ_, t)
+
+    if highres_export_Q_rank2:
+        εu_.vector().gather(q_rank2_vec_copy, all_Q_rank2_dofs)
+        q_rank2_P1.vector()[:] = q_rank2_vec_copy[my_Q_rank2_dofs]
+        q_rank2_P1.rename(fields["ε"].name(), "a Function")
+        xdmffile_εu.write(q_rank2_P1, t)
+    else:  # save at P1 resolution
+        xdmffile_εu.write(εu_, t)
+
+    if highres_export_Q_rank2:
+        εv_.vector().gather(q_rank2_vec_copy, all_Q_rank2_dofs)
+        q_rank2_P1.vector()[:] = q_rank2_vec_copy[my_Q_rank2_dofs]
+        q_rank2_P1.rename(fields["dε/dt"].name(), "a Function")
+        xdmffile_εv.write(q_rank2_P1, t)
+    else:  # save at P1 resolution
+        xdmffile_εv.write(εv_, t)
 
     # compute von Mises stress for visualization in ParaView
     # TODO: export von Mises stress at full nodal resolution, too
@@ -1036,15 +1061,19 @@ for n in range(nt):
     T_ = fields["T"]
     dTdt_ = fields["dT/dt"]
     σ_ = fields["σ"]
+    εu_ = fields["ε"]
+    εv_ = fields["dε/dt"]
 
     if n % nsavemod == 0 or n == nt - 1:
         begin("Saving")
-        export_fields(u_, v_, T_, dTdt_, σ_, t=t)
+        export_fields(u_, v_, T_, dTdt_, σ_, εu_, εv_, t=t)
         timeseries_u.store(u_.vector(), t)  # the timeseries saves the original data
         timeseries_v.store(v_.vector(), t)
         timeseries_T.store(T_.vector(), t)
         timeseries_dTdt.store(dTdt_.vector(), t)
         timeseries_σ.store(σ_.vector(), t)
+        timeseries_εu.store(εu_.vector(), t)
+        timeseries_εv.store(εv_.vector(), t)
         end()
 
     end()

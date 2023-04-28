@@ -266,6 +266,8 @@ vis_T_filename = "demo/output/euleriansolid/temperature.xdmf"
 vis_dTdt_filename = "demo/output/euleriansolid/temperature_rate.xdmf"
 vis_σ_filename = "demo/output/euleriansolid/stress.xdmf"
 vis_vonMises_filename = "demo/output/euleriansolid/vonMises.xdmf"  # von Mises stress
+vis_εu_filename = "demo/output/euleriansolid/strain.xdmf"
+vis_εv_filename = "demo/output/euleriansolid/strain_rate.xdmf"
 
 # For loading into other solvers written using FEniCS. The file extension `.h5` is added automatically.
 sol_u_filename = "demo/output/euleriansolid/displacement_series"
@@ -273,6 +275,8 @@ sol_v_filename = "demo/output/euleriansolid/velocity_series"
 sol_T_filename = "demo/output/euleriansolid/temperature_series"
 sol_dTdt_filename = "demo/output/euleriansolid/temperature_rate_series"
 sol_σ_filename = "demo/output/euleriansolid/stress_series"
+sol_εu_filename = "demo/output/euleriansolid/strain_series"
+sol_εv_filename = "demo/output/euleriansolid/strain_rate_series"
 
 # For auto-saving visualization screenshots (from dynamic solvers)
 fig_output_dir = "demo/output/euleriansolid/"
