@@ -531,6 +531,8 @@ plt.ion()
 # Prepare export
 
 # HACK: Arrange things to allow exporting the velocity field at full nodal resolution.
+# TODO: For the primal solver, which uses a mixed space with u_and_v, this doesn't work.
+# See the advanced solver (main02_thermomech.py) for how to fix this; basically, use a `FunctionAssigner` to extract the subfields first, then export the copies.
 all_V_dofs = np.array(range(V.dim()), "intc")
 all_Q_dofs = np.array(range(Q.dim()), "intc")
 v_vec_copy = Vector(MPI.comm_self)  # MPI-local, for receiving global DOF data on V
