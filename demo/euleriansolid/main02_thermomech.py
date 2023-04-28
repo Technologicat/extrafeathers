@@ -103,20 +103,20 @@ with timer() as tim:
 
     W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
     he = meshfunction.cell_mf_to_expression(meshfunction.meshsize(mesh))
-    avg_he = float(project(he, W)) / A
+    mean_he = float(project(he, W)) / A
 
 if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
     print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}] m, y ∈ [{ymin:0.6g}, {ymax:0.6g}] m.")
     print(f"Domain length L = {L:0.6g} m; timestep Δt = {dt} s")
 
-    print(f"Mean of longest edge length in mesh {avg_he:0.6g} m")
-    print(f"With elements of average size: {1 / avg_he:0.6g} el/m; {L / avg_he:0.6g} el over domain length")
+    print(f"Mean of longest edge length in mesh {mean_he:0.6g} m")
+    print(f"With elements of mean size: {1 / mean_he:0.6g} el/m; {L / mean_he:0.6g} el over domain length")
 
     print(f"At reference temperature T0 = {T0:0.6g} K, Young modulus E(T0) = {E_func(T0):0.6g} Pa")
     print("Longitudinal elastic waves:")
     print(f"    Propagation speed at reference temperature v_el(T0) = {v_el_T0:0.6g} m/s (one domain length in {L / v_el_T0:0.6g} s)")
-    print(f"    Courant number at reference temperature Co(T0) = {v_el_T0 * dt / avg_he:0.6g}")
+    print(f"    Courant number at reference temperature Co(T0) = {v_el_T0 * dt / mean_he:0.6g}")
 
 # --------------------------------------------------------------------------------
 # Set up the solvers
