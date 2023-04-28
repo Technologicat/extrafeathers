@@ -156,7 +156,7 @@ for n in range(nt):
         # How we do it in MPI mode (see main01_flow.py for full explanation):
         solver.u_.vector().gather(u_copy, all_V_dofs)
         u_P1.vector()[:] = u_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        u_P1.rename(solver.u_.name)
+        u_P1.rename(solver.u_.name, "a Function")
 
         xdmffile_T.write(u_P1, t)
     else:  # save at P1 resolution

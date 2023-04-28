@@ -969,13 +969,13 @@ def export_fields(u_, v_, σ_, *, t):
         # Save the displacement visualization at full nodal resolution.
         u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
         v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        v_P1.rename(fields[type(solver)]["u"](solver).name)
+        v_P1.rename(fields[type(solver)]["u"](solver).name, "a Function")
         xdmffile_u.write(v_P1, t)
 
         # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
         v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
         v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        v_P1.rename(fields[type(solver)]["v"](solver).name)
+        v_P1.rename(fields[type(solver)]["v"](solver).name, "a Function")
         xdmffile_v.write(v_P1, t)
     else:  # save at P1 resolution
         xdmffile_u.write(u_, t)
@@ -984,7 +984,7 @@ def export_fields(u_, v_, σ_, *, t):
     if highres_export_Q:
         σ_.vector().gather(q_vec_copy, all_Q_dofs)
         q_P1.vector()[:] = q_vec_copy[my_Q_dofs]
-        q_P1.rename(fields[type(solver)]["σ"](solver).name)
+        q_P1.rename(fields[type(solver)]["σ"](solver).name, "a Function")
         xdmffile_σ.write(q_P1, t)
     else:  # save at P1 resolution
         xdmffile_σ.write(σ_, t)
