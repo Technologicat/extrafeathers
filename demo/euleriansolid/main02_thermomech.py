@@ -86,6 +86,9 @@ V_rank0 = V_rank1.sub(0).collapse()
 Q_rank2 = TensorFunctionSpace(mesh, 'DP', 0)
 Q_rank0 = Q_rank2.sub(0).collapse()
 
+# Function space of ℝ (single global DOF), for computing summary statistics integrated over the whole domain.
+W = FunctionSpace(mesh, "R", 0)
+
 # Start by detecting the bounding box - this can be used e.g. for fixing the
 # displacement on a line inside the domain.
 with timer() as tim:
@@ -101,7 +104,6 @@ with timer() as tim:
     A = L * W
     v_el_T0 = (E_func(T0) / rho)**0.5
 
-    W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
     he = meshfunction.cell_mf_to_expression(meshfunction.meshsize(mesh))
     mean_he = float(project(he, W)) / A
 
@@ -522,7 +524,6 @@ def roundsig(x, significant_digits):
     decimal_digits = significant_digits - digits_in_int_part
     return round(x, decimal_digits)
 
-W = FunctionSpace(mesh, "R", 0)  # Function space of ℝ (single global DOF)
 def elastic_strain_energy():
     """Compute and return total elastic strain energy, ∫ (1/2) σ : εel dΩ  [J].
 
