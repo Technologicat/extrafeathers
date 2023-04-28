@@ -144,6 +144,10 @@ enable_SUPG = True
 # show_mesh = True
 show_mesh = False
 
+# Project dG0 fields (strains, stress) onto P1 elements for visualization?
+# This effectively patch-averages them, thus eliminating most checkerboard artifacts.
+project_dG0_fields = False
+
 # Solver mode (main01_solve only):
 #   `True`: run dynamic simulation
 #   `False`: solve for steady state

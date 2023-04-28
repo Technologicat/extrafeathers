@@ -40,7 +40,7 @@ from extrafeathers.pdes.eulerian_solid_advanced import ε
 from extrafeathers.pdes.numutil import mag, Minn
 from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T, H1_tol, maxit,
                      E_func, lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
-                     nsave_total, vis_every, enable_SUPG, show_mesh,
+                     nsave_total, vis_every, enable_SUPG, show_mesh, project_dG0_fields,
                      mechanical_solver_enabled, thermal_solver_enabled,
                      Boundaries,
                      mesh_filename,
@@ -685,102 +685,106 @@ def plotit():
              row=1, col=1,
              name=f"v2 ≡ {dtext}u2/{dtext}t", title=f"$v_{{2}} \\equiv {dlatex} u_{{2}} / {dlatex} t$ [m/s]", vrange_func=symmetric_vrange)
 
-    # TEST: eliminate checkerboard pattern by postprocessing the dG0 function onto a C0 continuous space
-    plot_one(project(ε_.sub(0), V_rank0), prep_V_rank0,
-             row=0, col=2,
-             name="ε11", title=r"$\varepsilon_{11}$", vrange_func=symmetric_vrange)
-    plot_one(project(ε_.sub(1), V_rank0), prep_V_rank0,
-             row=1, col=2,
-             name="ε12", title=r"$\varepsilon_{12}$", vrange_func=symmetric_vrange)
-    plot_one(project(ε_.sub(3), V_rank0), prep_V_rank0,
-             row=2, col=2,
-             name="ε22", title=r"$\varepsilon_{22}$", vrange_func=symmetric_vrange)
+    if project_dG0_fields:
+        # eliminate checkerboard pattern by postprocessing the dG0 function onto a C0 continuous space
+        plot_one(project(ε_.sub(0), V_rank0), prep_V_rank0,
+                 row=0, col=2,
+                 name="ε11", title=r"$\varepsilon_{11}$", vrange_func=symmetric_vrange)
+        plot_one(project(ε_.sub(1), V_rank0), prep_V_rank0,
+                 row=1, col=2,
+                 name="ε12", title=r"$\varepsilon_{12}$", vrange_func=symmetric_vrange)
+        plot_one(project(ε_.sub(3), V_rank0), prep_V_rank0,
+                 row=2, col=2,
+                 name="ε22", title=r"$\varepsilon_{22}$", vrange_func=symmetric_vrange)
+    else:
+        plot_one(ε_.sub(0), prep_Q_rank2_comp00,
+                 row=0, col=2,
+                 name="ε11", title=r"$\varepsilon_{11}$", vrange_func=symmetric_vrange)
+        plot_one(ε_.sub(1), prep_Q_rank2_comp01,
+                 row=1, col=2,
+                 name="ε12", title=r"$\varepsilon_{12}$", vrange_func=symmetric_vrange)
+        # # ε21 = ε12, if the solver works correctly
+        # plot_one(ε_.sub(2), prep_Q_rank2_comp10,
+        #          row=XXX, col=XXX,
+        #          name="ε21", title=r"$\varepsilon_{21}$", vrange_func=symmetric_vrange)
+        plot_one(ε_.sub(3), prep_Q_rank2_comp11,
+                 row=2, col=2,
+                 name="ε22", title=r"$\varepsilon_{22}$", vrange_func=symmetric_vrange)
 
-    # plot_one(ε_.sub(0), prep_Q_rank2_comp00,
-    #          row=0, col=2,
-    #          name="ε11", title=r"$\varepsilon_{11}$", vrange_func=symmetric_vrange)
-    # plot_one(ε_.sub(1), prep_Q_rank2_comp01,
-    #          row=1, col=2,
-    #          name="ε12", title=r"$\varepsilon_{12}$", vrange_func=symmetric_vrange)
-    # # # ε21 = ε12, if the solver works correctly
-    # # plot_one(ε_.sub(2), prep_Q_rank2_comp10,
-    # #          row=XXX, col=XXX,
-    # #          name="ε21", title=r"$\varepsilon_{21}$", vrange_func=symmetric_vrange)
-    # plot_one(ε_.sub(3), prep_Q_rank2_comp11,
-    #          row=2, col=2,
-    #          name="ε22", title=r"$\varepsilon_{22}$", vrange_func=symmetric_vrange)
+    if project_dG0_fields:
+        plot_one(project(dεdt_.sub(0), V_rank0), prep_V_rank0,
+                 row=0, col=3,
+                 name=f"{dtext}ε11/{dtext}t", title=f"${dlatex} \\varepsilon_{{11}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
+        plot_one(project(dεdt_.sub(1), V_rank0), prep_V_rank0,
+                 row=1, col=3,
+                 name=f"{dtext}ε12/{dtext}t", title=f"${dlatex} \\varepsilon_{{12}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
+        plot_one(project(dεdt_.sub(3), V_rank0), prep_V_rank0,
+                 row=2, col=3,
+                 name=f"{dtext}ε22/{dtext}t", title=f"${dlatex} \\varepsilon_{{22}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
+    else:
+        plot_one(dεdt_.sub(0), prep_Q_rank2_comp00,
+                 row=0, col=3,
+                 name=f"{dtext}ε11/{dtext}t", title=f"${dlatex} \\varepsilon_{{11}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
+        plot_one(dεdt_.sub(1), prep_Q_rank2_comp01,
+                 row=1, col=3,
+                 name=f"{dtext}ε12/{dtext}t", title=f"${dlatex} \\varepsilon_{{12}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
+        # # dεdt21 = dεdt12, if the solver works correctly
+        # plot_one(dεdt_.sub(2), prep_Q_rank2_comp10,
+        #          row=XXX, col=XXX,
+        #          name=f"{dtext}ε21/{dtext}t", title=f"${dlatex} \\varepsilon_{{21}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
+        plot_one(dεdt_.sub(3), prep_Q_rank2_comp11,
+                 row=2, col=3,
+                 name=f"{dtext}ε22/{dtext}t", title=f"${dlatex} \\varepsilon_{{22}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
 
-    # TEST: eliminate checkerboard pattern by postprocessing the dG0 function onto a C0 continuous space
-    plot_one(project(dεdt_.sub(0), V_rank0), prep_V_rank0,
-             row=0, col=3,
-             name=f"{dtext}ε11/{dtext}t", title=f"${dlatex} \\varepsilon_{{11}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
-    plot_one(project(dεdt_.sub(1), V_rank0), prep_V_rank0,
-             row=1, col=3,
-             name=f"{dtext}ε12/{dtext}t", title=f"${dlatex} \\varepsilon_{{12}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
-    plot_one(project(dεdt_.sub(3), V_rank0), prep_V_rank0,
-             row=2, col=3,
-             name=f"{dtext}ε22/{dtext}t", title=f"${dlatex} \\varepsilon_{{22}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
+    if project_dG0_fields:
+        plot_one(project(σ_.sub(0), V_rank0), prep_V_rank0,
+                 row=0, col=4,
+                 name="σ11", title=r"$\sigma_{11}$ [Pa]", vrange_func=symmetric_vrange)
+        plot_one(project(σ_.sub(1), V_rank0), prep_V_rank0,
+                 row=1, col=4,
+                 name="σ12", title=r"$\sigma_{12}$ [Pa]", vrange_func=symmetric_vrange)
+        plot_one(project(σ_.sub(3), V_rank0), prep_V_rank0,
+                 row=2, col=4,
+                 name="σ22", title=r"$\sigma_{22}$ [Pa]", vrange_func=symmetric_vrange)
+    else:
+        plot_one(σ_.sub(0), prep_Q_rank2_comp00,
+                 row=0, col=4,
+                 name="σ11", title=r"$\sigma_{11}$ [Pa]", vrange_func=symmetric_vrange)
+        plot_one(σ_.sub(1), prep_Q_rank2_comp01,
+                 row=1, col=4,
+                 name="σ12", title=r"$\sigma_{12}$ [Pa]", vrange_func=symmetric_vrange)
+        # # σ21 = σ12, if the solver works correctly
+        # plot_one(σ_.sub(2), prep_Q_rank2_comp10,
+        #          row=XXX, col=XXX,
+        #          name="σ21", title=r"$\sigma_{21}$ [Pa]", vrange_func=symmetric_vrange)
+        plot_one(σ_.sub(3), prep_Q_rank2_comp11,
+                 row=2, col=4,
+                 name="σ22", title=r"$\sigma_{22}$ [Pa]", vrange_func=symmetric_vrange)
 
-    # plot_one(dεdt_.sub(0), prep_Q_rank2_comp00,
-    #          row=0, col=3,
-    #          name=f"{dtext}ε11/{dtext}t", title=f"${dlatex} \\varepsilon_{{11}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
-    # plot_one(dεdt_.sub(1), prep_Q_rank2_comp01,
-    #          row=1, col=3,
-    #          name=f"{dtext}ε12/{dtext}t", title=f"${dlatex} \\varepsilon_{{12}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
-    # # # dεdt21 = dεdt12, if the solver works correctly
-    # # plot_one(dεdt_.sub(2), prep_Q_rank2_comp10,
-    # #          row=XXX, col=XXX,
-    # #          name=f"{dtext}ε21/{dtext}t", title=f"${dlatex} \\varepsilon_{{21}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
-    # plot_one(dεdt_.sub(3), prep_Q_rank2_comp11,
-    #          row=2, col=3,
-    #          name=f"{dtext}ε22/{dtext}t", title=f"${dlatex} \\varepsilon_{{22}} / {dlatex} t$ [1/s]", vrange_func=symmetric_vrange)
-
-    # TEST: eliminate checkerboard pattern by postprocessing the dG0 function onto a C0 continuous space
-    plot_one(project(σ_.sub(0), V_rank0), prep_V_rank0,
-             row=0, col=4,
-             name="σ11", title=r"$\sigma_{11}$ [Pa]", vrange_func=symmetric_vrange)
-    plot_one(project(σ_.sub(1), V_rank0), prep_V_rank0,
-             row=1, col=4,
-             name="σ12", title=r"$\sigma_{12}$ [Pa]", vrange_func=symmetric_vrange)
-    plot_one(project(σ_.sub(3), V_rank0), prep_V_rank0,
-             row=2, col=4,
-             name="σ22", title=r"$\sigma_{22}$ [Pa]", vrange_func=symmetric_vrange)
-
-    # plot_one(σ_.sub(0), prep_Q_rank2_comp00,
-    #          row=0, col=4,
-    #          name="σ11", title=r"$\sigma_{11}$ [Pa]", vrange_func=symmetric_vrange)
-    # plot_one(σ_.sub(1), prep_Q_rank2_comp01,
-    #          row=1, col=4,
-    #          name="σ12", title=r"$\sigma_{12}$ [Pa]", vrange_func=symmetric_vrange)
-    # # # σ21 = σ12, if the solver works correctly
-    # # plot_one(σ_.sub(2), prep_Q_rank2_comp10,
-    # #          row=XXX, col=XXX,
-    # #          name="σ21", title=r"$\sigma_{21}$ [Pa]", vrange_func=symmetric_vrange)
-    # plot_one(σ_.sub(3), prep_Q_rank2_comp11,
-    #          row=2, col=4,
-    #          name="σ22", title=r"$\sigma_{22}$ [Pa]", vrange_func=symmetric_vrange)
-
-    # We actually plot the difference to the reference temperature, to be able to judge heating/cooling easily.
-    T_minus_T0 = project(T_ - Constant(T0), V_rank0)
-    plot_one(T_minus_T0, prep_V_rank0,
-             row=2, col=0,
-             name="T - T0", title=r"$T - T_0$ [K]", vrange_func=symmetric_vrange)
-    plot_one(dTdt_, prep_mixedV_rank0_subfield1,
-             row=2, col=1,
-             name=f"{dtext}T/{dtext}t", title=f"${dlatex} T / {dlatex} t$ [K/s]", vrange_func=symmetric_vrange)
-
-    # TODO: Do we want an energy visualization? If so, rethink plot layout.
-    # # In the original pure mechanical variant, we used to have 13 plots, but 15 subplot slots,
-    # # so we used the last two to plot the energy. But the thermomechanical variant of the model has 15 plots.
-    # # Could also be useful to see the thermal and mechanical strains separately.
-    # E = project(elastic_strain_energy(), Q_rank0)
-    # plot_one(E, prep_Q_rank0,
-    #          row=2, col=0,
-    #          name="elastic strain energy", title=r"$(1/2) \sigma : \varepsilon_{\mathrm{el}}$ [J/m³]", vrange_func=vrange, cmap="viridis")
-    # K = project(kinetic_energy(), V_rank0)  # kinetic energy (as seen by observer in axially co-moving frame)
-    # plot_one(K, prep_V_rank0,
-    #          row=2, col=1,
-    #          name"kinetic energy", title=r"$(1/2) \rho v^2$ [J/m³]", vrange_func=vrange, cmap="viridis")
+    if thermal_solver_enabled:
+        # We actually plot the difference to the reference temperature, to be able to judge heating/cooling easily.
+        T_minus_T0 = project(T_ - Constant(T0), V_rank0)
+        plot_one(T_minus_T0, prep_V_rank0,
+                 row=2, col=0,
+                 name="T - T0", title=r"$T - T_0$ [K]", vrange_func=symmetric_vrange)
+        plot_one(dTdt_, prep_mixedV_rank0_subfield1,
+                 row=2, col=1,
+                 name=f"{dtext}T/{dtext}t", title=f"${dlatex} T / {dlatex} t$ [K/s]", vrange_func=symmetric_vrange)
+    else:
+        if project_dG0_fields:
+            E = project(elastic_strain_energy(), V_rank0)
+            plot_one(E, prep_V_rank0,
+                     row=2, col=0,
+                     name="elastic strain energy", title=r"$(1/2) \sigma : \varepsilon_{\mathrm{el}}$ [J/m³]", vrange_func=vrange, cmap="viridis")
+        else:
+            E = project(elastic_strain_energy(), Q_rank0)
+            plot_one(E, prep_Q_rank0,
+                     row=2, col=0,
+                     name="elastic strain energy", title=r"$(1/2) \sigma : \varepsilon_{\mathrm{el}}$ [J/m³]", vrange_func=vrange, cmap="viridis")
+        K = project(kinetic_energy(), V_rank0)  # kinetic energy (as seen by observer in axially co-moving frame)
+        plot_one(K, prep_V_rank0,
+                 row=2, col=1,
+                 name="kinetic energy", title=r"$(1/2) \rho v^2$ [J/m³]", vrange_func=vrange, cmap="viridis")
 
     # figure title (progress message)
     if my_rank == 0:
