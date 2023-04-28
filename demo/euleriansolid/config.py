@@ -144,7 +144,8 @@ enable_SUPG = True
 # show_mesh = True
 show_mesh = False
 
-# Project dG0 fields (strains, stress) onto P1 elements for visualization?
+# Project strain, stress, elastic energy onto V function space for visualization?
+# This is useful when V is P1, and those fields are dG0.
 # This effectively patch-averages them, thus eliminating most checkerboard artifacts.
 project_dG0_fields = False
 
