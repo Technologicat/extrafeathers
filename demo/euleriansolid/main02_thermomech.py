@@ -69,11 +69,13 @@ mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_f
 # it follows that also  σ ∈ C⁻¹.
 #
 # Thus when V is P1, the natural choice for Q is the piecewise constant space DP0.
+# When V is P2, the natural choice for Q is P1.
 #
 # Also note that this choice would not satisfy the relevant inf-sup condition
-# were we to use a mixed method to solve the linear momentum balance.
-# But we actually solve using a primal formulation, and Q is used only
-# for visualizing results, so it's ok.
+# were we to use a mixed method to solve the linear momentum balance (in
+# classical structural mechanics, the space for Cauchy stress needs to have
+# many more DOFs than the space for displacement). But we actually solve using
+# a primal formulation, and Q is used only for visualizing results, so it's ok.
 #
 # The solvers use a mixed function space, built from copies of these spaces:
 #   - `u` is allocated one `V_rank1` space, and `du/dt` is allocated another.
@@ -804,13 +806,25 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
 
     if highres_export_V_rank1:
         # Save the displacement visualization at full nodal resolution.
-        u_.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `u_` to `v_rank1_vec_copy`
+        #
+        # But because `u` and `du/dt` live on the same mixed space, we must extract the subfields first
+        # into separate fields on two non-mixed spaces.
+        #
+        # FunctionAssigner(receiving_space, assigning_space)
+        u_tmp = Function(V_rank1)
+        v_tmp = Function(V_rank1)
+        assigner = FunctionAssigner([u_tmp.function_space(),
+                                     v_tmp.function_space()],
+                                    linmom_solver.S)  # mixed function space of mechanical solver, containing both u and du/dt
+        assigner.assign([u_tmp, v_tmp], linmom_solver.s_)
+
+        u_tmp.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `u_tmp` to `v_rank1_vec_copy`
         v_rank1_P1.vector()[:] = v_rank1_vec_copy[my_V_rank1_dofs]  # LHS MPI-local; RHS global
         v_rank1_P1.rename(fields["u"].name(), "a Function")
         xdmffile_u.write(v_rank1_P1, t)
 
         # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
-        v_.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `v_` to `v_rank1_vec_copy`
+        v_tmp.vector().gather(v_rank1_vec_copy, all_V_rank1_dofs)  # allgather `v_tmp` to `v_rank1_vec_copy`
         v_rank1_P1.vector()[:] = v_rank1_vec_copy[my_V_rank1_dofs]  # LHS MPI-local; RHS global
         v_rank1_P1.rename(fields["du/dt"].name(), "a Function")
         xdmffile_v.write(v_rank1_P1, t)
@@ -819,14 +833,22 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
         xdmffile_v.write(v_, t)
 
     if highres_export_V_rank0:
+        # Same here - extract `T` and `dT/dt` from the mixed space.
+        T_tmp = Function(V_rank0)
+        dTdt_tmp = Function(V_rank0)
+        assigner = FunctionAssigner([T_tmp.function_space(),
+                                     dTdt_tmp.function_space()],
+                                    thermal_solver.S)  # mixed function space of thermal solver, containing both T and dT/dt
+        assigner.assign([T_tmp, dTdt_tmp], thermal_solver.s_)
+
         # Save the displacement visualization at full nodal resolution.
-        T_.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `T_` to `v_rank0_vec_copy`
+        T_tmp.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `T_tmp` to `v_rank0_vec_copy`
         v_rank0_P1.vector()[:] = v_rank0_vec_copy[my_V_rank0_dofs]  # LHS MPI-local; RHS global
         v_rank0_P1.rename(fields["T"].name(), "a Function")
         xdmffile_T.write(v_rank0_P1, t)
 
         # `dT/dt` lives on a copy of the same function space as `T`; recycle the temporary vector
-        dTdt_.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `dTdt_` to `v_rank0_vec_copy`
+        dTdt_tmp.vector().gather(v_rank0_vec_copy, all_V_rank0_dofs)  # allgather `dTdt_` to `v_rank0_vec_copy`
         v_rank0_P1.vector()[:] = v_rank0_vec_copy[my_V_rank0_dofs]  # LHS MPI-local; RHS global
         v_rank0_P1.rename(fields["dT/dt"].name(), "a Function")
         xdmffile_dTdt.write(v_rank0_P1, t)
@@ -835,6 +857,7 @@ def export_fields(u_, v_, T_, dTdt_, σ_, *, t):
         xdmffile_dTdt.write(dTdt_, t)
 
     if highres_export_Q_rank2:
+        # The stress lives on a non-mixed space, so here we don't need any special processing.
         σ_.vector().gather(q_rank2_vec_copy, all_Q_rank2_dofs)
         q_rank2_P1.vector()[:] = q_rank2_vec_copy[my_Q_rank2_dofs]
         q_rank2_P1.rename(fields["σ"].name(), "a Function")
