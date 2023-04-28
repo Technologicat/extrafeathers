@@ -48,6 +48,24 @@ mu = E / (2 * (1 + ν))                   # shear modulus [Pa]
 #
 # This section is for the thermomechanical solver, main02_thermomech.
 
+# The components of the multiphysics solver can be turned off individually.
+# This is useful for:
+#   - Experimenting with different boundary conditions for just one part of the problem
+#     (to find good ones to use for the coupled problem).
+#   - Numerical debugging, to see whether an issue arises from a subproblem, or from
+#     the coupling between the subproblems.
+#
+# Disabling a component here will turn off the send of external fields into the disabled component,
+# as well as the actual solve step for the disabled component (the field will remain at its initial value).
+# The rest of the code will run the same, including any initialization and plotting.
+#
+# Except, this may affect what is plotted:
+#   - When the thermal solver is enabled, the temperature and temperature material rate are plotted.
+#   - When the thermal solver is disabled, these plots are replaced by elastic energy and kinetic energy
+#     (eliminating empty subplot slots in the visualization sheet).
+mechanical_solver_enabled = True
+thermal_solver_enabled = True
+
 # ρ, ν, and τ are still constant in this model, but λ and μ may now depend on temperature.
 # We also have the thermal parameters α, c, and k, which may depend on temperature.
 

@@ -41,6 +41,7 @@ from extrafeathers.pdes.numutil import mag, Minn
 from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T, H1_tol, maxit,
                      E_func, lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
                      nsave_total, vis_every, enable_SUPG, show_mesh,
+                     mechanical_solver_enabled, thermal_solver_enabled,
                      Boundaries,
                      mesh_filename,
                      vis_u_filename, sol_u_filename,
@@ -420,6 +421,10 @@ thermal_solver.h_n.assign(thermal_solver.h_)  # Not a mixed space, so we can cop
 linmom_solver.stabilizers.SUPG = enable_SUPG  # stabilizer for advection-dominant problems
 thermal_solver.stabilizers.SUPG = enable_SUPG
 SUPG_str = "[SUPG] " if enable_SUPG else ""  # for messages
+
+mechanical_solver_str = "[mech] " if mechanical_solver_enabled else ""
+thermal_solver_str = "[therm] " if thermal_solver_enabled else ""
+solvers_str = f"{mechanical_solver_str}{thermal_solver_str}"
 
 # https://fenicsproject.org/qa/1124/is-there-a-way-to-set-the-inital-guess-in-the-krylov-solver/
 parameters['krylov_solver']['nonzero_initial_guess'] = True
@@ -929,33 +934,47 @@ for n in range(nt):
     while not converged:
         n_system_iterations += 1
 
-        # Mechanical substep
-        linmom_solver.step()
+        if mechanical_solver_enabled:
+            # Mechanical substep
+            linmom_solver.step()
 
-        # Send updated external fields to thermal solver.
-        # Cauchy stress.
-        linmom_solver.export_stress()
-        thermal_solver.σ_.assign(linmom_solver.σ_)
-        # Advection velocity.
-        # NOTE: The thermal solver needs material parcel velocity with respect to the *laboratory* frame.
-        # NOTE: This is the axial velocity, plus the material parcel velocity with respect to the *co-moving* frame.
-        thermal_solver.a_.assign(project(linmom_solver.a + linmom_solver.v_,
-                                         thermal_solver.a_.function_space()))
+        if thermal_solver_enabled:
+            # Send updated external fields to thermal solver.
+            # Cauchy stress.
+            #
+            # NOTE: If only the thermal solver is enabled, the material will seem to experience a nonzero isotropic stress state,
+            # although its total strain is zero.
+            #
+            # This is caused by the thermal strain. Because the total displacement is zero (mechanical solver disabled), the Cauchy stress
+            # calculation yields, correctly, that there must be an elastic strain that exactly cancels the thermal expansion/contraction,
+            # thereby making the total strain zero. It is this elastic strain that produces the Cauchy stress.
+            #
+            # In other words, when only the thermal solver is enabled, the Cauchy stress field shows how much stress would have to be applied
+            # to keep the total strain at zero (i.e. to cancel the thermal expansion/contraction).
+            #
+            linmom_solver.export_stress()
+            thermal_solver.σ_.assign(linmom_solver.σ_)
+            # Advection velocity.
+            # NOTE: The thermal solver needs material parcel velocity with respect to the *laboratory* frame.
+            # NOTE: This is the axial velocity, plus the material parcel velocity with respect to the *co-moving* frame.
+            thermal_solver.a_.assign(project(linmom_solver.a + linmom_solver.v_,
+                                             thermal_solver.a_.function_space()))
 
-        # Thermal substep
-        thermal_solver.step()
+            # Thermal substep
+            thermal_solver.step()
 
-        # Update cooling term for next iteration
-        update_cooling()
+            # Update cooling term for next iteration
+            update_cooling()
 
-        # Send updated external fields to mechanical solver
-        # Could do this:
-        #     linmom_solver.T_.assign(project(thermal_solver.s_.sub(0),
-        #                                     linmom_solver.T_.function_space()))
-        #     linmom_solver.dTdt_.assign(project(thermal_solver.s_.sub(1),
-        #                                        linmom_solver.dTdt_.function_space()))
-        # But there's a more civilized way - use a FunctionAssigner:
-        assigner.assign([linmom_solver.T_, linmom_solver.dTdt_], thermal_solver.s_)
+        if mechanical_solver_enabled:
+            # Send updated external fields to mechanical solver
+            # Could do this:
+            #     linmom_solver.T_.assign(project(thermal_solver.s_.sub(0),
+            #                                     linmom_solver.T_.function_space()))
+            #     linmom_solver.dTdt_.assign(project(thermal_solver.s_.sub(1),
+            #                                        linmom_solver.dTdt_.function_space()))
+            # But there's a more civilized way - use a FunctionAssigner:
+            assigner.assign([linmom_solver.T_, linmom_solver.dTdt_], thermal_solver.s_)
 
         # Monitor the convergence of the system iteration.
         H1_diffs = {"u": errnorm(linmom_solver.s_.sub(0), linmom_solver.s_prev.sub(0), "h1"),
@@ -1109,7 +1128,7 @@ for n in range(nt):
         max_vis_step_walltime = item_with_max_vis_step_walltime[0]
 
     # msg for *next* timestep. Loop-and-a-half situation...
-    msg = f"{SUPG_str}{n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n_system_iterations} iterations; $\\mathrm{{Pe}}_\\mathrm{{th}}$ = {maxPe_thermal:0.2g}; $\\mathrm{{Co}}_\\mathrm{{th}}$ = {maxCo_thermal:0.2g}; $\\mathrm{{Pe}}_\\mathrm{{mech}}$ = {maxPe_mech:0.2g}; $\\mathrm{{Co}}_\\mathrm{{mech}}$ = {maxCo_mech:0.2g}; V₀ = {V0} m/s; τ = {tau:0.3g} s; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
+    msg = f"{solvers_str}{SUPG_str}{n + 2} / {nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; {n_system_iterations} iterations; $\\mathrm{{Pe}}_\\mathrm{{th}}$ = {maxPe_thermal:0.2g}; $\\mathrm{{Co}}_\\mathrm{{th}}$ = {maxCo_thermal:0.2g}; $\\mathrm{{Pe}}_\\mathrm{{mech}}$ = {maxPe_mech:0.2g}; $\\mathrm{{Co}}_\\mathrm{{mech}}$ = {maxCo_mech:0.2g}; V₀ = {V0} m/s; τ = {tau:0.3g} s; vis every {roundsig(max_vis_step_walltime, 2):g} s (plot {last_plot_walltime:0.2g} s); {max_eta}"
 
     # Loop-and-a-half situation, so draw one more time to update title.
     if visualize and my_rank == 0:
