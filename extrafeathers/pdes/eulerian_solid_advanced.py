@@ -516,7 +516,7 @@ class LinearMomentumBalance:
         # TODO: Extend the constitutive model. For details,
         # TODO: see comments in `extrafeathers.pdes.eulerian_solid.SteadyStateEulerianSolidPrimal`.
         #
-        # TODO: Add Neumann BC for `(n·∇)u`; we need a zero normal gradient
+        # TODO: Add Neumann BC for `(n·∇)u`; we might need a zero normal gradient
         # TODO: BC in the analysis of 3D printing. For details,
         # TODO: see comments in `extrafeathers.pdes.eulerian_solid.SteadyStateEulerianSolidPrimal`.
         #
