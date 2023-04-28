@@ -4,8 +4,6 @@
 Thermomechanical variant; models also thermal expansion.
 """
 
-# TODO: make the thermal part optional, to facilitate finding good time integration settings for the mechanical subproblem (before solving coupled problem)
-
 import warnings
 
 import numpy as np
