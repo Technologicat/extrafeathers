@@ -310,7 +310,7 @@ linmom_solver.compile_forms()
 
 T_left = T0
 # T_right = T0
-T_vertical_diff = 10.0  # [K], at left edge, across the domain height
+T_bottom = T0 - 100.0
 
 # Axially moving continuum: specify the temperature of the material parcels that enter the domain at the left.
 # Don't set anything at the right - the default zero Neumann (no change in temperature in axial direction i.e. steady outflow) is appropriate.
@@ -322,7 +322,7 @@ T_vertical_diff = 10.0  # [K], at left edge, across the domain height
 # bcT.append(bcT_left)
 
 from fenics import Expression
-T_profile = Expression("T0 - (1.0 - (x[1] + 0.5)) * T_vertical_diff", degree=1, T0=T0, T_vertical_diff=T_vertical_diff)
+T_profile = Expression("T_bottom + (T_left - T_bottom) * (x[1] + 0.5)", degree=1, T_bottom=T_bottom, T_left=T_left)
 bcT_left = DirichletBC(subspaces["T"], T_profile, boundary_parts, Boundaries.LEFT.value)
 bcT.append(bcT_left)
 
