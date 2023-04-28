@@ -27,8 +27,8 @@ tau = 1e-5         # Kelvin-Voigt retardation time [s], defined by  η = tau E
 #             √(mu / rho) = 2903.0884849832746
 #
 # V0 = 0.0  # Classical case (no axial motion), for debugging and comparison.
-# V0 = 5e-2  # Typical L-PBF 3D printer laser focus spot velocity: 5 cm/s
-V0 = 1.0
+V0 = 5e-2  # Typical L-PBF 3D printer laser focus spot velocity: 5 cm/s
+# V0 = 1.0
 # V0 = 100.0
 # V0 = 500.0  # near maximum stable for the thermomechanical variant
 
