@@ -543,10 +543,6 @@ class LinearMomentumBalance:
         # For equation of `u`, θ-point value of σ, using the unknown fields.
         Σ = cauchy_stress(U, V, T, dTdt)
 
-        # For visualization/export only, end-of-timestep value of σ, using end-of-timestep known values
-        # (usable after solving the new `u` and `v` first).
-        Σ_ = cauchy_stress(u_, v_, T_, dTdt_)
-
         # Set up the equations.
         #
         # Note that in the linear momentum balance law, `a` is the axial drive velocity field,
@@ -577,7 +573,9 @@ class LinearMomentumBalance:
             μ = self.μ(T)
             moo = Maxx(λ, 2 * μ, τ * λ, τ * 2 * μ)  # representative diffusivity (note this is now a FEM field)
             τ_SUPG = (α0 / deg) * (1 / (θ * dt) + 2 * mag(a) / he + 4 * (moo / ρ) / he**2)**-1  # [τ] = s
-            R = (ρ * (dvdt + advs(a, v)) - div(Σ_) - ρ * b)
+            # For SUPG strong-form residual, end-of-timestep value of σ, using the unknown fields.
+            σ_ = cauchy_stress(u, v, T_, dTdt_)
+            R = (ρ * (dvdt + advs(a, v)) - div(σ_) - ρ * b_)
             F_SUPG = enable_SUPG_flag * τ_SUPG * dot(advs(a, w), R) * dx
             F_u += F_SUPG
 
@@ -632,6 +630,9 @@ class LinearMomentumBalance:
         # These become usable after solving the new `u_` and `v_` first.
         #
         # Cauchy stress.
+        # For visualization/export, end-of-timestep value of σ, using end-of-timestep known values.
+        # (usable after solving the new `u` and `v` first).
+        Σ_ = cauchy_stress(u_, v_, T_, dTdt_)
         # This is an L2 projection of the primal representation, into tensor function space `Q`.
         F_σ = (inner(σ, φ) * dx -
                inner(Σ_, sym(φ)) * dx)
