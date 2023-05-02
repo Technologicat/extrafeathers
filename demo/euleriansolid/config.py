@@ -20,8 +20,12 @@ N = 32
 # Length of domain [m]
 L = 1.0
 
-# Aspect ratio (= width / height) of domain.
-# `N` should be integer-divisible by this.
+# Aspect ratio (= width / height) of domain. `N` should be integer-divisible by this.
+#
+# TODO: Extreme aspect ratios (e.g. a few printed layers, over a length of many meters)
+# are better handled by making a square domain, and adjusting the material parameters
+# to make the simulation consider the material as orthotropic. We don't yet support an
+# orthotropic stiffness tensor, so we should add that feature first.
 aspect = 8
 
 # --------------------------------------------------------------------------------
