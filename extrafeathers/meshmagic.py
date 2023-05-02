@@ -792,7 +792,7 @@ def make_mesh(cells: typing.List[typing.List[int]],
     return mesh
 
 
-def trimesh(nx, ny, align="x"):
+def trimesh(nx, ny, align="x", vtxpreproc=None):
     r"""Make this mesh for the unit square (shown here with nx = 3, ny = 2):
 
     +------------+
@@ -810,7 +810,35 @@ def trimesh(nx, ny, align="x"):
 
     If `align="y"`, flip the roles of x and y when generating the mesh, so that
     instead of rows, the triangles will be arranged in columns.
+
+    `vtxpreproc`: callable, np.array -> np.array.
+
+                  Optional preprocessor for vertex coordinates, for things like
+                  x/y scaling (to make a rectangle instead of the unit square)
+                  or shifting (e.g. to center the mesh on the origin), called
+                  just before the data is passed to the actual mesh builder.
+
+                  in/out: rank-2 array of vertex coordinates. E.g. `vtxs[j, 0]`
+                  is the `x` coordinate of vertex `j`, and `vtxs[j, 1]` is its
+                  `y` coordinate.
+
+                  The input vertices cover the unit square [0, 1]².
+
+                  You can modify the array in-place if you want; but it is
+                  important that the return value is the array to be used
+                  (regardless of whether it is the original modified in-place,
+                  or a new one).
     """
+    if align not in ("x", "y"):
+        raise ValueError(f"Expected `align` to be 'x' or 'y'; got {align}")
+    if vtxpreproc is None:
+        vtxpreproc = lambda vtxs: vtxs  # passthrough by default
+
+    # When making columns instead of rows, we transpose in the row-making algorithm,
+    # so in that case we should also swap `nx` and `ny`.
+    if align == "y":
+        ny, nx = nx, ny
+
     hx = 1 / nx
     hy = 1 / ny
     def make_row(j):
@@ -903,7 +931,7 @@ def trimesh(nx, ny, align="x"):
     # plt.axis("equal")
     # plt.show()
 
-    return make_mesh(cells=triangles, dofs=range(len(vtxs)), vertices=vtxs)
+    return make_mesh(cells=triangles, dofs=range(len(vtxs)), vertices=vtxpreproc(np.array(vtxs)))
 
 
 def prepare_linear_export(V: typing.Union[dolfin.FunctionSpace,
