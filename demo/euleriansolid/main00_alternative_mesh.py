@@ -12,7 +12,7 @@ from extrafeathers import autoboundary
 from extrafeathers import meshiowrapper
 from extrafeathers import meshmagic, plotmagic
 
-from .config import mesh_filename, Boundaries
+from .config import mesh_filename, Boundaries, L, aspect
 
 def main():
     assert dolfin.MPI.comm_world.size == 1, "Mesh can only be generated in serial mode, please run without mpirun."
@@ -24,19 +24,32 @@ def main():
     #  indicates the direction of the diagonals.'
     # mesh = dolfin.UnitSquareMesh(N, N)
     # mesh = dolfin.UnitSquareMesh(N, N, "crossed")
-    # mesh = meshmagic.trimesh(N, N)  # rows of equilateral triangles
-    mesh = meshmagic.trimesh(N, N, align="y")  # columns of equilateral triangles
     # mesh = dolfin.UnitSquareMesh.create(N, N, dolfin.CellType.Type.quadrilateral)
+    # mesh = meshmagic.trimesh(N, N)  # rows of equilateral triangles
+    # mesh = meshmagic.trimesh(N, N, align="y")  # columns of equilateral triangles
+    # from dolfin import ALE, Constant
+    # ALE.move(mesh, Constant((-0.5, -0.5)))
 
-    from dolfin import ALE, Constant, FunctionSpace
-    ALE.move(mesh, Constant((-0.5, -0.5)))
+    # Aspect ratio (= width / height) of domain.
+    # `N` should be integer-divisible by this.
+    def vtxpreproc(vtxs):
+        # center mesh on origin
+        vtxs[:, 0] -= 0.5
+        vtxs[:, 1] -= 0.5
+        # scale uniformly to desired domain length
+        vtxs *= L
+        # scale `y` to account for desired aspect ratio
+        vtxs[:, 1] /= aspect
+        return vtxs
+    mesh = meshmagic.trimesh(nx=N, ny=N // aspect, align="y", vtxpreproc=vtxpreproc)
+    # mesh = meshmagic.trimesh(nx=N, ny=N // aspect, align="x", vtxpreproc=vtxpreproc)
 
     domain_parts = dolfin.MeshFunction('size_t', mesh, mesh.topology().dim(), mesh.domains())
 
     if mesh.cell_name() == "quadrilateral":
-        V = FunctionSpace(mesh, "Q", 1)
+        V = dolfin.FunctionSpace(mesh, "Q", 1)
     else:
-        V = FunctionSpace(mesh, "P", 1)
+        V = dolfin.FunctionSpace(mesh, "P", 1)
     ignored_cells, nodes_dict = meshmagic.all_cells(V)
     ignored_dofs, nodes_array = meshmagic.nodes_to_array(nodes_dict)
     xmin = np.min(nodes_array[:, 0])

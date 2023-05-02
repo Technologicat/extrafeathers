@@ -10,6 +10,21 @@ from enum import IntEnum
 from fenics import Identity
 
 # --------------------------------------------------------------------------------
+# Geometry for internal mesh generator (main00_alternative_mesh.py)
+
+# Number of elements (equilateral triangles) in the `x` direction.
+# Note also the element degree, configured in the solver script itself.
+# It is recommended to use P2 elements.
+N = 32
+
+# Length of domain [m]
+L = 1.0
+
+# Aspect ratio (= width / height) of domain.
+# `N` should be integer-divisible by this.
+aspect = 8
+
+# --------------------------------------------------------------------------------
 # Physical parameters, common
 
 # We model 316L steel as a Kelvin-Voigt viscoelastic material, with very small viscosity.
@@ -191,7 +206,10 @@ if V0 != 0.0:
     # Two transports of whole domain length. One to advect out the initial field that
     # might not be a solution of the steady-state PDE (so the results may not be reliable
     # until we get rid of it); one more to reach a steady state (with reasonable damping).
-    T = 2 * (1 / V0)  # [s]
+    #
+    # Note this `L` is the domain length for the internal mesh generator; if using
+    # an external mesh, the value should be calculated as `xmax - xmin` manually.
+    T = 2 * (L / V0)  # [s]
 else:
     T = 2 * 0.01  # [s]
 
