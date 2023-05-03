@@ -12,13 +12,15 @@ from fenics import Identity
 # --------------------------------------------------------------------------------
 # Geometry for internal mesh generator (main00_alternative_mesh.py)
 
-# Number of elements (equilateral triangles) in the `x` direction.
-# Note also the element degree, configured in the solver script itself.
-# It is recommended to use P2 elements.
-N = 32
+# Length of domain [m], element density for mesh (equilateral triangles)
+# L = 1.0
+# elements_per_meter = 32
+L = 2.0
+elements_per_meter = 32
 
-# Length of domain [m]
-L = 1.0
+# Number of elements in the `x` direction. Note also the element degree, configured
+# in the solver script itself. It is recommended to use P2 elements.
+N = int(L * elements_per_meter)
 
 # Aspect ratio (= width / height) of domain. `N` should be integer-divisible by this.
 #
