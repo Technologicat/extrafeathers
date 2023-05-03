@@ -374,7 +374,7 @@ class InletTemperatureProfile(UserExpression):
         # TODO: Scale the cooling time coordinate sensibly. Consider how long until the laser sweeps again.
         # Grain size is ~50μm in diameter, so that's approximately also the thickness of one layer (neglecting thermal shrinkage, and the removal of pores).
         # dtdrelt = profile_tmax  # full time range (i.e. y at bottom maps to simulation end time in 0D cooling simulation)
-        dtdrelt = 0.5 * profile_tmax  # half of the time range (i.e. y at bottom maps to halfway to simulation end time in 0D cooling simulation)
+        dtdrelt = 0.25 * profile_tmax  # first 25% of the time range
         t = dtdrelt * relt
         values[0] = T_inlet(t)
 
