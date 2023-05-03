@@ -597,7 +597,7 @@ class NavierStokes:
         # LBB-incompatible elements; but unfortunately not for IPCS (Donea and
         # Huerta, 2003, remark 6.22, pp. 303-304).
         #
-        # We will still apply PSPG in hopes that it helps stability at high Re;
+        # We still apply PSPG in hopes that it helps stability at high Re;
         # at least we then treat both equations consistently.
         #
         # Consistent, residual-based. Note the method uses the residual of the
