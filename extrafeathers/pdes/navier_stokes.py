@@ -349,7 +349,7 @@ class NavierStokes:
         # where I is the rank-2 identity tensor.
         #
         # Integrating -(∇·σ(U))·v dx by parts, we obtain
-        #   σ(U) : ∇v dx = σ(U) : symm∇(v) dx = σ(U) : ε(v)
+        #   σ(U) : ∇v dx = σ(U) : symm∇(v) dx = σ(U) : ε(v) dx
         # (we can use symm∇, because σ is symmetric) plus the boundary term
         #   -[σ(U) · n] · v ds = -2 μ [ε(U) · n] · v ds  +  p_n [n · v] ds
         #
