@@ -602,7 +602,8 @@ class NavierStokes:
         #
         # Consistent, residual-based. Note the method uses the residual of the
         # *momentum* equation, but now with the tentative velocity `u_` and the
-        # unknown pressure `p`.
+        # unknown pressure `p` - so we now seek for corrections of *pressure*
+        # that help stabilize the momentum residual.
         #
         # There was no value for τ_PSPG given in the book, so we recycle τ_SUPG here.
         # There was a reference, though, to a paper by Tezduyar & Osawa (2000),
