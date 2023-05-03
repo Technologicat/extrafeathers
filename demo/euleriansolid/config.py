@@ -91,9 +91,16 @@ thermal_solver_enabled = True
 # We also have the thermal parameters α, c, and k, which may depend on temperature.
 
 # Plus we have some cooling-related parameters:
-Γ = 26.2049          # Heat transfer coefficient [W/(m² K)], convective cooling for 316L steel in air, at v_air = 2 m/s
-T_ext = 273.15 + 20  # Temperature of the environment [K]
-H = 1e-3             # Thickness of the sheet [m]
+# Γ = 26.2049  # Heat transfer coefficient [W/(m² K)], convective cooling for 316L steel in air, at v_air = 2 m/s
+# T_ext = 273.15 + 20  # Temperature of the environment [K]
+# H = 1e-3             # Thickness of the sheet [m]
+#
+# Values consistent with our 1D study:
+# Γ = 10.0  # single-sided cooling: one side exposed
+Γ = 2 * 10.0  # double-sided cooling: both sides exposed (absorb the 2 here)
+T_ext = 273.15 + 22
+H = 50e-6
+R = H / 2  # for initial temperature profile estimation
 
 # Output of 316L_with_cooling.py. The linear fits are very good, so we're
 # unlikely to need anything more complicated for modeling these.
