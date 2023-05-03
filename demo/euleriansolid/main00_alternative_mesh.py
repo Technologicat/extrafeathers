@@ -56,6 +56,7 @@ def main():
     xmax = np.max(nodes_array[:, 0])
     ymin = np.min(nodes_array[:, 1])
     ymax = np.max(nodes_array[:, 1])
+    print(f"Generated mesh with {nodes_array.shape[0]} vertices, {len(ignored_cells)} cells.")
 
     # `autoboundary` calls the callback for each facet on the external boundary
     # (i.e. the facet is on a boundary, and no neighboring subdomain exists).
@@ -75,20 +76,24 @@ def main():
         return None  # this facet is not on a boundary we are interested in
 
     # Tag the boundaries.
+    print("Tagging boundaries...")
     boundary_parts: dolfin.MeshFunction = autoboundary.find_subdomain_boundaries(fullmesh=mesh,
                                                                                  submesh=mesh,
                                                                                  subdomains=domain_parts,
                                                                                  boundary_spec={},
                                                                                  callback=autoboundary_callback)
 
+    print("Writing HDF5 file...")
     meshiowrapper.write_hdf5_mesh(mesh_filename, mesh, None, boundary_parts)
 
+    print("Showing mesh.")
     plotmagic.mpiplot_mesh(V)
     plt.axis("equal")
     plotmagic.plot_facet_meshfunction(boundary_parts, names=Boundaries)
     plt.legend(loc="best")
     plt.title("Generated mesh")
     plt.show()
+    print("All done.")
 
 if __name__ == "__main__":
     main()
