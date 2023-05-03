@@ -186,6 +186,9 @@ class LinearMomentumBalance:
 
                    stress_neumann_bc.σ11 = axial_pull_strength(t)
 
+               Alternatively, you can use a `Function` coefficient, and `.assign`
+               new data to it in the timestep loop.
+
                And if you prefer to populate the Neumann BC list after instantiation
                (passing in an empty list initially, then adding BCs to it later),
                call `.compile_forms()` to refresh the equations to use the latest
@@ -369,7 +372,7 @@ class LinearMomentumBalance:
         # Dirichlet boundary conditions
         self.bcu = bcu
 
-        # Neumann BC for stress
+        # Neumann boundary conditions for stress
         self.bcσ = bcσ
 
         # Local mesh size (for stabilization terms)
@@ -827,6 +830,9 @@ class InternalEnergyBalance:
 
                    heat_flux_neumann_bc.q0 = heat_flux_strength(t)
 
+               Alternatively, you can use a `Function` coefficient, and `.assign`
+               new data to it in the timestep loop.
+
                And if you prefer to populate the Neumann BC list after instantiation
                (passing in an empty list initially, then adding BCs to it later),
                call `.compile_forms()` to refresh the equations to use the latest
@@ -958,7 +964,7 @@ class InternalEnergyBalance:
         # Dirichlet boundary conditions
         self.bcT = bcT
 
-        # Neumann BC for heat flux
+        # Neumann boundary conditions for heat flux
         self.bcq = bcq
 
         # Local mesh size (for stabilization terms)
