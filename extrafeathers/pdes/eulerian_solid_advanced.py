@@ -169,6 +169,19 @@ class LinearMomentumBalance:
                The format is `[(fenics_expression, boundary_tag or None), ...]` where
                `None` means to use the expression on the whole Neumann boundary.
 
+               Some special BCs are also supported:
+
+                   (("strain", ε0), boundary_tag or None)
+
+                       This sets up the Neumann BC corresponding to a known strain at the
+                       specified boundary. The normal projection of ε0 is used in the BC.
+
+                   (("outflow", ε0), boundary_tag or None)
+
+                       This makes the solver arrange things so that at the specified boundary,
+                       n·∇v = 0 (steady outflow), and the small-strain tensor ε takes on the
+                       value ε0 (a FEniCS expression). Its normal projection is used in the BC.
+
                A `boundary_tag` is an `int` that matches a boundary number in
                `boundary_parts`, which see. This means to use the expression
                on the specified part of the Neumann boundary only.
@@ -254,7 +267,9 @@ class LinearMomentumBalance:
                  α: typing.Callable, dαdT: typing.Callable, T0: float,
                  V0: float,
                  bcu: typing.List[DirichletBC],
-                 bcσ: typing.List[typing.Tuple[Expression, typing.Optional[int]]],
+                 bcσ: typing.List[typing.Tuple[typing.Union[Expression,
+                                                            typing.Tuple[str, typing.Any]],
+                                               typing.Optional[int]]],
                  dt: float, θ: float = 0.5, *,
                  boundary_parts: typing.Optional[MeshFunction] = None,
                  temperature_degree: int = None):
@@ -519,10 +534,6 @@ class LinearMomentumBalance:
         # TODO: Extend the constitutive model. For details,
         # TODO: see comments in `extrafeathers.pdes.eulerian_solid.SteadyStateEulerianSolidPrimal`.
         #
-        # TODO: Add Neumann BC for `(n·∇)u`; we might need a zero normal gradient
-        # TODO: BC in the analysis of 3D printing. For details,
-        # TODO: see comments in `extrafeathers.pdes.eulerian_solid.SteadyStateEulerianSolidPrimal`.
-        #
         def cauchy_stress(u, v, T, dTdt):
             """Form an expression representing the Cauchy stress."""
             # Note this is a closure that depends on the material parameters.
@@ -543,6 +554,82 @@ class LinearMomentumBalance:
                                            K_inner(dαdT) * (T - T0)) * dTdt)
             return Σ
 
+        # Outflow BC, where  n·∇v = 0,  like in Navier-Stokes.
+        #
+        # Elastic term uses the normal projection of a given strain ε0,
+        # because we need some data to make `u` unique (so that the BC
+        # does its job). There is no place to put "n·∇ε = 0", which
+        # would better represent outflow.
+        #
+        # The thermal term is kept as-is, as it depends only on an externally
+        # supplied field.
+        #
+        # This is implemented here, because the form of the BC depends on the
+        # constitutive model.
+        #
+        # The velocity term (in the viscous part of Kelvin-Voigt) becomes:
+        #   n · K : ε(v) = ni Kijkℓ [ε(v)]kℓ
+        # i.e.
+        #   (1/2) n · K : [∇v + ∇v^T] = (1/2) ni Kijkℓ (∂k vℓ + ∂ℓ vk)
+        #                             = (1/2) Kkℓij ni (∂k vℓ + ∂ℓ vk)   (major symmetry)
+        #                             = (1/2) Kkℓji ni (∂k vℓ + ∂ℓ vk)   (minor symmetry)
+        # For the general anisotropic material, it seems there is no easy way
+        # to extract a term of the form  n·∇v.
+        #
+        # For an isotropic material, however, as implemented in `cauchy_stress` above:
+        #   K : ε(...) = 2 μ ε(...) + λ Id tr(ε(...))
+        # which leads to
+        #   n · K : ε(...) = 2 μ n · ε(...) + λ n · Id tr(ε(...))
+        #                  = 2 μ n · ε(...) + λ n tr(ε(...))
+        #                  = 2 μ n · ε(...) + λ n div(...)
+        #                  = μ n · [∇(...) + ∇(...)^T] + λ n div(...)
+        # so we may apply the same strategy as in the Navier-Stokes solver
+        # to implement the velocity term of the outflow BC:
+        #   n · K : ε(...) = μ n · ∇(...)^T + λ n div(...)
+        #                  = μ ∇(...) · n + λ n div(...)
+        def outflow_BC_normal_stress(ε0, v, T, dTdt):
+            """Form a Neumann BC expression for an outflow boundary, where n·∇v = 0.
+
+            The small-strain tensor ε must be specified on the outflow
+            boundary; its normal projection is automatically used.
+            """
+            λ = self.λ(T)
+            μ = self.μ(T)
+            α = self.α(T)
+            dαdT = self.dαdT(T)
+
+            # Id = Identity(ε(u).geometric_dimension())
+            # K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+            # n_dot_K_inner = lambda ε: dot(n, K_inner(ε))
+            n_dot_K_inner = lambda ε: 2 * μ * dot(n, ε) + λ * n * tr(ε)  # n·K:(...)
+
+            # n·K:ε(_) for axially moving Kelvin-Voigt, when n·∇_ = 0. Used for `v`.
+            outflow = lambda _: μ * dot(nabla_grad(_), n) + λ * n * div(_)
+
+            n_dot_Σ0 = n_dot_K_inner(ε0) - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
+            if self.τ > 0.0:  # viscous and viscothermal parts
+                n_dot_Σ0 += τ * (outflow(v) - (n_dot_K_inner(α) +
+                                               n_dot_K_inner(dαdT) * (T - T0)) * dTdt)
+            return n_dot_Σ0
+
+        # This is done similarly to the outflow BC, except no special handling for `v`, so we include this too.
+        def strain_BC_normal_stress(ε0, v, T, dTdt):
+            """Form a Neumann BC expression for a boundary with known strain ε0.
+
+            The normal projection is automatically used.
+            """
+            λ = self.λ(T)
+            μ = self.μ(T)
+            α = self.α(T)
+            dαdT = self.dαdT(T)
+            n_dot_K_inner = lambda ε: 2 * μ * dot(n, ε) + λ * n * tr(ε)  # n·K:(...)
+            n_dot_Σ0 = n_dot_K_inner(ε0) - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
+            if self.τ > 0.0:  # viscous and viscothermal parts
+                # No constraints on `v`.
+                n_dot_Σ0 += τ * (n_dot_K_inner(v) - (n_dot_K_inner(α) +
+                                                     n_dot_K_inner(dαdT) * (T - T0)) * dTdt)
+            return n_dot_Σ0
+
         # For equation of `u`, θ-point value of σ, using the unknown fields.
         Σ = cauchy_stress(U, V, T, dTdt)
 
@@ -557,15 +644,33 @@ class LinearMomentumBalance:
         F_u = (ρ * (dot(dvdt, w) * dx + advw(a, V, w, n)) +         # rate terms (axially comoving rate of `v`)
                inner(Σ.T, ε(w)) * dx -                              # stress
                ρ * dot(b, w) * dx)                                  # body force
-        # Neumann BC for stress [Pa]. It is specified as the value of the Cauchy stress tensor,
-        # which is then automatically projected into the direction of the outer unit normal.
+        # Neumann BC for stress [Pa].
         for Σ0, tag in self.bcσ:
+            if isinstance(Σ0, tuple):
+                bc_kind_tag, bc_specific_data = Σ0
+                # We evaluate the term for the special BCs at the θ-point inside the timestep.
+                if bc_kind_tag == "strain":
+                    ε0 = bc_specific_data
+                    n_dot_σ0 = strain_BC_normal_stress(ε0, V, T, dTdt)
+                elif bc_kind_tag == "outflow":
+                    ε0 = bc_specific_data
+                    n_dot_σ0 = outflow_BC_normal_stress(ε0, V, T, dTdt)
+                else:
+                    raise ValueError(f"Special Neumann boundary condition kind '{bc_kind_tag}' not recognized; valid: 'strain', 'outflow'")
+            else:
+                # The natural kind: stress BC. It is specified as the value of the Cauchy stress tensor,
+                # which we project into the direction of the outer unit normal.
+                #
+                # The `.T` is for strict consistency with our formulation of the linear momentum balance law,
+                # but since the Cauchy stress tensor is symmetric, it doesn't really matter.
+                n_dot_σ0 = dot(n, Σ0.T)
+
             if tag is None:  # not specified -> whole Neumann boundary (i.e. everywhere that has no Dirichlet BC)
-                F_u -= dot(dot(n, Σ0.T), w) * ds
+                F_u -= dot(n_dot_σ0, w) * ds
             else:  # a specific part of the Neumann boundary
                 if self.ds is None:
                     raise ValueError("`boundary_parts` must be supplied to build `ds` when Neumann BCs are applied on individual boundary parts.")
-                F_u -= dot(dot(n, Σ0.T), w) * self.ds(tag)
+                F_u -= dot(n_dot_σ0, w) * self.ds(tag)
 
         if self.V0 != 0.0:  # axial motion enabled?
             # SUPG stabilization for `u`. τ_SUPG as in an advection-diffusion problem (or as in Navier-Stokes).

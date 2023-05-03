@@ -2604,6 +2604,10 @@ class SteadyStateEulerianSolidPrimal:
         # solver. Maybe also start using a dictionary (like the tutorial does) for
         # defining the BCs; this is more flexible when there are several options.
 
+        # NOTE: The advanced solver (`eulerian_solid_advanced.py`) implements
+        # both the outflow BC (for an isotropic Kelvin-Voigt material), as well as
+        # Neumann BCs for individual tagged boundaries.
+
         # Constitutive equation
         Id = Identity(ε(u).geometric_dimension())
         K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
