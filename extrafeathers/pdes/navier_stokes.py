@@ -445,6 +445,16 @@ class NavierStokes:
         #   ∫ (∇·u) (∇·v) dΩ = ∫ n·((∇·u) v) dΓ - ∫ v · (∇ (∇·u)) dΩ
         # so this is in effect penalizing `grad(div(u))` in the direction of `v`.
         #
+        # Because we require our equation to hold for any `v`, the term (∇·u)(∇·v)
+        # is the weak derivative of -(v·∇)(∇·u). Thus it penalizes changes to ∇·u
+        # along the streamlines. This is in spirit similar to SUPG, which penalizes
+        # the weak derivative of the residual along the streamlines.
+        #
+        # LSIC is a consistent stabilization method, i.e. for the exact solution,
+        # the added term is zero. Since such a zero can take any arbitrary form,
+        # we may simply omit the boundary term; we apply the penalization in the
+        # element interiors only.
+        #
         # On the other hand, by comparing to isotropic linear elasticity, where
         # the stress term can be written as (see e.g. Brenner & Scott, 2010, p. 314)
         #   ∫ 2 μ ε(u) : ε(v) + λ div(u) div(v) dΩ
