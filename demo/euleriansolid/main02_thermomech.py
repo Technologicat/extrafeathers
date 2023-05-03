@@ -326,24 +326,90 @@ T_bottom = T0 - 100.0
 
 # Axially moving continuum: specify the temperature of the material parcels that enter the domain at the left.
 # Don't set anything at the right - the default zero Neumann (no change in temperature in axial direction i.e. steady outflow) is appropriate.
+#
+# Note the same `T_profile` is used also for setting the initial condition for the temperature field.
 
-# # Temperature profile at left edge
+# # Constant temperature (wrong, but simple, for testing/debugging)
 # T_profile = project(Constant(T_left), V_rank0)
 
-# bcT_left = DirichletBC(subspaces["T"], Constant(T_left), boundary_parts, Boundaries.LEFT.value)
-# bcT.append(bcT_left)
+# # Linear temperature profile (wrong, but simple, for testing/debugging)
+# from fenics import Expression
+# T_profile = Expression("T_bottom + (T_left - T_bottom) * (x[1] + 0.5)", degree=1, T_bottom=T_bottom, T_left=T_left)
 
-from fenics import Expression
-T_profile = Expression("T_bottom + (T_left - T_bottom) * (x[1] + 0.5)", degree=1, T_bottom=T_bottom, T_left=T_left)
+# A somewhat more advanced approach:
+#
+# Roughly estimate the inlet temperature profile by performing an oversimplified 0D cooling simulation,
+# with the same material parameters as for the main simulation. The solution of that 0D simulation
+# specifies the inlet temperature profile.
+#
+# Obviously, we can use any input data here, so we can improve this by improving the simplified simulation.
+#
+# Can be implemented via a `UserExpression` - slow, but works. Speed doesn't matter much here.
+# The inlet profile is only evaluated for the left edge (for the boundary condition), and once
+# in the whole domain (for the initial condition).
+#
+# How to:
+#   https://fenicsproject.discourse.group/t/interpolate-numpy-ndarray-to-function/6167/2
+#
+from scipy.interpolate import interp1d
+from fenics import UserExpression
+from . import initial_T_profile
+profile_tmax = 20.0  # [s], end time of the 0D cooling simulation
+_, tt, TT = initial_T_profile.estimate(tmax=profile_tmax)  # <-- the important part
+T_inlet = interp1d(tt, TT, fill_value=(TT[0], TT[-1]))
+class InletTemperatureProfile(UserExpression):
+    def __init__(self, degree=2, **kwargs):
+        super().__init__(**kwargs)
+
+    def eval(self, values, x):
+        # extract the y coordinate
+        if x.shape == (2,):
+            y = x[1]
+        else:
+            y = x
+
+        rely = (y - ymin) / (ymax - ymin)
+        relt = 1.0 - rely  # hot at the top surface (ymax <-> tmin)
+        # TODO: Scale the cooling time coordinate sensibly. Consider how long until the laser sweeps again.
+        # Grain size is ~50μm in diameter, so that's approximately also the thickness of one layer (neglecting thermal shrinkage, and the removal of pores).
+        # dtdrelt = profile_tmax  # full time range (i.e. y at bottom maps to simulation end time in 0D cooling simulation)
+        dtdrelt = 0.5 * profile_tmax  # half of the time range (i.e. y at bottom maps to halfway to simulation end time in 0D cooling simulation)
+        t = dtdrelt * relt
+        values[0] = T_inlet(t)
+
+    def value_shape(self):
+        return ()
+T_profile = InletTemperatureProfile()
+
+
+# Whichever temperature profile we defined above, apply it at the inlet boundary as a Dirichlet BC:
 bcT_left = DirichletBC(subspaces["T"], T_profile, boundary_parts, Boundaries.LEFT.value)
 bcT.append(bcT_left)
 
+
 # The heat flux [W/m²] uses uses a Neumann BC, with the boundary scalar flux
-# (in the direction of the outer normal) set here. Same format as above.
+# (in the direction of the outer normal) set here. Same format as in the mechanical solver.
 #
 # # To use a zero Neumann BC, which is the classic do-nothing BC, we can simply omit the term.
 # # The solver will then run marginally faster, as the equation doesn't include this term.
 # bcq.append((Constant(0), None))
+
+# # Cooling at upper edge. Generic FEM function, to be refreshed with data in `update_cooling`.
+# q_upper = Function(V_rank0)
+# bcq.append((q_upper, Boundaries.TOP.value))
+
+# Another way to do this: since this boundary condition is linear in `T`, we can use `thermal_solver.u`
+# to insert the Galerkin series of `T`. Then it'll automatically use the latest data.
+#
+# Note the extra factor of `H`, because this is a 2D model: [Γ] = W/m², and the boundary integration
+# only eliminates one `m`.
+bcq.append((Constant(-Γ) * (thermal_solver.u - Constant(T_ext)), Boundaries.TOP.value))  # [W/m²]
+
+# # Higher powers (Stefan-Boltzmann radiative cooling) can be done similarly.
+# # Split off one `T` to use its Galerkin series, and provide the rest as data:
+# T3 = Function(V_rank0)
+# bcq.append((Constant(-Γ) * (thermal_solver.u * T3 - Constant(T_ext)**4), Boundaries.TOP.value))  # [W/m²]
+# # ...and then update `T3` in `update_cooling`, as `T3.assign(project(fields["T"]**3, V_rank0))`
 
 # Recompile to refresh the Neumann BCs
 thermal_solver.compile_forms()
@@ -357,9 +423,9 @@ thermal_solver.compile_forms()
 # Initial conditions, thermal subproblem
 
 # A linear function of x is at least a trivial steady-state solution of the standard heat equation,
-# so we can use something like that.
+# so we could use something like that.
 
-# # Our domain is Ω = (-0.5, 0.5)².
+# # In early versions, our domain used to be Ω = (-0.5, 0.5)².
 # from fenics import Expression
 # initial_T = project(Expression("T_left + (T_right - T_left) * (x[0] + 0.5)", degree=1, T_left=T_left, T_right=T_right), V_rank0)
 
@@ -367,6 +433,8 @@ thermal_solver.compile_forms()
 # naturally cools in a steady state as it travels through the domain - whereas
 # the dynamic simulation will attempt to reach that steady state. So it is better
 # to initialize to a uniform temperature field, which will likely get us there faster.
+#
+# But even better in that regard is to use the inlet temperature profile.
 initial_T = project(T_profile, V_rank0)
 initial_dTdt = Function(V_rank0)  # zeroes
 
@@ -412,6 +480,8 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 #   dA/dm = 1 / (ρ H)
 # Here the  dx dy  cancels, so this ratio stays constant as dx → 0, dy → 0.
 #
+# You can make this model double-sided cooling simply by replacing `Γ → 2 * Γ` in config.py.
+#
 dAdm = 1 / (rho * H)   # [m²/kg]
 r = dAdm * Γ  # [W/(kg K)]
 def update_cooling():
@@ -420,6 +490,9 @@ def update_cooling():
     The main loop calls this after each update of the temperature field.
     """
     thermal_solver.h_.assign(project(Constant(-r) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m³]
+
+    # # If using a data-based Neumann boundary condition, update also that with the latest data.
+    # q_upper.assign(project(Constant(-Γ) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m²]
 
 # Set the value of the thermal source at the end of the first timestep.
 update_cooling()
