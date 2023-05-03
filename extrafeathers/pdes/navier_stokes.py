@@ -441,7 +441,7 @@ class NavierStokes:
         #   ∂k ((∂i ui) vk) = (∂i ui) (∂k vk) + (∂k ∂i ui) vk
         # which is to say
         #   ∇·((∇·u) v) = (∇·u) (∇·v) + v · (∇ (∇·u))
-        # so integrating by parts (divergence theorem)
+        # so integrating by parts (divergence theorem) and rearranging terms,
         #   ∫ (∇·u) (∇·v) dΩ = ∫ n·((∇·u) v) dΓ - ∫ v · (∇ (∇·u)) dΩ
         # so this is in effect penalizing `grad(div(u))` in the direction of `v`.
         #
