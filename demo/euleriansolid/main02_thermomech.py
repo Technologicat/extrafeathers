@@ -320,8 +320,9 @@ linmom_solver.compile_forms()
 # --------------------------------------------------------------------------------
 # Boundary conditions, thermal subproblem
 
+# Settings for some examples that use them.
 T_left = T0
-# T_right = T0
+T_right = T0
 T_bottom = T0 - 100.0
 
 # Axially moving continuum: specify the temperature of the material parcels that enter the domain at the left.
