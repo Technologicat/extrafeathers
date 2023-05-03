@@ -445,10 +445,11 @@ class NavierStokes:
         #   ∫ (∇·u) (∇·v) dΩ = ∫ n·((∇·u) v) dΓ - ∫ v · (∇ (∇·u)) dΩ
         # so this is in effect penalizing `grad(div(u))` in the direction of `v`.
         #
-        # Because we require our equation to hold for any `v`, the term (∇·u)(∇·v)
-        # is the weak derivative of -(v·∇)(∇·u). Thus it penalizes changes to ∇·u
-        # along the streamlines. This is in spirit similar to SUPG, which penalizes
-        # the weak derivative of the residual along the streamlines.
+        # Because we require our equation to hold for any test `v`, the term (∇·u)(∇·v)
+        # is (minus) the weak directional derivative, -(v·∇), of ∇·u. Thus it penalizes
+        # changes to ∇·u along the direction of each vector-valued basis function;
+        # hence, in all directions. The method is in spirit somewhat similar to SUPG,
+        # which penalizes the weak derivative of the residual along the streamlines.
         #
         # LSIC is a consistent stabilization method, i.e. for the exact solution,
         # the added term is zero. Since such a zero can take any arbitrary form,
