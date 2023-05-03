@@ -245,23 +245,29 @@ u0_func = lambda t: 0.0
 # bcu_bottom = DirichletBC(subspaces["u"], Constant((0, 0)), boundary_parts, Boundaries.BOTTOM.value)
 # bcu.append(bcu_bottom)
 
-# 3D printing: u1 fixed at left edge, u2 fixed at bottom edge
+# # 3D printing: u1 fixed at left edge
 # bcu1_left = DirichletBC(subspaces["u"].sub(0), Constant(0), boundary_parts, Boundaries.LEFT.value)
 # bcu.append(bcu1_left)
+
+# 3D printing: u2 fixed at bottom edge
 bcu2_bottom = DirichletBC(subspaces["u"].sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)
 bcu.append(bcu2_bottom)
 
-# 3D printing: u fixed at upper left corner (where the material exits the laser focus spot and has just solidified)
+# 3D printing: u1 fixed at upper left corner (where the material exits the laser focus spot and has just solidified)
 from fenics import CompiledSubDomain
 upper_left = CompiledSubDomain(f"near(x[0], {xmin}) && near(x[1], {ymax})")
 bcu1_upperleft = DirichletBC(subspaces["u"].sub(0), Constant(0), upper_left, method="pointwise")
 bcu.append(bcu1_upperleft)
+
+# # If we fix u1 only at one point, fixing u2 at one point isn't enough,
+# # since this combination doesn't eliminate infinitesimal rotation modes.
 # bcu2_upperleft = DirichletBC(subspaces["u"].sub(1), Constant(0), upper_left, method="pointwise")
 # bcu.append(bcu2_upperleft)
 
 # # # 3D printing: outflow at right edge (n·∇v = 0, and given strain)
 # # # TODO: In the thermal case, this doesn't currently work. Too difficult to find a value of ε0 that works;
-# # # especially, the initial transient behavior does not match the BC. Better to use the default BC n·σ = 0.
+# # # especially, the initial transient behavior does not match the BC. Better to use the default BC n·σ = 0
+# # # (which says that the material parcels are free of tractions at the outflow).
 # ε0 = Constant(((1e-3, 0.0), (0.0, 0.0)))
 # bcσ.append((("outflow", ε0), Boundaries.RIGHT.value))
 
