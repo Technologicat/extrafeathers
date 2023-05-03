@@ -558,8 +558,8 @@ class LinearMomentumBalance:
         #
         # Elastic term uses the normal projection of a given strain ε0,
         # because we need some data to make `u` unique (so that the BC
-        # does its job). There is no place to put "n·∇ε = 0", which
-        # would better represent outflow.
+        # does its job). There is no place to put a normal derivative
+        # condition on strain, which would better represent outflow.
         #
         # The thermal term is kept as-is, as it depends only on an externally
         # supplied field.
@@ -607,6 +607,12 @@ class LinearMomentumBalance:
             outflow = lambda _: μ * dot(nabla_grad(_), n) + λ * n * div(_)
 
             n_dot_Σ0 = n_dot_K_inner(ε0) - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
+
+            # # TEST/DEBUG: ignore ε0, and try a simple penalty method to enforce (n·∇)(n·ε) = 0,
+            # # which is a kind of outflow condition for the normal projection of strain:
+            # normal_strain_penalty = Constant(1e8) * dot(n, nabla_grad(dot(n, ε(u))))
+            # n_dot_Σ0 = normal_strain_penalty - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
+
             if self.τ > 0.0:  # viscous and viscothermal parts
                 n_dot_Σ0 += τ * (outflow(v) - (n_dot_K_inner(α) +
                                                n_dot_K_inner(dαdT) * (T - T0)) * dTdt)
