@@ -610,6 +610,64 @@ class LinearMomentumBalance:
             # # which is a kind of outflow condition for the normal projection of strain:
             # normal_strain_penalty = Constant(1e8) * dot(n, nabla_grad(dot(n, ε(u))))
             # n_dot_Σ0 = normal_strain_penalty - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
+
+            # TODO: Better to enforce the penalty term using a weak derivative? API woes, we need to compute the complete term here (including the test part).
+            #
+            # We have:
+            #
+            #   [[(n·∇)(n·σ)] w]j ≡ [(nk ∂k) (ni σij)] w
+            #
+            # Integration by parts? Consider an expression of the form
+            #
+            #     ∂i (nj nk σmℓ w)
+            #   = (∂i nj) nk σmℓ w
+            #   + nj (∂i nk) σmℓ w
+            #   + nj nk (∂i σmℓ) w
+            #   + nj nk σmℓ (∂i w)
+            #
+            # To get the term we have, choose m = k, j = i:
+            #
+            #     [∇·(n ⊗ n·σ w)]ℓ
+            #
+            #   ≡ ∂i (ni nk σkℓ w)
+            #
+            #   = (∂i ni) nk σkℓ w
+            #   + ni (∂i nk) σkℓ w
+            #   + ni nk (∂i σkℓ) w
+            #   + ni nk σkℓ (∂i w)
+            #
+            #   = (∂i ni) nk σkℓ w
+            #   + [(ni ∂i) (nk σkℓ)] w
+            #   + ni nk σkℓ (∂i w)
+            #
+            #   = (∂i ni) nk σkℓ w
+            #   + [(ni ∂i) (nk σkℓ)] w
+            #   + nk σkℓ [(ni ∂i) w]
+            #
+            #   ≡ (∇·n) [n·σ]ℓ w
+            #   + [(n·∇) [n·σ]ℓ] w
+            #   + [n·σ]ℓ [(n·∇)w]
+            #
+            # Therefore, by the divergence theorem,
+            #
+            #   N·(n ⊗ n·σ w) = (∇·n) [n·σ] w + [(n·∇) [n·σ]] w + [n·σ] [(n·∇)w]
+            #
+            # where N is the outer unit normal of the *boundary domain*.
+            #
+            # Rearranging yields:
+            #
+            #   [(n·∇) [n·σ]] w = N·(n ⊗ n·σ w) - [n·σ] [(n·∇)w] - (∇·n) [n·σ] w
+            #
+            # Note that N·n ≡ 0 (for a 1D boundary of a 2D domain, the 0D normal N is tangent
+            # to the boundary segment). We are left with:
+            #
+            #   [(n·∇) [n·σ]] w = -[n·σ] [(n·∇)w] - (∇·n) [n·σ] w
+            #
+            # The facet normal is constant over a boundary segment, therefore ∇·n ≡ 0.
+            # We obtain the result:
+            #
+            #   [(n·∇) [n·σ]] w = -[n·σ] [(n·∇)w]
+
             n_dot_Σ0 = n_dot_K_inner(ε0) - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
             if self.τ > 0.0:  # viscous and viscothermal parts
                 n_dot_Σ0 += τ * (outflow(v) - (n_dot_K_inner(α) +
