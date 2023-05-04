@@ -253,6 +253,10 @@ u0_func = lambda t: 0.0
 bcu2_bottom = DirichletBC(subspaces["u"].sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)
 bcu.append(bcu2_bottom)
 
+# # 3D printing: u2 on elastic foundation at bottom edge (doesn't work currently)
+# σ_bottom = Function(Q_rank2)
+# bcσ.append((σ_bottom, Boundaries.BOTTOM.value))
+
 # 3D printing: u1 fixed at upper left corner (where the material exits the laser focus spot and has just solidified)
 from fenics import CompiledSubDomain
 upper_left_corner = CompiledSubDomain(f"near(x[0], {xmin}) && near(x[1], {ymax})")
@@ -506,6 +510,16 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 #
 dAdm = 1 / (rho * H)   # [m²/kg]
 r = dAdm * Γ  # [W/(kg K)]
+
+def update_dynamic_mechanical_terms():
+    pass
+
+    # # Elastic foundation: τ = n·σ = -E u  (doesn't work currently)
+    # σ21 = project(Constant(-1.0) * E_func(fields["T"]) * fields["u"].sub(0), Q_rank0)
+    # σ22 = project(Constant(-1.0) * E_func(fields["T"]) * fields["u"].sub(1), Q_rank0)
+    # σ_bottom.sub(2).assign(σ21)
+    # σ_bottom.sub(1).assign(σ21)  # enforce symmetry of the Cauchy stress tensor used in the BC
+    # σ_bottom.sub(3).assign(σ22)
 
 def update_dynamic_thermal_terms():
     """The main loop calls this after each update of the temperature field."""
@@ -1090,6 +1104,7 @@ for n in range(nt):
         if mechanical_solver_enabled:
             # Mechanical substep
             linmom_solver.step()
+            update_dynamic_mechanical_terms()
 
         if thermal_solver_enabled:
             # Send updated external fields to thermal solver.
