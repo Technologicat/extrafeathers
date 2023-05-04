@@ -255,13 +255,13 @@ bcu.append(bcu2_bottom)
 
 # 3D printing: u1 fixed at upper left corner (where the material exits the laser focus spot and has just solidified)
 from fenics import CompiledSubDomain
-upper_left = CompiledSubDomain(f"near(x[0], {xmin}) && near(x[1], {ymax})")
-bcu1_upperleft = DirichletBC(subspaces["u"].sub(0), Constant(0), upper_left, method="pointwise")
+upper_left_corner = CompiledSubDomain(f"near(x[0], {xmin}) && near(x[1], {ymax})")
+bcu1_upperleft = DirichletBC(subspaces["u"].sub(0), Constant(0), upper_left_corner, method="pointwise")
 bcu.append(bcu1_upperleft)
 
 # # If we fix u1 only at one point, fixing u2 at one point isn't enough,
 # # since this combination doesn't eliminate infinitesimal rotation modes.
-# bcu2_upperleft = DirichletBC(subspaces["u"].sub(1), Constant(0), upper_left, method="pointwise")
+# bcu2_upperleft = DirichletBC(subspaces["u"].sub(1), Constant(0), upper_left_corner, method="pointwise")
 # bcu.append(bcu2_upperleft)
 
 # # # 3D printing: outflow at right edge (n·∇v = 0, and given strain)
@@ -416,7 +416,7 @@ bcT.append(bcT_left)
 # # The solver will then run marginally faster, as the equation doesn't include this term.
 # bcq.append((Constant(0), None))
 
-# # Cooling at upper edge. Generic FEM function, to be refreshed with data in `update_cooling`.
+# # Cooling at upper edge. Generic FEM function, to be refreshed with data in `update_dynamic_thermal_terms`.
 # q_upper = Function(V_rank0)
 # bcq.append((q_upper, Boundaries.TOP.value))
 
@@ -431,7 +431,7 @@ bcq.append((Constant(-Γ) * (thermal_solver.u - Constant(T_ext)), Boundaries.TOP
 # # Split off one `T` to use its Galerkin series, and provide the rest as data:
 # T3 = Function(V_rank0)
 # bcq.append((Constant(-Γ) * (thermal_solver.u * T3 - Constant(T_ext)**4), Boundaries.TOP.value))  # [W/m²]
-# # ...and then update `T3` in `update_cooling`, as `T3.assign(project(fields["T"]**3, V_rank0))`
+# # ...and then update `T3` in `update_dynamic_thermal_terms`, as `T3.assign(project(fields["T"]**3, V_rank0))`
 
 # Recompile to refresh the Neumann BCs
 thermal_solver.compile_forms()
@@ -506,18 +506,16 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 #
 dAdm = 1 / (rho * H)   # [m²/kg]
 r = dAdm * Γ  # [W/(kg K)]
-def update_cooling():
-    """Update the thermal source term according to Newton's law of cooling.
 
-    The main loop calls this after each update of the temperature field.
-    """
+def update_dynamic_thermal_terms():
+    """The main loop calls this after each update of the temperature field."""
     thermal_solver.h_.assign(project(Constant(-r) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m³]
 
     # # If using a data-based Neumann boundary condition, update also that with the latest data.
     # q_upper.assign(project(Constant(-Γ) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m²]
 
 # Set the value of the thermal source at the end of the first timestep.
-update_cooling()
+update_dynamic_thermal_terms()
 # Set it also at the beginning of the first timestep.
 thermal_solver.h_n.assign(thermal_solver.h_)  # Not a mixed space, so we can copy like this (no temporaries).
 
@@ -1117,9 +1115,7 @@ for n in range(nt):
 
             # Thermal substep
             thermal_solver.step()
-
-            # Update cooling term for next iteration
-            update_cooling()
+            update_dynamic_thermal_terms()
 
         if mechanical_solver_enabled:
             # Send updated external fields to mechanical solver
