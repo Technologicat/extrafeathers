@@ -365,6 +365,7 @@ T_bottom = T0 - 100.0
 #   https://fenicsproject.discourse.group/t/interpolate-numpy-ndarray-to-function/6167/2
 #
 from scipy.interpolate import interp1d
+# from fenics import Cell
 from fenics import UserExpression
 from . import initial_T_profile
 profile_tmax = 20.0  # [s], end time of the 0D cooling simulation
