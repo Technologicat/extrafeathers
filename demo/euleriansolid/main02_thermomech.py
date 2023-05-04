@@ -373,7 +373,10 @@ from scipy.interpolate import interp1d
 from fenics import UserExpression
 from . import initial_T_profile
 profile_tmax = 20.0  # [s], end time of the 0D cooling simulation
-_, tt, TT = initial_T_profile.estimate(tmax=profile_tmax)  # <-- the important part
+with timer() as tim:
+    _, tt, TT = initial_T_profile.estimate(tmax=profile_tmax)  # <-- the important part
+if my_rank == 0:
+    print(f"Estimated inlet temperature profile in {tim.dt:0.6g} seconds.")
 T_inlet = interp1d(tt, TT, fill_value=(TT[0], TT[-1]))
 class InletTemperatureProfile(UserExpression):
     def __init__(self, degree=2, **kwargs):
