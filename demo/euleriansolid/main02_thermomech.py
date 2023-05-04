@@ -376,13 +376,7 @@ class InletTemperatureProfile(UserExpression):
         super().__init__(**kwargs)
 
     def eval(self, values, x):
-        # extract the y coordinate
-        if x.shape == (2,):
-            y = x[1]
-        else:
-            y = x
-
-        rely = (y - ymin) / (ymax - ymin)
+        rely = (x[1] - ymin) / (ymax - ymin)
         relt = 1.0 - rely  # hot at the top surface (ymax <-> tmin)
         # TODO: Scale the cooling time coordinate sensibly. Consider how long until the laser sweeps again.
         # Grain size is ~50μm in diameter, so that's approximately also the thickness of one layer (neglecting thermal shrinkage, and the removal of pores).
