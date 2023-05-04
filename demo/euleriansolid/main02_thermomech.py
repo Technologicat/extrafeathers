@@ -390,6 +390,20 @@ class InletTemperatureProfile(UserExpression):
         t = dtdrelt * relt
         values[0] = T_inlet(t)
 
+    # # `eval_cell` gives access to the UFC cell, which allows extracting things such as the facet normal.
+    # # https://fenicsproject.org/olddocs/dolfin/latest/python/demos/mixed-poisson/demo_mixed-poisson.py.html
+    # def eval_cell(self, values, x, ufc_cell):
+    #     # cell = Cell(mesh, ufc_cell.index)
+    #     # n = cell.normal(ufc_cell.local_facet)
+    #     rely = (x[1] - ymin) / (ymax - ymin)
+    #     relt = 1.0 - rely  # hot at the top surface (ymax <-> tmin)
+    #     # TODO: Scale the cooling time coordinate sensibly. Consider how long until the laser sweeps again.
+    #     # Grain size is ~50μm in diameter, so that's approximately also the thickness of one layer (neglecting thermal shrinkage, and the removal of pores).
+    #     # dtdrelt = profile_tmax  # full time range (i.e. y at bottom maps to simulation end time in 0D cooling simulation)
+    #     dtdrelt = 0.25 * profile_tmax  # first 25% of the time range
+    #     t = dtdrelt * relt
+    #     values[0] = T_inlet(t)
+
     def value_shape(self):
         return ()
 T_profile = InletTemperatureProfile()
