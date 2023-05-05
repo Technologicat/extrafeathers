@@ -268,12 +268,11 @@ bcu.append(bcu1_upperleft)
 # bcu2_upperleft = DirichletBC(subspaces["u"].sub(1), Constant(0), upper_left_corner, method="pointwise")
 # bcu.append(bcu2_upperleft)
 
-# # # 3D printing: outflow at right edge (n·∇v = 0, and given strain)
-# # # TODO: In the thermal case, this doesn't currently work. Too difficult to find a value of ε0 that works;
-# # # especially, the initial transient behavior does not match the BC. Better to use the default BC n·σ = 0
+# # # 3D printing: outflow at right edge, (n·∇)(n·σ) = 0.
+# # # The `None` is the BC-specific data for special BCs, which this BC doesn't need.
+# # # The results don't seem to differ much from the default BC n·σ = 0
 # # # (which says that the material parcels are free of tractions at the outflow).
-# ε0 = Constant(((1e-3, 0.0), (0.0, 0.0)))
-# bcσ.append((("outflow", ε0), Boundaries.RIGHT.value))
+# bcσ.append((("outflow", None), Boundaries.RIGHT.value))
 
 # The stress [Pa] uses a Neumann BC, with the boundary stress field set here.
 # The Cauchy stress tensor given here is evaluated (and automatically projected
