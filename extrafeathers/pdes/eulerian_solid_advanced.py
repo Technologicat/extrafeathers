@@ -611,63 +611,6 @@ class LinearMomentumBalance:
             # normal_strain_penalty = Constant(1e8) * dot(n, nabla_grad(dot(n, ε(u))))
             # n_dot_Σ0 = normal_strain_penalty - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
 
-            # TODO: Better to enforce the penalty term using a weak derivative? API woes, we need to compute the complete term here (including the test part).
-            #
-            # We have:
-            #
-            #   [[(n·∇)(n·σ)] w]j ≡ [(nk ∂k) (ni σij)] w
-            #
-            # Integration by parts? Consider an expression of the form
-            #
-            #     ∂i (nj nk σmℓ w)
-            #   = (∂i nj) nk σmℓ w
-            #   + nj (∂i nk) σmℓ w
-            #   + nj nk (∂i σmℓ) w
-            #   + nj nk σmℓ (∂i w)
-            #
-            # To get the term we have, choose m = k, j = i:
-            #
-            #     [∇·(n ⊗ n·σ w)]ℓ
-            #
-            #   ≡ ∂i (ni nk σkℓ w)
-            #
-            #   = (∂i ni) nk σkℓ w
-            #   + ni (∂i nk) σkℓ w
-            #   + ni nk (∂i σkℓ) w
-            #   + ni nk σkℓ (∂i w)
-            #
-            #   = (∂i ni) nk σkℓ w
-            #   + [(ni ∂i) (nk σkℓ)] w
-            #   + ni nk σkℓ (∂i w)
-            #
-            #   = (∂i ni) nk σkℓ w
-            #   + [(ni ∂i) (nk σkℓ)] w
-            #   + nk σkℓ [(ni ∂i) w]
-            #
-            #   ≡ (∇·n) [n·σ]ℓ w
-            #   + [(n·∇) [n·σ]ℓ] w
-            #   + [n·σ]ℓ [(n·∇)w]
-            #
-            # Therefore, by the divergence theorem,
-            #
-            #   N·(n ⊗ n·σ w) = (∇·n) [n·σ] w + [(n·∇) [n·σ]] w + [n·σ] [(n·∇)w]
-            #
-            # where N is the outer unit normal of the *boundary domain*.
-            #
-            # Rearranging yields:
-            #
-            #   [(n·∇) [n·σ]] w = N·(n ⊗ n·σ w) - [n·σ] [(n·∇)w] - (∇·n) [n·σ] w
-            #
-            # Note that N·n ≡ 0 (for a 1D boundary of a 2D domain, the 0D normal N is tangent
-            # to the boundary segment). We are left with:
-            #
-            #   [(n·∇) [n·σ]] w = -[n·σ] [(n·∇)w] - (∇·n) [n·σ] w
-            #
-            # The facet normal is constant over a boundary segment, therefore ∇·n ≡ 0.
-            # We obtain the result:
-            #
-            #   [(n·∇) [n·σ]] w = -[n·σ] [(n·∇)w]
-
             n_dot_Σ0 = n_dot_K_inner(ε0) - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
             if self.τ > 0.0:  # viscous and viscothermal parts
                 n_dot_Σ0 += τ * (outflow(v) - (n_dot_K_inner(α) +
@@ -714,9 +657,82 @@ class LinearMomentumBalance:
                 if bc_kind_tag == "strain":
                     ε0 = bc_specific_data
                     n_dot_σ0 = strain_BC_normal_stress(ε0, V, T, dTdt)
+                    integrand = dot(n_dot_σ0, w)
                 elif bc_kind_tag == "outflow":
-                    ε0 = bc_specific_data
-                    n_dot_σ0 = outflow_BC_normal_stress(ε0, V, T, dTdt)
+                    # ε0 = bc_specific_data
+                    # n_dot_σ0 = outflow_BC_normal_stress(ε0, V, T, dTdt)
+
+                    # put the  n·σ0  term back; no BC on normal stress itself
+                    Σ0 = cauchy_stress(U, V, T, dTdt)
+                    n_dot_σ0 = dot(n, Σ0)
+
+                    # No change in normal stress in the normal direction:
+                    #   (n·∇) [n·σ] = 0
+                    # Weak directional derivative of normal stress:
+                    #   ∫ [(n·∇) [n·σ]] · w ds = -∫ [n·σ] · [(n·∇)w] ds
+                    penalty = Constant(1e2)
+                    integrand = dot(n_dot_σ0, w) + penalty * dot(n_dot_σ0, dot(n, nabla_grad(w)))
+
+                    # # Weak directional derivative of normal strain:   (TODO: doesn't work for our test case, no matter the penalty size or sign)
+                    # #  ∫ [(n·∇) [n·ε]] · w ds = -∫ [n·ε] · [(n·∇)w] ds
+                    # penalty = Constant(1e2)
+                    # integrand = dot(n_dot_σ0, w) + penalty * dot(dot(n, ε(U)), dot(n, nabla_grad(w)))
+                    #
+                    # Technical details: we enforce the penalty term using a weak derivative.
+                    # We have:
+                    #
+                    #   [(n·∇)(n·σ)] · w ≡ [(nk ∂k) (ni σij)] wj
+                    #
+                    # Integration by parts? Consider an expression of the form
+                    #
+                    #     ∂i (nj nk σmℓ wr)
+                    #   = (∂i nj) nk σmℓ wr
+                    #   + nj (∂i nk) σmℓ wr
+                    #   + nj nk (∂i σmℓ) wr
+                    #   + nj nk σmℓ (∂i wr)
+                    #
+                    # To get the term we have, choose m = k, j = i, r = ℓ:
+                    #
+                    #     ∇·(n ⊗ n·σ · w)
+                    #
+                    #   ≡ ∂i (ni nk σkℓ wℓ)
+                    #
+                    #   = (∂i ni) nk σkℓ wℓ
+                    #   + ni (∂i nk) σkℓ wℓ
+                    #   + ni nk (∂i σkℓ) wℓ
+                    #   + ni nk σkℓ (∂i wℓ)
+                    #
+                    #   = (∂i ni) nk σkℓ wℓ
+                    #   + [(ni ∂i) (nk σkℓ)] wℓ
+                    #   + ni nk σkℓ (∂i wℓ)
+                    #
+                    #   = (∂i ni) nk σkℓ wℓ
+                    #   + [(ni ∂i) (nk σkℓ)] wℓ
+                    #   + nk σkℓ [(ni ∂i) wℓ]
+                    #
+                    #   ≡ (∇·n) [n·σ]ℓ wℓ
+                    #   + [(n·∇) [n·σ]ℓ] wℓ
+                    #   + [n·σ]ℓ [(n·∇)wℓ]
+                    #
+                    # Therefore, by the divergence theorem,
+                    #
+                    #   N·(n ⊗ n·σ · w) = (∇·n) [n·σ] · w  +  [(n·∇) [n·σ]] · w  +  [n·σ] · [(n·∇)w]
+                    #
+                    # where N is the outer unit normal of the *boundary domain*.
+                    #
+                    # Rearranging yields:
+                    #
+                    #   [(n·∇) [n·σ]] · w = N·(n ⊗ n·σ · w) - [n·σ] · [(n·∇)w] - (∇·n) [n·σ] · w
+                    #
+                    # Note that N·n ≡ 0 (for a 1D boundary of a 2D domain, the 0D normal N is tangent
+                    # to the boundary segment). We are left with:
+                    #
+                    #   [(n·∇) [n·σ]] · w = -[n·σ] · [(n·∇)w] - (∇·n) [n·σ] · w
+                    #
+                    # The facet normal is constant over a boundary segment, therefore ∇·n ≡ 0.
+                    # We obtain the result:
+                    #
+                    #   [(n·∇) [n·σ]] · w = -[n·σ] · [(n·∇)w]
                 else:
                     raise ValueError(f"Special Neumann boundary condition kind '{bc_kind_tag}' not recognized; valid: 'strain', 'outflow'")
             else:
@@ -726,13 +742,14 @@ class LinearMomentumBalance:
                 # The `.T` is for strict consistency with our formulation of the linear momentum balance law,
                 # but since the Cauchy stress tensor is symmetric, it doesn't really matter.
                 n_dot_σ0 = dot(n, Σ0.T)
+                integrand = dot(n_dot_σ0, w)
 
             if tag is None:  # not specified -> whole Neumann boundary (i.e. everywhere that has no Dirichlet BC)
-                F_u -= dot(n_dot_σ0, w) * ds
+                F_u -= integrand * ds
             else:  # a specific part of the Neumann boundary
                 if self.ds is None:
                     raise ValueError("`boundary_parts` must be supplied to build `ds` when Neumann BCs are applied on individual boundary parts.")
-                F_u -= dot(n_dot_σ0, w) * self.ds(tag)
+                F_u -= integrand * self.ds(tag)
 
         if self.V0 != 0.0:  # axial motion enabled?
             # SUPG stabilization for `u`. τ_SUPG as in an advection-diffusion problem (or as in Navier-Stokes).
