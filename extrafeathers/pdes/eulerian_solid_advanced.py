@@ -279,9 +279,9 @@ class LinearMomentumBalance:
 
         # Set up subdomains for the boundary parts.
         #
-        # In the Neumann BC, to use different expressions on different boundaries, we must set up subdomains for `ds`.
-        # We must split `ds` to apply BCs selectively by boundary tag, and include a list of boundary tags in the
-        # Neumann BC specification.
+        # In the Neumann BC, to use different expressions on different boundaries, we must set up subdomains
+        # for `ds`. We must split `ds` to apply BCs selectively by boundary tag, and include a list of boundary
+        # tags in the Neumann BC specification.
         #
         # See the tutorial:
         #   https://fenicsproject.org/pub/tutorial/sphinx1/._ftut1005.html#fenics-implementation-14
@@ -299,8 +299,9 @@ class LinearMomentumBalance:
         u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         w, ψ = TestFunctions(S)
         # Name the function for XDMF exports. The mixed field contains both `u` and `du/dt`, but the subfields
-        # can't be named separately (at least in FEniCS 2019). The subfields are automatically named `u-0` and `u-1`;
-        # see the source code of `dolfin.function.Function.__init__`. Even so, this is much more descriptive than "f_97-0" etc.
+        # can't be named separately (at least in FEniCS 2019). The subfields are automatically named `u-0` and
+        # `u-1`; see the source code of `dolfin.function.Function.__init__`. Even so, this is much more
+        # descriptive than "f_97-0" etc.
         s_ = Function(S, name="u")  # suffix _: latest computed approximation
         u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
@@ -1106,8 +1107,9 @@ class InternalEnergyBalance:
         u, v = TrialFunctions(S)  # no suffix: UFL symbol for unknown quantity
         w, ψ = TestFunctions(S)
         # Name the function for XDMF exports. The mixed field contains both `T` and `dT/dt`, but the subfields
-        # can't be named separately (at least in FEniCS 2019). The subfields are automatically named `T-0` and `T-1`;
-        # see the source code of `dolfin.function.Function.__init__`. Even so, this is much more descriptive than "f_97-0" etc.
+        # can't be named separately (at least in FEniCS 2019). The subfields are automatically named `T-0` and
+        # `T-1`; see the source code of `dolfin.function.Function.__init__`. Even so, this is much more
+        # descriptive than "f_97-0" etc.
         s_ = Function(S, name="T")  # suffix _: latest computed approximation
         u_, v_ = split(s_)  # gives `ListTensor` (for UFL forms in the monolithic system), not `Function`
         # u_, v_ = s_.sub(0), s_.sub(1)  # if you want the `Function` (for plotting etc.)
