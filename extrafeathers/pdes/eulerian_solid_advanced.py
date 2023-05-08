@@ -176,11 +176,11 @@ class LinearMomentumBalance:
                        This sets up the Neumann BC corresponding to a known strain at the
                        specified boundary. The normal projection of ε0 is used in the BC.
 
-                   (("outflow", ε0), boundary_tag or None)
+                   (("outflow", None), boundary_tag or None)
 
                        This makes the solver arrange things so that at the specified boundary,
-                       n·∇v = 0 (steady outflow), and the small-strain tensor ε takes on the
-                       value ε0 (a FEniCS expression). Its normal projection is used in the BC.
+                       (n·∇)(n·σ) = 0 (steady outflow). The `None` is a placeholder for the
+                       BC type specific data, which this BC doesn't use.
 
                A `boundary_tag` is an `int` that matches a boundary number in
                `boundary_parts`, which see. This means to use the expression
@@ -554,70 +554,69 @@ class LinearMomentumBalance:
                                            K_inner(dαdT) * (T - T0)) * dTdt)
             return Σ
 
-        # Outflow BC, where  n·∇v = 0,  like in Navier-Stokes.
+        # # Old outflow BC, where  n·∇v = 0,  like in Navier-Stokes.
+        # #
+        # # Elastic term uses the normal projection of a given strain ε0,
+        # # because we need some data to make `u` unique (so that the BC
+        # # does its job). There is no place to put a normal derivative
+        # # condition on strain, which would better represent outflow.
+        # #
+        # # The thermal term is kept as-is, as it depends only on an externally
+        # # supplied field.
+        # #
+        # # This is implemented here, because the form of the BC depends on the
+        # # constitutive model.
+        # #
+        # # The velocity term (in the viscous part of Kelvin-Voigt) becomes:
+        # #   n · K : ε(v) = ni Kijkℓ [ε(v)]kℓ
+        # # i.e.
+        # #   (1/2) n · K : [∇v + ∇v^T] = (1/2) ni Kijkℓ (∂k vℓ + ∂ℓ vk)
+        # #                             = (1/2) Kkℓij ni (∂k vℓ + ∂ℓ vk)   (major symmetry)
+        # #                             = (1/2) Kkℓji ni (∂k vℓ + ∂ℓ vk)   (minor symmetry)
+        # # For the general anisotropic material, it seems there is no easy way
+        # # to extract a term of the form  n·∇v.
+        # #
+        # # For an isotropic material, however, as implemented in `cauchy_stress` above:
+        # #   K : ε(...) = 2 μ ε(...) + λ Id tr(ε(...))
+        # # which leads to
+        # #   n · K : ε(...) = 2 μ n · ε(...) + λ n · Id tr(ε(...))
+        # #                  = 2 μ n · ε(...) + λ n tr(ε(...))
+        # #                  = 2 μ n · ε(...) + λ n div(...)
+        # #                  = μ n · [∇(...) + ∇(...)^T] + λ n div(...)
+        # # so we may apply the same strategy as in the Navier-Stokes solver
+        # # to implement the velocity term of the outflow BC:
+        # #   n · K : ε(...) = μ n · ∇(...)^T + λ n div(...)
+        # #                  = μ ∇(...) · n + λ n div(...)
+        # def outflow_BC_normal_stress(ε0, v, T, dTdt):
+        #     """Form a Neumann BC expression for an outflow boundary, where n·∇v = 0.
         #
-        # Elastic term uses the normal projection of a given strain ε0,
-        # because we need some data to make `u` unique (so that the BC
-        # does its job). There is no place to put a normal derivative
-        # condition on strain, which would better represent outflow.
+        #     The small-strain tensor ε must be specified on the outflow
+        #     boundary; its normal projection is automatically used.
+        #     """
+        #     λ = self.λ(T)
+        #     μ = self.μ(T)
+        #     α = self.α(T)
+        #     dαdT = self.dαdT(T)
         #
-        # The thermal term is kept as-is, as it depends only on an externally
-        # supplied field.
+        #     # Id = Identity(ε(u).geometric_dimension())
+        #     # K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
+        #     # n_dot_K_inner = lambda ε: dot(n, K_inner(ε))
+        #     n_dot_K_inner = lambda ε: 2 * μ * dot(n, ε) + λ * n * tr(ε)  # n·K:(...)
         #
-        # This is implemented here, because the form of the BC depends on the
-        # constitutive model.
+        #     # n·K:ε(_) for axially moving Kelvin-Voigt, when n·∇_ = 0. Used for `v`.
+        #     outflow = lambda _: μ * dot(nabla_grad(_), n) + λ * n * div(_)
         #
-        # The velocity term (in the viscous part of Kelvin-Voigt) becomes:
-        #   n · K : ε(v) = ni Kijkℓ [ε(v)]kℓ
-        # i.e.
-        #   (1/2) n · K : [∇v + ∇v^T] = (1/2) ni Kijkℓ (∂k vℓ + ∂ℓ vk)
-        #                             = (1/2) Kkℓij ni (∂k vℓ + ∂ℓ vk)   (major symmetry)
-        #                             = (1/2) Kkℓji ni (∂k vℓ + ∂ℓ vk)   (minor symmetry)
-        # For the general anisotropic material, it seems there is no easy way
-        # to extract a term of the form  n·∇v.
+        #     # # TEST/DEBUG: ignore ε0, and try a simple penalty method to enforce (n·∇)(n·ε) = 0,
+        #     # # which is a kind of outflow condition for the normal projection of strain:
+        #     # normal_strain_penalty = Constant(1e8) * dot(n, nabla_grad(dot(n, ε(u))))
+        #     # n_dot_Σ0 = normal_strain_penalty - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
         #
-        # For an isotropic material, however, as implemented in `cauchy_stress` above:
-        #   K : ε(...) = 2 μ ε(...) + λ Id tr(ε(...))
-        # which leads to
-        #   n · K : ε(...) = 2 μ n · ε(...) + λ n · Id tr(ε(...))
-        #                  = 2 μ n · ε(...) + λ n tr(ε(...))
-        #                  = 2 μ n · ε(...) + λ n div(...)
-        #                  = μ n · [∇(...) + ∇(...)^T] + λ n div(...)
-        # so we may apply the same strategy as in the Navier-Stokes solver
-        # to implement the velocity term of the outflow BC:
-        #   n · K : ε(...) = μ n · ∇(...)^T + λ n div(...)
-        #                  = μ ∇(...) · n + λ n div(...)
-        def outflow_BC_normal_stress(ε0, v, T, dTdt):
-            """Form a Neumann BC expression for an outflow boundary, where n·∇v = 0.
+        #     n_dot_Σ0 = n_dot_K_inner(ε0) - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
+        #     if self.τ > 0.0:  # viscous and viscothermal parts
+        #         n_dot_Σ0 += τ * (outflow(v) - (n_dot_K_inner(α) +
+        #                                        n_dot_K_inner(dαdT) * (T - T0)) * dTdt)
+        #     return n_dot_Σ0
 
-            The small-strain tensor ε must be specified on the outflow
-            boundary; its normal projection is automatically used.
-            """
-            λ = self.λ(T)
-            μ = self.μ(T)
-            α = self.α(T)
-            dαdT = self.dαdT(T)
-
-            # Id = Identity(ε(u).geometric_dimension())
-            # K_inner = lambda ε: 2 * μ * ε + λ * Id * tr(ε)  # `K:(...)`
-            # n_dot_K_inner = lambda ε: dot(n, K_inner(ε))
-            n_dot_K_inner = lambda ε: 2 * μ * dot(n, ε) + λ * n * tr(ε)  # n·K:(...)
-
-            # n·K:ε(_) for axially moving Kelvin-Voigt, when n·∇_ = 0. Used for `v`.
-            outflow = lambda _: μ * dot(nabla_grad(_), n) + λ * n * div(_)
-
-            # # TEST/DEBUG: ignore ε0, and try a simple penalty method to enforce (n·∇)(n·ε) = 0,
-            # # which is a kind of outflow condition for the normal projection of strain:
-            # normal_strain_penalty = Constant(1e8) * dot(n, nabla_grad(dot(n, ε(u))))
-            # n_dot_Σ0 = normal_strain_penalty - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
-
-            n_dot_Σ0 = n_dot_K_inner(ε0) - n_dot_K_inner(α) * (T - T0)  # elastic and elastothermal parts
-            if self.τ > 0.0:  # viscous and viscothermal parts
-                n_dot_Σ0 += τ * (outflow(v) - (n_dot_K_inner(α) +
-                                               n_dot_K_inner(dαdT) * (T - T0)) * dTdt)
-            return n_dot_Σ0
-
-        # This is done similarly to the outflow BC, except no special handling for `v`, so we include this too.
         def strain_BC_normal_stress(ε0, v, T, dTdt):
             """Form a Neumann BC expression for a boundary with known strain ε0.
 
@@ -659,6 +658,7 @@ class LinearMomentumBalance:
                     n_dot_σ0 = strain_BC_normal_stress(ε0, V, T, dTdt)
                     integrand = dot(n_dot_σ0, w)
                 elif bc_kind_tag == "outflow":
+                    # # old outflow BC
                     # ε0 = bc_specific_data
                     # n_dot_σ0 = outflow_BC_normal_stress(ε0, V, T, dTdt)
 
@@ -673,7 +673,8 @@ class LinearMomentumBalance:
                     penalty = Constant(1e2)
                     integrand = dot(n_dot_σ0, w) + penalty * dot(n_dot_σ0, dot(n, nabla_grad(w)))
 
-                    # # Weak directional derivative of normal strain:   (TODO: doesn't work for our test case, no matter the penalty size or sign)
+                    # TODO: This variant doesn't work for our test case, no matter the penalty size or sign
+                    # # Weak directional derivative of normal strain:
                     # #  ∫ [(n·∇) [n·ε]] · w ds = -∫ [n·ε] · [(n·∇)w] ds
                     # penalty = Constant(1e2)
                     # integrand = dot(n_dot_σ0, w) + penalty * dot(dot(n, ε(U)), dot(n, nabla_grad(w)))
