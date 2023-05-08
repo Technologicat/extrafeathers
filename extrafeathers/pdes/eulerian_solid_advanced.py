@@ -1350,7 +1350,7 @@ class InternalEnergyBalance:
         self.aform = lhs(F)
         self.Lform = rhs(F)
 
-    def step(self) -> int:
+    def step(self) -> None:
         """Take a timestep of length `self.dt`.
 
         Stores the previous Picard iterate in `self.s_prev` (for convergence monitoring by user),
@@ -1358,8 +1358,6 @@ class InternalEnergyBalance:
         system is BiCGstab, with the hypre_amg preconditioner.
 
         Can be called several times to iteratively refine the nonlinear solution.
-
-        Returns the number of Krylov iterations taken.
         """
         begin("Internal energy balance")
         self.s_prev.assign(self.s_)  # store previous Picard iterate
@@ -1368,10 +1366,8 @@ class InternalEnergyBalance:
         [bc.apply(A) for bc in self.bcT]
         [bc.apply(b) for bc in self.bcT]
         solve(A, self.s_.vector(), b, 'mumps')
-        it = 1
-        # it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')
+        # it = solve(A, self.s_.vector(), b, 'bicgstab', 'hypre_amg')  # mumps converges better
         end()
-        return it
 
     def commit(self) -> None:
         """Commit the latest computed timestep, preparing for the next one.
