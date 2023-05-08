@@ -725,8 +725,9 @@ class LinearMomentumBalance:
                     #
                     #   [(n·∇) [n·σ]] · w = N·(n ⊗ n·σ · w) - [n·σ] · [(n·∇)w] - (∇·n) [n·σ] · w
                     #
-                    # Note that N·n ≡ 0 (for a 1D boundary of a 2D domain, the 0D normal N is tangent
-                    # to the boundary segment). We are left with:
+                    # Note that N·n ≡ 0. For a 1D boundary of a 2D domain, the 0D normal `N` is tangent
+                    # to the boundary segment. Similarly, for a 2D boundary of a 3D domain, the edge
+                    # normal `N` is perpendicular to the facet normal `n`. We are left with:
                     #
                     #   [(n·∇) [n·σ]] · w = -[n·σ] · [(n·∇)w] - (∇·n) [n·σ] · w
                     #
