@@ -703,7 +703,8 @@ def total_kinetic_energy():
 # use the θ integrator, just like for all other fields here.
 #
 # Since the reference level of the internal energy is arbitrary, we can define the state
-# at time t = 0 to be E = 0 in all of Ω.
+# at time t = 0 to be E = 0 in all of Ω - but only if the initial temperature field is a
+# uniform constant field.
 
 # Preparation for plotting.
 if my_rank == 0:
