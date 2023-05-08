@@ -771,28 +771,31 @@ class LinearMomentumBalance:
             # Velocity variable.
             #
             # There are a few important technical points here:
-            #   - In terms of `u`, the linear momentum balance is second order in time. To use standard time integrators,
-            #     we need to define some auxiliary velocity variable `v`, to transform the equation into a first-order system.
-            #   - It is useful to choose `v` not as the local Eulerian rate of displacement in the laboratory, `∂u/∂t`, but instead
-            #     as the co-moving derivative `du/dt`. Unlike the local Eulerian rate, this is a physically meaningful quantity:
-            #     up to first order in the small quantities, it is the actual physical velocity of the material parcels,
-            #     as measured against the co-moving frame.
-            #   - Inserting this `v` into the Kelvin-Voigt constitutive law, we avoid the need for the extra space derivative
-            #     that otherwise arises in the viscous terms when the material is undergoing axial motion. This allows us to
-            #     apply standard C0-continuous FEM to an axially moving Kelvin-Voigt problem.
+            #   - In terms of `u`, the linear momentum balance is second order in time.
+            #     To use standard time integrators, we need to define some auxiliary velocity
+            #     variable `v`, to transform the equation into a first-order system.
+            #   - It is useful to choose `v` not as the local Eulerian rate of displacement in the laboratory,
+            #     `∂u/∂t`, but instead as the co-moving derivative `du/dt`. Unlike the local Eulerian rate,
+            #     this is a physically meaningful quantity: up to first order in the small quantities, it is the
+            #     actual physical velocity of the material parcels, as measured against the co-moving frame.
+            #   - Inserting this `v` into the Kelvin-Voigt constitutive law, we avoid the need for the extra
+            #     space derivative that otherwise arises in the viscous terms when the material is undergoing
+            #     axial motion. This allows us to apply standard C0-continuous FEM to an axially moving
+            #     Kelvin-Voigt problem.
             #
-            # (A programmer would say that the appearance of the extra space derivative, in the classical approach, hints of an
-            #  /impedance mismatch/ (in the software engineering sense) between the classical auxiliary variable ∂u/∂t and the
-            #  constitutive law being treated. In hindsight, it is obvious that the co-moving rate is a better choice, because
-            #  the Kelvin-Voigt law explicitly talks about the co-moving rate of `u`. By representing that co-moving rate
+            # (A programmer would say that the appearance of the extra space derivative, in the classical
+            #  approach, hints of an /impedance mismatch/ (in the software engineering sense) between the
+            #  classical auxiliary variable ∂u/∂t and the constitutive law being treated. In hindsight,
+            #  it is obvious that the co-moving rate is a better choice, because the Kelvin-Voigt law
+            #  explicitly talks about the co-moving rate of `u`. By representing that co-moving rate
             #  explicitly, the impedance mismatch goes away.)
             #
-            # This equation essentially just defines `v` as the axially comoving rate of `u`. Keep in mind the MLE representation;
-            # `u` is parameterized by the laboratory coordinate `x`, but measures displacement from a state with constant-velocity
-            # axial motion at velocity `a`.
+            # This equation essentially just defines `v` as the axially comoving rate of `u`. Keep in mind
+            # the MLE representation; `u` is parameterized by the laboratory coordinate `x`, but measures
+            # displacement from a state with constant-velocity axial motion at velocity `a`.
             #
-            # We use skew-symmetric advection for numerical stabilization. Since `a` is the (divergence-free) axial drive
-            # velocity field, we may use the default mode of `advw` and `advs`.
+            # We use skew-symmetric advection for numerical stabilization. Since `a` is the (divergence-free)
+            # axial drive velocity field, we may use the default mode of `advw` and `advs`.
             F_v = (dot(V, ψ) * dx -
                    (dot(dudt, ψ) * dx + advw(a, U, ψ, n)))
 
