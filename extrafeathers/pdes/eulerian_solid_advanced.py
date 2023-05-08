@@ -678,9 +678,9 @@ class LinearMomentumBalance:
                     # #  ∫ [(n·∇) [n·ε]] · w ds = -∫ [n·ε] · [(n·∇)w] ds
                     # penalty = Constant(1e2)
                     # integrand = dot(n_dot_σ0, w) + penalty * dot(dot(n, ε(U)), dot(n, nabla_grad(w)))
-                    #
+
                     # Technical details: we enforce the penalty term using a weak derivative.
-                    # We have:
+                    # We have (using the stress tensor as an example):
                     #
                     #   [(n·∇)(n·σ)] · w ≡ [(nk ∂k) (ni σij)] wj
                     #
