@@ -42,14 +42,14 @@ def estimate(tmax=20.0, nel=2000, degree=2):
     Parameters:
 
         `tmax`: End time for this 0D cooling simulation
-        `nel`: Number of elements
-        `degree`: Degree of (classical nodal Lagrange) elements
+        `nel`: Number of elements. We use finite elements in time to perform the simulation.
+        `degree`: Element degree. We use classical nodal Lagrange elements.
 
     Return value is `(u, xx, uu)`, where:
 
         `u`: The solution as a FEniCS `Function` (query it for `.function_space()` if needed)
-        `xx`: rank-1 `np.array`, time coordinate of each element endpoint
-        `uu`: rank-1 `np.array`, solution value at the element endpoints
+        `xx`: rank-1 `np.array`, time coordinate of each node of the mesh
+        `uu`: rank-1 `np.array`, solution value at the nodes
     """
     if my_rank == 0:
         print(f"Solving inlet temperature profile with {nel} elements (degree {degree}), up to t = {tmax} s")
@@ -76,12 +76,15 @@ def estimate(tmax=20.0, nel=2000, degree=2):
     # where
     #   r = dA/dm Γ,   [Γ] = W/m²
     #
+    # The equation follows from the heat equation for a moving material, by requiring
+    # that all fields are constant in space, and neglecting the mechanical work term.
+    #
     # Consider a sphere with radius R and constant density ρ,
     #   A = 4 π R²
     #   V = 4/3 π R³
     #   dm = ρ dV
     #
-    # so for any fixed R,
+    # so for any fixed R, the exposed surface area per unit mass is:
     #   A / m = (4 π R²) / (ρ 4/3 π R³)
     #         = 3 / (ρ R)
     #
@@ -91,9 +94,10 @@ def estimate(tmax=20.0, nel=2000, degree=2):
     #
     # Note that  c = c(u).
     #
-    # Weak form, with all terms moved to the left-hand side:
+    # Weak form. Multiply by a scalar test function `v`, integrate over the domain
+    # `(0, tmax)`, and move all terms to the left-hand side. We obtain:
     #
-    #   ∫ u' v dx + (3 Γ / (R ρ c)) ∫ [u - u_ext] v dx = 0
+    #   ∫ u' v dx + (3 Γ / (R ρ)) ∫ (1 / c) [u - u_ext] v dx = 0
     #
     c = Function(W, name="c")
     weak_form = (u.dx(0) * v * dx +
@@ -156,7 +160,7 @@ def estimate(tmax=20.0, nel=2000, degree=2):
     # xx = xx.flatten()
     # uu = u_.vector().get_local()
 
-    # Let's use extrafeathers:
+    # Let's use extrafeathers (works in MPI mode, too):
     cells, nodes = meshmagic.all_cells(W)
     dofs, nodes_array = meshmagic.nodes_to_array(nodes)
     xx = nodes_array.flatten()
