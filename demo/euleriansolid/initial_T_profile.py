@@ -81,10 +81,11 @@ def estimate(tmax=20.0, nel=2000, degree=2):
     #
     # Consider a sphere with radius R and constant density ρ,
     #   A = 4 π R²
+    #   m = ρ V
+    # where
     #   V = 4/3 π R³
-    #   dm = ρ dV
     #
-    # so for any fixed R, the exposed surface area per unit mass is:
+    # For any fixed R, the exposed surface area per unit mass is:
     #   A / m = (4 π R²) / (ρ 4/3 π R³)
     #         = 3 / (ρ R)
     #
