@@ -28,6 +28,10 @@
 # Then install some pip packages from NVIDIA:
 # https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
 #   nvidia-tensorrt  (should pull in cuda_runtime, cuda_nvrtc, cublas, cudnn)
+#      nvidia_cuda_nvrtc_cu11  (in case it doesn't, this is the package name)
+#      nvidia_cuda_runtime_cu11
+#      nvidia_cublas_cu11
+#      nvidia_cudnn_cu11
 #   nvidia_cufft_cu11  (with appropriate cuda version; check ~/.local/lib/python3.10/site-packages/nvidia*)
 #   nvidia_curand_cu11
 #   nvidia_cusolver_cu11
