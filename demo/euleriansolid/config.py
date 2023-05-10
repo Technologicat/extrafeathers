@@ -96,11 +96,11 @@ thermal_solver_enabled = True
 # H = 1e-3             # Thickness of the sheet [m]
 #
 # Values consistent with our 1D study:
-# Γ = 10.0  # single-sided cooling: one side exposed
-Γ = 2 * 10.0  # double-sided cooling: both sides exposed (absorb the 2 here)
-T_ext = 273.15 + 22
-H = 50e-6
 R = H / 2  # for initial temperature profile estimation
+# Γ = 10.0  # [W/(m² K)]  # single-sided cooling: one side exposed
+Γ = 2 * 10.0   # [W/(m² K)]  # double-sided cooling: both sides exposed (absorb the 2 here)
+T_ext = 273.15 + 22  # [K]
+H = 50e-6  # [m]
 
 # Output of 316L_with_cooling.py. The linear fits are very good, so we're
 # unlikely to need anything more complicated for modeling these.
