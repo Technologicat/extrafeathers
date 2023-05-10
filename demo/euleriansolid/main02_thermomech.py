@@ -36,7 +36,9 @@ from extrafeathers.pdes import (LinearMomentumBalance,
                                 InternalEnergyBalance)
 from extrafeathers.pdes.eulerian_solid_advanced import ε
 from extrafeathers.pdes.numutil import mag, Minn
-from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T, H1_tol, maxit,
+from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T,
+                     inlet_profile_tmax,
+                     H1_tol, maxit,
                      E_func, lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
                      nsave_total, vis_every, enable_SUPG, show_mesh, project_lower_degree_fields_to_V,
                      mechanical_solver_enabled, thermal_solver_enabled,
@@ -372,9 +374,8 @@ from scipy.interpolate import interp1d
 # from fenics import Cell
 from fenics import UserExpression
 from . import initial_T_profile
-profile_tmax = 20.0  # [s], end time of the 0D cooling simulation
 with timer() as tim:
-    _, tt, TT = initial_T_profile.estimate(tmax=profile_tmax)  # <-- the important part
+    tt, TT = initial_T_profile.estimate(tmax=inlet_profile_tmax, nel=100 * inlet_profile_tmax)  # <-- the important part
 if my_rank == 0:
     print(f"Estimated inlet temperature profile in {tim.dt:0.6g} seconds.")
 T_inlet = interp1d(tt, TT, fill_value=(TT[0], TT[-1]))
@@ -384,15 +385,11 @@ class InletTemperatureProfile(UserExpression):
 
     def _eval(self, values, x):
         rely = (x[1] - ymin) / (ymax - ymin)
-        relt = 1.0 - rely  # hot at the top surface (ymax <-> tmin)
-        # TODO: Scale the cooling time coordinate sensibly. Consider how long until the laser sweeps again.
-        # Grain size is ~50μm in diameter, so that's approximately also the thickness of one layer
-        # (neglecting thermal shrinkage, and the removal of pores).
-        #
-        # Full time range, i.e., y at the bottom edge maps to simulation end time in the 0D cooling simulation.
-        # dtdrelt = profile_tmax
-        dtdrelt = 0.25 * profile_tmax  # first 25% of the time range
-        t = dtdrelt * relt
+        reldepth = 1.0 - rely  # hot at the top surface (ymax <-> tmin)
+        # relt = inlet_profile_scale * reldepth  # but the optimal `inlet_profile_scale = 1.0`
+        relt = reldepth
+        t = inlet_profile_tmax * relt
+        assert 0.0 <= t <= inlet_profile_tmax, f"0D cooling simulation time {t} out of range [0, {inlet_profile_tmax}]; maybe `inlet_profile_scale` too large?"
         values[0] = T_inlet(t)
 
     def eval(self, values, x):
