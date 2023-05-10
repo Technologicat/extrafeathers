@@ -192,7 +192,8 @@ def estimate(tmax=20.0, nel=2000, degree=2):
 
     # Solve piecewise if necessary
     tmax_limit = 20.0  # [s]
-    print("Solve for piece 0...")
+    if my_rank == 0:
+        print("Solve for piece 0...")
     xx, uu = solve_piece(t0=0.0, tmax=min(tmax, tmax_limit), T0=T0)
     tol = 1e-8  # [K]
     last_piece = False
@@ -201,7 +202,8 @@ def estimate(tmax=20.0, nel=2000, degree=2):
         # Solve each piece
         j = 1
         while True:
-            print(f"Solve for piece {j}...")
+            if my_rank == 0:
+                print(f"Solve for piece {j}...")
             piece_t0 = j * tmax_limit
             piece_tmax = (j + 1) * tmax_limit
 
@@ -216,7 +218,8 @@ def estimate(tmax=20.0, nel=2000, degree=2):
             if last_piece:
                 break
             elif abs(uu[-1] - T_ext) <= tol:
-                print("Tolerance reached, setting the end temperature as T_ext.")
+                if my_rank == 0:
+                    print("Tolerance reached, setting the end temperature as T_ext.")
                 # Stop simulating once the temperature difference
                 # to the external environment falls below `tol`
                 xxs.append(np.array([tmax]))
