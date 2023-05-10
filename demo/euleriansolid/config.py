@@ -16,7 +16,7 @@ from fenics import Identity
 # L = 1.0
 # elements_per_meter = 32
 L = 2.0
-elements_per_meter = 32
+elements_per_meter = 16
 
 # Number of elements in the `x` direction. Note also the element degree, configured
 # in the solver script itself. It is recommended to use P2 elements.
@@ -28,7 +28,7 @@ N = int(L * elements_per_meter)
 # are better handled by making a square domain, and adjusting the material parameters
 # to make the simulation consider the material as orthotropic. We don't yet support an
 # orthotropic stiffness tensor, so we should add that feature first.
-aspect = 8
+aspect = 1
 
 # --------------------------------------------------------------------------------
 # Physical parameters, common
