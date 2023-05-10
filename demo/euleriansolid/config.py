@@ -163,6 +163,112 @@ k_func = lambda T: Identity(2) * k_scalar(T)                    # Heat conductiv
 # k_func = lambda T: Identity(2) * k_scalar(T)                    # Heat conductivity tensor, thermally isotropic material, 2D
 
 # --------------------------------------------------------------------------------
+# Parameters for inlet temperature profile simulation (advanced solver).
+#
+# When the advanced solver starts, it invokes an oversimplified 0D cooling simulation, with the same `ρ` and `c`,
+# to estimate the inlet temperature profile as a function of depth. See `initial_T_profile.py`.
+#
+# The parameter `inlet_profile_scale` controls the mapping of the 0D simulation time coordinate to the depth coordinate.
+# Considering the individual printed layers, and making a continuous approximation, we have:
+#
+#   layer_number = t / laser_return_time
+#   depth = layer_number * layer_thickness
+#
+# where `t` is the 0D cooling simulation time coordinate. Combining these,
+#
+#   depth = t * layer_thickness / laser_return_time
+#
+# `layer_thickness`: grain size is ~50μm in diameter. That's approximately also the layer thickness,
+# if (for the purposes of constructing this mapping) we neglect thermal shrinkage and the removal of pores.
+#
+# `laser_return_time` is how long until the laser sweeps the same spot again.
+#
+# Let us define the *relative* 0D simulation time as
+#
+#   relt = t / inlet_profile_tmax
+#
+# so that the simulation end time is at `relt = 1`. Inserting this definition, we have
+#
+#   depth = (relt * inlet_profile_tmax) * layer_thickness / laser_return_time
+#
+# Dividing both sides by the domain height:
+#
+#   reldepth = relt * (inlet_profile_tmax / domain_height) * layer_thickness / laser_return_time
+#
+# Reorganizing,
+#
+#   reldepth = relt * (layer_thickness / domain_height) * (inlet_profile_tmax / laser_return_time)
+#
+# from which we extract the final definition for the nondimensional scaling parameter of the inlet profile:
+#
+#   relt = reldepth * inlet_profile_scale,
+#   inlet_profile_scale = (laser_return_time / inlet_profile_tmax) / (layer_thickness / domain_height)
+#
+# Note that because we create the inlet profile by interpolating the 0D simulation output, no data is available for `relt > 1`.
+# Thus we must require
+#
+#   relt ∈ [0, 1]
+#
+# On the other hand, by definition of the relative depth,
+#
+#   reldepth ∈ [0, 1]
+#
+# Also, as was seen, `relt` is linearly proportional to `reldepth`. Therefore, to satisfy both ranges, it must hold that
+#
+#   inlet_profile_scale ≤ 1
+#
+# or in other words,
+#
+#   (laser_return_time / inlet_profile_tmax) / (layer_thickness / domain_height) ≤ 1
+#
+# Rearranging, a 0D simulation of length `inlet_profile_tmax` can support laser return times up to:
+#
+#   laser_return_time ≤ (layer_thickness / domain_height) * inlet_profile_tmax
+#
+# or alternatively, the required 0D simulation length for given `laser_return_time` is:
+#
+#   inlet_profile_tmax ≥ laser_return_time * (domain_height / layer_thickness)
+#
+# The optimal scaling is at the equality - i.e. choosing `inlet_profile_tmax` (how long the 0D simulation
+# needs to be) to make `inlet_profile_scale = 1`, so as to use the complete 0D simulation output as the
+# inlet temperature profile.
+#
+# Thus, we fix `inlet_profile_scale = 1` without making it into a parameter.
+#
+# What is the value we should choose for the laser return time? At H = 50 µm, the printable area depth
+# 10 cm = 2000 layers. The simulated domain (to approximate a semi-infinite sheet, to look at the process
+# in the absence of any boundary effects), which is 2 m in depth, is 40k layers.
+#
+# The simulated 0D cooling process is so fast that the metal reaches room temperature within 20 s,
+# which is obviously overestimating the cooling rate.
+#
+# So to actually have anything other than `T_ext` as the temperature of the nodes other than the one
+# in the upper left corner, we need an unrealistically fast laser return time (considering that in
+# an L-PBF machine, even if we are printing this one thin fin only, recoating takes several seconds),
+# so that the entire domain depth represents not much more than 20 s. Maybe 200 s is ok (so cooling
+# to room temperature, at the domain inlet, happens across the first 10% of the domain depth),
+# but 2000 s (cooling across the first 1% of domain depth) definitely isn't.
+#
+# So as a compromise, let's go for `inlet_profile_tmax = 200` s. At H = 50 µm and domain_height = 2 m,
+# this means 40k layers in 200 s, so the laser return time is 200 s / 40e3 = 5 ms - which is three
+# orders of magnitude too short, so there's definitely room for improvement here. (Maybe use a graded mesh?)
+inlet_profile_tmax = 200.0  # [s]
+
+# # Alternatively, we could set this up like in the above comments:
+# # How long until the laser sweeps the same spot again (but on the next layer).
+# laser_return_time = 1.0  # [s]
+#
+# # Geometry related to the inlet temperature profile.
+# domain_height = L / aspect  # [m]   TODO/NOTE: only works for internal mesh generator
+# layer_thickness = H  # [m]
+#
+# # End time of the 0D cooling simulation. [s]
+# inlet_profile_tmax = laser_return_time * (domain_height / layer_thickness)
+
+# Radius of a representative, spherical powder grain.
+R = H / 2  # [m]
+
+# --------------------------------------------------------------------------------
 # Numerical: common
 
 # Enable streamline upwinding Petrov-Galerkin stabilization? (if the algorithm supports it)
