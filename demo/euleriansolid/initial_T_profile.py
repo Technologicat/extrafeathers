@@ -7,14 +7,13 @@ https://fenicsproject.discourse.group/t/can-one-solve-system-of-ode-with-fenics/
 import numpy as np
 
 from dolfin import (IntervalMesh, interval,
-                    FiniteElement, FunctionSpace, CompiledSubDomain,
+                    FiniteElement, FunctionSpace,
                     DirichletBC, Constant, Expression, Function,
                     TestFunction, TrialFunction,
                     dx,
                     lhs, rhs, assemble, solve,
                     errornorm,
                     project,
-                    plot,
                     MPI, Vector)
 
 from extrafeathers import meshmagic
