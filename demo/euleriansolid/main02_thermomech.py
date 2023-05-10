@@ -375,7 +375,7 @@ from scipy.interpolate import interp1d
 from fenics import UserExpression
 from . import initial_T_profile
 with timer() as tim:
-    tt, TT = initial_T_profile.estimate(tmax=inlet_profile_tmax, nel=100 * inlet_profile_tmax)  # <-- the important part
+    tt, TT = initial_T_profile.estimate(tmax=inlet_profile_tmax)  # <-- the important part
 if my_rank == 0:
     print(f"Estimated inlet temperature profile in {tim.dt:0.6g} seconds.")
 T_inlet = interp1d(tt, TT, fill_value=(TT[0], TT[-1]))
