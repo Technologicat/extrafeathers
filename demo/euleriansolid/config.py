@@ -16,7 +16,7 @@ from fenics import Identity
 # L = 1.0
 # elements_per_meter = 32
 L = 2.0
-elements_per_meter = 16
+elements_per_meter = 8  # with load ramping, we can use very few elements
 
 # Number of elements in the `x` direction. Note also the element degree, configured
 # in the solver script itself. It is recommended to use P2 elements.
