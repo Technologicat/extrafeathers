@@ -363,7 +363,7 @@ dt = T / nt
 
 # For main02_thermomech system iteration (weak coupling for multiphysics)
 H1_tol = 1e-6  # Each field u must satisfy  ‖u - u_prev‖ < tol  separately. H1 norm.
-maxit = 20    # Maximum number of system iterations in one timestep, before giving up.
+maxit = 40    # Maximum number of system iterations in one timestep, before giving up.
 # Usually, if everything is fine, the system converges in ≤ 15 iterations during the
 # first few timesteps, and within ≤ 3 iterations as the simulation proceeds.
 
