@@ -424,8 +424,8 @@ class InletTemperatureProfile(UserExpression):
 def piecewise_linear_transition(x, start=0.0, end=1.0):
     clamp = lambda x: min(max(0.0, x), 1.0)
     return clamp((x - start) / (end - start))
-# T_rampup_func = lambda t: piecewise_linear_transition(t / T, start=0.0, end=0.5)
-T_rampup_func = lambda t: nonanalytic_smooth_transition(piecewise_linear_transition(t / T, start=0.0, end=0.5), m=1.0)
+# rampup_func = lambda t: piecewise_linear_transition(t / T, start=0.0, end=0.5)
+rampup_func = lambda t: nonanalytic_smooth_transition(piecewise_linear_transition(t / T, start=0.0, end=0.5), m=1.0)
 
 T_profile = Function(V_rank0)
 def update_dynamic_inlet_temperature_profile(t):  # noqa: F811
@@ -434,7 +434,7 @@ def update_dynamic_inlet_temperature_profile(t):  # noqa: F811
     # thermal stress, the initial condition must be `T = T0`.
     #
     # We interpolate using a convex combination, with a nonlinearly varying parameter.
-    mix_α = T_rampup_func(t)  # mix proportion for final inlet profile at time `t`
+    mix_α = rampup_func(t)  # mix proportion for final inlet profile at time `t`
     T_profile.assign(project(Constant(mix_α) * InletTemperatureProfile() + (Constant(1.0) - Constant(mix_α)) * Constant(T0),
                              V_rank0))
 update_dynamic_inlet_temperature_profile(0.0)
@@ -452,13 +452,13 @@ bcT.append(bcT_left)
 # # The solver will then run marginally faster, as the equation doesn't include this term.
 # bcq.append((Constant(0), None))
 
-# # Cooling at upper edge. Generic FEM function, to be refreshed with data in `update_dynamic_thermal_terms`.
-# q_upper = Function(V_rank0)
-# bcq.append((q_upper, Boundaries.TOP.value))
+# Cooling at upper edge. Generic FEM function, to be refreshed with data in `update_dynamic_thermal_terms`.
+q_upper = Function(V_rank0)
+bcq.append((q_upper, Boundaries.TOP.value))
 
 # Another way to do this: since this boundary condition is linear in `T`, we can use `thermal_solver.u`
 # to insert the Galerkin series of `T`. Then it'll automatically use the latest data.
-bcq.append((Constant(-Γ) * (thermal_solver.u - Constant(T_ext)), Boundaries.TOP.value))  # [W/m²]
+# bcq.append((Constant(-Γ) * (thermal_solver.u - Constant(T_ext)), Boundaries.TOP.value))  # [W/m²]
 
 # # Higher powers (Stefan-Boltzmann radiative cooling) can be done similarly.
 # # Split off one `T` to use its Galerkin series, and provide the rest as data:
@@ -552,10 +552,12 @@ def update_dynamic_mechanical_terms(t):
 
 def update_dynamic_thermal_terms(t):
     """The main loop calls this after each update of the temperature field."""
-    thermal_solver.h_.assign(project(Constant(-r) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m³]
+    mix_α = rampup_func(t)  # Mix proportion for final load at time `t`. Initial load is zero.
 
-    # # If using a data-based Neumann boundary condition, update also that with the latest data.
-    # q_upper.assign(project(Constant(-Γ) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m²]
+    thermal_solver.h_.assign(project(Constant(-mix_α * r) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m³]
+
+    # If using a data-based Neumann boundary condition, update also that with the latest data.
+    q_upper.assign(project(Constant(-mix_α * Γ) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m²]
 
     update_dynamic_inlet_temperature_profile(t)
 
