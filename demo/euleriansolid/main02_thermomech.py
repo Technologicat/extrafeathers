@@ -380,7 +380,12 @@ with timer() as tim:
 if my_rank == 0:
     print(f"Estimated inlet temperature profile in {tim.dt:0.6g} seconds.")
 T_inlet = interp1d(tt, TT, fill_value=(TT[0], TT[-1]))
+
 class InletTemperatureProfile(UserExpression):
+    """Inlet temperature profile based on solution of 0D cooling simulation.
+
+    Defined in all of the domain, but only depends on `x[1]`.
+    """
     def __init__(self, degree=2, **kwargs):
         super().__init__(**kwargs)
 
