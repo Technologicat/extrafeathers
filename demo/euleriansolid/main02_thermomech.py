@@ -253,24 +253,24 @@ u0_func = lambda t: 0.0
 # bcu1_left = DirichletBC(subspaces["u"].sub(0), Constant(0), boundary_parts, Boundaries.LEFT.value)
 # bcu.append(bcu1_left)
 
-# 3D printing: u2 fixed at bottom edge
-bcu2_bottom = DirichletBC(subspaces["u"].sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)
-bcu.append(bcu2_bottom)
-
-# # 3D printing: u2 on elastic foundation at bottom edge (doesn't work currently)
-# σ_bottom = Function(Q_rank2)
-# bcσ.append((σ_bottom, Boundaries.BOTTOM.value))
-
 # 3D printing: u1 fixed at upper left corner (where the material exits the laser focus spot and has just solidified)
 from fenics import CompiledSubDomain
 upper_left_corner = CompiledSubDomain(f"near(x[0], {xmin}) && near(x[1], {ymax})")
 bcu1_upperleft = DirichletBC(subspaces["u"].sub(0), Constant(0), upper_left_corner, method="pointwise")
 bcu.append(bcu1_upperleft)
 
+# 3D printing: u2 fixed at bottom edge
+bcu2_bottom = DirichletBC(subspaces["u"].sub(1), Constant(0), boundary_parts, Boundaries.BOTTOM.value)
+bcu.append(bcu2_bottom)
+
 # # If we fix u1 only at one point, fixing u2 at one point isn't enough,
 # # since this combination doesn't eliminate infinitesimal rotation modes.
 # bcu2_upperleft = DirichletBC(subspaces["u"].sub(1), Constant(0), upper_left_corner, method="pointwise")
 # bcu.append(bcu2_upperleft)
+
+# # 3D printing: u2 on elastic foundation at bottom edge (doesn't work currently)
+# σ_bottom = Function(Q_rank2)
+# bcσ.append((σ_bottom, Boundaries.BOTTOM.value))
 
 # # # 3D printing: outflow at right edge, (n·∇)(n·σ) = 0.
 # # # The `None` is the BC-specific data for special BCs, which this BC doesn't need.
