@@ -1286,7 +1286,7 @@ for n in range(nt):
     E = total_elastic_strain_energy()
     K = total_kinetic_energy()
     if my_rank == 0:  # DEBUG
-        print(f"Timestep {n + 1}/{nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; Pe_th = {maxPe_thermal:0.2g}; Co_th = {maxCo_thermal:0.2g}; Pe_mech = {maxPe_mech:0.2g}; Co_mech = {maxCo_mech:0.2g}; max cooling rate = {maxh:0.2g} W/m²; E = ∫ (1/2) σ:εel dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}; wall time per timestep {dt_avg:0.3g}s; avg {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
+        print(f"Timestep {n + 1}/{nt} ({100 * (n + 2) / nt:0.1f}%); t = {t + dt:0.6g}; Δt = {dt:0.6g}; [last vis: Pe_th = {maxPe_thermal:0.2g}; Co_th = {maxCo_thermal:0.2g}; Pe_mech = {maxPe_mech:0.2g}; Co_mech = {maxCo_mech:0.2g}; max cooling rate = {maxh:0.2g} W/m²; E = ∫ (1/2) σ:εel dΩ = {E:0.3g}; K = ∫ (1/2) ρ v² dΩ = {K:0.3g}]; wall time per timestep {dt_avg:0.3g}s, {1/dt_avg:0.3g} timesteps/sec (running avg, n = {len(est.que)})")
 
     # In MPI mode, one of the worker processes may have a larger slice of the domain
     # (or require more Krylov iterations to converge) than the root process.
