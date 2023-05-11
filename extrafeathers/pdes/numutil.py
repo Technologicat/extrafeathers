@@ -331,7 +331,7 @@ def advs(a, u, *, mode="divergence-free"):
         # (such as a velocity field produced by an incompressible Navier-Stokes solver).
         return dot(a, nabla_grad(u)) + (1 / 2) * div(a) * u
 
-def ψ(x, m):
+def ψ(x, m=1.0):
     """Building block for non-analytic smooth functions.
 
         ψ(x, m) := exp(-1 / x^m) χ(0, ∞)(x)
@@ -354,7 +354,7 @@ def ψ(x, m):
         except ZeroDivisionError:  # for scalar x
             return 0.0
 
-def nonanalytic_smooth_transition(x, m):
+def nonanalytic_smooth_transition(x, m=1.0):
     """Non-analytic smooth transition from 0 to 1, on interval x ∈ [0, 1].
 
     Outside the interval:
