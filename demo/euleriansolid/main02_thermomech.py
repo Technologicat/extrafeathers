@@ -125,8 +125,9 @@ if my_rank == 0:
     print(f"Geometry detection completed in {tim.dt:0.6g} seconds.")
     print(f"x ∈ [{xmin:0.6g}, {xmax:0.6g}] m, y ∈ [{ymin:0.6g}, {ymax:0.6g}] m.")
     print(f"Domain length L = {domain_length:0.6g} m; height W = {domain_height:0.6g} m; sheet thickness H = {H:0.6g} m")
-    print(f"Simulation end time T = {T} s; timestep Δt = {dt} s")
+    print(f"Simulation end time T = {T} s; timestep Δt = {dt} s; {nt} timesteps")
 
+    print(f"Number of elements in mesh: {len(ignored_cells)}, number of nodes: {len(nodes_dict)}")
     print(f"Mean of longest edge length in mesh {mean_he:0.6g} m")
     print(f"With elements of mean size: {1 / mean_he:0.6g} el/m; {domain_length / mean_he:0.6g} el over domain length")
 
