@@ -421,8 +421,11 @@ class InletTemperatureProfile(UserExpression):
 # Linear ramping, when it ends, causes a nonphysical shock in `dT/dt` and in `σ_vonMises`.
 # So we use a non-analytic smooth transition.
 
-# T_rampup_func = lambda t: min(2 * (t / T), 1.0)  # 0 to 1 during first 50% of simulation
-T_rampup_func = lambda t: nonanalytic_smooth_transition(2 * (t / T), m=1.0)
+def piecewise_linear_transition(x, start=0.0, end=1.0):
+    clamp = lambda x: min(max(0.0, x), 1.0)
+    return clamp((x - start) / (end - start))
+# T_rampup_func = lambda t: piecewise_linear_transition(t / T, start=0.0, end=0.5)
+T_rampup_func = lambda t: nonanalytic_smooth_transition(piecewise_linear_transition(t / T, start=0.0, end=0.5), m=1.0)
 
 T_profile = Function(V_rank0)
 def update_dynamic_inlet_temperature_profile(t):  # noqa: F811
