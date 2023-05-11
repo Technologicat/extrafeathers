@@ -344,15 +344,15 @@ def ψ(x, m):
     This is the helper function used in the construction of the standard
     mollifier.
     """
-    with warnings.catch_warnings():
+    with warnings.catch_warnings():  # for NumPy arrays
         warnings.filterwarnings(action="ignore",
                                 message="^divide by zero .*$",
                                 category=RuntimeWarning,
                                 module="__main__")
         try:
             return np.exp(-1.0 / x**m) * (x > 0.0)
-        except ZeroDivisionError:  # x = 0
-            return 0.0 * x  # zeros_like, but preserve scalar/array distinction
+        except ZeroDivisionError:  # for scalar x
+            return 0.0
 
 def nonanalytic_smooth_transition(x, m):
     """Non-analytic smooth transition from 0 to 1, on interval x ∈ [0, 1].
