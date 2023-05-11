@@ -1,13 +1,13 @@
 // Gmsh 2.16.0 geometry file
 
-xmin = 0.0;
+xmin = -1.0;
 xmax = 1.0;
-ymin = 0.0;
+ymin = -1.0;
 ymax = 1.0;
-Point(1) = {xmin, ymin, 0, 5 * 0.01};  // x, y, z, [mesh element size]
-Point(2) = {xmin, ymax, 0, 5 * 0.01};
-Point(3) = {xmax, ymax, 0, 5 * 0.05};
-Point(4) = {xmax, ymin, 0, 5 * 0.05};
+Point(1) = {xmin, ymin, 0, 0.4};  // x, y, z, [mesh element size]
+Point(2) = {xmin, ymax, 0, 0.02};
+Point(3) = {xmax, ymax, 0, 0.4};
+Point(4) = {xmax, ymin, 0, 0.4};
 Line(1) = {1, 2};  // |^
 Line(2) = {2, 3};  // ->
 Line(3) = {3, 4};  // |v
