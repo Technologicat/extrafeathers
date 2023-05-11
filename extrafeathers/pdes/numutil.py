@@ -357,14 +357,17 @@ def ψ(x, m=1.0):
 def nonanalytic_smooth_transition(x, m=1.0):
     """Non-analytic smooth transition from 0 to 1, on interval x ∈ [0, 1].
 
+    The transition is reflection-symmetric through the point (1/2, 1/2).
+
     Outside the interval:
         s(x, m) = 0  for x < 0
         s(x, m) = 1  for x > 1
 
-    The parameter `m` controls the strength of the nonlinearity.
-    It is passed to `ψ`, which see.
+    The parameter `m` controls the steepness of the transition region.
+    Larger `m` packs the transition closer to `x = 1/2`, making it
+    more abrupt (although technically, still infinitely smooth).
 
-    Symmetric with respect to the point (1/2, 1/2).
+    `m` is passed to `ψ`, which see.
     """
     p = ψ(x, m)
     return p / (p + ψ(1.0 - x, m))
