@@ -4,9 +4,15 @@
 __all__ = ["Min", "Max", "Minn", "Maxx",
            "ε", "vol",
            "mag",
-           "advw", "advs"]
+           "advw", "advs",
+           "ψ", "nonanalytic_smooth_transition"]
+
+import warnings
+
+import numpy as np
 
 from dolfin import sym, nabla_grad, dot, div, Identity, tr, dx, ds, Constant
+
 
 def Min(a, b):
     """UFL expression for the min of expressions `a` and `b`.
@@ -324,3 +330,41 @@ def advs(a, u, *, mode="divergence-free"):
         # This is because in practice, `a` might be only approximately divergence-free
         # (such as a velocity field produced by an incompressible Navier-Stokes solver).
         return dot(a, nabla_grad(u)) + (1 / 2) * div(a) * u
+
+def ψ(x, m):
+    """Building block for non-analytic smooth functions.
+
+        ψ(x, m) := exp(-1 / x^m) χ(0, ∞)(x)
+
+    where χ is the indicator function (1 if x is in the set, 0 otherwise).
+
+    Suppresses divide by zero warnings and errors, so can be evaluated
+    also at `x = 0`.
+
+    This is the helper function used in the construction of the standard
+    mollifier.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(action="ignore",
+                                message="^divide by zero .*$",
+                                category=RuntimeWarning,
+                                module="__main__")
+        try:
+            return np.exp(-1.0 / x**m) * (x > 0.0)
+        except ZeroDivisionError:  # x = 0
+            return 0.0 * x  # zeros_like, but preserve scalar/array distinction
+
+def nonanalytic_smooth_transition(x, m):
+    """Non-analytic smooth transition from 0 to 1, on interval x ∈ [0, 1].
+
+    Outside the interval:
+        s(x, m) = 0  for x < 0
+        s(x, m) = 1  for x > 1
+
+    The parameter `m` controls the strength of the nonlinearity.
+    It is passed to `ψ`, which see.
+
+    Symmetric with respect to the point (1/2, 1/2).
+    """
+    p = ψ(x, m)
+    return p / (p + ψ(1.0 - x, m))
