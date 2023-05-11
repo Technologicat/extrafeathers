@@ -35,7 +35,7 @@ from extrafeathers import plotmagic
 from extrafeathers.pdes import (LinearMomentumBalance,
                                 InternalEnergyBalance)
 from extrafeathers.pdes.eulerian_solid_advanced import ε
-from extrafeathers.pdes.numutil import mag, Minn
+from extrafeathers.pdes.numutil import mag, Minn, nonanalytic_smooth_transition
 from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T,
                      inlet_profile_tmax,
                      H1_tol, maxit,
@@ -343,6 +343,8 @@ linmom_solver.compile_forms()
 T_left = T0
 T_right = T0
 T_bottom = T0 - 100.0
+def update_dynamic_inlet_temperature_profile(t):
+    pass  # by default, no-op - not using a dynamic inlet profile
 
 # Axially moving continuum: specify the temperature of the material parcels that enter the domain at the left.
 # Don't set anything at the right - the default zero Neumann (no change in temperature in axial direction i.e. steady outflow) is appropriate.
@@ -411,7 +413,28 @@ class InletTemperatureProfile(UserExpression):
 
     def value_shape(self):
         return ()
-T_profile = InletTemperatureProfile()
+# T_profile = InletTemperatureProfile()
+
+# Ramp up the thermal load. Since our initial condition for displacement is the zero field,
+# we shouldn't impose a large thermal step load at the start.
+#
+# Linear ramping, when it ends, causes a nonphysical shock in `dT/dt` and in `σ_vonMises`.
+# So we use a non-analytic smooth transition.
+
+# T_rampup_func = lambda t: min(2 * (t / T), 1.0)  # 0 to 1 during first 50% of simulation
+T_rampup_func = lambda t: nonanalytic_smooth_transition(2 * (t / T), m=1.0)
+
+T_profile = Function(V_rank0)
+def update_dynamic_inlet_temperature_profile(t):  # noqa: F811
+    # NOTE: `T = T_ext` is actually a *huge* thermal load, because for thermal expansion,
+    # we use the solidus temperature `T0` as the reference temperature. So, to impose zero
+    # thermal stress, the initial condition must be `T = T0`.
+    #
+    # We interpolate using a convex combination, with a nonlinearly varying parameter.
+    mix_α = T_rampup_func(t)  # mix proportion for final inlet profile at time `t`
+    T_profile.assign(project(Constant(mix_α) * InletTemperatureProfile() + (Constant(1.0) - Constant(mix_α)) * Constant(T0),
+                             V_rank0))
+update_dynamic_inlet_temperature_profile(0.0)
 
 
 # Whichever temperature profile we defined above, apply it at the inlet boundary as a Dirichlet BC:
@@ -517,7 +540,7 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 dAdm = 1 / (rho * H)   # [m²/kg]
 r = dAdm * Γ  # [W/(kg K)]
 
-def update_dynamic_mechanical_terms():
+def update_dynamic_mechanical_terms(t):
     pass
 
     # # Elastic foundation: τ = n·σ = -E u  (doesn't work currently)
@@ -527,15 +550,17 @@ def update_dynamic_mechanical_terms():
     # σ_bottom.sub(1).assign(σ21)  # enforce symmetry of the Cauchy stress tensor used in the BC
     # σ_bottom.sub(3).assign(σ22)
 
-def update_dynamic_thermal_terms():
+def update_dynamic_thermal_terms(t):
     """The main loop calls this after each update of the temperature field."""
     thermal_solver.h_.assign(project(Constant(-r) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m³]
 
     # # If using a data-based Neumann boundary condition, update also that with the latest data.
     # q_upper.assign(project(Constant(-Γ) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m²]
 
+    update_dynamic_inlet_temperature_profile(t)
+
 # Set the value of the thermal source at the end of the first timestep.
-update_dynamic_thermal_terms()
+update_dynamic_thermal_terms(0.0)
 # Set it also at the beginning of the first timestep.
 thermal_solver.h_n.assign(thermal_solver.h_)  # Not a mixed space, so we can copy like this (no temporaries).
 
@@ -1141,7 +1166,7 @@ for n in range(nt):
         if mechanical_solver_enabled:
             # Mechanical substep
             linmom_solver.step()
-            update_dynamic_mechanical_terms()
+            update_dynamic_mechanical_terms(t)
 
         if thermal_solver_enabled:
             # Send updated external fields to thermal solver.
@@ -1167,7 +1192,7 @@ for n in range(nt):
 
             # Thermal substep
             thermal_solver.step()
-            update_dynamic_thermal_terms()
+            update_dynamic_thermal_terms(t)
 
         if mechanical_solver_enabled:
             # Send updated external fields to mechanical solver
