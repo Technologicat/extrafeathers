@@ -46,13 +46,14 @@ def main():
         def mean(a, b):
             return a + (b - a) / 2
 
-        # Grade the mesh. In the 3D printing test case, most stuff happens at the upper left corner.
-        vtxs[:, 0] = grade(vtxs[:, 0], "left", 2)
-        vtxs[:, 1] = grade(vtxs[:, 1], "right", 2)
-        # # vtxs[:, 0] = mean(vtxs[:, 0], grade(vtxs[:, 0], "left", 2))
-        # # vtxs[:, 1] = mean(vtxs[:, 1], grade(vtxs[:, 1], "right", 2))
-        # vtxs[:, 0] = mean(grade(vtxs[:, 0], "left", 2), grade(vtxs[:, 0], "left", 2))
-        # vtxs[:, 1] = mean(grade(vtxs[:, 1], "right", 2), grade(vtxs[:, 1], "right", 2))
+        # # Grade the mesh. In the 3D printing test case, most stuff happens at the upper left corner.
+        # # With load ramping, this is optional.
+        # vtxs[:, 0] = grade(vtxs[:, 0], "left", 2)
+        # vtxs[:, 1] = grade(vtxs[:, 1], "right", 2)
+        # # # vtxs[:, 0] = mean(vtxs[:, 0], grade(vtxs[:, 0], "left", 2))
+        # # # vtxs[:, 1] = mean(vtxs[:, 1], grade(vtxs[:, 1], "right", 2))
+        # # vtxs[:, 0] = mean(grade(vtxs[:, 0], "left", 2), grade(vtxs[:, 0], "left", 2))
+        # # vtxs[:, 1] = mean(grade(vtxs[:, 1], "right", 2), grade(vtxs[:, 1], "right", 2))
 
         # center mesh on origin
         vtxs[:, 0] -= 0.5
