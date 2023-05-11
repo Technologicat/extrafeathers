@@ -239,7 +239,7 @@ k_func = lambda T: Identity(2) * k_scalar(T)                    # Heat conductiv
 # in the absence of any boundary effects), which is 2 m in depth, is 40k layers.
 #
 # The simulated 0D cooling process is so fast that the metal reaches room temperature within 20 s,
-# which is obviously overestimating the cooling rate.
+# which is obviously overestimating the cooling rate (perhaps significantly).
 #
 # So to actually have anything other than `T_ext` as the temperature of the nodes other than the one
 # in the upper left corner, we need an unrealistically fast laser return time (considering that in
@@ -250,7 +250,7 @@ k_func = lambda T: Identity(2) * k_scalar(T)                    # Heat conductiv
 #
 # So as a compromise, let's go for `inlet_profile_tmax = 200` s. At H = 50 µm and domain_height = 2 m,
 # this means 40k layers in 200 s, so the laser return time is 200 s / 40e3 = 5 ms - which is three
-# orders of magnitude too short, so there's definitely room for improvement here. (Maybe use a graded mesh?)
+# orders of magnitude too short, so there's definitely room for improvement here.
 inlet_profile_tmax = 200.0  # [s]
 
 # # Alternatively, we could set this up like in the above comments:
