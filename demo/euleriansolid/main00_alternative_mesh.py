@@ -31,6 +31,29 @@ def main():
     # Aspect ratio (= width / height) of domain.
     # `N` should be integer-divisible by this.
     def vtxpreproc(vtxs):
+        def grade(xx, dense_side, strength):  # xx: np.array of points in [0, 1]
+            assert dense_side in ("left", "right")
+
+            # # root, singular at the coarse side
+            # if dense_side == "right":
+            #     return xx**(1 / strength)
+            # return 1.0 - (1.0 - xx)**(1 / strength)  # left
+
+            # # exponential, smooth everywhere
+            if dense_side == "right":
+                return 1.0 - (np.exp(strength * xx) - 1.0) / (np.exp(strength * 1) - 1.0)
+            return (np.exp(strength * xx) - 1.0) / (np.exp(strength * 1) - 1.0)  # left
+        def mean(a, b):
+            return a + (b - a) / 2
+
+        # Grade the mesh. In the 3D printing test case, most stuff happens at the upper left corner.
+        vtxs[:, 0] = grade(vtxs[:, 0], "left", 2)
+        vtxs[:, 1] = grade(vtxs[:, 1], "right", 2)
+        # # vtxs[:, 0] = mean(vtxs[:, 0], grade(vtxs[:, 0], "left", 2))
+        # # vtxs[:, 1] = mean(vtxs[:, 1], grade(vtxs[:, 1], "right", 2))
+        # vtxs[:, 0] = mean(grade(vtxs[:, 0], "left", 2), grade(vtxs[:, 0], "left", 2))
+        # vtxs[:, 1] = mean(grade(vtxs[:, 1], "right", 2), grade(vtxs[:, 1], "right", 2))
+
         # center mesh on origin
         vtxs[:, 0] -= 0.5
         vtxs[:, 1] -= 0.5
