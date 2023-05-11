@@ -1163,7 +1163,21 @@ for n in range(nt):
     while not converged:
         n_system_iterations += 1
 
+        if thermal_solver_enabled:
+            # Thermal substep
+            thermal_solver.step()
+            update_dynamic_thermal_terms(t)
+
         if mechanical_solver_enabled:
+            # Send updated external fields to mechanical solver
+            # Could do this:
+            #     linmom_solver.T_.assign(project(thermal_solver.s_.sub(0),
+            #                                     linmom_solver.T_.function_space()))
+            #     linmom_solver.dTdt_.assign(project(thermal_solver.s_.sub(1),
+            #                                        linmom_solver.dTdt_.function_space()))
+            # But there's a more civilized way - use a FunctionAssigner:
+            assigner.assign([linmom_solver.T_, linmom_solver.dTdt_], thermal_solver.s_)
+
             # Mechanical substep
             linmom_solver.step()
             update_dynamic_mechanical_terms(t)
@@ -1189,20 +1203,6 @@ for n in range(nt):
             # NOTE: This is the axial velocity, plus the material parcel velocity with respect to the *co-moving* frame.
             thermal_solver.a_.assign(project(linmom_solver.a + linmom_solver.v_,
                                              thermal_solver.a_.function_space()))
-
-            # Thermal substep
-            thermal_solver.step()
-            update_dynamic_thermal_terms(t)
-
-        if mechanical_solver_enabled:
-            # Send updated external fields to mechanical solver
-            # Could do this:
-            #     linmom_solver.T_.assign(project(thermal_solver.s_.sub(0),
-            #                                     linmom_solver.T_.function_space()))
-            #     linmom_solver.dTdt_.assign(project(thermal_solver.s_.sub(1),
-            #                                        linmom_solver.dTdt_.function_space()))
-            # But there's a more civilized way - use a FunctionAssigner:
-            assigner.assign([linmom_solver.T_, linmom_solver.dTdt_], thermal_solver.s_)
 
         # Monitor the convergence of the system iteration.
         H1_diffs = {"u": errnorm(linmom_solver.s_.sub(0), linmom_solver.s_prev.sub(0), "h1"),
