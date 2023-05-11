@@ -1076,6 +1076,16 @@ thermal_solver.a_n.assign(project(linmom_solver.a + linmom_solver.v_,
                                   thermal_solver.a_n.function_space()))
 thermal_solver.a_.assign(thermal_solver.a_n)
 
+# DEBUG/TEST: The convergence failure at the first timestep could be due to
+# the initial condition not being a good approximation of the solution of
+# the system. Take one large timestep with backward Euler to bring it
+# closer to a solution, and then proceed with the rest of the simulation
+# with the given settings.
+use_initial_stabilization_trick = False
+orig_dt = dt
+initial_stabilization_trick_dt = 0.5
+n_initial_stabilization = 5
+
 t = 0
 vis_count = 0
 msg = "Starting. Progress information will be available shortly..."
@@ -1089,6 +1099,26 @@ if my_rank == 0:
     print(f"Visualizing at every {100.0 * vis_every:0.3g}% of simulation ({nvisualizations} visualization{'s' if nvisualizations > 1 else ''} total) -> vis every {nvismod} timestep{'s' if nvismod > 1 else ''}.")
 for n in range(nt):
     begin(msg)
+
+    if use_initial_stabilization_trick and orig_dt < initial_stabilization_trick_dt:
+        if n == 0:
+            if my_rank == 0:
+                print(f"Taking {n_initial_stabilization} large timesteps with backward Euler to stabilize initial fields.")
+            orig_linmom_θ = linmom_solver.θ
+            orig_thermal_θ = thermal_solver.θ
+            dt = initial_stabilization_trick_dt  # [s]
+            linmom_solver.θ = 1.0
+            thermal_solver.θ = 1.0
+            linmom_solver.dt = dt
+            thermal_solver.dt = dt
+        elif n == n_initial_stabilization:
+            if my_rank == 0:
+                print("Initial stabilization done. Proceeding with user-specified simulation settings.")
+            dt = orig_dt
+            linmom_solver.dt = dt
+            thermal_solver.dt = dt
+            linmom_solver.θ = orig_linmom_θ
+            thermal_solver.θ = orig_thermal_θ
 
     # Update current time
     t += dt
