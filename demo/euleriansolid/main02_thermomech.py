@@ -458,9 +458,6 @@ bcT.append(bcT_left)
 
 # Another way to do this: since this boundary condition is linear in `T`, we can use `thermal_solver.u`
 # to insert the Galerkin series of `T`. Then it'll automatically use the latest data.
-#
-# Note the extra factor of `H`, because this is a 2D model: [Γ] = W/m², and the boundary integration
-# only eliminates one `m`.
 bcq.append((Constant(-Γ) * (thermal_solver.u - Constant(T_ext)), Boundaries.TOP.value))  # [W/m²]
 
 # # Higher powers (Stefan-Boltzmann radiative cooling) can be done similarly.
