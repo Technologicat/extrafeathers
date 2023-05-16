@@ -94,6 +94,7 @@ def make_encoder():
     # According to He et al. (2015), adding depth to a convolution network beyond a certain
     # (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
     # channels, i.e. `filters`) can still increase the capacity of the model usefully. Explore this.
+    #   https://arxiv.org/abs/1502.01852
     #
     # Another idea that comes to mind is to try various different kernel sizes.
     #
