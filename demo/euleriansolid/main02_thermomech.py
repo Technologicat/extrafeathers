@@ -36,7 +36,7 @@ from extrafeathers.pdes import (LinearMomentumBalance,
                                 InternalEnergyBalance)
 from extrafeathers.pdes.eulerian_solid_advanced import ε
 from extrafeathers.pdes.numutil import mag, Minn, nonanalytic_smooth_transition
-from .config import (rho, tau, V0, T0, Γ, T_ext, H, dt, nt, T,
+from .config import (rho, tau, V0, T0, Γ_edge, Γ_indomain, T_ext, H, dt, nt, T,
                      inlet_profile_tmax,
                      H1_tol, maxit,
                      E_func, lamda_func, mu_func, α_func, dαdT_func, c_func, dcdT_func, k_func,
@@ -538,7 +538,7 @@ assigner.assign(thermal_solver.s_prev, [initial_T, initial_dTdt])  # previous Pi
 # You can make this model double-sided cooling simply by replacing `Γ → 2 * Γ` in config.py.
 #
 dAdm = 1 / (rho * H)   # [m²/kg]
-r = dAdm * Γ  # [W/(kg K)]
+r = dAdm * Γ_indomain  # [W/(kg K)]
 
 def update_dynamic_mechanical_terms(t):
     pass
@@ -557,7 +557,7 @@ def update_dynamic_thermal_terms(t):
     thermal_solver.h_.assign(project(Constant(-mix_α * r) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m³]
 
     # If using a data-based Neumann boundary condition, update also that with the latest data.
-    q_upper.assign(project(Constant(-mix_α * Γ) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m²]
+    q_upper.assign(project(Constant(-mix_α * Γ_edge) * (fields["T"] - Constant(T_ext)), V_rank0))  # [W/m²]
 
     update_dynamic_inlet_temperature_profile(t)
 

@@ -96,8 +96,10 @@ thermal_solver_enabled = True
 # H = 1e-3             # Thickness of the sheet [m]
 #
 # Values consistent with our 1D study:
-# Γ = 10.0  # [W/(m² K)]  # single-sided cooling: one side exposed
-Γ = 2 * 10.0   # [W/(m² K)]  # double-sided cooling: both sides exposed (absorb the 2 here)
+Γ_edge = 10.0  # [W/(m² K)]
+# Γ_indomain = Γ_edge  # single-sided cooling: one side exposed
+Γ_indomain = 2 * Γ_edge  # double-sided cooling: both sides exposed (absorb the 2 here)
+
 T_ext = 273.15 + 22  # [K]
 H = 50e-6  # [m]
 
