@@ -49,7 +49,7 @@ export XLA_FLAGS=--xla_gpu_cuda_data_dir=/home/jje/.local/lib/python3.10/site-pa
 
 # libcuda.so.1 (for tf-nightly 2.12)
 # This is the system libcuda from libnvidia-compute-xxx, where xxx is the version number (e.g. 525).
-export LD_LIBDARY_PATH=/usr/lib/x86_64-linux-gnu/
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/.local/lib/python3.10/site-packages/nvidia/cuda_runtime/lib/
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/.local/lib/python3.10/site-packages/nvidia/cublas/lib/
