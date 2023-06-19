@@ -16,7 +16,8 @@ from fenics import Identity
 # L = 1.0
 # elements_per_meter = 32
 L = 2.0
-elements_per_meter = 8  # with load ramping, we can use very few elements
+# elements_per_meter = 8  # with load ramping, we can use very few elements
+elements_per_meter = 16
 
 # Number of elements in the `x` direction. Note also the element degree, configured
 # in the solver script itself. It is recommended to use P2 elements.
@@ -253,7 +254,8 @@ k_func = lambda T: Identity(2) * k_scalar(T)                    # Heat conductiv
 # So as a compromise, let's go for `inlet_profile_tmax = 200` s. At H = 50 µm and domain_height = 2 m,
 # this means 40k layers in 200 s, so the laser return time is 200 s / 40e3 = 5 ms - which is three
 # orders of magnitude too short, so there's definitely room for improvement here.
-inlet_profile_tmax = 200.0  # [s]
+# inlet_profile_tmax = 200.0  # [s]
+inlet_profile_tmax = 20.0  # [s]
 
 # # Alternatively, we could set this up like in the above comments:
 # # How long until the laser sweeps the same spot again (but on the next layer).
