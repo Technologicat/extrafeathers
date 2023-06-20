@@ -18,7 +18,7 @@ from dolfin import (IntervalMesh, interval,
 
 from extrafeathers import meshmagic
 
-from .config import T0, T_ext, Γ, R, c_func, rho
+from .config import T0, T_ext, Γ_edge, R, c_func, rho
 
 my_rank = MPI.comm_world.rank
 
@@ -119,7 +119,7 @@ def estimate(tmax=20.0, nel=2000, degree=2):
 
         c = Function(W, name="c")
         weak_form = (u.dx(0) * v * dx +
-                     Constant(3 * Γ / (R * rho)) / c * (u - T_ext) * v * dx)
+                     Constant(3 * Γ_edge / (R * rho)) / c * (u - T_ext) * v * dx)
         a = lhs(weak_form)
         L = rhs(weak_form)
 
