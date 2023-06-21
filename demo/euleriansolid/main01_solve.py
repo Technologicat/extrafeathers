@@ -9,7 +9,7 @@ from unpythonic import ETAEstimator, timer, Popper
 from fenics import (FunctionSpace, VectorFunctionSpace, TensorFunctionSpace,
                     DirichletBC,
                     Constant, Function,
-                    project, Vector,
+                    project, Vector, FunctionAssigner,
                     tr, Identity, sqrt, inner, dot,
                     XDMFFile, TimeSeries,
                     LogLevel, set_log_level,
@@ -974,21 +974,49 @@ def export_fields(u_, v_, σ_, *, t):
 
     if highres_export_V:
         # Save the displacement visualization at full nodal resolution.
-        u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
-        v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        v_P1.rename(fields[type(solver)]["u"](solver).name(), "a Function")
-        xdmffile_u.write(v_P1, t)
+        if type(solver) in (EulerianSolidPrimal, SteadyStateEulerianSolidPrimal):
+            # In the primal solvers, `u` and `du/dt` live on the same mixed
+            # space, so we must first extract the subfields into separate
+            # fields on two non-mixed spaces.
+            #
+            # FunctionAssigner(receiving_space, assigning_space)
+            u_tmp = Function(V)
+            v_tmp = Function(V)
+            assigner = FunctionAssigner([u_tmp.function_space(),
+                                         v_tmp.function_space()],
+                                        solver.S)  # mixed function space, containing both u and du/dt
+            assigner.assign([u_tmp, v_tmp], solver.s_)
 
-        # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
-        v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
-        v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
-        v_P1.rename(fields[type(solver)]["v"](solver).name(), "a Function")
-        xdmffile_v.write(v_P1, t)
+            u_tmp.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_tmp` to `v_rank1_vec_copy`
+            v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+            v_P1.rename("u", "a Function")
+            xdmffile_u.write(v_P1, t)
+
+            # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
+            v_tmp.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_tmp` to `v_rank1_vec_copy`
+            v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+            v_P1.rename("du/dt", "a Function")
+            xdmffile_v.write(v_P1, t)
+        else:
+            # Old code path - separate spaces for `u` and `du/dt`.
+            u_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `u_` to `v_vec_copy`
+            v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+            v_P1.rename(fields[type(solver)]["u"](solver).name(), "a Function")
+            xdmffile_u.write(v_P1, t)
+
+            # `v` lives on a copy of the same function space as `u`; recycle the temporary vector
+            v_.vector().gather(v_vec_copy, all_V_dofs)  # allgather `v_` to `v_vec_copy`
+            v_P1.vector()[:] = v_vec_copy[my_V_dofs]  # LHS MPI-local; RHS global
+            v_P1.rename(fields[type(solver)]["v"](solver).name(), "a Function")
+            xdmffile_v.write(v_P1, t)
     else:  # save at P1 resolution
         xdmffile_u.write(u_, t)
         xdmffile_v.write(v_, t)
 
     if highres_export_Q:
+        # In all of the solvers invoked by this main program, the stress tensor always lives on a separate space.
+        # (If we ever get `SteadyStateEulerianSolidAlternative` working, there `σ` lives on the same mixed space.
+        #  Can be extracted using the same ideas as for `u` and `du/dt` in the primal solvers.)
         σ_.vector().gather(q_vec_copy, all_Q_dofs)
         q_P1.vector()[:] = q_vec_copy[my_Q_dofs]
         q_P1.rename(fields[type(solver)]["σ"](solver).name(), "a Function")
