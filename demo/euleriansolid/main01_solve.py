@@ -49,8 +49,10 @@ my_rank = MPI.comm_world.rank
 mesh, ignored_domain_parts, boundary_parts = meshiowrapper.read_hdf5_mesh(mesh_filename)
 
 # Define function spaces
-V = VectorFunctionSpace(mesh, 'P', 1)  # displacement
-Q = TensorFunctionSpace(mesh, 'P', 2)  # stress
+# Primal solver can use P2 for u and v, and P1 for the postprocessing outputs (strain, stress).
+# In the solvers using a mixed formulation, Q should have higher degree than V (LBB condition?).
+V = VectorFunctionSpace(mesh, 'P', 2)  # displacement
+Q = TensorFunctionSpace(mesh, 'P', 1)  # stress
 
 # Scalar function spaces with the same element family and degree as `V` and `Q`, for visualization purposes.
 Vscalar = V.sub(0).collapse()
@@ -113,7 +115,10 @@ if dynamic:
     # The stress uses a Neumann BC, with the boundary stress field set here.
     # The stress field given here is evaluated on the boundaries that have
     # no Dirichlet boundary condition on `u`.
-    P = TensorFunctionSpace(mesh, 'DP', 0)
+    if V.ufl_element().degree() == 1:
+        P = TensorFunctionSpace(mesh, 'DP', 0)
+    else:
+        P = TensorFunctionSpace(mesh, 'P', 1)
     boundary_stress = Constant(((1e6, 0), (0, 0)))
     solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress, dt, θ=1.0)
     # Set plotting labels; this formulation uses v := du/dt
