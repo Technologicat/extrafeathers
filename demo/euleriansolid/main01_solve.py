@@ -115,7 +115,7 @@ if dynamic:
     # no Dirichlet boundary condition on `u`.
     P = TensorFunctionSpace(mesh, 'DP', 0)
     boundary_stress = Constant(((1e6, 0), (0, 0)))
-    solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress, dt)
+    solver = EulerianSolidPrimal(V, Q, P, rho, lamda, mu, tau, V0, bcu, bcv, boundary_stress, dt, θ=1.0)
     # Set plotting labels; this formulation uses v := du/dt
     dlatex = r"\mathrm{d}"
     dtext = "d"
