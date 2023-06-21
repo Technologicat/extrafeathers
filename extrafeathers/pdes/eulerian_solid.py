@@ -2177,14 +2177,19 @@ class EulerianSolidPrimal:
         # VISUALIZATION PURPOSES ONLY
         A2a = assemble(self.a_εu)
         b2a = assemble(self.L_εu)
-        solve(A2a, self.εu_.vector(), b2a, 'bicgstab', 'sor')
+        # MUMPS works also under some pathological conditions where BiCGstab fails to converge,
+        # which helps debugging.
+        # solve(A2a, self.εu_.vector(), b2a, 'bicgstab', 'sor')
+        solve(A2a, self.εu_.vector(), b2a, 'mumps')
         A2b = assemble(self.a_εv)
         b2b = assemble(self.L_εv)
-        solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
+        # solve(A2b, self.εv_.vector(), b2b, 'bicgstab', 'sor')
+        solve(A2b, self.εv_.vector(), b2b, 'mumps')
 
         A2 = assemble(self.a_σ)
         b2 = assemble(self.L_σ)
-        solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor')
+        # solve(A2, self.σ_.vector(), b2, 'bicgstab', 'sor')
+        solve(A2, self.σ_.vector(), b2, 'mumps')
 
         self.s_n.assign(self.s_)
 
