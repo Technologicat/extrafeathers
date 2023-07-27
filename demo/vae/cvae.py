@@ -374,7 +374,7 @@ class CVAE(tf.keras.Model):
 # and
 #   eps² = (z - mean)² * exp(-logvar)
 # so calling log_normal_pdf(z, mean, logvar) actually yields
-#   sum_i(-0.5 * eps_i**2 + logvar + log2pi)
+#   sum_i(-0.5 * (eps_i**2 + logvar + log2pi))
 # which matches Kingma and Welling (2019, algorithm 2).
 def log_normal_pdf(x, mean, logvar, raxis=1):
     log2pi = tf.math.log(2 * np.pi)
