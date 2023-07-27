@@ -367,6 +367,30 @@ class CVAE(tf.keras.Model):
 # --------------------------------------------------------------------------------
 # Loss function
 
+# Where the `log_normal_pdf` formula comes from: recall the PDF of the normal distribution:
+#   N(x; μ, σ) := (1 / (σ √(2π))) exp( -(1/2) * ((x - μ) / σ)² )
+# where
+#   mean := μ,
+#   var := σ²,  logvar := log σ²
+#
+# We have
+#   N(x; μ, σ)  = (1 / (exp(log σ) exp(log √(2π)))) exp( -(1/2) * ((x - μ) / σ)² )    [a = exp(log(a))]
+#               = exp(-log σ) exp(-log √(2π)) exp( -(1/2) * ((x - μ) / σ)² )          [1 / exp(a) = exp(a)^(-1) = exp(-a)]
+#               = exp( -log σ - log(√(2π)) - (1/2) * ((x - μ) / σ)² )                 [exp(a) exp(b) = exp(a + b)]
+#               = exp( -log σ - (1/2) log(2π) - (1/2) * ((x - μ) / σ)² )              [log(a**b) = b log(a)]
+#               = exp( -log σ - (1/2) log(2π) - (1/2) * (x - μ)² / σ² )
+#               = exp( -log σ - (1/2) log(2π) - (1/2) * (x - μ)² / exp(log σ²) )
+#               = exp( -log σ - (1/2) log(2π) - (1/2) * (x - μ)² * exp(-log σ²) )
+#               = exp( -log σ - (1/2) log(2π) - (1/2) * (x - μ)² * exp(-logvar) )
+#               = exp( -log(√(σ²)) - (1/2) log(2π) - (1/2) * (x - μ)² * exp(-logvar) )
+#               = exp( -(1/2) log(σ²) - (1/2) log(2π) - (1/2) * (x - μ)² * exp(-logvar) )
+#               = exp( -(1/2) logvar - (1/2) log(2π) - (1/2) * (x - μ)² * exp(-logvar) )
+#               = exp( -(1/2) [logvar + log(2π) + (x - μ)² * exp(-logvar)] )
+#
+# Therefore,
+#   log N(x; μ, σ) = -(1/2) [logvar + log(2π) + (x - μ)² * exp(-logvar)]
+# as claimed.
+#
 # Note that since we have defined the reparameterization as
 #   z = mean + eps * exp(logvar / 2)
 # inverting yields
@@ -376,6 +400,7 @@ class CVAE(tf.keras.Model):
 # so calling log_normal_pdf(z, mean, logvar) actually yields
 #   sum_i(-0.5 * (eps_i**2 + logvar + log2pi))
 # which matches Kingma and Welling (2019, algorithm 2).
+#
 def log_normal_pdf(x, mean, logvar, raxis=1):
     log2pi = tf.math.log(2 * np.pi)
     return tf.reduce_sum(-0.5 * ((x - mean)**2 * tf.exp(-logvar) + logvar + log2pi),
