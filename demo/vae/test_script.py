@@ -20,14 +20,20 @@ import demo.vae.util as util
 train_images = util.preprocess_images(train_images)
 test_images = util.preprocess_images(test_images)
 
-# Reset everything, so that we can run this snippet multiple times in the same IPython session
-# (useful for exploring different snapshots of the model).
+# Be aware that as of this writing, (January 2023, tf 2.12-nightly), TensorFlow
+# can be finicky with regard to resetting, if you wish to plot different model
+# instances during the same IPython session (which is useful for exploring
+# different snapshots of the model).
+#
+# So let's reset everything:
 plt.close(1)
 importlib.reload(main)  # re-instantiate CVAE
 tf.keras.backend.clear_session()  # clean up dangling tensors
 gc.collect()  # and make sure they are gone
 
-main.model.my_load("demo/output/vae/model/final")  # or whatever
+# Load a model snapshot:
+main.model = tf.keras.models.load_model("demo/output/vae/model/final.keras")  # or whatever
+# main.model.my_load("demo/output/vae/model/final")  # to load a snapshot produced by the legacy custom saver
 
 # plt.ion()  # interactive mode doesn't seem to work well with our heavily customized overlay plot
 

@@ -1,8 +1,7 @@
 """The CVAE model (convolutional variational autoencoder)."""
 
 __all__ = ["CVAE",
-           "compute_loss",
-           "train_step"]
+           "elbo_loss"]
 
 import pathlib
 
@@ -303,16 +302,109 @@ def make_decoder(variant=7):
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder
 
-# TODO: `CVAE` does not conform to the standard Keras Model API, since it does not implement `call`,
-# TODO: and although we have a custom `train_step`, it's a separate function, not a method of `CVAE`.
 class CVAE(tf.keras.Model):
-    """Convolutional variational autoencoder."""
+    """Convolutional variational autoencoder.
 
-    def __init__(self, latent_dim):
+    The optimizer should be configured as `model.compile(optimizer=...)`.
+
+    This class defines its metrics and losses manually; those should
+    **not** be configured in `compile`.
+    """
+
+    def __init__(self, *, latent_dim=2, variant=7):
         super(CVAE, self).__init__()
         self.latent_dim = latent_dim
-        self.encoder = make_encoder()
-        self.decoder = make_decoder()
+        self.variant = variant
+        self.encoder = make_encoder(variant)
+        self.decoder = make_decoder(variant)
+        # https://keras.io/guides/customizing_what_happens_in_fit/#going-lowerlevel
+        self.loss_tracker = tf.keras.metrics.Mean(name="loss")
+
+    @property
+    def metrics(self):
+        # We list our `Metric` objects here so that `reset_states()` can be
+        # called automatically at the start of each epoch
+        # or at the start of `evaluate()`.
+        # If you don't implement this property, you have to call
+        # `reset_states()` yourself at the time of your choosing.
+        #     https://keras.io/guides/customizing_what_happens_in_fit/#going-lowerlevel
+        return [self.loss_tracker]
+
+    # --------------------------------------------------------------------------------
+    # Save/load support.
+    #   https://www.tensorflow.org/guide/keras/serialization_and_saving
+    #
+    # To make a custom `Model` saveable in TF 2.12 or later, it must:
+    #   - Provide a `get_config` instance method, which returns a JSON-serializable dictionary of parameters
+    #     that were used to create this instance.
+    #   - Provide a `from_config` class method, which takes such a dictionary and instantiates the model.
+    #     Note it's enough that the constructor sets up the correct NN structure when instantiated with these parameters;
+    #     Keras handles the actual loading of the coefficient data into that NN structure.
+    #   - I'm not sure if this is the case anymore, but it used to be (before TF 2.12) that a custom model must also provide a
+    #     `call` method to be saveable. For an autoencoder, such a method is basically useless, except as documentation for
+    #     how to make a full round-trip through the AE.
+    #   - In any case, any code that wishes to call `save` should first force the model to build its graph, with something like::
+    #       dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
+    #       _ = model(dummy_data)
+    #
+    def get_config(self):
+        # The `variant` parameter specifies which actual NN structure is instantiated by our constructor.
+        # Once a given `variant` value has been used in a version pushed to GitHub, it should be treated as part of the public API.
+        # That is, for backward compatibility, it should forever refer to that NN structure, so that future versions can load old checkpoints.
+        return {"latent_dim": self.latent_dim,
+                "variant": self.variant}
+    @classmethod
+    def from_config(cls, config):
+        model = cls(**config)
+        return model
+    def call(self, x):
+        """Send data batch `x` on a full round-trip through the autoencoder. (Included for API compatibility only.)"""
+        # See `elbo_loss` for a detailed explanation of the internals.
+        # encode to latent representation
+        mean, logvar = self.encode(x)  # compute code distribution parameters for given `x`
+        eps, z = self.reparameterize(mean, logvar)  # draw a single sample from the code distribution
+        # decode from latent representation
+        xhat = self.sample(z)
+        return xhat
+
+    # --------------------------------------------------------------------------------
+    # Custom training and testing.
+
+    # TODO: Should we add a `compute_loss` method that raises `NotImplementedError`, because we handle loss computation manually?
+
+    @tf.function
+    def train_step(self, x):
+        """Execute one training step, computing and applying gradients via backpropagation.
+
+        `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
+        """
+        with tf.GradientTape() as tape:
+            loss = elbo_loss(self, x)  # TODO: maybe should be a method?
+
+        # Compute gradients
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+
+        # Update weights
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        # Compute our own metrics
+        self.loss_tracker.update_state(loss)
+
+        return {m.name: m.result() for m in self.metrics}
+
+    @tf.function
+    def test_step(self, x):
+        """Execute one testing step.
+
+        `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
+        """
+        loss = elbo_loss(self, x)
+        self.loss_tracker.update_state(loss)
+        return {m.name: m.result() for m in self.metrics}
+
+    # --------------------------------------------------------------------------------
+    # Other custom methods, specific to a CVAE.
 
     @tf.function
     def sample(self, z=None):
@@ -325,11 +417,11 @@ class CVAE(tf.keras.Model):
             # Sample the code points from the latent prior.
             z = tf.random.normal(shape=(100, self.latent_dim))
         P = self.decode(z)
-        p = tf.sigmoid(P)  # probability for discrete Bernoulli; λ parameter of continuous Bernoulli
+        lam = tf.sigmoid(P)  # probability for discrete Bernoulli; λ parameter of continuous Bernoulli
         # For the discrete Bernoulli distribution, the mean is the same as the Bernoulli parameter,
         # which is the same as the probability of the output taking on the value 1 (instead of 0).
         # For the continuous Bernoulli distribution, we just return λ as-is (works fine as output in practice).
-        return p
+        return lam
 
     def encode(self, x):
         """x → parameters of variational posterior qϕ(z|x), namely `(μ, log σ)`."""
@@ -366,40 +458,29 @@ class CVAE(tf.keras.Model):
         """z → parameters of observation model pθ(x|z)"""
         return self.decoder(z)
 
-    # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
-    # TODO: So for now, we separately save the encoder and decoder models (both are Functional
-    # TODO: models that support saving natively).
-    # https://www.tensorflow.org/guide/keras/save_and_serialize
+    # --------------------------------------------------------------------------------
+    # Deprecated methods
+
     def my_save(self, path: str):
+        """Legacy custom saver, saving the encoder and decoder Functional models separately.
+
+        *DEPRECATED*: Use `model.save("my_snapshot.keras", save_format="keras_v3")` instead.
+        """
         clear_and_create_directory(path)
         p = pathlib.Path(path).expanduser().resolve()
         self.encoder.save(str(p / "encoder"))
         self.decoder.save(str(p / "decoder"))
     def my_load(self, path: str):
+        """Legacy custom loader, loading the encoder and decoder Functional models separately.
+
+        *DEPRECATED*: Use `model = tf.keras.models.load_model("my_snapshot.keras")` instead.
+        """
         p = pathlib.Path(path).expanduser().resolve()
         self.encoder = tf.keras.models.load_model(str(p / "encoder"))
         self.decoder = tf.keras.models.load_model(str(p / "decoder"))
 
-    # def get_config(self):
-    #     return {"latent_dim": self.latent_dim,
-    #             "encoder": self.encoder,
-    #             "decoder": self.decoder}
-    # @classmethod
-    # def from_config(cls, config):
-    #     model = cls(config["latent_dim"])
-    #     model.encoder = config["encoder"]
-    #     model.decoder = config["decoder"]
-    #     return model
-    # # to make a custom object saveable, it must have a call method
-    # def call(self, inputs):
-    #     mean, logvar = self.encode(inputs)
-    #     ignored_eps, z = self.reparameterize(mean, logvar)
-    #     P = self.decode(z)
-    #     xhat = tf.sigmoid(P)
-    #     return xhat
-
 # --------------------------------------------------------------------------------
-# Loss function
+# Loss function (and its helpers)
 
 # Where the `log_normal_pdf` formula comes from: recall the PDF of the normal distribution:
 #   N(x; μ, σ) := (1 / (σ √(2π))) exp( -(1/2) * ((x - μ) / σ)² )
@@ -460,7 +541,7 @@ def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
     return tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), log_norm, taylor)
 
 @tf.function
-def compute_loss(model, x):
+def elbo_loss(model, x):
     """VAE loss function: negative of the ELBO, for a data batch `x`.
 
     Evaluated by drawing a single-sample Monte Carlo estimate. Kingma and Welling (2019) note
@@ -664,12 +745,3 @@ def compute_loss(model, x):
         elbo /= n_mc_samples
 
     return -elbo  # with sign flipped → ELBO loss
-
-@tf.function
-def train_step(model, x, optimizer):
-    """Execute one training step, computing and applying gradients via backpropagation."""
-    with tf.GradientTape() as tape:
-        loss = compute_loss(model, x)
-    gradients = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-    return loss

@@ -29,8 +29,7 @@ if data_dir[-1] != os.path.sep:
 
 # --------------------------------------------------------------------------------
 
-model_dir = f"{data_dir}model/final"
-main.model.my_load(model_dir)
+main.model = tf.keras.models.load_model(f"{data_dir}model/final.keras")
 
 # --------------------------------------------------------------------------------
 
@@ -46,7 +45,7 @@ visualkeras.layered_view(main.model.decoder).save(f"{data_dir}arch_decoder_vis.p
 # --------------------------------------------------------------------------------
 
 # The details here depend on the exact architecture set up in `main.py`.
-# The values here correspond to "ResNet attempt 7".
+# The values here correspond to "ResNet attempt 7" (variant=7).
 # The important point is to give a general idea of the structure of these blocks.
 #
 # Encoder ResNet blocks (first instance of each in the encoder structure)

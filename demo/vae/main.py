@@ -36,7 +36,7 @@ To train the model, open a terminal in the top-level `extrafeathers` directory, 
 
   python -m demo.vae.main
 
-The model will be saved in `<output_dir>/model/<XXXX>`, where `output_dir` is defined in `config.py`,
+The model will be saved in `<output_dir>/model/XXXX.keras`, where `output_dir` is defined in `config.py`,
 and XXXX is either a four-digit epoch number starting from 0001, or "final" for the final result of
 a completed training run.
 
@@ -48,30 +48,7 @@ has been trained:
  - The evolution of the encoding of the dataset.
  - Animations.
 
-To load the trained model, in an IPython session:
-
-  import demo.vae.main as main
-  main.model.my_load("demo/output/vae/model/final")  # or whatever
-
-Once the model is loaded, you can e.g.:
-
-  import matplotlib.pyplot as plt
-  import demo.vae.plotter as plotter
-  plotter.plot_latent_image(21)
-  plt.show()
-
-Be aware that TensorFlow can be finicky with regard to resetting, if you wish to plot
-different model instances during the same session. As of this writing (January 2023,
-tf 2.12-nightly), to reset the model, you'll need something like:
-
-  import gc
-  import importlib
-  import tensorflow as tf
-  importlib.reload(main)  # re-instantiate CVAE
-  tf.keras.backend.clear_session()  # clean up dangling tensors
-  gc.collect()  # and make sure they are deleted
-
-At this point, you should be able to load another trained model instance and it should work.
+How to load the trained model in an IPython session: see `test_script.py`.
 
 The implementation is based on combining material from these two tutorials:
   https://www.tensorflow.org/tutorials/generative/cvae
@@ -100,12 +77,10 @@ import unpythonic.net.server as repl_server
 
 # TODO: Use an early-stopping criterion to avoid overfitting the training set?
 #
-# TODO: Conform better to the Keras OOP API (right now we have a Model that doesn't behave as the is-a implies)
-#  - for a custom Keras object, `train_step` should be a method, not a separate function
-#  - `call` (although somewhat useless for an autoencoder) should be implemented
-#  - how to support `fit` and `predict`?
-#  - saving/serialization with standard API
-# TODO: Register some monitored metrics? This would allow using the `EarlyStopping` class from the Keras API.
+# TODO: Conform better to the Keras OOP API
+#  - `fit`, `evaluate` and `save` now work as expected
+#  - what does `predict` do, how to support it?
+# TODO: `EarlyStopping` class from the Keras API. Do we need to register some more metrics to use it, or is just the loss enough?
 
 # TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step, processing the z space
 # via e.g. diffusion maps or t-SNE for visualizing the latent representation in 2-dimensional space.
@@ -115,12 +90,13 @@ import unpythonic.net.server as repl_server
 # TODO: Explore how we could implement more of the stochastics via `tensorflow_probability`, could be cleaner.
 
 # TODO: Explore if we can set up skip-connections from an encoder layer to the decoder layer of the same size.
-#   - This kind of architecture is commonly seen in autoencoder designs used for approximating PDE solutions;
-#     it should speed up training of the encoder/decoder combination by allowing the decoded output to
-#     directly influence the weights on the encoder side.
+#   - This kind of architecture is commonly seen in autoencoder designs used for approximating PDE solutions
+#     (PINNs, physically informed neural networks); it should speed up training of the encoder/decoder combination
+#     by allowing the decoded output to directly influence the weights on the encoder side.
 #   - Using the functional API, we should be able to set up three `Model`s that share layer instances:
 #     the encoder, the decoder, and (for training) the full autoencoder that combines both and adds the
 #     skip-connections from the encoder side to the decoder side.
+#   - But how to run such a network in decoder-only mode?
 
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
@@ -147,7 +123,7 @@ from .config import (latent_dim,
                      test_sample_fig_basename,
                      latent_space_fig_basename,
                      elbo_fig_filename)
-from .cvae import CVAE, train_step, compute_loss
+from .cvae import CVAE
 from .plotter import (plot_test_sample_image,
                       plot_elbo,
                       plot_latent_image)
@@ -186,12 +162,18 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 # --------------------------------------------------------------------------------
 # Main program - model training
 
-model = CVAE(latent_dim)
+model = CVAE(latent_dim=latent_dim, variant=7)
+model.compile(optimizer=optimizer)
+
+# Important: force the model to build its graph so that `model.save` works.
+dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
+_ = model(dummy_data)
 
 def main():
     # Make preparations
 
     clear_and_create_directory(output_dir)
+    clear_and_create_directory(f"{output_dir}model")
 
     # Set up figures
     fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))  # test example
@@ -252,18 +234,16 @@ def main():
 
             # SGD (with Adam) using one pass through the training set (with the batches set up previously)
             with timer() as tim_train:
-                running_mean = tf.keras.metrics.Mean()
-                for train_x in train_dataset:
-                    running_mean(train_step(model, train_x, optimizer))
-                train_elbo = -running_mean.result()
+                history = model.fit(train_dataset, epochs=1)
+                losses_by_epoch = history.history["loss"]
+                train_loss = losses_by_epoch[0]  # we ran just one epoch (since we loop over epochs manually)
+                train_elbo = -train_loss
                 train_elbos.append(train_elbo)
 
             # Performance estimation: ELBO on the test set (technically, used as a validation set)
             with timer() as tim_test:
-                running_mean = tf.keras.metrics.Mean()
-                for test_x in test_dataset:
-                    running_mean(compute_loss(model, test_x))
-                test_elbo = -running_mean.result()
+                test_loss = model.evaluate(test_dataset)
+                test_elbo = -test_loss
                 test_elbos.append(test_elbo)
 
             # Plot the progress
@@ -310,7 +290,11 @@ def main():
 
             # Save the current model coefficients, and some statistics
             with timer() as tim_save:
-                model.my_save(f"{output_dir}model/{epoch:04d}")
+                # Use the ".keras" filename extension to save in the new format.
+                #   https://www.tensorflow.org/tutorials/keras/save_and_load
+                model.save(f"{output_dir}model/{epoch:04d}.keras", save_format="keras_v3")
+                # model.my_save(f"{output_dir}model/{epoch:04d}")
+
                 np.savez(f"{output_dir}elbo.npz",
                          epochs=epochs,
                          train_elbos=train_elbos,
@@ -325,15 +309,10 @@ def main():
             print(f"Epoch: {epoch}, LR {learning_rate:0.6g}, ELBO train {train_elbo:0.6g}, test {test_elbo:0.6g}; GL(t) {generalization_loss:0.6g}, P5(t) {training_progress:0.6g}; opt. iter. {total_iterations} (this epoch {epoch_iterations}).\nEpoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s, plotting {tim_plot.dt:0.3g}s, saving {tim_save.dt:0.3g}s; {est.formatted_eta}")
     print(f"Total wall time for training run: {tim_total.dt:0.6g}s")
 
-    # # Save the trained model.
-    # # TODO: Saving a CVAE instance using the official Keras serialization API doesn't work yet.
-    # # force the model to build its graph to make it savable
-    # dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
-    # _ = model(dummy_data)
-    # model.save("my_model")
-    #
-    # this custom saving hack (saving the encoder/decoder separately) works
-    model.my_save(f"{output_dir}model/final")
+    # Save the trained model.
+    model.save(f"{output_dir}model/final.keras", save_format="keras_v3")
+    # custom saving hack (saving the encoder/decoder separately)
+    # model.my_save(f"{output_dir}model/final")
 
     # Visualize final state
     plot_test_sample_image(test_sample, figno=1)

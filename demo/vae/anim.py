@@ -76,10 +76,13 @@ make_animation(f"{data_dir}{latent_space_anim_filename}",
 # --------------------------------------------------------------------------------
 # Plot the evolution of the codepoints corresponding to the training dataset
 
-input_dirs = sorted(glob.glob(f"{data_dir}model/*"))
-est = ETAEstimator(len(input_dirs), keep_last=10)
-for model_dir in input_dirs:
-    epoch_str = model_dir[model_dir.rfind("/") + 1:]
+input_snapshots = sorted(glob.glob(f"{data_dir}model/*.keras"))
+est = ETAEstimator(len(input_snapshots), keep_last=10)
+for model_filename in input_snapshots:
+    s = model_filename
+    s = s[s.rfind("/") + 1:]
+    s = s[:s.rfind(".keras")]
+    epoch_str = s
 
     # reset the model
     importlib.reload(main)  # re-instantiate CVAE
@@ -87,7 +90,7 @@ for model_dir in input_dirs:
     gc.collect()  # and make sure they are gone
 
     # Now we should be able to load a different checkpoint
-    main.model.my_load(model_dir)
+    main.model = tf.keras.models.load_model(model_filename)
 
     plt.close(1)
 
@@ -104,7 +107,7 @@ for model_dir in input_dirs:
     fig.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
     est.tick()
-    print(f"Done {model_dir}, walltime {est.formatted_eta}")
+    print(f"Done {model_filename}, walltime {est.formatted_eta}")
 
 # --------------------------------------------------------------------------------
 # Finally, make an animation of the codepoint evolution:
