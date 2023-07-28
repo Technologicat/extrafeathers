@@ -35,7 +35,9 @@ extra_layer_size = 16
 #     to more closely mirror the structure of the encoder.
 #   - The architecture is an exact mirror image of the encoder.
 #
-# TODO: Parameterize the input data shape, we are currently hardcoded for 28×28×1.
+# TODO: Parameterize the input data shape. The encoder is currently hardcoded for 28×28×1.
+# TODO: Note also the decoder, which reshapes to 7×7×n just before feeding the
+# TODO: first convolution-transpose layer, and finally outputs 28×28×1.
 #
 # TODO: Improve the resnet architecture.
 #
