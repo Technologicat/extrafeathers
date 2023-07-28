@@ -1,4 +1,4 @@
-"""The CVAE model."""
+"""The CVAE model (convolutional variational autoencoder)."""
 
 __all__ = ["CVAE",
            "compute_loss",
@@ -34,109 +34,126 @@ extra_layer_size = 16
 #   - We have added an extra Dense layer of 16 units at the input side
 #     to more closely mirror the structure of the encoder.
 #   - The architecture is an exact mirror image of the encoder.
-def make_encoder():
+#
+# TODO: Parameterize the input data shape, we are currently hardcoded for 28×28×1.
+#
+# TODO: Improve the resnet architecture.
+#
+# According to He et al. (2015), adding depth to a convolution network beyond a certain
+# (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
+# channels, i.e. `filters`) can still increase the capacity of the model usefully. Explore this.
+#   https://arxiv.org/abs/1502.01852
+#
+# Another idea that comes to mind is to try various different kernel sizes.
+#
+# Also, consider an atrous (dilated) convolution, see `dilation_rate` parameter of `Conv2D`.
+# See section 3.1 in:
+#   https://arxiv.org/pdf/1606.00915v2.pdf
+#
+# A spatial pyramid pooling (SPP) layer before the final fully connected layer(s) is also an
+# option (this is especially useful for producing a fixed-length representation for varying input
+# image sizes). But is there an inverse of SPP, for the decoder?
+#   https://arxiv.org/abs/1406.4729
+#   https://github.com/yhenon/keras-spp
+#
+def make_encoder(variant=7):
+    """Set up an encoder neural network for a CVAE.
+
+    Return value is a `tf.keras.Model`.
+
+    Mainly meant for use by `CVAE.__init__`.
+
+    We provide several variants of the CVAE, with different neural network geometries.
+    See the source code for details.
+
+    !!! When making the corresponding decoder, use the same `variant` number! !!!
+    """
     encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
 
-    # # classical VAE
-    # x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-    #                            strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
-    # x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-    #                            strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
+    if variant == 0:  # classical VAE
+        x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
+                                   strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
+        x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
+                                   strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
 
-    # # ResNet attempt 1 (performs about as well as attempt 2)
-    # x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-    #                            strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
-    # x = IdentityBlock2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32→ 14×14×32
-    # x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-    #                            strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
-    # x = IdentityBlock2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
+    elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
+        x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
+                                   strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
+        x = IdentityBlock2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32→ 14×14×32
+        x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
+                                   strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
 
-    # # # ResNet attempt 2 - large shallow model, good results
-    # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                        bottleneck_factor=1)(encoder_inputs)  # 28×28×1 → 14×14×32
-    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=1)(x)                  # 14×14×32→ 14×14×32
-    # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
-    #                        bottleneck_factor=1)(x)               # 14×14×32 → 7×7×64
-    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=1)(x)                  # 7×7×64 → 7×7×64
+    elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+                               bottleneck_factor=1)(encoder_inputs)  # 28×28×1 → 14×14×32
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                            bottleneck_factor=1)(x)                  # 14×14×32→ 14×14×32
+        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+                               bottleneck_factor=1)(x)               # 14×14×32 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                            bottleneck_factor=1)(x)                  # 7×7×64 → 7×7×64
 
-    # # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
-    # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
-    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
-    # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
-    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
+    elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
+        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
 
-    # # ResNet attempt 4
-    # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
-    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
-    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
-    # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
-    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
-    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
+    elif variant == 4:  # ResNet attempt 4
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
+        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
 
-    # # ResNet attempt 5
-    # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                        bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
-    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
-    # x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
-    # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
-    #                        bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
-    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
-    # x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-    #                     bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+    elif variant == 5:  # ResNet attempt 5
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+                               bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                            bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                            bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
+        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+                               bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                            bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                            bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
 
-    # TODO: Improve the resnet architecture.
-    #
-    # According to He et al. (2015), adding depth to a convolution network beyond a certain
-    # (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
-    # channels, i.e. `filters`) can still increase the capacity of the model usefully. Explore this.
-    #   https://arxiv.org/abs/1502.01852
-    #
-    # Another idea that comes to mind is to try various different kernel sizes.
-    #
-    # Also, consider an atrous (dilated) convolution, see `dilation_rate` parameter of `Conv2D`.
-    # See section 3.1 in:
-    #   https://arxiv.org/pdf/1606.00915v2.pdf
-    #
-    # A spatial pyramid pooling (SPP) layer before the final fully connected layer(s) is also an
-    # option (this is especially useful for producing a fixed-length representation for varying input
-    # image sizes). But is there an inverse of SPP, for the decoder?
-    #   https://arxiv.org/abs/1406.4729
-    #   https://github.com/yhenon/keras-spp
-    #
-    # # ResNet attempt 6 - deeper network (more layers) - very good results
-    # x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                        bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
-    # for _ in range(3):
-    #     x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-    #                         bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
-    # x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
-    #                        bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
-    # for _ in range(3):
-    #     x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-    #                         bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+    elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+                               bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
+        for _ in range(3):
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                                bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
+        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+                               bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
+        for _ in range(3):
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                                bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
 
-    # ResNet attempt 7 - wider network (more channels)
-    x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                           bottleneck_factor=2)(encoder_inputs)
-    x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                        bottleneck_factor=2)(x)
-    x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                          bottleneck_factor=2)(x)
-    x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                        bottleneck_factor=2)(x)
-    x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                           bottleneck_factor=2)(x)
-    x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                        bottleneck_factor=2)(x)
-    x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                          bottleneck_factor=2)(x)
-    x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                        bottleneck_factor=2)(x)
+    elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 959 348 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                               bottleneck_factor=2)(encoder_inputs)
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                              bottleneck_factor=2)(x)
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                               bottleneck_factor=2)(x)
+        x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                              bottleneck_factor=2)(x)
+        x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+
+    else:
+        raise ValueError(f"Unknown model variant {variant}, see source code for available models")
 
     x = tf.keras.layers.Flatten()(x)
     # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
@@ -163,21 +180,33 @@ def make_encoder():
     encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
     return encoder
 
-def make_decoder():
+def make_decoder(variant=7):
+    """Set up a decoder neural network for a CVAE.
+
+    Return value is a `tf.keras.Model`.
+
+    Mainly meant for use by `CVAE.__init__`.
+
+    We provide several variants of the CVAE, with different neural network geometries.
+    See the source code for details.
+
+    !!! Use the same `variant` number you used when calling `make_encoder`! !!!
+    """
     # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
     decoder_inputs = tf.keras.Input(shape=(latent_dim,))
     # Here we add the dense layer just for architectural symmetry with the encoder.
     x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
     x = tf.keras.layers.PReLU()(x)
 
-    # x = tf.keras.layers.Dense(units=7 * 7 * 64)(x)
-    # x = tf.keras.layers.PReLU()(x)
-    # x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
-
-    # for resnet attempt 7
-    x = tf.keras.layers.Dense(units=7 * 7 * 256)(x)
-    x = tf.keras.layers.PReLU()(x)
-    x = tf.keras.layers.Reshape(target_shape=(7, 7, 256))(x)
+    # The "ResNet attempt 7" variant has more channels in its final convolution layer than the others.
+    if variant == 7:
+        x = tf.keras.layers.Dense(units=7 * 7 * 256)(x)
+        x = tf.keras.layers.PReLU()(x)
+        x = tf.keras.layers.Reshape(target_shape=(7, 7, 256))(x)
+    else:
+        x = tf.keras.layers.Dense(units=7 * 7 * 64)(x)
+        x = tf.keras.layers.PReLU()(x)
+        x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
 
     # Now we are at the point of the architecture where we have the Conv2D output,
     # so let's mirror the encoder architecture to return to the input space.
@@ -186,85 +215,88 @@ def make_decoder():
     # The output will be interpreted as parameters `P` for the observation model pθ(x|z).
     # Here we want just something convenient that we can remap as necessary.
 
-    # # Classical VAE
-    # x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-    #                                     strides=2, padding="same")(x)     # 7×7×64 → 14×14×32
-    # decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2,
-    #                                                   padding="same")(x)  # 14×14×32 → 28×28×1
+    if variant == 0:  # Classical VAE
+        x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
+                                            strides=2, padding="same")(x)     # 7×7×64 → 14×14×32
+        decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2,
+                                                          padding="same")(x)  # 14×14×32 → 28×28×1
 
-    # # ResNet attempt 1 (performs about as well as attempt 2)
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
-    # x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-    #                                     strides=2, padding="same")(x)                  # 7×7×64 → 14×14×32
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32 → 14×14×32
-    # decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3,
-    #                                                   strides=2, padding="same")(x)    # 14×14×32 → 28×28×1
+    elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
+        x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
+                                            strides=2, padding="same")(x)                  # 7×7×64 → 14×14×32
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32 → 14×14×32
+        decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3,
+                                                          strides=2, padding="same")(x)    # 14×14×32 → 28×28×1
 
-    # # ResNet attempt 2 - large shallow model, good results
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-    #                              bottleneck_factor=1)(x)                   # 7×7×64 → 7×7×64
-    # x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-    #                                 bottleneck_factor=1)(x)                # 7×7×64 → 14×14×32
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-    #                              bottleneck_factor=1)(x)                   # 14×14×32 → 14×14×32
-    # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-    #                                               bottleneck_factor=1)(x)  # 14×14×32 → 28×28×1
+    elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                     bottleneck_factor=1)(x)                   # 7×7×64 → 7×7×64
+        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                        bottleneck_factor=1)(x)                # 7×7×64 → 14×14×32
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                     bottleneck_factor=1)(x)                   # 14×14×32 → 14×14×32
+        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                                      bottleneck_factor=1)(x)  # 14×14×32 → 28×28×1
 
-    # # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
-    # x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-    # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+    elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
+        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
+        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
-    # # ResNet attempt 4
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
-    # x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-    # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+    elif variant == 4:  # ResNet attempt 4
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
+        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
+        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
-    # # ResNet attempt 5
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-    #                              bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-    # x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-    #                              bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-    # x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-    #                                 bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-    #                              bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-    # x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-    #                              bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-    # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+    elif variant == 5:  # ResNet attempt 5
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                     bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                     bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                        bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                     bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                     bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
-    # # ResNet attempt 6 - deeper network (more layers) - very good results
-    # for _ in range(3):
-    #     x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-    #                                  bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-    # x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-    #                                 bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
-    # for _ in range(3):
-    #     x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-    #                                  bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-    # decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+    elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
+        for _ in range(3):
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                         bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                        bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
+        for _ in range(3):
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                         bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
 
-    # ResNet attempt 7 - wider network (more channels)
-    x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                 bottleneck_factor=2)(x)
-    x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                   bottleneck_factor=2)(x)
-    x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                 bottleneck_factor=2)(x)
-    x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                    bottleneck_factor=2)(x)
-    x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                 bottleneck_factor=2)(x)
-    x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                   bottleneck_factor=2)(x)
-    x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                 bottleneck_factor=2)(x)
-    decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-                                                  bottleneck_factor=2)(x)
+    elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 755 810 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
+        x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                       bottleneck_factor=2)(x)
+        x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                        bottleneck_factor=2)(x)
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                       bottleneck_factor=2)(x)
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                                      bottleneck_factor=2)(x)
+
+    else:
+        raise ValueError(f"Unknown model variant {variant}, see source code for available models")
 
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder
