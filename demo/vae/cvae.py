@@ -51,8 +51,8 @@ extra_layer_size = 16
 #   https://arxiv.org/pdf/1606.00915v2.pdf
 #
 # A spatial pyramid pooling (SPP) layer before the final fully connected layer(s) is also an
-# option (this is especially useful for producing a fixed-length representation for varying input
-# image sizes). But is there an inverse of SPP, for the decoder?
+# option. This is especially useful for producing a fixed-length representation for varying input
+# image sizes. But is there an inverse of SPP, for the decoder?
 #   https://arxiv.org/abs/1406.4729
 #   https://github.com/yhenon/keras-spp
 #
