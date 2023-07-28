@@ -440,29 +440,55 @@ def compute_loss(model, x):
     # Encode the input data (pixels) into parameters for the variational posterior qϕ(z|x):
     #   x → NN_enc(ϕ, x) = (μ(ϕ, x), log σ(ϕ, x))
     # Here ϕ are the encoder NN coefficients.
+    #
+    # Note the output dimensionality; the encoder converts from the raw data space to the latent space.
+    # Both `mean` and `logvar` have `latent_dim` components, so we output `2 * latent_dim` components.
+    #
+    # We must emphasize that unlike in the classical AE, in a VAE the encoder output is not a single encoded
+    # data point z, but rather, parameters for a distribution qϕ(z|x), which for the given x, represents
+    # the distribution of such points z.
     mean, logvar = model.encode(x)
 
     # Optional multiple-sample Monte Carlo just for the lulz.
     elbo = 0.0
     n_mc_samples = 1
     for _ in range(n_mc_samples):
-        # Draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
-        # reparameterization transformation z = g(ε, ϕ, x). In the implementation, actually z = g(μ, log σ);
-        # the dependencies on ϕ and x have been absorbed into μ(ϕ, x) and log σ(ϕ, x). The `reparameterize`
-        # function internally draws the noise sample ε, so we don't need to supply it here.
+        # Sample the variational posterior qϕ(z|x) to obtain *a* latent point z corresponding to the input x.
+        # That is, draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
+        # reparameterization transformation z = g(ε, ϕ, x).
+        #
+        # In the implementation, actually z = g(μ, log σ); the dependencies on ϕ and x have been absorbed into
+        # μ(ϕ, x) and log σ(ϕ, x). The `reparameterize` function internally draws the noise sample ε, so we
+        # don't need to supply it here.
         #
         # We choose our class of variational posteriors (which we optimize over) as factorized Gaussian,
-        # mainly for convenience. Thus we interpret the (essentially arbitrary) numbers coming from the
-        # encoder as (μ, log σ) for a factorized Gaussian, and plug them in in those roles.
+        # mainly for convenience. Thus we interpret the (initially arbitrary) numbers coming from the encoder
+        # as (μ, log σ) for a factorized Gaussian, and plug them in in those roles.
         #
-        # Note z is encoded stochastically; even feeding in the same x produces a different z each time
-        # (since z is sampled from the variational posterior).
+        # Note that initially, the encoder output is essentially just `2 * latent_dim` arbitrary real numbers.
+        # The encoder itself does not know the meaning of its outputs. That meaning is established *here*,
+        # by the training process. *Because* we use the encoder outputs as (μ, log σ), training the CVAE
+        # adjusts the encoder coefficients so that those numbers actually become to represent (i.e. converge
+        # to reasonable values for) (μ, log σ).
+        #
+        # (Let that sink in for a moment: the training process guides some arbitrary outputs to "magically"
+        # become what we wanted them to represent. Essentially, this is no different from a classical
+        # optimization problem, say, over polynomials. We fix the structure of a computational algorithm
+        # (which is now much more complex than a single polynomial) and then optimize to find good values
+        # for its coefficients. The meaning of the coefficients is encoded into the structure of the algorithm.
+        # Only humans see the meaning; the optimizer sees just a vector of arbitrary coefficients.)
+        #
+        # Finally, we re-emphasize that z is encoded stochastically. Even feeding in the same x produces
+        # a different z each time, since z is sampled from the variational posterior.
         eps, z = model.reparameterize(mean, logvar)
 
         # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z):
         #   z → NN_dec(θ, z) = P(θ, z)
         # Here θ are the decoder NN coefficients. In our implementation, the observation model
         # takes just one parameter (per pixel), P.
+        #
+        # Note the output dimensionality: the decoder maps a latent representation back into the
+        # raw data space (pixel space). Thus for a grayscale picture, the output has one P value per pixel.
         #
         # We implement the classic VAE: we choose our class of observation models as factorized Bernoulli
         # (pixel-wise). Thus we interpret the (essentially arbitrary) numbers coming from the decoder as
