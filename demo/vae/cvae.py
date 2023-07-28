@@ -321,7 +321,7 @@ class CVAE(tf.keras.Model):
         # This is important to make the model saveable, because `Model.save` calls the
         # `call` method with an unspecified batch size (to build the computational graph).
         #
-        # The noise sample is drawn from a unit spherical Gaussian, distinct from the latent prior.
+        # The noise sample is drawn from a unit spherical Gaussian N(μ=0, σ=1), distinct from the latent prior.
         #
         # eps = tf.random.normal(shape=mean.shape)
         eps = tf.random.normal(shape=tf.shape(mean))
@@ -450,8 +450,20 @@ def compute_loss(model, x):
     mean, logvar = model.encode(x)
 
     # Optional multiple-sample Monte Carlo just for the lulz.
-    elbo = 0.0
+    #
+    # Using more than one sample multiplies the computational cost, but usually increases quality only slightly.
+    # At least qualitatively, it seems it is more cost-efficient (for test-set ELBO gain per unit of wall time
+    # spent in training) to just use a larger dataset instead of improving the sampling here.
+    #
+    # Note that the expectation of a normally distributed variable, such as the latent point z, is just its
+    # mean. So why do we need `logvar` at all - why don't we just use `mean` as an exact estimate of the
+    # expectation of z ~ qϕ(z|x), since in the ELBO, all we actually want is an expectation?
+    #
+    # An important reason is that we are not just evaluating `z`; we must evaluate all terms of the ELBO consistently.
+    # A Monte Carlo point estimate is a computationally efficient way to achieve this consistency.
+    #
     n_mc_samples = 1
+    elbo = 0.0
     for _ in range(n_mc_samples):
         # Sample the variational posterior qϕ(z|x) to obtain *a* latent point z corresponding to the input x.
         # That is, draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
@@ -467,19 +479,20 @@ def compute_loss(model, x):
         #
         # Note that initially, the encoder output is essentially just `2 * latent_dim` arbitrary real numbers.
         # The encoder itself does not know the meaning of its outputs. That meaning is established *here*,
-        # by the training process. *Because* we use the encoder outputs as (μ, log σ), training the CVAE
+        # by the training process. *Because* we use the encoder outputs as (μ, log σ), the training process
         # adjusts the encoder coefficients so that those numbers actually become to represent (i.e. converge
         # to reasonable values for) (μ, log σ).
         #
         # (Let that sink in for a moment: the training process guides some arbitrary outputs to "magically"
-        # become what we wanted them to represent. Essentially, this is no different from a classical
-        # optimization problem, say, over polynomials. We fix the structure of a computational algorithm
-        # (which is now much more complex than a single polynomial) and then optimize to find good values
-        # for its coefficients. The meaning of the coefficients is encoded into the structure of the algorithm.
-        # Only humans see the meaning; the optimizer sees just a vector of arbitrary coefficients.)
+        # become what we wanted them to represent. As always, the magic is an illusion; essentially, this
+        # setup is no different from a classical optimization problem, say, over polynomials. We fix the
+        # structure of a computational algorithm (which is now much more complex than a single polynomial)
+        # and then optimize to find good values for its coefficients. The structure of the algorithm
+        # fixes the meaning of the coefficients. Only humans see the meaning; the optimizer sees just
+        # a vector of coefficients, which it tunes in order to improve the value of the objective function.)
         #
         # Finally, we re-emphasize that z is encoded stochastically. Even feeding in the same x produces
-        # a different z each time, since z is sampled from the variational posterior.
+        # a different z each time (for each MC sample), since z is sampled from the variational posterior.
         eps, z = model.reparameterize(mean, logvar)
 
         # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z):
@@ -487,17 +500,20 @@ def compute_loss(model, x):
         # Here θ are the decoder NN coefficients. In our implementation, the observation model
         # takes just one parameter (per pixel), P.
         #
-        # Note the output dimensionality: the decoder maps a latent representation back into the
-        # raw data space (pixel space). Thus for a grayscale picture, the output has one P value per pixel.
+        # Note the output dimensionality: the decoder maps a latent point z (a point, not a distribution!)
+        # back to the raw data space (pixel space). Since we work with grayscale pictures, the output has
+        # one P value per pixel.
         #
         # We implement the classic VAE: we choose our class of observation models as factorized Bernoulli
-        # (pixel-wise). Thus we interpret the (essentially arbitrary) numbers coming from the decoder as
-        # logits for a factorized Bernoulli distribution, and plug them in in that role.
+        # (pixel-wise). Thus we interpret the (again, initially arbitrary) numbers coming from the decoder
+        # as logits for a factorized Bernoulli distribution, and plug them in in that role.
         #
-        # The original tutorial implementations are unnecessarily confusing here; logits and the binary
-        # cross-entropy are a sideshow, specific to the discrete Bernoulli observation model of the classic
-        # VAE, which doesn't even make sense for continuous (grayscale) data (hence the unnecessary
-        # binarization of the input data, which hurts quality).
+        # Many tutorial implementations are unnecessarily confusing here; logits and the binary cross-entropy
+        # are a sideshow, specific to the discrete Bernoulli observation model of the classic VAE, which
+        # doesn't even make sense for continuous (grayscale) data. Hence many tutorials unnecessarily
+        # binarize the input data to make it fit the discrete observation model, which hurts quality.
+        # (Not to mention that then, if as is customary, the decoder returns the pixelwise means as the
+        # decoded output, the resulting picture is not even a valid sample from the chosen observation model.)
         #
         # It is correct that even in the general case, we do want to minimize cross-entropy, but the ELBO is
         # easier to understand without introducing this extra concept.
@@ -509,10 +525,10 @@ def compute_loss(model, x):
         # P = NN_dec(θ, z) at the sampled z (thus accounting for the dependence on z), and evaluate the known
         # function pθ(x|z) (parameterized by P and x) with those parameters P at the input x.
         #
-        # Note that in a VAE, unlike a classical AE, the decoded output is not directly x-hat (i.e. an
+        # Note that unlike in a classical AE, in a VAE the decoded output is not directly x-hat (i.e. an
         # approximation of the input data point), but parameters for a distribution that can be used to
-        # compute x-hat. Strictly, in a VAE, x-hat is a (pixelwise) distribution. Many implementations
-        # return the mean of that distribution as the decoded image.
+        # compute x-hat. Strictly, in a VAE, x-hat is a (pixelwise) distribution. Many VAE implementations
+        # return the pixelwise means of that distribution as the decoded picture.
         #
         # For more details, see the VAE tutorial paper by Kingma and Welling (2019, algorithm 2).
         P = model.decode(z)
@@ -557,7 +573,7 @@ def compute_loss(model, x):
         logpx_z = tf.reduce_sum(x * tf.math.log(lam) + (1 - x) * tf.math.log(1 - lam) + cont_bern_log_norm(lam),
                                 axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
-        # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(0, 1).
+        # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(μ=0, σ=1).
         # Note this spherical unit Gaussian is distinct from the one we used for the noise variable ε.
         # Note also the function `log_normal_pdf` takes `log σ`, not bare `σ`.
         logpz = log_normal_pdf(z, 0., 0.)                    # log pθ(z)   (latent prior, at *sampled* z)
@@ -573,9 +589,11 @@ def compute_loss(model, x):
         #                 ≃ log pθ(x|z) + log pθ(z) - log qϕ(z|x)
         #
         # where E[var][expr] is the expectation, and the simeq symbol ≃ denotes that one side
-        # (here the right-hand side) is an unbiased estimator of the other side.
+        # (here the right-hand side) is an unbiased estimator of the other side. The definition
+        # on the first line is sometimes called the *joint-contrastive* form of the ELBO.
         #
-        # For understanding how the ELBO works, consider
+        # The last line above is the one that is easily computable. For understanding how the ELBO works,
+        # consider an alternative form:
         #
         #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
         #                = E[qϕ(z|x)] [log (pθ(x|z) pθ(z)) - log qϕ(z|x)]
@@ -583,8 +601,11 @@ def compute_loss(model, x):
         #                ≡ E[qϕ(z|x)] [log pθ(x|z)] - DKL(qϕ(z|x) ‖ pθ(z))
         #
         # where DKL is the Kullback--Leibler divergence. So the above expression is the sum of
-        # a reconstruction quality term and a regularization term. On the other hand, by rewriting
-        # the joint probability the other way,
+        # a reconstruction quality term (expectation, with z drawn from qϕ(z|x), of the log-likelihood
+        # of the input x, given the code z) and a regularization term (KL divergence of qϕ(z|x) from the
+        # latent *prior*). This is the *prior-contrastive* form of the ELBO.
+        #
+        # On the other hand, by rewriting the joint probability the other way, we have also
         #
         #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
         #                = E[qϕ(z|x)] [log (pθ(x) pθ(z|x)) - log qϕ(z|x)]
@@ -598,12 +619,12 @@ def compute_loss(model, x):
         #   ELBO[θ,ϕ](x) ≤ log p(x)
         #
         # for all θ,ϕ; and secondly, the tightness of this inequality depends on how close the
-        # approximate variational posterior qϕ(z|x) is to the unknown true posterior pθ(z|x).
-        # So maximizing the ELBO should allow us to find the optimal qϕ(z|x), which approximates
-        # pθ(z|x) best, within our chosen class of distributions qϕ(z|x).
+        # approximate variational posterior qϕ(z|x) is to the unknown true *posterior* pθ(z|x).
+        # So maximizing the ELBO over distributions qϕ(z|x), we should find the optimal qϕ(z|x),
+        # which approximates pθ(z|x) best, within our chosen class of distributions qϕ(z|x).
         #
-        # Keep in mind that for a continuous distribution p(x), the ELBO may actually take on positive
-        # values, because p(x) is then a probability *density*, which may in general exceed 1.
+        # Finally, keep in mind that for a continuous distribution p(x), the ELBO may actually take on
+        # positive values, because p(x) is then a probability *density*, which may in general exceed 1.
         elbo += tf.reduce_mean(logpx_z + logpz - logqz_x)
     if n_mc_samples > 1:  # take the mean
         elbo /= n_mc_samples
