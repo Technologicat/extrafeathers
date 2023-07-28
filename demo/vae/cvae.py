@@ -438,8 +438,8 @@ def compute_loss(model, x):
     # Without explanation this calculation is overly magic, so let's comment step by step.
 
     # Encode the input data (pixels) into parameters for the variational posterior qϕ(z|x):
-    #   x → (μ(ϕ, x), log σ(ϕ, x))
-    # Here ϕ are the encoder NN coefficients: NN_enc = NN_enc(ϕ, x).
+    #   x → NN_enc(ϕ, x) = (μ(ϕ, x), log σ(ϕ, x))
+    # Here ϕ are the encoder NN coefficients.
     mean, logvar = model.encode(x)
 
     # Optional multiple-sample Monte Carlo just for the lulz.
@@ -459,8 +459,10 @@ def compute_loss(model, x):
         # (since z is sampled from the variational posterior).
         eps, z = model.reparameterize(mean, logvar)
 
-        # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z).
-        # Here θ are the decoder NN coefficients: NN_dec = NN_dec(θ, z).
+        # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z):
+        #   z → NN_dec(θ, z) = P(θ, z)
+        # Here θ are the decoder NN coefficients. In our implementation, the observation model
+        # takes just one parameter (per pixel), P.
         #
         # We implement the classic VAE: we choose our class of observation models as factorized Bernoulli
         # (pixel-wise). Thus we interpret the (essentially arbitrary) numbers coming from the decoder as
@@ -516,7 +518,7 @@ def compute_loss(model, x):
         #                         axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
         # Continuous Bernoulli - add a log-normalizing constant to make the probability distribution sum to 1,
-        # when x is continuous in the interval [0, 1] (instead of taking on just one of the values {0, 1}).
+        # when x is continuous in the interval [0, 1] (instead of discrete in the set {0, 1}).
         #
         # Note the output is now the parameter λ of the continuous Bernoulli distribution, not directly a
         # probability; and the mean of the continuous Bernoulli distribution is also different from λ.
