@@ -333,6 +333,7 @@ class CVAE(tf.keras.Model):
     # --------------------------------------------------------------------------------
     # Save/load support.
     #   https://www.tensorflow.org/guide/keras/serialization_and_saving
+    #   https://www.tensorflow.org/tutorials/keras/save_and_load
     #
     # To make a custom `Model` saveable in TF 2.12 or later, it must:
     #   - Provide a `get_config` instance method, which returns a JSON-serializable dictionary of parameters
