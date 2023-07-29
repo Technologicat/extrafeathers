@@ -349,6 +349,7 @@ class CVAE(tf.keras.Model):
     #       _ = model(dummy_data)
     #
     def get_config(self):
+        config = super().get_config()
         # The `variant` parameter specifies which actual NN structure is instantiated by our constructor.
         # Once a given `variant` value has been used in a version pushed to GitHub, it should be treated as part of the public API.
         # That is, for backward compatibility, it should forever refer to that NN structure, so that future versions can load old checkpoints.
