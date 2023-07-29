@@ -147,8 +147,11 @@ mixed_precision.set_global_policy(policy)
 # Thus, for the same data, keep the ratio `epochs / batch size` constant to keep the quality constant?
 
 # batch_size = 32  # for CPU
+batch_size = 1024  # optimal speed on RTX Quadro 3000 Mobile? (also largest that fits into 6GB VRAM at fp16, model variant=7)
+# batch_size = 512
+# batch_size = 256  # successful float16 test
 # batch_size = 128  # faster on GPU, still acceptable generalization on discrete Bernoulli
-batch_size = 64  # acceptable generalization on continuous Bernoulli
+# batch_size = 64  # acceptable generalization on continuous Bernoulli
 
 # For this particular model, the test set ELBO saturates somewhere between epoch 100...200.
 n_epochs = 100
