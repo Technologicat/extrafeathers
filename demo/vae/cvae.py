@@ -175,8 +175,8 @@ def make_encoder(variant=7):
     # is a good prior for unknown location and scale parameters, see e.g.:
     #   https://en.wikipedia.org/wiki/Principle_of_transformation_groups
     #   https://en.wikipedia.org/wiki/Principle_of_maximum_entropy
-    z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean")(x)
-    z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var")(x)
+    z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean", dtype="float32")(x)
+    z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var", dtype="float32")(x)
     encoder_outputs = [z_mean, z_log_var]
     encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
     return encoder
@@ -219,16 +219,16 @@ def make_decoder(variant=7):
     if variant == 0:  # Classical VAE
         x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
                                             strides=2, padding="same")(x)     # 7×7×64 → 14×14×32
-        decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2,
-                                                          padding="same")(x)  # 14×14×32 → 28×28×1
+        x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2,
+                                            padding="same")(x)                # 14×14×32 → 28×28×1
 
     elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
         x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
                                             strides=2, padding="same")(x)                  # 7×7×64 → 14×14×32
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32 → 14×14×32
-        decoder_outputs = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3,
-                                                          strides=2, padding="same")(x)    # 14×14×32 → 28×28×1
+        x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3,
+                                            strides=2, padding="same")(x)                  # 14×14×32 → 28×28×1
 
     elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
@@ -237,14 +237,14 @@ def make_decoder(variant=7):
                                         bottleneck_factor=1)(x)                # 7×7×64 → 14×14×32
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
                                      bottleneck_factor=1)(x)                   # 14×14×32 → 14×14×32
-        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-                                                      bottleneck_factor=1)(x)  # 14×14×32 → 28×28×1
+        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                        bottleneck_factor=1)(x)                # 14×14×32 → 28×28×1
 
     elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
         x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)                      # 14×14×32 → 28×28×1
 
     elif variant == 4:  # ResNet attempt 4
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
@@ -252,7 +252,7 @@ def make_decoder(variant=7):
         x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)                      # 14×14×32 → 28×28×1
 
     elif variant == 5:  # ResNet attempt 5
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
@@ -265,7 +265,7 @@ def make_decoder(variant=7):
                                      bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
                                      bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)  # 14×14×32 → 28×28×1
 
     elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
         for _ in range(3):
@@ -276,7 +276,7 @@ def make_decoder(variant=7):
         for _ in range(3):
             x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
                                          bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)        # 14×14×32 → 28×28×1
+        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)  # 14×14×32 → 28×28×1
 
     elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 755 810 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
         x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -293,11 +293,15 @@ def make_decoder(variant=7):
                                        bottleneck_factor=2)(x)
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
-        decoder_outputs = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-                                                      bottleneck_factor=2)(x)
+        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                        bottleneck_factor=2)(x)
 
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
+
+    # Cast output to float32 even if running under a mixed-precision policy.
+    #   https://tensorflow.org/guide/mixed_precision
+    decoder_outputs = tf.keras.layers.Activation("linear", dtype="float32")(x)  # identity function, cast only
 
     decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
     return decoder
@@ -389,12 +393,20 @@ class CVAE(tf.keras.Model):
 
         `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
         """
+        mixed_precision = hasattr(self.optimizer, "get_scaled_loss")  # TODO: what is the official way to detect?
+
         with tf.GradientTape() as tape:
             loss = elbo_loss(self, x)  # TODO: maybe should be a method?
+            if mixed_precision:
+                scaled_loss = self.optimizer.get_scaled_loss(loss)  # mixed precision
 
         # Compute gradients
         trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
+        if mixed_precision:
+            scaled_gradients = tape.gradient(scaled_loss, trainable_vars)
+            gradients = self.optimizer.get_unscaled_gradients(scaled_gradients)
+        else:
+            gradients = tape.gradient(loss, trainable_vars)
 
         # Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
