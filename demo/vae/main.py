@@ -75,11 +75,12 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
-# TODO: Use an early-stopping criterion to avoid overfitting the training set?
-#
 # TODO: Conform better to the Keras OOP API
 #  - `fit`, `evaluate` and `save` now work as expected
 #  - what does `predict` do, how to support it?
+#  - what should happen when the model is called (`model(...)`); what does the `training=False` kwarg do?
+
+# TODO: Use an early-stopping criterion to avoid overfitting the training set?
 # TODO: `EarlyStopping` class from the Keras API. Do we need to register some more metrics to use it, or is just the loss enough?
 
 # TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step, processing the z space
