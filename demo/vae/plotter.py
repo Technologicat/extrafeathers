@@ -98,10 +98,15 @@ def plot_elbo(epochs, train_elbos, test_elbos, *,
     ax.plot(epochs, train_elbos, label="train")
     ax.plot(epochs, test_elbos, label="test")
 
-    # Zoom to top 80% of data mass
+    # Zoom to top 80% of data mass (but keep the test elbos visible, if this would hide them)
     q = np.quantile(train_elbos, 0.2)
+    if epoch >= 10:
+        # Typically, the initial steep climb is over in ~10 epochs.
+        ymin = min(q, train_elbos[9], test_elbos[9])
+    else:
+        ymin = q
     datamax = max(np.max(train_elbos), np.max(test_elbos))
-    ax.set_ylim(q, datamax)
+    ax.set_ylim(ymin, datamax)
 
     ax.xaxis.grid(visible=True, which="both")
     ax.yaxis.grid(visible=True, which="both")
