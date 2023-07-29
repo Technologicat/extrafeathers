@@ -341,10 +341,17 @@ class CVAE(tf.keras.Model):
     #   - Provide a `from_config` class method, which takes such a dictionary and instantiates the model.
     #     Note it's enough that the constructor sets up the correct NN structure when instantiated with these parameters;
     #     Keras handles the actual loading of the coefficient data into that NN structure.
+    # ...but it only needs to do that if the constructor takes any args that are NOT:
+    #   - bare basic Python types (str, int, ...)
+    #   - Keras objects, which already know how to serialize
+    # If the ctor only takes those types, then there is no need to override anything.
+    #
     #   - I'm not sure if this is the case anymore, but it used to be (before TF 2.12) that a custom model must also provide a
     #     `call` method to be saveable. For an autoencoder, such a method is basically useless, except as documentation for
     #     how to make a full round-trip through the AE.
     #   - In any case, any code that wishes to call `save` should first force the model to build its graph, with something like::
+    #       model.build((batch_size, 28, 28, 1))
+    #     or alternatively::
     #       dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
     #       _ = model(dummy_data)
     #
