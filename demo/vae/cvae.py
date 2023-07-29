@@ -312,7 +312,7 @@ class CVAE(tf.keras.Model):
     """
 
     def __init__(self, *, latent_dim=2, variant=7):
-        super(CVAE, self).__init__()
+        super().__init__()
         self.latent_dim = latent_dim
         self.variant = variant
         self.encoder = make_encoder(variant)
