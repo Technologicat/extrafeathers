@@ -116,6 +116,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
+from tensorflow.keras import mixed_precision
 
 from extrafeathers import plotmagic
 
@@ -132,6 +133,18 @@ from .util import clear_and_create_directory, preprocess_images
 
 # --------------------------------------------------------------------------------
 # Training config
+
+# Choose dtype policy (set here depending on your GPU)
+#   https://tensorflow.org/guide/mixed_precision
+# policy = mixed_precision.Policy("float32")
+# policy = mixed_precision.Policy("mixed_bfloat16")
+policy = mixed_precision.Policy("mixed_float16")
+mixed_precision.set_global_policy(policy)
+
+# Approximately same quality of training for `total number of gradient updates = constant`?
+#   updates/epoch = data size / batch size
+#   total updates = epochs * updates/epoch = epochs * data size / batch size
+# Thus, for the same data, keep the ratio `epochs / batch size` constant to keep the quality constant?
 
 # batch_size = 32  # for CPU
 # batch_size = 128  # faster on GPU, still acceptable generalization on discrete Bernoulli
@@ -159,16 +172,21 @@ lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_ra
                                                              decay_steps=decay_epochs * steps_per_epoch,
                                                              decay_rate=0.25)
 optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+optimizer = mixed_precision.LossScaleOptimizer(optimizer)  # needed when running with a mixed-precision policy
 
 # --------------------------------------------------------------------------------
 # Main program - model training
 
+print(f"Compute dtype: {policy.compute_dtype}")
+print(f"Variable dtype: {policy.variable_dtype}")
+
 model = CVAE(latent_dim=latent_dim, variant=7)
 model.compile(optimizer=optimizer)
+model.build((batch_size, 28, 28, 1))  # Important: force the model to build its graph so that `model.save` works.
 
-# Important: force the model to build its graph so that `model.save` works.
-dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
-_ = model(dummy_data)
+# # old graph-building hack
+# dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
+# _ = model(dummy_data)
 
 def main():
     # Make preparations
