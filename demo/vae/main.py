@@ -151,13 +151,13 @@ mixed_precision.set_global_policy(policy)
 batch_size = 64  # acceptable generalization on continuous Bernoulli
 
 # For this particular model, the test set ELBO saturates somewhere between epoch 100...200.
-n_epochs = 400
+n_epochs = 100
 
 (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 
-decay_epochs = 200
+decay_epochs = 50
 d, m = divmod(train_images.shape[0], batch_size)
 steps_per_epoch = d + int(m > 0)
 
