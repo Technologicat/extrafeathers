@@ -556,7 +556,7 @@ def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
     Taken from the GitHub repo for the paper by Loaiza-Ganem and Cunningham (2019):
         https://github.com/cunningham-lab/cb_and_cc
     """
-    # cut_y below might appear useless, but it is important to not evaluate log_norm near 0.5
+    # cut_lam below might appear useless, but it is important to not evaluate log_norm near 0.5
     # as tf.where evaluates both options, regardless of the value of the condition.
     cut_lam = tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), lam, l_lim * tf.ones_like(lam))
     log_norm = tf.math.log(tf.abs(2.0 * tf.atanh(1 - 2.0 * cut_lam))) - tf.math.log(tf.abs(1 - 2.0 * cut_lam))
