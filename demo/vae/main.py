@@ -321,7 +321,8 @@ def main():
                          optimizer_iterations=total_iterations,
                          learning_rates=learning_rates,
                          generalization_losses=generalization_losses,
-                         training_progresses=training_progresses)
+                         training_progresses=training_progresses,
+                         batch_size=batch_size)
 
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
