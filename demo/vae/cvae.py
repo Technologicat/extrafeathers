@@ -353,12 +353,14 @@ class CVAE(tf.keras.Model):
         # The `variant` parameter specifies which actual NN structure is instantiated by our constructor.
         # Once a given `variant` value has been used in a version pushed to GitHub, it should be treated as part of the public API.
         # That is, for backward compatibility, it should forever refer to that NN structure, so that future versions can load old checkpoints.
-        return {"latent_dim": self.latent_dim,
-                "variant": self.variant}
-    @classmethod
-    def from_config(cls, config):
-        model = cls(**config)
-        return model
+        config.update({"latent_dim": self.latent_dim,
+                       "variant": self.variant})
+        return config
+    # # Default implementation - for reference only. We can use it as-is.
+    # @classmethod
+    # def from_config(cls, config):
+    #     model = cls(**config)
+    #     return model
     def call(self, x):
         """Send data batch `x` on a full round-trip through the autoencoder. (Included for API compatibility only.)"""
         # See `elbo_loss` for a detailed explanation of the internals.
