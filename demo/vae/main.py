@@ -131,7 +131,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
-from tensorflow.keras import mixed_precision
+import tensorflow_addons as tfa
 
 from extrafeathers import plotmagic
 
@@ -149,62 +149,98 @@ from .util import clear_and_create_directory, preprocess_images
 # --------------------------------------------------------------------------------
 # Training config
 
-# Choose dtype policy (set here depending on your GPU)
-#   https://tensorflow.org/guide/mixed_precision
-# policy = mixed_precision.Policy("float32")
-# policy = mixed_precision.Policy("mixed_bfloat16")
-policy = mixed_precision.Policy("mixed_float16")
-mixed_precision.set_global_policy(policy)
-
-# Approximately same quality of training for `total number of gradient updates = constant`?
-#   updates/epoch = data size / batch size
-#   total updates = epochs * updates/epoch = epochs * data size / batch size
-# Thus, for the same data, keep the ratio `epochs / batch size` constant to keep the quality constant?
-
-# batch_size = 32  # for CPU
-batch_size = 1024  # optimal speed on RTX Quadro 3000 Mobile? (also largest that fits into 6GB VRAM at fp16, model variant=7)
-# batch_size = 512
-# batch_size = 256  # successful float16 test
-# batch_size = 128  # faster on GPU, still acceptable generalization on discrete Bernoulli
-# batch_size = 64  # acceptable generalization on continuous Bernoulli
-
-# For this particular model, the test set ELBO saturates somewhere between epoch 100...200.
-n_epochs = 100
-
 (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 
-decay_epochs = 50
-d, m = divmod(train_images.shape[0], batch_size)
-steps_per_epoch = d + int(m > 0)
+# We use the standard definition of "epoch": an epoch is one full pass over the training data set.
+n_epochs = 140
 
-# For a discussion of NN optimization methods, see the Deep Learning book by Goodfellow et al.
-# optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+# TODO: Optimal batch size?
+#   Approximately same quality of training for `total number of gradient updates = constant`?
+#     updates/epoch = data size / batch size
+#     total updates = epochs * updates/epoch = epochs * data size / batch size
+#   Thus, for the same data, and all else fixed, keep the ratio `epochs / batch size` constant to keep the training result quality constant?
 #
-# The API docs at
-# https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Optimizer
-# say that an `Optimizer` increments `self.iterations` by one every time its `apply_gradients`
-# method is called. So we should be able to use a dynamic learning rate.
-lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-4,
-                                                             decay_steps=decay_epochs * steps_per_epoch,
-                                                             decay_rate=0.25)
-optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-optimizer = mixed_precision.LossScaleOptimizer(optimizer)  # needed when running with a mixed-precision policy
+# batch_size = 32  # CPU
+batch_size = 1024  # 6GB VRAM, fp16, model variant=7; optimal training speed on RTX Quadro 3000 Mobile?
+# batch_size = 512  # 6GB VRAM, fp32, model variant=7
+# batch_size = 256
+# batch_size = 128
+# batch_size = 64
+
+# Choose dtype policy (which is best depends on your device)
+#   https://tensorflow.org/guide/mixed_precision
+# policy = tf.keras.mixed_precision.Policy("float32")  # CPU
+# policy = tf.keras.mixed_precision.Policy("mixed_bfloat16")  # RTX 3xxx and later should have the tensor core hardware to accelerate bf16
+policy = tf.keras.mixed_precision.Policy("mixed_float16")  # Quadro 3000 (based on RTX 2xxx chip)
+tf.keras.mixed_precision.set_global_policy(policy)
+
+# Set up the optimizer.
+#
+# For a general discussion of NN optimization methods, explaining many of the popular algorithms,
+# see the Deep Learning book by Goodfellow et al. (2016).
+#
+# A Keras `Optimizer` increments `self.iterations` by one every time its `apply_gradients` method is called.
+#   https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Optimizer
+#
+# One optimizer step processes one batch of input data. Hence, optimizer steps per epoch is:
+d, m = divmod(train_images.shape[0], batch_size)
+steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of training samples not divisible by batch size)
+
+# # Constant learning rate
+# optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+
+# # Exponentially decaying learning rate
+# decay_epochs = 50  # In the exponential schedule, after each `decay_epochs`, the lr has reached `decay_rate` times its original value.
+# lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-4,
+#                                                              decay_steps=decay_epochs * steps_per_epoch,
+#                                                              decay_rate=0.25)
+
+# Cyclical learning rate
+# This accelerates convergence according to Smith (2015):
+#   https://arxiv.org/abs/1506.01186
+#
+# TODO: `tensorflow_addons` is deprecated but there seems to be no official replacement for `CyclicalLearningRate` and friends. Make a local copy of the class?
+#   https://www.tensorflow.org/addons/tutorials/optimizers_cyclicallearningrate
+#   https://github.com/tensorflow/addons/issues/2807
+#
+# "triangular2" schedule of Smith (2015)
+# `step_size` = half cycle length, in optimizer steps
+INIT_LR, MAX_LR = 1e-4, 1e-2
+lr_schedule = tfa.optimizers.Triangular2CyclicalLearningRate(initial_learning_rate=INIT_LR,
+                                                             maximal_learning_rate=MAX_LR,
+                                                             step_size=10 * steps_per_epoch)
+
+# # learning schedule DEBUG
+# steps = np.arange(0, n_epochs * steps_per_epoch)
+# lr = lr_schedule(steps)
+# plt.plot(steps / steps_per_epoch, lr)
+# plt.xlabel("epoch")
+# plt.ylabel("lr")
+# plt.grid(visible=True, which="both")
+# plt.axis("tight")
+# plt.show()
+# from sys import exit
+# exit(0)
+
+# Choose the optimizer algorithm. This can be any Keras optimizer that takes in a `learning_rate` kwarg.
+Optimizer = tf.keras.optimizers.Adam
 
 # --------------------------------------------------------------------------------
 # Main program - model training
 
-print(f"Compute dtype: {policy.compute_dtype}")
-print(f"Variable dtype: {policy.variable_dtype}")
+print(f"{__name__}: Compute dtype: {policy.compute_dtype}")
+print(f"{__name__}: Variable dtype: {policy.variable_dtype}")
 
 model = CVAE(latent_dim=latent_dim, variant=7)
-model.compile(optimizer=optimizer)
-model.build((batch_size, 28, 28, 1))  # Important: force the model to build its graph so that `model.save` works.
 
-# # old graph-building hack
-# dummy_data = tf.random.uniform((batch_size, 28, 28, 1))
-# _ = model(dummy_data)
+optimizer = Optimizer(learning_rate=lr_schedule)
+if policy.compute_dtype == "float16":  # mitigate gradient underflow with fp16
+    optimizer = tf.keras.mixed_precision.LossScaleOptimizer(optimizer)
+model.compile(optimizer=optimizer)  # pass only the optimizer here; the CVAE model implements a custom training step, and handles metrics and losses explicitly.
+
+model.build((batch_size, 28, 28, 1))  # force the model to build its graph so that `model.save` works.
 
 def main():
     # Make preparations
@@ -341,7 +377,8 @@ def main():
                          learning_rates=learning_rates,
                          generalization_losses=generalization_losses,
                          training_progresses=training_progresses,
-                         batch_size=batch_size)
+                         batch_size=batch_size,
+                         policy=policy.name)
 
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
