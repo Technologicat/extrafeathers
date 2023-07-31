@@ -396,6 +396,8 @@ class CVAE(tf.keras.Model):
     def train_step(self, x):
         """Execute one training step, computing and applying gradients via backpropagation.
 
+        Supports fp32, fp16 and bf16 precision.
+
         `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
         """
         mixed_precision = hasattr(self.optimizer, "get_scaled_loss")  # TODO: what is the official way to detect?
