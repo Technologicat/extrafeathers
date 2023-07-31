@@ -85,13 +85,20 @@ References:
 import unpythonic.net.server as repl_server
 
 # TODO: Conform better to the Keras OOP API
-#  - `fit`, `evaluate` and `save` now work as expected!
-#  - what does `predict` do, how to support it? (How does it differ from `call`?)
+#  - `fit`, `evaluate`, `predict` and `save` now work as expected! (Note: minimal support; some advanced features might not work.)
 #  - how does the `__call__` operator differ from the `call` method? How are the responsibilities divided between these in Keras?
+#    - `call` is where to implement a user override; the `__call__` operator is for actually calling the model (it internally invokes `call`, plus does extra stuff).
+#      https://stackoverflow.com/questions/57103604/why-keras-use-call-instead-of-call
+#      https://www.tensorflow.org/api_docs/python/tf/keras/Model#call
 #  - what should happen when the model is called (`model(...)`); what should the `training=False` kwarg do?
+#    - the `training` kwarg is for mode control: training or inference. Some layers (e.g. Dropout) behave differently at inference vs. training time.
+#      https://keras.io/getting_started/faq/#whats-the-difference-between-the-training-argument-in-call-and-the-trainable-attribute
+#    - So when calling NNs (encoder or decoder) manually, we should pass the `training` kwarg.
 
 # TODO: Use an early-stopping criterion to avoid overfitting the training set?
 # TODO: `EarlyStopping` class from the Keras API. Do we need to register some more metrics to use it, or is just the loss enough?
+#  We should register a validation loss?
+#  https://keras.io/getting_started/faq/#how-can-i-interrupt-training-when-the-validation-loss-isnt-decreasing-anymore
 
 # TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step to compress into 2d. Process the z space via e.g. diffusion maps or t-SNE.
 
