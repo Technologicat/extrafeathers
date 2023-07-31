@@ -400,16 +400,17 @@ class CVAE(tf.keras.Model):
 
         `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
         """
-        mixed_precision = hasattr(self.optimizer, "get_scaled_loss")  # TODO: what is the official way to detect?
+        policy = tf.keras.mixed_precision.global_policy()
+        fp16 = (policy.compute_dtype == "float16")  # fp16 needs loss scaling, fp32 and bf16 do not
 
         with tf.GradientTape() as tape:
             loss = elbo_loss(self, x)  # TODO: maybe should be a method?
-            if mixed_precision:
+            if fp16:
                 scaled_loss = self.optimizer.get_scaled_loss(loss)  # mixed precision
 
         # Compute gradients
         trainable_vars = self.trainable_variables
-        if mixed_precision:
+        if fp16:
             scaled_gradients = tape.gradient(scaled_loss, trainable_vars)
             gradients = self.optimizer.get_unscaled_gradients(scaled_gradients)
         else:
