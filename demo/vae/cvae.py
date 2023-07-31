@@ -395,14 +395,14 @@ class CVAE(tf.keras.Model):
     #     model = cls(**config)
     #     return model
     @tf.function
-    def call(self, x):
+    def call(self, x, training=None):
         """Send data batch `x` on a full round-trip through the autoencoder. (Included for API compatibility only.)"""
         # See `elbo_loss` for a detailed explanation of the internals.
         # encode to latent representation
-        mean, logvar = self.encode(x)  # compute code distribution parameters for given `x`
+        mean, logvar = self.encoder(x, training=training)  # compute code distribution parameters for given `x`
         eps, z = self.reparameterize(mean, logvar)  # draw a single sample from the code distribution
         # decode from latent representation
-        xhat = self.sample(z)
+        xhat = self.sample(z, training=training)
         return xhat
 
     # --------------------------------------------------------------------------------
@@ -423,7 +423,7 @@ class CVAE(tf.keras.Model):
         fp16 = (policy.compute_dtype == "float16")  # fp16 needs loss scaling, fp32 and bf16 do not
 
         with tf.GradientTape() as tape:
-            loss = elbo_loss(self, x)  # TODO: maybe should be a method?
+            loss = elbo_loss(self, x, training=True)  # TODO: maybe should be a method?
             if fp16:
                 scaled_loss = self.optimizer.get_scaled_loss(loss)  # mixed precision
 
@@ -449,7 +449,7 @@ class CVAE(tf.keras.Model):
 
         `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
         """
-        loss = elbo_loss(self, x)
+        loss = elbo_loss(self, x, training=False)
         self.loss_tracker.update_state(loss)
         return {m.name: m.result() for m in self.metrics}
 
@@ -457,34 +457,10 @@ class CVAE(tf.keras.Model):
     # Other custom methods, specific to a CVAE.
 
     @tf.function
-    def sample(self, z=None):
-        """Sample from the observation model pθ(x|z), returning the pixel-wise means.
-
-        `z`: tf array of size `(batch_size, latent_dim)`.
-             If not specified, a batch of 100 random samples is returned.
-        """
-        if z is None:
-            # Sample the code points from the latent prior.
-            z = tf.random.normal(shape=(100, self.latent_dim))
-        P = self.decode(z)
-        lam = tf.sigmoid(P)  # probability for discrete Bernoulli; λ parameter of continuous Bernoulli
-        # For the discrete Bernoulli distribution, the mean is the same as the Bernoulli parameter,
-        # which is the same as the probability of the output taking on the value 1 (instead of 0).
-        # For the continuous Bernoulli distribution, we just return λ as-is (works fine as output in practice).
-        return lam
-
-    @tf.function
-    def encode(self, x):
-        """x → parameters of variational posterior qϕ(z|x), namely `(μ, log σ)`."""
-        # # If we had a single output layer of double the size, we could do it like this:
-        # mean, logvar = tf.split(self.encoder(x), num_or_size_splits=2, axis=1)
-        # return mean, logvar
-        # But having two outputs explicitly, we can just:
-        return self.encoder(x)
-
-    @tf.function
     def reparameterize(self, mean, logvar):
-        """Map `(μ, log σ) → z` stochastically.
+        """Map code distribution parameters to a code point stochastically.
+
+        (μ, log σ) → z
 
         Draw a single noise sample `ε`; return `(ε, z)`.
 
@@ -507,9 +483,21 @@ class CVAE(tf.keras.Model):
         return eps, z
 
     @tf.function
-    def decode(self, z):
-        """z → parameters of observation model pθ(x|z)"""
-        return self.decoder(z)
+    def sample(self, z=None, training=None):
+        """Sample from the observation model pθ(x|z), returning the pixel-wise means.
+
+        `z`: tf array of size `(batch_size, latent_dim)`.
+             If not specified, a batch of 100 random samples is returned.
+        """
+        if z is None:
+            # Sample the code points from the latent prior.
+            z = tf.random.normal(shape=(100, self.latent_dim))
+        P = self.decoder(z, training=training)
+        lam = tf.sigmoid(P)  # probability for discrete Bernoulli; λ parameter of continuous Bernoulli
+        # For the discrete Bernoulli distribution, the mean is the same as the Bernoulli parameter,
+        # which is the same as the probability of the output taking on the value 1 (instead of 0).
+        # For the continuous Bernoulli distribution, we just return λ as-is (works fine as output in practice).
+        return lam
 
     # --------------------------------------------------------------------------------
     # Deprecated methods
@@ -594,7 +582,7 @@ def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
     return tf.where(tf.logical_or(tf.less(lam, l_lim), tf.greater(lam, u_lim)), log_norm, taylor)
 
 @tf.function
-def elbo_loss(model, x):
+def elbo_loss(model, x, training=None):
     """VAE loss function: negative of the ELBO, for a data batch `x`.
 
     Evaluated by drawing a single-sample Monte Carlo estimate. Kingma and Welling (2019) note
@@ -615,7 +603,7 @@ def elbo_loss(model, x):
     # We must emphasize that unlike in the classical AE, in a VAE the encoder output is not a single encoded
     # data point z, but rather, parameters for a distribution qϕ(z|x), which for the given x, represents
     # the distribution of such points z.
-    mean, logvar = model.encode(x)
+    mean, logvar = model.encoder(x, training=training)
 
     # Optional multiple-sample Monte Carlo just for the lulz.
     #
@@ -699,7 +687,7 @@ def elbo_loss(model, x):
         # return the pixelwise means of that distribution as the decoded picture.
         #
         # For more details, see the VAE tutorial paper by Kingma and Welling (2019, algorithm 2).
-        P = model.decode(z)
+        P = model.decoder(z, training=training)
 
         # Evaluate a single-sample Monte Carlo (MC) estimate of the ELBO.
         #

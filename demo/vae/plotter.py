@@ -41,9 +41,9 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     assert batch_size == 16, f"This function currently assumes a test sample of size 16, got {batch_size}"
     assert n_channels == 1, f"This function currently assumes grayscale images, got {n_channels} channels"
 
-    mean, logvar = model.encode(test_sample)
+    mean, logvar = model.encoder(test_sample, training=False)
     ignored_eps, z = model.reparameterize(mean, logvar)
-    predictions = model.sample(z)
+    predictions = model.sample(z, training=False)
 
     n = 4  # how many images per row/column; sqrt(batch_size)
     image_width = (2 * n + 1) * n_pixels_x  # extra empty column at center, as separator
@@ -234,7 +234,7 @@ def plot_latent_image(n: int = 20, *,
     for i, yi in enumerate(grid_x):
         for j, xi in enumerate(grid_y):
             z = np.array([[xi, yi]])
-            x_decoded = model.sample(z)
+            x_decoded = model.sample(z, training=False)
             digit = tf.reshape(x_decoded[0], (digit_size, digit_size))
             # flip y so we can use origin="lower" for plotting the complete tiled image
             image[i * digit_size: (i + 1) * digit_size,
@@ -321,7 +321,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # Find latent distribution parameters for the given data.
     # We'll plot the means.
     #
-    # # mean, logvar = model.encode(x)  # without batching, this runs out of GPU memory when running on GPU
+    # # mean, logvar = model.encoder(x)  # without batching, this runs out of GPU memory when running on GPU
     # #
     # # The batch size here is just a processing convenience, so ideally (to run as fast as possible) we
     # # should make it as large as the GPU VRAM can accommodate (accounting for any extra VRAM required by
@@ -332,7 +332,7 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     #     means = []
     #     logvars = []
     #     for x in batches:
-    #         mean, logvar = model.encode(x)
+    #         mean, logvar = model.encoder(x)
     #         means.append(mean)
     #         logvars.append(logvar)
     #     mean = tf.concat(means, axis=0)
