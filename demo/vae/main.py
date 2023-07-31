@@ -206,7 +206,7 @@ steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of trainin
 #   https://github.com/tensorflow/addons/issues/2807
 #
 # "triangular2" schedule of Smith (2015)
-# `step_size` = half cycle length, in optimizer steps
+# `step_size` = half cycle length, in optimizer steps; Smith recommends `(2 ... 8) * steps_per_epoch`
 INIT_LR, MAX_LR = 1e-4, 1e-2
 lr_schedule = tfa.optimizers.Triangular2CyclicalLearningRate(initial_learning_rate=INIT_LR,
                                                              maximal_learning_rate=MAX_LR,
