@@ -317,6 +317,23 @@ class CVAE(tf.keras.Model):
 
     This class defines its metrics and losses manually; those should
     **not** be configured in `compile`.
+
+    Encoding takes pixel data `x` → parameters of variational posterior qϕ(z|x), namely `(μ, log σ)`.
+    Reparameterization takes those parameters and yields a code point `z`. The code point is chosen
+    stochastically, by drawing one sample from qϕ(z|x).
+
+    Decoding takes a code point `z` → parameters of observation model pθ(x|z), one value per pixel.
+    Applying a sigmoid to this yields the λ parameter of the continuous Bernoulli distribution,
+    which can be used as the pixel value as-is.
+
+    To encode x → z::
+
+        mean, logvar = model.encoder(x, training=False)  # compute code distribution parameters for given `x`
+        eps, z = model.reparameterize(mean, logvar)  # draw a single sample from the code distribution
+
+    To decode z → xhat::
+
+        xhat = model.sample(z, training=False)
     """
 
     def __init__(self, *, latent_dim=2, variant=7):
