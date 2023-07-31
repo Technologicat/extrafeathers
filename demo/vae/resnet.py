@@ -39,6 +39,9 @@ from unpythonic import safeissubclass
 # the `training` kwarg, but the activation layers in `tf.keras.layers` do. Ideally, we should
 # inspect the call signature, and pass on compatible args only, but discarding everything
 # except the input tensor `x` will do for now.
+#
+# Our `call` methods always pass the `training` kwarg, so they work correctly with
+# activation layers. We only use this hack as an adaptor for the basic activation functions.
 def pass_first_arg_only_to(f):
     """Decorator. Return a copy of `f` that ignores all but the first argument."""
     @wraps(f)
