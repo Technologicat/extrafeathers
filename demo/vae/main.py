@@ -328,7 +328,13 @@ def main():
 
                 # ELBO
                 epochs = np.arange(1, epoch + 1)
-                plot_elbo(epochs, train_elbos, test_elbos, epoch=epoch, figno=2)
+                optimizer_steps = np.arange(0, epoch * steps_per_epoch + 1)
+                lr_epochs = optimizer_steps / steps_per_epoch  # optimizer total step number represented as a fractional epoch number
+                lrs = lr_schedule(optimizer_steps)
+                plot_elbo(epochs, train_elbos, test_elbos,
+                          epoch=epoch,
+                          lr_epochs=lr_epochs, lrs=lrs,
+                          figno=2)
                 fig2.savefig(f"{output_dir}{elbo_fig_filename}.{fig_format}")
                 fig2.canvas.draw_idle()
 

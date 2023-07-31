@@ -81,22 +81,36 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     plotmagic.pause(0.1)  # force redraw
 
 
+_twin = None
 def plot_elbo(epochs, train_elbos, test_elbos, *,
               epoch: typing.Optional[int] = None,
+              lr_epochs: typing.Optional[typing.List[float]],
+              lrs: typing.Optional[typing.List[float]],
               figno: int = 1) -> None:
-    """Plot the evidence lower bound for the training and test sets as a function of the epoch number."""
+    """Plot the evidence lower bound for the training and test sets as a function of the epoch number.
+
+    To plot also the learning rate, pass also `lr_epochs` and `lrs`. Here `lr_epochs` is the epoch number,
+    as a float, corresponding to each entry in `lrs`. It is ok for `lr_epochs` to be non-integers; this is
+    particularly useful with learning rate schedules that update the learning rate during an epoch.
+    """
     fig = plt.figure(figno)
     if not fig.axes:
         plt.subplot(1, 1, 1)  # create Axes
         fig.set_figwidth(6)
         fig.set_figheight(4)
     ax = fig.axes[0]
+
+    global _twin
+    if _twin is None:
+        _twin = fig.axes[0].twinx()
+    twin = _twin
+
     ax.cla()
     plt.sca(ax)
     fig.tight_layout()  # <-- important to do this also here to prevent axes crawling
 
-    ax.plot(epochs, train_elbos, label="train")
-    ax.plot(epochs, test_elbos, label="test")
+    p1, = ax.plot(epochs, train_elbos, "C0", label="train")
+    p2, = ax.plot(epochs, test_elbos, "C1", label="test")
 
     # Zoom to top 80% of data mass (but keep the test elbos visible, if this would hide them)
     q = np.quantile(train_elbos, 0.2)
@@ -115,7 +129,21 @@ def plot_elbo(epochs, train_elbos, test_elbos, *,
     ax.xaxis.set_major_locator(mpl.ticker.MaxNLocator(integer=True))
     ax.set_xlabel("epoch")
     ax.set_ylabel("ELBO")
-    ax.legend(loc="best")
+
+    plot_also_learning_rates = (lr_epochs is not None and lrs is not None)
+    if plot_also_learning_rates:
+        # https://matplotlib.org/stable/gallery/spines/multiple_yaxis_with_spines.html#sphx-glr-gallery-spines-multiple-yaxis-with-spines-py
+        p3, = twin.plot(lr_epochs, lrs, "C2", label="LR")
+        twin.yaxis.label.set_color(p3.get_color())
+        twin.tick_params(axis='y', colors=p3.get_color())
+
+    # ax.yaxis.label.set_color(p1.get_color())
+    # ax.tick_params(axis='y', colors=p1.get_color())
+
+    if plot_also_learning_rates:
+        ax.legend(loc="best", handles=[p1, p2, p3])
+    else:
+        ax.legend(loc="best", handles=[p1, p2])
 
     fig.tight_layout()
     plt.draw()
