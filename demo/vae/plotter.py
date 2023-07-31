@@ -321,24 +321,28 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     # Find latent distribution parameters for the given data.
     # We'll plot the means.
     #
-    # mean, logvar = model.encode(x)  # without batching, this runs out of GPU memory when running on GPU
+    # # mean, logvar = model.encode(x)  # without batching, this runs out of GPU memory when running on GPU
+    # #
+    # # The batch size here is just a processing convenience, so ideally (to run as fast as possible) we
+    # # should make it as large as the GPU VRAM can accommodate (accounting for any extra VRAM required by
+    # # temporary results during encoding). We know at least that a size of 64 fits, but 60k doesn't. So
+    # # let's just choose something in between.
+    # def encode_batched(inputs, batch_size=1024):
+    #     batches = tf.data.Dataset.from_tensor_slices(inputs).batch(batch_size)
+    #     means = []
+    #     logvars = []
+    #     for x in batches:
+    #         mean, logvar = model.encode(x)
+    #         means.append(mean)
+    #         logvars.append(logvar)
+    #     mean = tf.concat(means, axis=0)
+    #     logvar = tf.concat(logvars, axis=0)
+    #     return mean, logvar
+    # mean, logvar = encode_batched(x)
     #
-    # The batch size here is just a processing convenience, so ideally (to run as fast as possible) we
-    # should make it as large as the GPU VRAM can accommodate (accounting for any extra VRAM required by
-    # temporary results during encoding). We know at least that a size of 64 fits, but 60k doesn't. So
-    # let's just choose something in between.
-    def encode_batched(inputs, batch_size=1024):
-        batches = tf.data.Dataset.from_tensor_slices(inputs).batch(batch_size)
-        means = []
-        logvars = []
-        for x in batches:
-            mean, logvar = model.encode(x)
-            means.append(mean)
-            logvars.append(logvar)
-        mean = tf.concat(means, axis=0)
-        logvar = tf.concat(logvars, axis=0)
-        return mean, logvar
-    mean, logvar = encode_batched(x)
+    # Since the encoder part is a `Model`, we can just:
+    #   https://keras.io/getting_started/faq/#whats-the-difference-between-model-methods-predict-and-call
+    mean, logvar = model.encoder.predict(x, batch_size=1024)
 
     # --------------------------------------------------------------------------------
     # We need some gymnastics to plot on top of an imshow image; it's easiest to
