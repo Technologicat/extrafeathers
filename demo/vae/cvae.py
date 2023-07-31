@@ -408,6 +408,13 @@ class CVAE(tf.keras.Model):
     # --------------------------------------------------------------------------------
     # Custom training and testing.
     #   https://keras.io/getting_started/faq/#what-if-i-need-to-customize-what-fit-does
+    #
+    # Basically (TODO: AFAIK; check, and fix if wrong):
+    #   - Overriding `train_step` customizes what `fit` does
+    #   - Overriding `test_step` customizes what `evaluate` does
+    #   - Overriding `call` customizes what `predict` does, but:
+    #     - if no custom `train_step`, also affects `fit` (calls the model with `training=True`)
+    #     - if no custom `test_step`, also affects `evaluate` (calls the model with `training=False`)
 
     # TODO: Should we add a `compute_loss` method that raises `NotImplementedError`, because we handle loss computation manually?
 
