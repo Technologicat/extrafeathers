@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 import demo.vae.main as main
+import demo.vae.config as config
 import demo.vae.plotter as plotter
 import demo.vae.util as util
 
@@ -32,16 +33,16 @@ tf.keras.backend.clear_session()  # clean up dangling tensors
 gc.collect()  # and make sure they are gone
 
 # Load a model snapshot:
-main.model = tf.keras.models.load_model("demo/output/vae/model/final.keras")  # or whatever
-# main.model.my_load("demo/output/vae/model/final")  # to load a snapshot produced by the legacy custom saver
+main.model = tf.keras.models.load_model(f"{config.output_dir}model/final.keras")  # or whatever
+# main.model.my_load(f"{config.output_dir}model/final")  # to load a snapshot produced by the legacy custom saver
 
 # plt.ion()  # interactive mode doesn't seem to work well with our heavily customized overlay plot
 
 e = plotter.plot_latent_image(21)
 plotter.overlay_datapoints(train_images, train_labels, e)
 
-# fig = plt.figure(1)
-# fig.savefig("temp.png")
-# fig.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
+fig = plt.figure(1)
+fig.savefig(f"{config.output_dir}{config.overlay_fig_basename}_final_from_test_script.{config.fig_format}")
+fig.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
 plt.show()
