@@ -84,16 +84,28 @@ References:
 # while the process is live. To connect, `python -m unpythonic.net.client localhost`.
 import unpythonic.net.server as repl_server
 
-# TODO: Conform better to the Keras OOP API
-#  - `fit`, `evaluate`, `predict` and `save` now work as expected! (Note: minimal support; some advanced features might not work.)
-#  - how does the `__call__` operator differ from the `call` method? How are the responsibilities divided between these in Keras?
+# TODO: Conform better to the Keras OOP API. Anything left to do?
+#
+#  - `model.fit` (train), `model.evaluate` (test/validate), `model.predict` (infer, full roundtrip through the AE) and `model.save` work as expected.
+#    - NOTE: CVAE uses custom training and test steps, and also the training script (`main.py`) is customized to produce specific visualizations while training.
+#      While we have attempted to support the standard API, some advanced features might not work.
+#
+#  - The `training` flag of `call` is now supported.
+#    - For an autoencoder, `__call__` is basically useless, except for validation, and as documentation of a full round-trip through the AE.
+#      The custom training step of a VAE certainly never uses `__call__`, as computing the ELBO loss requires access to not only `xhat`,
+#      but also to the code point `z`.
+#    - The whole point of an AE is that although the encoder and decoder are trained jointly, they are separate submodels. Being able to invoke
+#      the submodels separately gives us access to the latent representation, which encodes useful high-level features extracted from the training data.
+#    - For the submodels, `__call__` is very useful; use `model.encoder(x)` and `model.decoder(z)` as appropriate.
+#
+#  - Division of responsibilities in Keras between the `__call__` operator and the `call` method:
 #    - `call` is where to implement a user override; the `__call__` operator is for actually calling the model (it internally invokes `call`, plus does extra stuff).
 #      https://stackoverflow.com/questions/57103604/why-keras-use-call-instead-of-call
 #      https://www.tensorflow.org/api_docs/python/tf/keras/Model#call
-#  - what should happen when the model is called (`model(...)`); what should the `training=False` kwarg do?
-#    - the `training` kwarg is for mode control: training or inference. Some layers (e.g. Dropout) behave differently at inference vs. training time.
+#  - The `training` kwarg of `call`:
+#    - Mode control: training or inference. Some layers (e.g. `Dropout`, `BatchNormalization`) behave differently at inference vs. training time.
 #      https://keras.io/getting_started/faq/#whats-the-difference-between-the-training-argument-in-call-and-the-trainable-attribute
-#    - So when calling NNs (encoder or decoder) manually, we should pass the `training` kwarg.
+#    - So when calling any NN (in our case, encoder or decoder submodel) manually, we must pass the `training` kwarg.
 
 # TODO: Use an early-stopping criterion to avoid overfitting the training set?
 # TODO: `EarlyStopping` class from the Keras API. Do we need to register some more metrics to use it, or is just the loss enough?
