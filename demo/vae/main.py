@@ -112,6 +112,16 @@ import unpythonic.net.server as repl_server
 #  We should register a validation loss?
 #  https://keras.io/getting_started/faq/#how-can-i-interrupt-training-when-the-validation-loss-isnt-decreasing-anymore
 
+# TODO: Gradient accumulation for really large batches?
+#   - Larger batch size is generally better, because the average (mean) gradient over the training data better reflects the behavior of the data distribution
+#     than the gradient based only on a subset of the training data.
+#   - By default, the Keras optimizers make one gradient descent step per batch.
+#   - Gradient accumulation and averaging over multiple batches (before performing a gradient descent step) would allow using very large batch sizes
+#     where the whole batch does not fit into VRAM simultaneously, by processing it in several sub-batches (each small enough to fit into VRAM).
+#   - Keras itself does not support gradient accumulation, but there is a wrapper add-on:
+#     https://github.com/run-ai/runai/tree/master/runai/ga
+#     How this interacts with the loss-scaling wrapper is an open question (which order should we nest them in?).
+
 # TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step to compress into 2d. Process the z space via e.g. diffusion maps or t-SNE.
 
 # TODO: Add denoising, see e.g. https://davidstutz.de/denoising-variational-auto-encoders/
