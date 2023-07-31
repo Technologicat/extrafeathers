@@ -389,6 +389,7 @@ class CVAE(tf.keras.Model):
 
     # --------------------------------------------------------------------------------
     # Custom training and testing.
+    #   https://keras.io/getting_started/faq/#what-if-i-need-to-customize-what-fit-does
 
     # TODO: Should we add a `compute_loss` method that raises `NotImplementedError`, because we handle loss computation manually?
 
