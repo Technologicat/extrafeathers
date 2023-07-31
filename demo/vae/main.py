@@ -36,6 +36,14 @@ To train the model, open a terminal in the top-level `extrafeathers` directory, 
 
   python -m demo.vae.main
 
+The random initialization of the model can be finicky. With the MNIST digits dataset,
+the ELBO should rise to ~1300 (on model variant=7) after a few epochs if the init is good.
+Just try again, if:
+
+  - The loss becomes NaN, which crashes the training.
+  - The latent space goes entirely black or entirely white near the start of the training,
+    and the ELBO value seems stuck.
+
 The model will be saved in `<output_dir>/model/XXXX.keras`, where `output_dir` is defined in `config.py`,
 and XXXX is either a four-digit epoch number starting from 0001, or "final" for the final result of
 a completed training run.
@@ -49,6 +57,7 @@ has been trained:
  - Animations.
 
 How to load the trained model in an IPython session: see `test_script.py`.
+The script also makes a datapoint overlay plot just for the final state.
 
 The implementation is based on combining material from these two tutorials:
   https://www.tensorflow.org/tutorials/generative/cvae

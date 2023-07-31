@@ -299,7 +299,11 @@ def make_decoder(variant=7):
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
 
-    # Cast output to float32 even if running under a mixed-precision policy.
+    # Cast final output of decoder to float32. Important when running under a mixed-precision policy.
+    # We do this also for float32 (it's then a no-op), so that the topology of the NN does not depend on the policy.
+    #
+    # Should use slightly less VRAM, if done here as a separate operation (need at most 2 float32s per pixel)
+    # instead of using float32 as the dtype of the final convolution transpose block (which does actual compute).
     #   https://tensorflow.org/guide/mixed_precision
     decoder_outputs = tf.keras.layers.Activation("linear", dtype="float32")(x)  # identity function, cast only
 
@@ -345,6 +349,7 @@ class CVAE(tf.keras.Model):
     #   - Provide a `from_config` class method, which takes such a dictionary and instantiates the model.
     #     Note it's enough that the constructor sets up the correct NN structure when instantiated with these parameters;
     #     Keras handles the actual loading of the coefficient data into that NN structure.
+    #   - Preferably, the class should register itself: `@tf.keras.utils.register_keras_serializable(package="MyPackage")`
     # ...but it only needs to do that if the constructor takes any args that are NOT:
     #   - bare basic Python types (str, int, ...)
     #   - Keras objects, which already know how to serialize
