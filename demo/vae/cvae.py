@@ -389,7 +389,7 @@ class CVAE(tf.keras.Model):
         config.update({"latent_dim": self.latent_dim,
                        "variant": self.variant})
         return config
-    # # Default implementation - for reference only. We can use it as-is.
+    # # Default implementation - here for reference only. We can use it as-is.
     # @classmethod
     # def from_config(cls, config):
     #     model = cls(**config)
