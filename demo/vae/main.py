@@ -85,19 +85,19 @@ References:
 import unpythonic.net.server as repl_server
 
 # TODO: Conform better to the Keras OOP API
-#  - `fit`, `evaluate` and `save` now work as expected
-#  - what does `predict` do, how to support it?
-#  - what should happen when the model is called (`model(...)`); what does the `training=False` kwarg do?
+#  - `fit`, `evaluate` and `save` now work as expected!
+#  - what does `predict` do, how to support it? (How does it differ from `call`?)
+#  - how does the `__call__` operator differ from the `call` method? How are the responsibilities divided between these in Keras?
+#  - what should happen when the model is called (`model(...)`); what should the `training=False` kwarg do?
 
 # TODO: Use an early-stopping criterion to avoid overfitting the training set?
 # TODO: `EarlyStopping` class from the Keras API. Do we need to register some more metrics to use it, or is just the loss enough?
 
-# TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step, processing the z space
-# via e.g. diffusion maps or t-SNE for visualizing the latent representation in 2-dimensional space.
+# TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step to compress into 2d. Process the z space via e.g. diffusion maps or t-SNE.
 
 # TODO: Add denoising, see e.g. https://davidstutz.de/denoising-variational-auto-encoders/
 
-# TODO: Explore how we could implement more of the stochastics via `tensorflow_probability`, could be cleaner.
+# TODO: API: explore how we could implement more of the stochastics via `tensorflow_probability`, could be cleaner.
 
 # TODO: Explore if we can set up skip-connections from an encoder layer to the decoder layer of the same size.
 #   - This kind of architecture is commonly seen in autoencoder designs used for approximating PDE solutions
@@ -106,7 +106,8 @@ import unpythonic.net.server as repl_server
 #   - Using the functional API, we should be able to set up three `Model`s that share layer instances:
 #     the encoder, the decoder, and (for training) the full autoencoder that combines both and adds the
 #     skip-connections from the encoder side to the decoder side.
-#   - But how to run such a network in decoder-only mode?
+#   - But how to run such a network in decoder-only mode (i.e. generative mode), where the encoder layers are not available?
+#     For real data, we could save the encoder layer states as part of the coded representation. But for generating new data, that's a no-go.
 
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
@@ -116,6 +117,11 @@ import unpythonic.net.server as repl_server
 #     - Better: have an extra input to the encoder, and then concatenate it to the final Dense layer.
 #   - Estimate coverage of data manifold, e.g. using FID or precision-and-recall (see the latent diffusion
 #     paper by Rombach et al., 2022)
+
+# TODO: Just for the lulz, we could try implementing a classifier on top of this.
+#  - Map all training samples through the trained encoder. Save the resulting code points, with corresponding input labels.
+#  - To classify a new data point, encode it. Use the labels of nearby training code points to predict what the class should be.
+#  - E.g., form a confidence score for each class, based on an inverse-distance-weighted proportion of each training label within some configurable radius r.
 
 import sys
 
