@@ -377,6 +377,7 @@ class CVAE(tf.keras.Model):
     # def from_config(cls, config):
     #     model = cls(**config)
     #     return model
+    @tf.function
     def call(self, x):
         """Send data batch `x` on a full round-trip through the autoencoder. (Included for API compatibility only.)"""
         # See `elbo_loss` for a detailed explanation of the internals.
@@ -455,6 +456,7 @@ class CVAE(tf.keras.Model):
         # For the continuous Bernoulli distribution, we just return λ as-is (works fine as output in practice).
         return lam
 
+    @tf.function
     def encode(self, x):
         """x → parameters of variational posterior qϕ(z|x), namely `(μ, log σ)`."""
         # # If we had a single output layer of double the size, we could do it like this:
@@ -463,6 +465,7 @@ class CVAE(tf.keras.Model):
         # But having two outputs explicitly, we can just:
         return self.encoder(x)
 
+    @tf.function
     def reparameterize(self, mean, logvar):
         """Map `(μ, log σ) → z` stochastically.
 
@@ -486,6 +489,7 @@ class CVAE(tf.keras.Model):
         z = eps * tf.exp(logvar * .5) + mean
         return eps, z
 
+    @tf.function
     def decode(self, z):
         """z → parameters of observation model pθ(x|z)"""
         return self.decoder(z)
