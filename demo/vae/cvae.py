@@ -163,11 +163,14 @@ def make_encoder(variant):
                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
+        # Cai et al. (2019), figure 3: operation ordering: better results if GN first, then dropout, just before feeding into the next convolution
+        # (Specifically, the authors suggest modifying a ResNet convolution block to use [BN/GN, ReLU, dropout, conv]×2 as its pre-activation primary path.)
+        #   https://arxiv.org/pdf/1904.03392.pdf
         # Wu and He (2018), figure 2: instance normalization (normalize over whole image, independently in each channel)
         #   https://arxiv.org/pdf/1803.08494.pdf
         #   https://keras.io/api/layers/normalization_layers/group_normalization/
         x = tf.keras.layers.GroupNormalization(groups=64)(x)  # groups = channels → instance normalization
-        # Tompson et al. (2015), section 3.2: spatial dropout drops whole feature maps, useful when nearby pixels are correlated
+        # Tompson et al. (2015), section 3.2: spatial dropout (a.k.a. drop-channel) drops whole feature maps, useful when nearby pixels are correlated
         #   https://arxiv.org/abs/1411.4280
         x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
 
