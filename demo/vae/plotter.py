@@ -120,6 +120,16 @@ def plot_elbo(epochs, train_elbos, test_elbos, *,
     else:
         ymin = q
     datamax = max(np.max(train_elbos), np.max(test_elbos))
+
+    # When training with fp16, the ELBO loss often starts as NaN.
+    if np.isnan(ymin) and np.isnan(datamax):
+        ymin = 0.0
+        datamax = 0.0
+    elif np.isnan(datamax):
+        datamax = max(ymin, 0.0)
+    elif np.isnan(ymin):
+        ymin = min(datamax, 0.0)
+
     ax.set_ylim(ymin, datamax)
 
     ax.xaxis.grid(visible=True, which="both")
