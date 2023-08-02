@@ -355,6 +355,10 @@ class CVAE(tf.keras.Model):
         #     https://keras.io/guides/customizing_what_happens_in_fit/#going-lowerlevel
         return [self.loss_tracker]
 
+    # # We shouldn't need this, because we define `metrics`.
+    # def reset_metrics(self):
+    #     self.loss_tracker.reset_states()
+
     # --------------------------------------------------------------------------------
     # Save/load support.
     #   https://www.tensorflow.org/guide/keras/serialization_and_saving
@@ -416,8 +420,6 @@ class CVAE(tf.keras.Model):
     #     - if no custom `train_step`, also affects `fit` (calls the model with `training=True`)
     #     - if no custom `test_step`, also affects `evaluate` (calls the model with `training=False`)
 
-    # TODO: Should we add a `compute_loss` method that raises `NotImplementedError`, because we handle loss computation manually?
-
     @tf.function
     def train_step(self, x):
         """Execute one training step, computing and applying gradients via backpropagation.
@@ -458,9 +460,19 @@ class CVAE(tf.keras.Model):
 
         `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
         """
+        self.compute_loss(x)
+        return {m.name: m.result() for m in self.metrics}
+
+    # TODO: is this method correct?
+    @tf.function
+    def compute_loss(self, x):
+        """Compute the total loss for a batch, at inference time.
+
+        Provided for API compatibility.
+        """
         loss = elbo_loss(self, x, training=False)
         self.loss_tracker.update_state(loss)
-        return {m.name: m.result() for m in self.metrics}
+        return loss
 
     # --------------------------------------------------------------------------------
     # Other custom methods, specific to a CVAE.
