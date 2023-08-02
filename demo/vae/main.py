@@ -340,12 +340,16 @@ def main():
                 history = model.fit(train_dataset, epochs=1)
                 losses_by_epoch = history.history["loss"]
                 train_loss = losses_by_epoch[0]  # we ran just one epoch (since we loop over epochs manually)
+                if np.isnan(train_loss):
+                    raise ValueError(f"Training loss became NaN at epoch {epoch}, stopping.")
                 train_elbo = -train_loss
                 train_elbos.append(train_elbo)
 
             # Performance estimation: ELBO on the test set (technically, used as a validation set)
             with timer() as tim_test:
                 test_loss = model.evaluate(test_dataset)
+                if np.isnan(test_loss):
+                    raise ValueError(f"Test loss became NaN at epoch {epoch}, stopping.")
                 test_elbo = -test_loss
                 test_elbos.append(test_elbo)
 
