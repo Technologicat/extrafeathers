@@ -21,7 +21,7 @@ from .util import clear_and_create_directory
 extra_layer_size = 16
 
 # For model variants that use dropout, the proportion of channels to be randomly dropped during training.
-# Cai et al. (2019) suggest a channel retain ratio of 0.9, i.e. a dropout fraction of 0.1 (near the
+# Cai et al. (2020) suggest a channel retain ratio of 0.9, i.e. a dropout fraction of 0.1 (near the
 # end of section 3.2.3 of the paper).
 #   https://arxiv.org/pdf/1904.03392.pdf
 dropout_fraction = 0.1
@@ -178,7 +178,7 @@ def make_encoder(variant):
                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        # Cai et al. (2019), figure 3: operation ordering: better results if GN first, then dropout, just before feeding into the next convolution
+        # Cai et al. (2020), figure 3: operation ordering: better results if GN first, then dropout, just before feeding into the next convolution
         # (Specifically, the authors suggest modifying a ResNet convolution block to use [BN/GN, ReLU, dropout, conv]×2 as its pre-activation primary path.)
         #   https://arxiv.org/pdf/1904.03392.pdf
         # Wu and He (2018), figure 2: instance normalization (normalize over whole image, independently in each channel)
