@@ -29,22 +29,32 @@ dropout_fraction = 0.1
 # Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
 #
 # Encoder differences:
-#   - No z value in output, we use the reparameterize function instead.
-#     The custom Sampling layer in the original is a neat technique,
-#     but this is conceptually cleaner (encoder output is explicitly
-#     a distribution (represented as parameters), not a sample from it).
+#   - No `z` value in output. We instead output `(μ, log σ)`, and introduce a separate
+#     `reparameterize` function, which maps `(μ, log σ) → z` (by sampling). The custom
+#     `Sampling` layer in the original example is a neat technique, but this is conceptually
+#     cleaner, because now the encoder output is explicitly a distribution (represented as
+#     parameters), not a sample from it.
 #
 # Decoder differences:
 #   - We handle the final (sigmoid) activation of the decoder manually later.
-#   - We have added an extra Dense layer of 16 units at the input side
-#     to more closely mirror the structure of the encoder.
-#   - The architecture is an exact mirror image of the encoder.
+#     Similarly, this is conceptually cleaner; the decoder output is now parameters
+#     for a distribution, not a sample from it. The decoder output is just a tensor
+#     of pixel-wise real numbers `P`. Choosing to use that data as `λ = sigmoid(P)`,
+#     in a continuous Bernoulli distribution, and also choosing to output the `λ`
+#     tensor directly as the output picture, are separate design decisions.
+#   - We have added an extra Dense layer of `extra_layer_size` units at the input
+#     side of the decoder to more closely mirror the structure of the output side
+#     of the encoder.
+#   - The architecture is now an exact mirror image of the encoder, with one exception:
+#     the input to the decoder is a code point `z`, not the distribution parameters
+#     `(μ, log σ)`. (We would need to reduce it into a sample anyway when computing
+#     the Monte Carlo approximation to the ELBO loss.)
 #
 # TODO: Parameterize the input data shape. The encoder is currently hardcoded for 28×28×1.
 # TODO: Note also the decoder, which reshapes to 7×7×n just before feeding the
 # TODO: first convolution-transpose layer, and finally outputs 28×28×1.
 #
-# TODO: Improve the resnet architecture.
+# TODO: Improve the resnet architecture?
 #
 # According to He et al. (2015), adding depth to a convolution network beyond a certain
 # (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
