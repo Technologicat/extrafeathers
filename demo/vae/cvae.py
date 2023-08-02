@@ -57,7 +57,7 @@ extra_layer_size = 16
 #   https://arxiv.org/abs/1406.4729
 #   https://github.com/yhenon/keras-spp
 #
-def make_encoder(variant=7):
+def make_encoder(variant):
     """Set up an encoder neural network for a CVAE.
 
     Return value is a `tf.keras.Model`.
@@ -181,7 +181,7 @@ def make_encoder(variant=7):
     encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
     return encoder
 
-def make_decoder(variant=7):
+def make_decoder(variant):
     """Set up a decoder neural network for a CVAE.
 
     Return value is a `tf.keras.Model`.
