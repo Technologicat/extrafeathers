@@ -19,7 +19,12 @@ from .util import clear_and_create_directory
 # NN architecture
 
 extra_layer_size = 16
-dropout_fraction = 0.15  # for variants that use dropout
+
+# For model variants that use dropout, the proportion of channels to be randomly dropped during training.
+# Cai et al. (2019) suggest a channel retain ratio of 0.9, i.e. a dropout fraction of 0.1 (near the
+# end of section 3.2.3 of the paper).
+#   https://arxiv.org/pdf/1904.03392.pdf
+dropout_fraction = 0.1
 
 # Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
 #
