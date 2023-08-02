@@ -165,7 +165,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
-import tensorflow_addons as tfa
 
 from extrafeathers import plotmagic
 
@@ -174,6 +173,7 @@ from .config import (latent_dim,
                      test_sample_fig_basename,
                      latent_space_fig_basename,
                      elbo_fig_filename)
+from .clr import Triangular2CyclicalLearningRate
 from .cvae import CVAE
 from .plotter import (plot_test_sample_image,
                       plot_elbo,
@@ -242,9 +242,10 @@ steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of trainin
 # "triangular2" schedule of Smith (2015)
 # `step_size` = half cycle length, in optimizer steps; Smith recommends `(2 ... 8) * steps_per_epoch`
 INIT_LR, MAX_LR = 1e-4, 2e-3
-lr_schedule = tfa.optimizers.Triangular2CyclicalLearningRate(initial_learning_rate=INIT_LR,
-                                                             maximal_learning_rate=MAX_LR,
-                                                             step_size=10 * steps_per_epoch)
+lr_schedule = Triangular2CyclicalLearningRate(lr0=INIT_LR,
+                                              lr1=MAX_LR,
+                                              half_cycle_length=10 * steps_per_epoch,
+                                              cycle_profile="smooth")  # TODO: use "linear" (original) or "smooth" (our experiment)?
 
 # # learning schedule DEBUG
 # steps = np.arange(0, n_epochs * steps_per_epoch)
