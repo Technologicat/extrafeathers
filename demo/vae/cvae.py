@@ -19,6 +19,7 @@ from .util import clear_and_create_directory
 # NN architecture
 
 extra_layer_size = 16
+dropout_fraction = 0.15  # for variants that use dropout
 
 # Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
 #
@@ -153,6 +154,34 @@ def make_encoder(variant):
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
 
+    elif variant == 8:  # Dropout experiment
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                               bottleneck_factor=2)(encoder_inputs)
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                              bottleneck_factor=2)(x)
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        # Wu and He (2018), figure 2: instance normalization (normalize over whole image, independently in each channel)
+        #   https://arxiv.org/pdf/1803.08494.pdf
+        #   https://keras.io/api/layers/normalization_layers/group_normalization/
+        x = tf.keras.layers.GroupNormalization(groups=64)(x)  # groups = channels → instance normalization
+        # Tompson et al. (2015), section 3.2: spatial dropout drops whole feature maps, useful when nearby pixels are correlated
+        #   https://arxiv.org/abs/1411.4280
+        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+
+        x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                               bottleneck_factor=2)(x)
+        x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                              bottleneck_factor=2)(x)
+        x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = tf.keras.layers.GroupNormalization(groups=256)(x)
+        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
 
@@ -199,15 +228,11 @@ def make_decoder(variant):
     x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
     x = tf.keras.layers.PReLU()(x)
 
-    # The "ResNet attempt 7" variant has more channels in its final convolution layer than the others.
-    if variant == 7:
-        x = tf.keras.layers.Dense(units=7 * 7 * 256)(x)
-        x = tf.keras.layers.PReLU()(x)
-        x = tf.keras.layers.Reshape(target_shape=(7, 7, 256))(x)
-    else:
-        x = tf.keras.layers.Dense(units=7 * 7 * 64)(x)
-        x = tf.keras.layers.PReLU()(x)
-        x = tf.keras.layers.Reshape(target_shape=(7, 7, 64))(x)
+    # The number of channels in the final convolution layer depends on the model variant.
+    NC = 256 if variant in (7, 8) else 64
+    x = tf.keras.layers.Dense(units=7 * 7 * NC)(x)
+    x = tf.keras.layers.PReLU()(x)
+    x = tf.keras.layers.Reshape(target_shape=(7, 7, NC))(x)
 
     # Now we are at the point of the architecture where we have the Conv2D output,
     # so let's mirror the encoder architecture to return to the input space.
@@ -287,6 +312,29 @@ def make_decoder(variant):
                                      bottleneck_factor=2)(x)
         x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                         bottleneck_factor=2)(x)
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                       bottleneck_factor=2)(x)
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                        bottleneck_factor=2)(x)
+
+    elif variant == 8:  # Dropout experiment
+        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+        x = tf.keras.layers.GroupNormalization(groups=256)(x)
+        x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                       bottleneck_factor=2)(x)
+        x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                        bottleneck_factor=2)(x)
+
+        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+        x = tf.keras.layers.GroupNormalization(groups=64)(x)
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
         x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,

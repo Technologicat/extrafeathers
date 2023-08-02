@@ -262,7 +262,7 @@ Optimizer = tf.keras.optimizers.Adam
 print(f"{__name__}: Compute dtype: {policy.compute_dtype}")
 print(f"{__name__}: Variable dtype: {policy.variable_dtype}")
 
-model = CVAE(latent_dim=latent_dim, variant=7)
+model = CVAE(latent_dim=latent_dim, variant=8)
 
 optimizer = Optimizer(learning_rate=lr_schedule)
 if policy.compute_dtype == "float16":  # mitigate gradient underflow with fp16
