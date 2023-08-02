@@ -42,7 +42,10 @@ Just try again, if:
 
   - The loss becomes NaN, which crashes the training.
   - The latent space goes entirely black or entirely white near the start of the training,
-    and the ELBO value seems stuck.
+    and the ELBO value seems stuck (usually near 700 ... 900).
+
+Model variant=8 is less susceptible to bad initialization, as it introduces instance normalization
+after each set of ResNet layers.
 
 The model will be saved in `<output_dir>/model/XXXX.keras`, where `output_dir` is defined in `config.py`,
 and XXXX is either a four-digit epoch number starting from 0001, or "final" for the final result of
