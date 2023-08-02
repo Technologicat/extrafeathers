@@ -454,6 +454,8 @@ class CVAE(tf.keras.Model):
     def test_step(self, x):
         """Execute one testing step.
 
+        Note we have no separate target data `y`, because this is an autoencoder.
+
         `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
         """
         loss = elbo_loss(self, x, training=False)
