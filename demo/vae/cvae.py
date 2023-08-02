@@ -340,8 +340,9 @@ def make_decoder(variant):
                                         bottleneck_factor=2)(x)
 
     elif variant == 8:  # Dropout experiment
-        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+        # GN+dropout is conceptually one operation, so we don't mirror the ordering here.
         x = tf.keras.layers.GroupNormalization(groups=256)(x)
+        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
         x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -351,8 +352,8 @@ def make_decoder(variant):
         x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                         bottleneck_factor=2)(x)
 
-        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
         x = tf.keras.layers.GroupNormalization(groups=64)(x)
+        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
         x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
