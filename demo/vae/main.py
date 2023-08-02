@@ -192,15 +192,15 @@ n_epochs = 140
 #   Thus, for the same data, and all else fixed, keep the ratio `epochs / batch size` constant to keep the training result quality constant?
 #
 # batch_size = 32  # CPU
-batch_size = 1024  # 6GB VRAM, fp16, model variant=7; optimal training speed on RTX Quadro 3000 Mobile?
-# batch_size = 512  # 6GB VRAM, fp32, model variant=7
+# batch_size = 1024  # 6GB VRAM, fp16, model variant=7; optimal training speed on RTX Quadro 3000 Mobile?
+batch_size = 512  # 6GB VRAM, fp32, model variant=7
 # batch_size = 256
 # batch_size = 128
 # batch_size = 64
 
 # Choose dtype policy (which is best depends on your device)
 #   https://tensorflow.org/guide/mixed_precision
-# policy = tf.keras.mixed_precision.Policy("float32")  # CPU
+# policy = tf.keras.mixed_precision.Policy("float32")
 # policy = tf.keras.mixed_precision.Policy("mixed_bfloat16")  # RTX 3xxx and later should have the tensor core hardware to accelerate bf16
 policy = tf.keras.mixed_precision.Policy("mixed_float16")  # Quadro 3000 (based on RTX 2xxx chip)
 tf.keras.mixed_precision.set_global_policy(policy)
@@ -236,7 +236,7 @@ steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of trainin
 #
 # "triangular2" schedule of Smith (2015)
 # `step_size` = half cycle length, in optimizer steps; Smith recommends `(2 ... 8) * steps_per_epoch`
-INIT_LR, MAX_LR = 1e-4, 1e-2
+INIT_LR, MAX_LR = 1e-4, 2e-3
 lr_schedule = tfa.optimizers.Triangular2CyclicalLearningRate(initial_learning_rate=INIT_LR,
                                                              maximal_learning_rate=MAX_LR,
                                                              step_size=10 * steps_per_epoch)
