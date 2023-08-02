@@ -118,6 +118,8 @@ import unpythonic.net.server as repl_server
 # TODO: Gradient accumulation for really large batches?
 #   - Larger batch size is generally better, because the average (mean) gradient over the training data better reflects the behavior of the data distribution
 #     than the gradient based only on a subset of the training data.
+#     - One caveat (Keskar et al., 2017): numerically, this tends to make the optimizer behave steep minima, which hurts generalization.
+#       https://arxiv.org/abs/1609.04836
 #   - By default, the Keras optimizers make one gradient descent step per batch.
 #   - Gradient accumulation and averaging over multiple batches (before performing a gradient descent step) would allow using very large batch sizes
 #     where the whole batch does not fit into VRAM simultaneously, by processing it in several sub-batches (each small enough to fit into VRAM).
