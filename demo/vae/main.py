@@ -330,6 +330,7 @@ def main():
     test_elbos = []
     generalization_losses = []
     training_progresses = []
+    best_epoch = 0
     with timer() as tim_total:
         for epoch in range(1, n_epochs + 1):
             prev_iterations = optimizer.iterations.numpy()
@@ -388,6 +389,8 @@ def main():
             max_test_elbo = max(test_elbos)  # only running a couple hundred epochs; O(n) not a problem.
             generalization_loss = 1.0 - test_elbo / max_test_elbo
             generalization_losses.append(generalization_loss)
+            if generalization_loss == 0.0:
+                best_epoch = epoch
 
             # Similar to Pk(t) in Prechelt (2000).
             k = 5
@@ -417,7 +420,8 @@ def main():
 
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
-            print(f"Epoch: {epoch}, LR {prev_learning_rate:0.6g} ... {learning_rate:0.6g}, ELBO train {train_elbo:0.6g}, test {test_elbo:0.6g}; GL(t) {generalization_loss:0.6g}, P5(t) {training_progress:0.6g}; opt. iter. {total_iterations} (this epoch {epoch_iterations}).\nEpoch walltime training {tim_train.dt:0.3g}s, testing {tim_test.dt:0.3g}s, plotting {tim_plot.dt:0.3g}s, saving {tim_save.dt:0.3g}s; {est.formatted_eta}")
+            total_dt = tim_train.dt + tim_test.dt + tim_plot.dt + tim_save.dt
+            print(f"Epoch: {epoch} [best {best_epoch}], LR {prev_learning_rate:0.6g} ... {learning_rate:0.6g}, ELBO train {train_elbo:0.6g}, test {test_elbo:0.6g}; GL {generalization_loss:0.6g}, P5 {training_progress:0.6g}; opt. steps {total_iterations} (this epoch {epoch_iterations}).\nEpoch walltime {total_dt:0.3g}s (train {tim_train.dt:0.3g}s, test {tim_test.dt:0.3g}s, plot {tim_plot.dt:0.3g}s, save {tim_save.dt:0.3g}s); {est.formatted_eta}")
     print(f"Total wall time for training run: {tim_total.dt:0.6g}s")
 
     # Save the trained model.
