@@ -83,6 +83,7 @@ class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
         `half_cycle_length`: A scalar `float32` or `float64` `Tensor` or a Python number.
                              How many optimizer steps (iterations) to reach `lr1`.
         `cycle_scale`: A single-argument function to scale the LR by the cycle number (1-based).
+                       The default `None` means `lambda _: 1.0`, i.e., no scaling.
         `cycle_profile`: One of:
            "linear": The original triangular sawtooth shape.
            "smooth": An infinitely smoothed square-like shape.
@@ -97,9 +98,11 @@ class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
                  lr0: FloatTensorLike,
                  lr1: FloatTensorLike,
                  half_cycle_length: FloatTensorLike,
-                 cycle_scale: Callable,
+                 cycle_scale: Optional[Callable] = None,
                  cycle_profile: str = "linear",
                  name: str = "CyclicalLearningRate"):
+        if cycle_scale is None:
+            cycle_scale = lambda _: 1.0
         if cycle_profile not in ("linear", "smooth"):
             raise ValueError(f"Expected `cycle_profile` to be one of 'linear', 'smooth'; got '{cycle_profile}'")
 
