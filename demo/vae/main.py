@@ -241,7 +241,8 @@ steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of trainin
 #
 # "triangular2" schedule of Smith (2015)
 # `step_size` = half cycle length, in optimizer steps; Smith recommends `(2 ... 8) * steps_per_epoch`
-INIT_LR, MAX_LR = 1e-4, 2e-3
+INIT_LR, MAX_LR = 1e-4, 2e-2  # model variant 9
+# INIT_LR, MAX_LR = 1e-4, 2e-3  # model variants 7, 8
 lr_schedule = Triangular2CyclicalLearningRate(lr0=INIT_LR,
                                               lr1=MAX_LR,
                                               half_cycle_length=10 * steps_per_epoch,
@@ -268,7 +269,7 @@ Optimizer = tf.keras.optimizers.Adam
 print(f"{__name__}: Compute dtype: {policy.compute_dtype}")
 print(f"{__name__}: Variable dtype: {policy.variable_dtype}")
 
-model = CVAE(latent_dim=latent_dim, variant=8)
+model = CVAE(latent_dim=latent_dim, variant=9)
 
 optimizer = Optimizer(learning_rate=lr_schedule)
 if policy.compute_dtype == "float16":  # mitigate gradient underflow with fp16
