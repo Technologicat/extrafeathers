@@ -56,6 +56,12 @@ tf.keras.utils.plot_model(m,
                           to_file=f"{data_dir}arch_convolutionblock2d.png",
                           show_shapes=True)
 
+b = resnet.GNDropoutRegularization(groups=32, rate=0.1)
+m = util.layer_to_model(b, input_shape=(14, 14, 32))
+tf.keras.utils.plot_model(m,
+                          to_file=f"{data_dir}arch_regularizationblock.png",
+                          show_shapes=True)
+
 b = resnet.IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                            bottleneck_factor=2)
 m = util.layer_to_model(b, input_shape=(14, 14, 32))
