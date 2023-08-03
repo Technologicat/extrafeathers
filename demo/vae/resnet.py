@@ -360,15 +360,25 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
     is downsampled using the same `strides` (currently by local average pooling,
     followed by a projection to the desired number of filters).
 
+    `dilation_rate` is also passed to the convolution, so as an alternative mode,
+    this supports a dilated (a.k.a. atrous) convolution, which avoids the decrease
+    in spatial resolution; each outputted feature map has the same number of pixels
+    as the input.
+
+    When `dilation_rate != 1`, `strides` must be `1`.
+
     Tensor sizes::
 
         [batch, n, n, channels] -> [batch, n // strides, n // strides, filters]
 
     The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
     channels; the final output has `filters` channels.
+
+    On the atrous convolution, see Chen et al. (2017), section 3.1:
+        https://arxiv.org/pdf/1606.00915v2.pdf
     """
 
-    def __init__(self, filters, kernel_size, *, strides=2, name=None, activation=None, bottleneck_factor=4):
+    def __init__(self, filters, kernel_size, *, strides=2, dilation_rate=1, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
 
         # main path
@@ -379,7 +389,7 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
         self.act1 = tf.keras.layers.PReLU()
         self.conv2 = tf.keras.layers.Conv2D(filters=bottleneck, kernel_size=kernel_size,
                                             kernel_initializer="he_normal",
-                                            strides=strides,
+                                            strides=strides, dilation_rate=dilation_rate,
                                             padding="same")
         self.act2 = tf.keras.layers.PReLU()
         self.conv3 = tf.keras.layers.Conv2D(filters=filters, kernel_size=1,
@@ -426,15 +436,25 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
     the input is upsampled using the same `strides` (currently by projection to
     the desired number of filters, then followed by a bilinear interpolation).
 
+    `dilation_rate` is also passed to the convolution transpose, so as an alternative
+    mode, this supports a dilated (a.k.a. atrous) convolution, which avoids the decrease
+    in spatial resolution; each outputted feature map has the same number of pixels
+    as the input.
+
+    When `dilation_rate != 1`, `strides` must be `1`.
+
     Tensor sizes::
 
         [batch, n, n, channels] -> [batch, strides*n, strides*n, filters]
 
     The input passes through a bottleneck of `max(1, filters // bottleneck_factor)`
     channels; the final output has `filters` channels.
+
+    On the atrous convolution, see Chen et al. (2017), section 3.1:
+        https://arxiv.org/pdf/1606.00915v2.pdf
     """
 
-    def __init__(self, filters, kernel_size, *, strides=2, name=None, activation=None, bottleneck_factor=4):
+    def __init__(self, filters, kernel_size, *, strides=2, dilation_rate=1, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
 
         # main path
@@ -445,7 +465,7 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
         self.act1 = tf.keras.layers.PReLU()
         self.conv2 = tf.keras.layers.Conv2DTranspose(filters=bottleneck, kernel_size=kernel_size,
                                                      kernel_initializer="he_normal",
-                                                     strides=strides,
+                                                     strides=strides, dilation_rate=dilation_rate,
                                                      padding="same")
         self.act2 = tf.keras.layers.PReLU()
         self.conv3 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=1,
