@@ -246,7 +246,7 @@ INIT_LR, MAX_LR = 1e-4, 2e-2  # model variant 9
 lr_schedule = Triangular2CyclicalLearningRate(lr0=INIT_LR,
                                               lr1=MAX_LR,
                                               half_cycle_length=10 * steps_per_epoch,
-                                              cycle_profile="smooth")  # TODO: use "linear" (original) or "smooth" (our experiment)?
+                                              cycle_profile="smooth")  # TODO: which profile is best?
 
 # # learning schedule DEBUG
 # steps = np.arange(0, n_epochs * steps_per_epoch)

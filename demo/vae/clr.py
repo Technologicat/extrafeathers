@@ -20,7 +20,7 @@ We have also added a variant that uses infinitely smooth transitions.
 
 __all__ = ["Triangular2CyclicalLearningRate"]
 
-from typing import Union, Callable
+from typing import Optional, Union, Callable
 
 import numpy as np
 
@@ -85,9 +85,13 @@ class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
         `cycle_scale`: A single-argument function to scale the LR by the cycle number (1-based).
                        The default `None` means `lambda _: 1.0`, i.e., no scaling.
         `cycle_profile`: One of:
-           "linear": The original triangular sawtooth shape.
-           "smooth": An infinitely smoothed square-like shape.
-                     This makes the LR vary smoothly as a function of the optimizer step number.
+           "linear": The original triangular sawtooth shape. C0 continuous at the seams.
+           "cosine": Cosine shape. When `cycle_scale` is used, the profile is only C0 continuous
+                     at the seams; all odd-order derivatives have a discontinuity at each seam.
+           "smooth": An infinitely smooth (C∞ continuous) square-like shape.
+                     This makes the LR vary smoothly as a function of the optimizer step number
+                     for any `cycle_scale`, also at the seams. For this shape, derivatives of
+                     all orders are zero at the seam.
         `name`: (optional) Name for the operation in the TensorFlow graph, for debugging.
 
     When the instance is called, the return value is the updated learning rate.
@@ -103,8 +107,8 @@ class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
                  name: str = "CyclicalLearningRate"):
         if cycle_scale is None:
             cycle_scale = lambda _: 1.0
-        if cycle_profile not in ("linear", "smooth"):
-            raise ValueError(f"Expected `cycle_profile` to be one of 'linear', 'smooth'; got '{cycle_profile}'")
+        if cycle_profile not in ("linear", "cosine", "smooth"):
+            raise ValueError(f"Expected `cycle_profile` to be one of 'linear', 'cosine', 'smooth'; got '{cycle_profile}'")
 
         super().__init__()
         self.lr0 = lr0
@@ -142,7 +146,9 @@ class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
             # This gives each cycle its triangular shape.
             x = tf.abs(1 + step_as_dtype / half_cycle_length - 2 * cycle_number)
 
-            if self.cycle_profile == "smooth":
+            if self.cycle_profile == "cosine":
+                x = (1 + tf.math.cos(np.pi * (1 + x))) / 2
+            elif self.cycle_profile == "smooth":
                 x = nonanalytic_smooth_transition(x, m=1.0)
 
             # The cycle shape is still upside down. Flipping it gives us the desired fraction of the LR delta
