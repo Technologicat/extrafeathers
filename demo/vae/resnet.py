@@ -361,9 +361,11 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
     followed by a projection to the desired number of filters).
 
     `dilation_rate` is also passed to the convolution, so as an alternative mode,
-    this supports a dilated (a.k.a. atrous) convolution, which avoids the decrease
-    in spatial resolution; each outputted feature map has the same number of pixels
-    as the input.
+    this supports a dilated (a.k.a. atrous) convolution. This expands the field
+    of view (a.k.a. receptive field) of the convolution without increasing the
+    amount of computation, at the cost of introducing blind spots (holes, /trous/)
+    in the kernel. For example, `dilation_rate=2` computes in a 5×5 region, while
+    only sampling 3×3 pixels.
 
     When `dilation_rate != 1`, `strides` must be `1`.
 
@@ -437,9 +439,11 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
     the desired number of filters, then followed by a bilinear interpolation).
 
     `dilation_rate` is also passed to the convolution transpose, so as an alternative
-    mode, this supports a dilated (a.k.a. atrous) convolution, which avoids the decrease
-    in spatial resolution; each outputted feature map has the same number of pixels
-    as the input.
+    mode, this supports a dilated (a.k.a. atrous) convolution. This expands the field
+    of view (a.k.a. receptive field) of the convolution without increasing the
+    amount of computation, at the cost of introducing blind spots (holes, /trous/)
+    in the kernel. For example, `dilation_rate=2` computes in a 5×5 region, while
+    only sampling 3×3 pixels.
 
     When `dilation_rate != 1`, `strides` must be `1`.
 
