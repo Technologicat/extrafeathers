@@ -7,6 +7,7 @@
 
 import gc
 import importlib
+import sys
 
 import matplotlib.pyplot as plt
 
@@ -32,8 +33,15 @@ importlib.reload(main)  # re-instantiate CVAE
 tf.keras.backend.clear_session()  # clean up dangling tensors
 gc.collect()  # and make sure they are gone
 
+# Optionally, take a snapshot ID from the command line.
+# E.g. "0153" for epoch 153, or "final" for the final after-training state.
+if len(sys.argv) > 1:
+    snapshot = sys.argv[1]
+else:
+    snapshot = "final"
+
 # Load a model snapshot:
-main.model = tf.keras.models.load_model(f"{config.output_dir}model/final.keras")  # or whatever
+main.model = tf.keras.models.load_model(f"{config.output_dir}model/{snapshot}.keras")  # or whatever
 # main.model.my_load(f"{config.output_dir}model/final")  # to load a snapshot produced by the legacy custom saver
 
 # plt.ion()  # interactive mode doesn't seem to work well with our heavily customized overlay plot
@@ -42,7 +50,7 @@ e = plotter.plot_latent_image(21)
 plotter.overlay_datapoints(train_images, train_labels, e)
 
 fig = plt.figure(1)
-fig.savefig(f"{config.output_dir}{config.overlay_fig_basename}_final_from_test_script.{config.fig_format}")
+fig.savefig(f"{config.output_dir}{config.overlay_fig_basename}_{snapshot}_from_test_script.{config.fig_format}")
 fig.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
 plt.show()
