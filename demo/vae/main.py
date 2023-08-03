@@ -188,7 +188,7 @@ train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 
 # We use the standard definition of "epoch": an epoch is one full pass over the training data set.
-n_epochs = 140
+n_epochs = 200
 
 # TODO: Optimal batch size?
 #   Approximately same quality of training for `total number of gradient updates = constant`?
