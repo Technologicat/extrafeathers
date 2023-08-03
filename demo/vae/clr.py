@@ -70,7 +70,7 @@ def nonanalytic_smooth_transition(x, m=1.0):
 
 @tf.keras.utils.register_keras_serializable(package="ExtraFeathers")
 class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
-    """A `LearningRateSchedule` for a cyclical LR with triangular sawtooth cycles.
+    """A `LearningRateSchedule` for a cyclical LR with triangular cycles.
 
     See Smith (2015): Cyclical Learning Rates for Training Neural Networks.
       https://arxiv.org/abs/1506.01186
@@ -160,7 +160,7 @@ class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
 
 @tf.keras.utils.register_keras_serializable(package="ExtraFeathers")
 class Triangular2CyclicalLearningRate(CyclicalLearningRate):
-    """A `LearningRateSchedule` for a cyclical LR with decaying triangular sawtooth cycles.
+    """A `LearningRateSchedule` for a cyclical LR with decaying triangular cycles.
 
     This is the "triangular2" schedule of Smith.
 
