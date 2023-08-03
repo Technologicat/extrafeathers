@@ -432,7 +432,7 @@ def main():
             est.tick()
             # dt_avg = sum(est.que) / len(est.que)
             total_dt = tim_train.dt + tim_test.dt + tim_plot.dt + tim_save.dt
-            print(f"Epoch: {epoch} [best {best_epoch}], LR {prev_learning_rate:0.6g} ... {learning_rate:0.6g}, ELBO train {train_elbo:0.6g}, test {test_elbo:0.6g}; GL {generalization_loss:0.6g}, P5 {training_progress:0.6g}; opt. steps {total_iterations} (this epoch {epoch_iterations}).\nEpoch walltime {total_dt:0.3g}s (train {tim_train.dt:0.3g}s, test {tim_test.dt:0.3g}s, plot {tim_plot.dt:0.3g}s, save {tim_save.dt:0.3g}s); {est.formatted_eta}")
+            print(f"Epoch: {epoch} [best {best_epoch} @ ELBO {max_test_elbo}], LR {prev_learning_rate:0.6g} ... {learning_rate:0.6g}, ELBO train {train_elbo:0.6g}, test {test_elbo:0.6g}; GL {generalization_loss:0.6g}, P5 {training_progress:0.6g}; opt. steps {total_iterations} (this epoch {epoch_iterations}).\nEpoch walltime {total_dt:0.3g}s (train {tim_train.dt:0.3g}s, test {tim_test.dt:0.3g}s, plot {tim_plot.dt:0.3g}s, save {tim_save.dt:0.3g}s); {est.formatted_eta}")
     print(f"Total wall time for training run: {tim_total.dt:0.6g}s")
 
     # Save the trained model.
