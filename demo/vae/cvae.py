@@ -12,18 +12,14 @@ import tensorflow as tf
 from .config import latent_dim
 from .resnet import (IdentityBlock2D, IdentityBlockTranspose2D,
                      ProjectionBlock2D, ProjectionBlockTranspose2D,
-                     ConvolutionBlock2D, ConvolutionBlockTranspose2D)
+                     ConvolutionBlock2D, ConvolutionBlockTranspose2D,
+                     GNDropoutRegularization)
 from .util import clear_and_create_directory
 
 # --------------------------------------------------------------------------------
 # NN architecture
 
 extra_layer_size = 16
-
-# For model variants that use dropout, the proportion of channels to be randomly dropped during training.
-# Cai et al. (2020) suggest a channel retain ratio of 0.9, i.e. a dropout fraction of 0.1 (near the
-# end of section 3.2.3 of the paper).
-#   https://arxiv.org/pdf/1904.03392.pdf
 dropout_fraction = 0.1
 
 # Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
@@ -178,16 +174,7 @@ def make_encoder(variant):
                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        # Cai et al. (2020), figure 3: operation ordering: better results if GN first, then dropout, just before feeding into the next convolution
-        # (Specifically, the authors suggest modifying a ResNet convolution block to use [BN/GN, ReLU, dropout, conv]×2 as its pre-activation primary path.)
-        #   https://arxiv.org/pdf/1904.03392.pdf
-        # Wu and He (2018), figure 2: instance normalization (normalize over whole image, independently in each channel)
-        #   https://arxiv.org/pdf/1803.08494.pdf
-        #   https://keras.io/api/layers/normalization_layers/group_normalization/
-        x = tf.keras.layers.GroupNormalization(groups=64)(x)  # groups = channels → instance normalization
-        # Tompson et al. (2015), section 3.2: spatial dropout (a.k.a. drop-channel) drops whole feature maps, useful when nearby pixels are correlated
-        #   https://arxiv.org/abs/1411.4280
-        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
 
         x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(x)
@@ -197,42 +184,34 @@ def make_encoder(variant):
                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = tf.keras.layers.GroupNormalization(groups=256)(x)
-        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
 
     elif variant == 9:  # Dropout experiment 2
-        def make_gn_dropout(groups):
-            def process(x):
-                x = tf.keras.layers.GroupNormalization(groups=groups)(x)
-                x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
-                return x
-            return process
-
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(encoder_inputs)
-        x = make_gn_dropout(groups=32)(x)
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=32)(x)
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                               bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=64)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=64)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
 
         x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=128)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=128)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
         x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                               bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=256)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=256)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
 
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
@@ -374,9 +353,7 @@ def make_decoder(variant):
                                         bottleneck_factor=2)(x)
 
     elif variant == 8:  # Dropout experiment
-        # GN+dropout is conceptually one operation, so we don't mirror the ordering here.
-        x = tf.keras.layers.GroupNormalization(groups=256)(x)
-        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
         x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -386,8 +363,7 @@ def make_decoder(variant):
         x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                         bottleneck_factor=2)(x)
 
-        x = tf.keras.layers.GroupNormalization(groups=64)(x)
-        x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
         x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -398,36 +374,29 @@ def make_decoder(variant):
                                         bottleneck_factor=2)(x)
 
     elif variant == 9:  # Dropout experiment 2
-        def make_gn_dropout(groups):
-            def process(x):
-                x = tf.keras.layers.GroupNormalization(groups=groups)(x)
-                x = tf.keras.layers.SpatialDropout2D(dropout_fraction)(x)
-                return x
-            return process
-
-        x = make_gn_dropout(groups=256)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=256)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                        bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=128)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=128)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
         x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                         bottleneck_factor=2)(x)
 
-        x = make_gn_dropout(groups=64)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=64)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
         x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                        bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=32)(x)
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
-        x = make_gn_dropout(groups=32)(x)
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
                                         bottleneck_factor=2)(x)
 

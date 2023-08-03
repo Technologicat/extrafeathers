@@ -20,7 +20,8 @@ in the context of the MNIST datasets and `extrafeathers`.
 __all__ = ["ResidualBlock2D", "ResidualBlockTranspose2D",
            "IdentityBlock2D", "IdentityBlockTranspose2D",
            "ProjectionBlock2D", "ProjectionBlockTranspose2D",
-           "ConvolutionBlock2D", "ConvolutionBlockTranspose2D"]
+           "ConvolutionBlock2D", "ConvolutionBlockTranspose2D",
+           "GNDropoutRegularization"]
 
 from functools import wraps
 
@@ -471,4 +472,51 @@ class ConvolutionBlockTranspose2D(tf.keras.layers.Layer):
         x_skip = self.upsample(x_skip, *args, **kwargs)
         x = self.adder([x, x_skip], *args, **kwargs)
         x = self.act3(x, *args, **kwargs)
+        return x
+
+# --------------------------------------------------------------------------------
+
+class GNDropoutRegularization(tf.keras.layers.Layer):
+    """Normalization and regularization block.
+
+    Tensor sizes::
+
+        [batch, n, n, channels] -> [batch, n, n, channels]
+
+    Based on group normalization (GN) and spatial dropout (a.k.a. channel dropout),
+    which drops entire feature maps (channels).
+
+    This is a convenience class that just encapsulates these two operations into
+    a single logical layer in the layout diagram.
+
+    `groups`: Number of groups for GN. If you want instance normalization (IN),
+              set this to the number of input `channels`.
+    `rate`:   The probability at which each channel is dropped in spatial dropout.
+              The default `0.1` is a rule-of-thumb recommendation from Cai et al. (2020).
+
+    See:
+
+        Cai et al. (2020), figure 3: operation ordering: better results if GN first,
+        then dropout, just before feeding into the next convolution. The dropout rate
+        recommendation (channel retain ratio 0.9) is near the end of section 3.2.3.
+            https://arxiv.org/pdf/1904.03392.pdf
+
+        Wu and He (2018), figure 2: instance normalization: normalize over whole image,
+        independently in each channel. In Keras, use the GN layer and configure appropriately.
+            https://arxiv.org/pdf/1803.08494.pdf
+            https://keras.io/api/layers/normalization_layers/group_normalization/
+
+        Tompson et al. (2015), section 3.2: spatial dropout (a.k.a. drop-channel) drops
+        whole feature maps, which is useful when nearby pixels are correlated.
+            https://arxiv.org/abs/1411.4280
+    """
+
+    def __init__(self, groups, rate=0.1, *, name=None):
+        super().__init__(name=name)
+        self.groupnorm = tf.keras.layers.GroupNormalization(groups=groups)
+        self.dropout = tf.keras.layers.SpatialDropout2D(rate=rate)
+
+    def call(self, inputs, *args, **kwargs):
+        x = self.groupnorm(inputs, *args, **kwargs)
+        x = self.dropout(x, *args, **kwargs)
         return x
