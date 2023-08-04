@@ -9,6 +9,8 @@ import numpy as np
 
 import tensorflow as tf
 
+from unpythonic import prod
+
 from .config import latent_dim
 from .resnet import (IdentityBlock2D, IdentityBlockTranspose2D,
                      ProjectionBlock2D, ProjectionBlockTranspose2D,
@@ -50,18 +52,9 @@ dropout_fraction = 0.1
 # TODO: Note also the decoder, which reshapes to 7×7×n just before feeding the
 # TODO: first convolution-transpose layer, and finally outputs 28×28×1.
 #
-# TODO: Improve the resnet architecture?
+# TODO: Improve the NN architecture?
 #
-# According to He et al. (2015), adding depth to a convolution network beyond a certain
-# (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
-# channels, i.e. `filters`) can still increase the capacity of the model usefully. Explore this.
-#   https://arxiv.org/abs/1502.01852
-#
-# Another idea that comes to mind is to try various different kernel sizes.
-#
-# Also, consider an atrous (dilated) convolution, see `dilation_rate` parameter of `Conv2D`.
-# See section 3.1 in:
-#   https://arxiv.org/pdf/1606.00915v2.pdf
+# Try various different kernel sizes?
 #
 # A spatial pyramid pooling (SPP) layer before the final fully connected layer(s) is also an
 # option. This is especially useful for producing a fixed-length representation for varying input
@@ -148,6 +141,10 @@ def make_encoder(variant):
                                 bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
 
     elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 959 348 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
+        # According to He et al. (2015), adding depth to a convolution network beyond a certain
+        # (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
+        # channels, i.e. `filters`) can still increase the capacity of the model usefully.
+        #   https://arxiv.org/abs/1502.01852
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(encoder_inputs)
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -165,7 +162,7 @@ def make_encoder(variant):
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
 
-    elif variant == 8:  # Dropout experiment
+    elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(encoder_inputs)
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -186,7 +183,7 @@ def make_encoder(variant):
                             bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
 
-    elif variant == 9:  # Dropout experiment 2
+    elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(encoder_inputs)
         x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
@@ -352,7 +349,7 @@ def make_decoder(variant):
         x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
                                         bottleneck_factor=2)(x)
 
-    elif variant == 8:  # Dropout experiment
+    elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
@@ -373,7 +370,7 @@ def make_decoder(variant):
         x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
                                         bottleneck_factor=2)(x)
 
-    elif variant == 9:  # Dropout experiment 2
+    elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)

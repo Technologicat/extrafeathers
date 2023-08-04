@@ -36,16 +36,22 @@ To train the model, open a terminal in the top-level `extrafeathers` directory, 
 
   python -m demo.vae.main
 
-The random initialization of the model can be finicky. With the MNIST digits dataset,
-the ELBO should rise to ~1300 (on model variant=7) after a few epochs if the init is good.
-Just try again, if:
+With the MNIST digits dataset, the ELBO should quickly rise to ~1300 (on model variant 7 and later)
+after ~10 epochs if the random init is good.
 
-  - The loss becomes NaN, which crashes the training.
-  - The latent space goes entirely black or entirely white near the start of the training,
-    and the ELBO value seems stuck (usually near 700 ... 900).
+Some variants can be finicky with the initialization. Just try again, if:
 
-Model variant=8 is less susceptible to bad initialization, as it introduces instance normalization
-after each set of ResNet layers.
+  - For model variant 8 and older:
+    - The loss becomes NaN. In this case, training automatically stops after the epoch completes.
+    - The latent space goes entirely black or entirely white near the start of the training,
+      and the ELBO value seems stuck (usually near 700 ... 900).
+  - For model variant 9:
+    - Some pixels get stuck entirely white, and the first few periods of higher learning rate
+      fail to shake them loose.
+
+Model variants 8 and later are less susceptible to bad random inits. These variants incorporate
+instance normalization after each set of ResNet layers, and also a dropout regularizer to improve
+generalization.
 
 The model will be saved in `<output_dir>/model/XXXX.keras`, where `output_dir` is defined in `config.py`,
 and XXXX is either a four-digit epoch number starting from 0001, or "final" for the final result of
