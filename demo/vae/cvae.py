@@ -80,7 +80,8 @@ def make_encoder(variant):
         x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
                                    strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
         x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
+                                   strides=2, padding="same",
+                                   name="cnn_output")(x)                          # 14×14×32 → 7×7×64
 
     elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
         x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
@@ -88,7 +89,8 @@ def make_encoder(variant):
         x = IdentityBlock2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32→ 14×14×32
         x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
                                    strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, bottleneck_factor=1,
+                            name="cnn_output")(x)                                 # 7×7×64 → 7×7×64
 
     elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
@@ -98,13 +100,15 @@ def make_encoder(variant):
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
                                bottleneck_factor=1)(x)               # 14×14×32 → 7×7×64
         x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            bottleneck_factor=1)(x)                  # 7×7×64 → 7×7×64
+                            bottleneck_factor=1,
+                            name="cnn_output")(x)                    # 7×7×64 → 7×7×64
 
     elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                            name="cnn_output")(x)                                             # 7×7×64 → 7×7×64
 
     elif variant == 4:  # ResNet attempt 4
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
@@ -112,7 +116,8 @@ def make_encoder(variant):
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
         x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                            name="cnn_output")(x)                                             # 7×7×64 → 7×7×64
 
     elif variant == 5:  # ResNet attempt 5
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
@@ -126,7 +131,8 @@ def make_encoder(variant):
         x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
                             bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
         x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+                            bottleneck_factor=2,
+                            name="cnn_output")(x)                    # 7×7×64 → 7×7×64
 
     elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
@@ -136,9 +142,12 @@ def make_encoder(variant):
                                 bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
                                bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
-        for _ in range(3):
+        for _ in range(2):
             x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
                                 bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                            bottleneck_factor=2,
+                            name="cnn_output")(x)  # like previous two, but only the final CNN block should have this name.
 
     elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 959 348 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
         # According to He et al. (2015), adding depth to a convolution network beyond a certain
@@ -160,7 +169,8 @@ def make_encoder(variant):
         x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
+                            bottleneck_factor=2,
+                            name="cnn_output")(x)
 
     elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -181,7 +191,8 @@ def make_encoder(variant):
                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
+                                    name="cnn_output")(x)
 
     elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -208,7 +219,8 @@ def make_encoder(variant):
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
+                                    name="cnn_output")(x)
 
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
@@ -236,9 +248,11 @@ def make_encoder(variant):
     z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var", dtype="float32")(x)
     encoder_outputs = [z_mean, z_log_var]
     encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
-    return encoder
 
-def make_decoder(variant):
+    encoder_cnn_output_layer = encoder.get_layer(name="cnn_output")
+    return encoder, encoder_cnn_output_layer.output_shape[1:]  # ignore batch dimension
+
+def make_decoder(variant, encoder_cnn_final_shape):
     """Set up a decoder neural network for a CVAE.
 
     Return value is a `tf.keras.Model`.
@@ -256,11 +270,10 @@ def make_decoder(variant):
     x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
     x = tf.keras.layers.PReLU()(x)
 
-    # The number of channels in the final convolution layer depends on the model variant.
-    NC = 256 if variant in (7, 8, 9) else 64
-    x = tf.keras.layers.Dense(units=7 * 7 * NC)(x)
+    # The size of the final encoder convolution output depends on the model variant.
+    x = tf.keras.layers.Dense(units=prod(encoder_cnn_final_shape))(x)
     x = tf.keras.layers.PReLU()(x)
-    x = tf.keras.layers.Reshape(target_shape=(7, 7, NC))(x)
+    x = tf.keras.layers.Reshape(target_shape=encoder_cnn_final_shape)(x)
 
     # Now we are at the point of the architecture where we have the Conv2D output,
     # so let's mirror the encoder architecture to return to the input space.
@@ -441,8 +454,8 @@ class CVAE(tf.keras.Model):
         super().__init__()
         self.latent_dim = latent_dim
         self.variant = variant
-        self.encoder = make_encoder(variant)
-        self.decoder = make_decoder(variant)
+        self.encoder, encoder_cnn_final_shape = make_encoder(variant)
+        self.decoder = make_decoder(variant, encoder_cnn_final_shape)
         # https://keras.io/guides/customizing_what_happens_in_fit/#going-lowerlevel
         self.loss_tracker = tf.keras.metrics.Mean(name="loss")
 
