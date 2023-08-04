@@ -70,7 +70,7 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     ax.cla()
     plt.sca(ax)
     fig.tight_layout()  # prevent axes crawling
-    ax.imshow(image, cmap="Greys_r")
+    ax.imshow(image, cmap="Greys_r", vmin=0.0, vmax=1.0)
     ax.axis("off")
 
     epoch_str = f"; epoch {epoch}" if epoch is not None else ""
@@ -260,7 +260,7 @@ def plot_latent_image(n: int = 20, *,
     ax.cla()
     plt.sca(ax)
     fig.tight_layout()  # <-- important to do this also here to prevent axes crawling
-    ax.imshow(image, origin="lower", cmap="Greys_r")
+    ax.imshow(image, origin="lower", cmap="Greys_r", vmin=0.0, vmax=1.0)
     # print(ax._position.bounds)  # DEBUG
 
     # Show latent space coordinates
