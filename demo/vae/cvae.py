@@ -252,7 +252,7 @@ def make_decoder(variant):
     """
     # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
     decoder_inputs = tf.keras.Input(shape=(latent_dim,))
-    # Here we add the dense layer just for architectural symmetry with the encoder.
+    # Here we add the dense extra layer just for architectural symmetry with the encoder.
     x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
     x = tf.keras.layers.PReLU()(x)
 
