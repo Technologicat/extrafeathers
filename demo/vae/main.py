@@ -166,6 +166,7 @@ import unpythonic.net.server as repl_server
 import sys
 
 from unpythonic import ETAEstimator, timer
+from unpythonic.env import env
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -229,8 +230,9 @@ tf.keras.mixed_precision.set_global_policy(policy)
 #   https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Optimizer
 #
 # One optimizer step processes one batch of input data. Hence, optimizer steps per epoch is:
-d, m = divmod(train_images.shape[0], batch_size)
-steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of training samples not divisible by batch size)
+with env() as e:  # avoid polluting top-level scope with temporaries
+    e.d, e.m = divmod(train_images.shape[0], batch_size)
+    steps_per_epoch = e.d + int(e.m > 0)  # last one for leftovers (if number of training samples not divisible by batch size)
 
 # # Constant learning rate
 # optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
