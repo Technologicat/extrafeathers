@@ -380,6 +380,7 @@ class ConvolutionBlock2D(tf.keras.layers.Layer):
         https://arxiv.org/pdf/1606.00915v2.pdf
     """
 
+    # TODO: Change the default strides to 1, to match `tf.keras.layers.Conv2D`.
     def __init__(self, filters, kernel_size, *, strides=2, dilation_rate=1, name=None, activation=None, bottleneck_factor=4):
         super().__init__(name=name)
 
