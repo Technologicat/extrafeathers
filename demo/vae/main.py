@@ -193,6 +193,9 @@ from .util import clear_and_create_directory, preprocess_images
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 
+# Choose the model variant. See `cvae.py`.
+variant = 10
+
 # We use the standard definition of "epoch": an epoch is one full pass over the training data set.
 n_epochs = 200
 
@@ -203,11 +206,12 @@ n_epochs = 200
 #   Thus, for the same data, and all else fixed, keep the ratio `epochs / batch size` constant to keep the training result quality constant?
 #
 # batch_size = 32  # CPU
-# batch_size = 1024  # 6GB VRAM, fp16, model variant=7; optimal training speed on RTX Quadro 3000 Mobile?
-batch_size = 512  # 6GB VRAM, fp32, model variant=7
-# batch_size = 256
-# batch_size = 128
-# batch_size = 64
+if variant <= 7:
+    batch_size = 1024  # 6GB VRAM, fp16, model variant 7; optimal training speed on RTX Quadro 3000 Mobile?
+elif variant in (8, 9):
+    batch_size = 512  # 6GB VRAM, fp32, model variant 7; or fp16, model variant 8 or 9
+elif variant == 10:
+    batch_size = 1024
 
 # Choose dtype policy (which is best depends on your device)
 #   https://tensorflow.org/guide/mixed_precision
@@ -245,10 +249,14 @@ steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of trainin
 #   https://www.tensorflow.org/addons/tutorials/optimizers_cyclicallearningrate
 #   https://github.com/tensorflow/addons/issues/2807
 #
+if variant in (9, 10):
+    # Model variant 9 needs a higher max LR, maybe because it uses many more dropout layers.
+    INIT_LR, MAX_LR = 1e-4, 2e-2
+else:
+    # Primarily tested with model variants 7 and 8.
+    INIT_LR, MAX_LR = 1e-4, 2e-3
 # "triangular2" schedule of Smith (2015)
 # `step_size` = half cycle length, in optimizer steps; Smith recommends `(2 ... 8) * steps_per_epoch`
-INIT_LR, MAX_LR = 1e-4, 2e-2  # model variant 9
-# INIT_LR, MAX_LR = 1e-4, 2e-3  # model variants 7, 8
 lr_schedule = Triangular2CyclicalLearningRate(lr0=INIT_LR,
                                               lr1=MAX_LR,
                                               half_cycle_length=10 * steps_per_epoch,
@@ -275,7 +283,7 @@ Optimizer = tf.keras.optimizers.Adam
 print(f"{__name__}: Compute dtype: {policy.compute_dtype}")
 print(f"{__name__}: Variable dtype: {policy.variable_dtype}")
 
-model = CVAE(latent_dim=latent_dim, variant=9)
+model = CVAE(latent_dim=latent_dim, variant=variant)
 
 optimizer = Optimizer(learning_rate=lr_schedule)
 if policy.compute_dtype == "float16":  # mitigate gradient underflow with fp16

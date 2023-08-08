@@ -222,6 +222,52 @@ def make_encoder(variant):
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
                                     name="cnn_output")(x)
 
+    elif variant == 10:
+        # Try extracting some full-resolution low-level feature maps first.
+        #
+        # A full bottleneck block would be inefficient here at the input side, because we have only one
+        # input channel, so the only thing the initial projection can do is to create copies of the
+        # same data (introducing 28×28×8 = 6272 mixing coefficients that have no effect on the output).
+        #
+        # So let's try two-thirds of a bottleneck block:
+        x = tf.keras.layers.Conv2D(filters=16, kernel_size=3, strides=1,
+                                   kernel_initializer="he_normal",
+                                   padding="same")(encoder_inputs)
+        x = tf.keras.layers.PReLU()(x)
+        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+        x = tf.keras.layers.Conv2D(filters=32, kernel_size=1,
+                                   kernel_initializer="he_normal",
+                                   padding="same")(x)
+        x = tf.keras.layers.PReLU()(x)
+        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+        # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # for some reason, normalizing here breaks the whole NN (will not train usefully)
+
+        # test with one more identity block
+        x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+
+        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                               bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+        x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+
+        x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                               bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+        x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+        x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                              bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+        x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                            bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
+                                    name="cnn_output")(x)
+
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
 
@@ -409,6 +455,44 @@ def make_decoder(variant, encoder_cnn_final_shape):
         x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
                                         bottleneck_factor=2)(x)
+
+    elif variant == 10:
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+        x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+        x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                       bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+        x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+        x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3,
+                                        bottleneck_factor=2)(x)
+
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3,
+                                        bottleneck_factor=2)(x)
+
+        # test with one more identity block
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                     bottleneck_factor=2)(x)
+
+        # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+        x = tf.keras.layers.Conv2DTranspose(filters=16, kernel_size=1,
+                                            kernel_initializer="he_normal",
+                                            padding="same")(x)
+        x = tf.keras.layers.PReLU()(x)
+        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+        x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=1,
+                                            kernel_initializer="he_normal",
+                                            padding="same")(x)
+        x = tf.keras.layers.PReLU()(x)
 
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
