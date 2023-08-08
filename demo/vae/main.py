@@ -244,11 +244,6 @@ steps_per_epoch = d + int(m > 0)  # last one for leftovers (if number of trainin
 # Cyclical learning rate
 # This accelerates convergence according to Smith (2015):
 #   https://arxiv.org/abs/1506.01186
-#
-# TODO: `tensorflow_addons` is deprecated but there seems to be no official replacement for `CyclicalLearningRate` and friends. Make a local copy of the class?
-#   https://www.tensorflow.org/addons/tutorials/optimizers_cyclicallearningrate
-#   https://github.com/tensorflow/addons/issues/2807
-#
 if variant in (9, 10):
     # Model variant 9 needs a higher max LR, maybe because it uses many more dropout layers.
     INIT_LR, MAX_LR = 1e-4, 2e-2
