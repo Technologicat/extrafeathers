@@ -450,6 +450,8 @@ def main():
     print(f"Total wall time for training run: {tim_total.dt:0.6g}s")
 
     # Save the trained model.
+    # TODO: Don't save the same data again, we already saved this just after the last epoch completed.
+    # TODO: In any case, we should copy the best epoch file here instead of saving again.
     model.save(f"{output_dir}model/final.keras", save_format="keras_v3")
     # # legacy custom saving hack (saving the encoder/decoder separately)
     # model.my_save(f"{output_dir}model/final")
