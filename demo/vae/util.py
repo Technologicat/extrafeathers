@@ -55,6 +55,14 @@ def preprocess_images(images, digit_size=28, channels=1, discrete=False):
     images = images.reshape((images.shape[0], digit_size, digit_size, channels)) / 255.
     if discrete:
         images = np.where(images > .5, 1.0, 0.0)
+    # # We could also do further modifications here:
+    # # https://www.tensorflow.org/tutorials/images/data_augmentation
+    # IMG_SIZE = 32
+    # resize_and_rescale = tf.keras.Sequential([
+    #   layers.Resizing(IMG_SIZE, IMG_SIZE),
+    #   layers.Rescaling(1./255)
+    # ])
+    # images = resize_and_rescale(images)
     return images.astype("float32")
 
 # --------------------------------------------------------------------------------
