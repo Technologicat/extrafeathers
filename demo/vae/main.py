@@ -195,6 +195,10 @@ from .util import clear_and_create_directory, preprocess_images
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 
+# # DEBUG TESTING
+# variant = 0
+# n_epochs = 10
+
 # Choose the model variant. See `cvae.py`.
 variant = 10
 
