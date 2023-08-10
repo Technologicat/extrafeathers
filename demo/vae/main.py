@@ -446,10 +446,14 @@ def main():
             print(f"Epoch: {epoch} [best {best_epoch} @ ELBO {max_test_elbo:0.6g}], LR {prev_learning_rate:0.6g} ... {learning_rate:0.6g}, ELBO train {train_elbo:0.6g}, test {test_elbo:0.6g}; GL {generalization_loss:0.6g}, P5 {training_progress:0.6g}; opt. steps {total_iterations} (this epoch {epoch_iterations}).\nEpoch walltime {total_dt:0.3g}s (train {tim_train.dt:0.3g}s, test {tim_test.dt:0.3g}s, plot {tim_plot.dt:0.3g}s, save {tim_save.dt:0.3g}s); {est.formatted_eta}")
     print(f"Total wall time for training run: {tim_total.dt:0.6g}s")
 
-    # Save the trained model.
-    # TODO: Don't save the same data again, we already saved this just after the last epoch completed.
-    # TODO: In any case, we should copy the best epoch file here instead of saving again.
-    model.save(f"{output_dir}model/final.keras", save_format="keras_v3")
+    # Save the trained model. (Just copy the best epoch, already saved during the training loop.)
+    shutil.copy2(src=f"{output_dir}model/{best_epoch:04d}.keras",
+                 dst=f"{output_dir}model/final.keras")
+    # Touch a file, with the filename telling the user which epoch was the best one
+    descriptive_filename = f"{output_dir}00_best_is_epoch_{best_epoch}_with_ELBO_{round(max_test_elbo)}.txt"
+    with open(descriptive_filename, "wt"):
+        pass
+    # model.save(f"{output_dir}model/final.keras", save_format="keras_v3")
     # # legacy custom saving hack (saving the encoder/decoder separately)
     # model.my_save(f"{output_dir}model/final")
 
