@@ -230,14 +230,15 @@ def make_encoder(variant):
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
                                     name="cnn_output")(x)
 
-    elif variant == 10:
-        # Try extracting some full-resolution low-level feature maps first.
+    elif variant == 10:  # add another level of feature maps; test ELBO 1362
+        # First level - full spatial resolution, low-level feature map (28×28). (New.)
         #
-        # A full bottleneck block would be inefficient here at the input side, because we have only one
+        # A full bottleneck block is inefficient here at the input side, because we have only one
         # input channel, so the only thing the initial projection can do is to create copies of the
         # same data (introducing 28×28×8 = 6272 mixing coefficients that have no effect on the output).
         #
-        # So let's try two-thirds of a bottleneck block:
+        # So to slightly optimize performance, let's use two-thirds of a bottleneck block,
+        # skipping the initial channel mixer.
         x = tf.keras.layers.Conv2D(filters=16, kernel_size=3, strides=1,
                                    kernel_initializer="he_normal",
                                    padding="same")(x)
@@ -250,31 +251,38 @@ def make_encoder(variant):
         x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
         # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # for some reason, normalizing here breaks the whole NN (will not train usefully)
 
-        # test with one more identity block
+        # Then proceed as usual - remix the detected features, at the same number of channels.
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # output of first level
 
+        # Second level - spatial downscale and remix, generate mid-level feature map (14×14)
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)  # output of second level
 
+        # Third level - spatial downscale and remix, generate high-level feature map (7×7)
         x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)  # output of third level
+
+        # Fourth level
+        # Can't spatially downscale 7×7 any more (reversibly), so we just remix into a higher-dimensional
+        # space (more channels) at the same spatial resolution. We already have a lot of channels to use
+        # as input, so we hope also this part of the network will learn something useful. :)
         x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                               bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
-                                    name="cnn_output")(x)
+                                    name="cnn_output")(x)  # final CNN output
 
     else:
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
