@@ -181,7 +181,7 @@ from .config import (latent_dim,
                      test_sample_fig_basename,
                      latent_space_fig_basename,
                      elbo_fig_filename)
-from .clr import Triangular2CyclicalLearningRate
+from . import clr
 from .cvae import CVAE
 from .plotter import (plot_test_sample_image,
                       plot_elbo,
@@ -245,20 +245,27 @@ with env() as e:  # avoid polluting top-level scope with temporaries
 #                                                              decay_rate=0.25)
 
 # Cyclical learning rate
-# This accelerates convergence according to Smith (2015):
+# This accelerates convergence according to Smith (2017):
 #   https://arxiv.org/abs/1506.01186
-if variant in (9, 10):
+if variant == 9:
     # Model variant 9 needs a higher max LR, maybe because it uses many more dropout layers.
     INIT_LR, MAX_LR = 1e-4, 2e-2
+elif variant == 10:
+    INIT_LR, MAX_LR = 2e-4, 1e-2
 else:
     # Primarily tested with model variants 7 and 8.
     INIT_LR, MAX_LR = 1e-4, 2e-3
-# "triangular2" schedule of Smith (2015)
-# `step_size` = half cycle length, in optimizer steps; Smith recommends `(2 ... 8) * steps_per_epoch`
-lr_schedule = Triangular2CyclicalLearningRate(lr0=INIT_LR,
-                                              lr1=MAX_LR,
-                                              half_cycle_length=10 * steps_per_epoch,
-                                              cycle_profile="smooth")  # TODO: which profile is best?
+# "triangular2" schedule of Smith (2017)
+# `step_size` = half cycle length, in optimizer steps; Smith recommends `(2 ... 10) * steps_per_epoch`
+# lr_schedule = clr.Triangular2CyclicalLearningRate(lr0=INIT_LR,
+#                                                   lr1=MAX_LR,
+#                                                   half_cycle_length=10 * steps_per_epoch,
+#                                                   cycle_profile="smooth")  # TODO: which profile is best?
+lr_schedule = clr.ExponentialCyclicalLearningRate(lr0=INIT_LR,
+                                                  lr1=MAX_LR,
+                                                  gamma=0.9,
+                                                  half_cycle_length=2 * steps_per_epoch,
+                                                  cycle_profile="smooth")  # TODO: which profile is best?
 
 # # learning schedule DEBUG
 # steps = np.arange(0, n_epochs * steps_per_epoch)
