@@ -213,7 +213,7 @@ if variant <= 7:
 elif variant in (8, 9):
     batch_size = 512  # 6GB VRAM, fp32, model variant 7; or fp16, model variant 8 or 9
 elif variant == 10:
-    batch_size = 1024
+    batch_size = 512
 
 # Choose dtype policy (which is best depends on your device)
 #   https://tensorflow.org/guide/mixed_precision
