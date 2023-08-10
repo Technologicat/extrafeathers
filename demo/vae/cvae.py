@@ -76,16 +76,24 @@ def make_encoder(variant):
     """
     encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
 
+    # # Data augmentation on GPU (used automatically when the encoder is called with `training=True`)
+    # # This is very slow, so let's not do it for now.
+    # x = tf.keras.layers.RandomRotation(factor=(-0.05, 0.05),  # 5% = 18°
+    #                                    fill_mode="constant", fill_value=0.0)(encoder_inputs)
+    # x = tf.keras.layers.RandomTranslation(height_factor=(-0.1, 0.1), width_factor=(-0.1, 0.1),
+    #                                       fill_mode="constant", fill_value=0.0)(x)
+    x = encoder_inputs
+
     if variant == 0:  # classical VAE
         x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
+                                   strides=2, padding="same")(x)     # 28×28×1 → 14×14×32
         x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
                                    strides=2, padding="same",
-                                   name="cnn_output")(x)                          # 14×14×32 → 7×7×64
+                                   name="cnn_output")(x)             # 14×14×32 → 7×7×64
 
     elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
         x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(encoder_inputs)     # 28×28×1 → 14×14×32
+                                   strides=2, padding="same")(x)                  # 28×28×1 → 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32→ 14×14×32
         x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
                                    strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
@@ -94,7 +102,7 @@ def make_encoder(variant):
 
     elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-                               bottleneck_factor=1)(encoder_inputs)  # 28×28×1 → 14×14×32
+                               bottleneck_factor=1)(x)               # 28×28×1 → 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
                             bottleneck_factor=1)(x)                  # 14×14×32→ 14×14×32
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
@@ -104,14 +112,14 @@ def make_encoder(variant):
                             name="cnn_output")(x)                    # 7×7×64 → 7×7×64
 
     elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(x)               # 28×28×1 → 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
         x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
                             name="cnn_output")(x)                                             # 7×7×64 → 7×7×64
 
     elif variant == 4:  # ResNet attempt 4
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(encoder_inputs)  # 28×28×1 → 14×14×32
+        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(x)               # 28×28×1 → 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
@@ -121,7 +129,7 @@ def make_encoder(variant):
 
     elif variant == 5:  # ResNet attempt 5
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-                               bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
+                               bottleneck_factor=2)(x)               # 28×28×1 → 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
                             bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
         x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
@@ -136,7 +144,7 @@ def make_encoder(variant):
 
     elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-                               bottleneck_factor=2)(encoder_inputs)  # 28×28×1 → 14×14×32
+                               bottleneck_factor=2)(x)                   # 28×28×1 → 14×14×32
         for _ in range(3):
             x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
                                 bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
@@ -155,7 +163,7 @@ def make_encoder(variant):
         # channels, i.e. `filters`) can still increase the capacity of the model usefully.
         #   https://arxiv.org/abs/1502.01852
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(encoder_inputs)
+                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
         x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -174,7 +182,7 @@ def make_encoder(variant):
 
     elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(encoder_inputs)
+                               bottleneck_factor=2)(x)
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
         x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
@@ -196,7 +204,7 @@ def make_encoder(variant):
 
     elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
         x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(encoder_inputs)
+                               bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
@@ -232,7 +240,7 @@ def make_encoder(variant):
         # So let's try two-thirds of a bottleneck block:
         x = tf.keras.layers.Conv2D(filters=16, kernel_size=3, strides=1,
                                    kernel_initializer="he_normal",
-                                   padding="same")(encoder_inputs)
+                                   padding="same")(x)
         x = tf.keras.layers.PReLU()(x)
         x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
         x = tf.keras.layers.Conv2D(filters=32, kernel_size=1,
