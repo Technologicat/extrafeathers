@@ -8,17 +8,20 @@ and there is no official package with a replacement for `CyclicalLearningRate`.
 
 This code has been modified slightly, for clarity and simplicity:
 
-  - The base `CyclicalLearningRate` is not public, because it takes `cycle_scale` as a constructor argument.
-    Passing a lambda as the callable (as is often done) breaks model serialization when optimizer info is included.
   - `cycle_mode` argument removed; the scaling function always scales by the cycle number.
   - Clearer names for arguments.
   - Learning rates no longer support callables.
   - Demystified computation of the `x` value.
 
-We have also added a variant that uses infinitely smooth transitions.
+We have also added a variant that uses infinitely smooth transitions; see the `cycle_profile` parameter.
+
+See Smith (2017): Cyclical Learning Rates for Training Neural Networks.
+  https://arxiv.org/abs/1506.01186
 """
 
-__all__ = ["Triangular2CyclicalLearningRate"]
+__all__ = ["CyclicalLearningRate",
+           "Triangular2CyclicalLearningRate",
+           "ExponentialCyclicalLearningRate"]
 
 from typing import Optional, Union, Callable
 
@@ -72,9 +75,6 @@ def nonanalytic_smooth_transition(x, m=1.0):
 class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
     """A `LearningRateSchedule` for a cyclical LR with triangular cycles.
 
-    See Smith (2015): Cyclical Learning Rates for Training Neural Networks.
-      https://arxiv.org/abs/1506.01186
-
     You can pass this schedule directly into a
     `tf.keras.optimizers.legacy.Optimizer` as the learning rate.
 
@@ -83,7 +83,14 @@ class CyclicalLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
         `half_cycle_length`: A scalar `float32` or `float64` `Tensor` or a Python number.
                              How many optimizer steps (iterations) to reach `lr1`.
         `cycle_scale`: A single-argument function to scale the LR by the cycle number (1-based).
-                       The default `None` means `lambda _: 1.0`, i.e., no scaling.
+
+                       The default `None` means `lambda _: 1.0`, i.e., no scaling; this is the "triangular"
+                       schedule of Smith.
+
+                       Any callable can be passed, but if you want to serialize this object you
+                       should only pass functions that are registered Keras serializables
+                       (see `tf.keras.saving.register_keras_serializable` for more details).
+
         `cycle_profile`: One of:
            "linear": The original triangular sawtooth shape. C0 continuous at the seams.
            "cosine": Cosine shape. When `cycle_scale` is used, the profile is only C0 continuous
@@ -173,9 +180,6 @@ class Triangular2CyclicalLearningRate(CyclicalLearningRate):
 
     This is the "triangular2" schedule of Smith.
 
-    See Smith (2015): Cyclical Learning Rates for Training Neural Networks.
-      https://arxiv.org/abs/1506.01186
-
     Arguments and return value as in `CyclicalLearningRate`.
     """
     @typechecked
@@ -195,6 +199,48 @@ class Triangular2CyclicalLearningRate(CyclicalLearningRate):
     def get_config(self):
         return {"lr0": self.lr0,
                 "lr1": self.lr1,
+                "half_cycle_length": self.half_cycle_length,
+                "cycle_profile": self.cycle_profile,
+                "name": self.name}
+
+
+@tf.keras.utils.register_keras_serializable(package="ExtraFeathers")
+class ExponentialCyclicalLearningRate(CyclicalLearningRate):
+    """A `LearningRateSchedule` for a cyclical LR with decaying triangular cycles.
+
+    "triangular2" is a special case of this schedule, with `gamma=0.5`.
+
+    Differences to "exp_range" of Smith:
+
+      - We do not decrease `lr0`; the decaying exponential scaling is applied
+        to `Δlr := lr1 - lr0` instead.
+      - We scale by cycle, nor by step number.
+
+    Arguments and return value as in `CyclicalLearningRate`, except:
+
+        `gamma`: Each cycle is scaled by `gamma ** (cycle_number - 1)`.
+                 The first cycle is cycle 1.
+    """
+    @typechecked
+    def __init__(self,
+                 lr0: FloatTensorLike,
+                 lr1: FloatTensorLike,
+                 gamma: FloatTensorLike,
+                 half_cycle_length: FloatTensorLike,
+                 cycle_profile: str = "linear",
+                 name: str = "ExponentialCyclicalLearningRate"):
+        super().__init__(lr0=lr0,
+                         lr1=lr1,
+                         half_cycle_length=half_cycle_length,
+                         cycle_scale=lambda cycle_number: self.gamma**(cycle_number - 1),
+                         cycle_profile=cycle_profile,
+                         name=name)
+        self.gamma = gamma
+
+    def get_config(self):
+        return {"lr0": self.lr0,
+                "lr1": self.lr1,
+                "gamma": self.gamma,
                 "half_cycle_length": self.half_cycle_length,
                 "cycle_profile": self.cycle_profile,
                 "name": self.name}
