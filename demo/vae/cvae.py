@@ -280,18 +280,22 @@ def make_encoder(variant):
         raise ValueError(f"Unknown model variant {variant}, see source code for available models")
 
     x = tf.keras.layers.Flatten()(x)
-    # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
-    # if we add a small dense layer after the convolutions, and connect that to the outputs, we will have
-    # much fewer trainable parameters (in total) than if we connect the last convolution layer to the outputs
-    # directly. As pointed out by:
-    # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
+
+    # TODO: How well does this work without the extra Dense layer?
     #
-    # Note that this trick only helps if `2 * latent_dim > extra_layer_size`; otherwise the architecture
-    # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity slightly
-    # (but in practice we get better results if we add more layers in the convolution part instead of making
-    # this one larger).
-    x = tf.keras.layers.Dense(units=extra_layer_size)(x)
-    x = tf.keras.layers.PReLU()(x)
+    # # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
+    # # if we add a small dense layer after the convolutions, and connect that to the outputs, we will have
+    # # much fewer trainable parameters (in total) than if we connect the last convolution layer to the outputs
+    # # directly. As pointed out by:
+    # # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
+    # #
+    # # Note that this trick only helps if `2 * latent_dim > extra_layer_size`; otherwise the architecture
+    # # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity slightly
+    # # (but in practice we get better results if we add more layers in the convolution part instead of making
+    # # this one larger).
+    # x = tf.keras.layers.Dense(units=extra_layer_size)(x)
+    # x = tf.keras.layers.PReLU()(x)
+
     # No activation function in the output layers - we want arbitrary real numbers as output.
     # The outputs will be interpreted as `(μ, log σ)` for the variational posterior qϕ(z|x).
     # A uniform distribution for these quantities (from the random initialization of the NN)
@@ -320,9 +324,13 @@ def make_decoder(variant, encoder_cnn_final_shape):
     """
     # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
     decoder_inputs = tf.keras.Input(shape=(latent_dim,))
-    # Here we add the dense extra layer just for architectural symmetry with the encoder.
-    x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
-    x = tf.keras.layers.PReLU()(x)
+
+    # How well does this work without the extra Dense layer?
+    #
+    # # Here we add the dense extra layer just for architectural symmetry with the encoder.
+    # x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
+    # x = tf.keras.layers.PReLU()(x)
+    x = decoder_inputs
 
     # The size of the final encoder convolution output depends on the model variant.
     x = tf.keras.layers.Dense(units=prod(encoder_cnn_final_shape))(x)
