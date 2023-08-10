@@ -163,6 +163,7 @@ import unpythonic.net.server as repl_server
 #  - To classify a new data point, encode it. Use the labels of nearby training code points to predict what the class should be.
 #  - E.g., form a confidence score for each class, based on an inverse-distance-weighted proportion of each training label within some configurable radius r.
 
+import shutil
 import sys
 
 from unpythonic import ETAEstimator, timer
