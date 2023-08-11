@@ -171,6 +171,10 @@ import unpythonic.net.server as repl_server
 #     - Better: have an extra input to the encoder, and then concatenate it to the final Dense layer.
 #   - Estimate coverage of data manifold, e.g. using FID or precision-and-recall (see the latent diffusion
 #     paper by Rombach et al., 2022)
+#       https://arxiv.org/abs/2112.10752
+#   - Other performance metrics: KL divergence of posterior from prior; mutual information between `x` and `z`; number of code dimensions actually in use.
+#     See Dieng et al. (2019):
+#       https://arxiv.org/abs/1807.04863
 
 # TODO: Just for the lulz, we could try implementing a classifier on top of this.
 #  - Map all training samples through the trained encoder. Save the resulting code points, with corresponding input labels.
