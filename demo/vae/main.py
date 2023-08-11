@@ -484,12 +484,16 @@ def main():
     # model.my_save(f"{output_dir}model/final")
 
     # Visualize final state
-    plot_test_sample_image(test_sample, figno=1)
-    fig1.savefig(f"{output_dir}{test_sample_fig_basename}_final.{fig_format}")
-    fig1.canvas.draw_idle()
-    e = plot_latent_image(21, figno=3)  # noqa: F841
-    fig3.savefig(f"{output_dir}{latent_space_fig_basename}_final.{fig_format}")
-    fig3.canvas.draw_idle()
+    shutil.copy2(src=f"{output_dir}{test_sample_fig_basename}_{best_epoch:04d}.{fig_format}",
+                 dst=f"{output_dir}{test_sample_fig_basename}_final.{fig_format}")
+    shutil.copy2(src=f"{output_dir}{latent_space_fig_basename}_{best_epoch:04d}.{fig_format}",
+                 dst=f"{output_dir}{latent_space_fig_basename}_final.{fig_format}")
+    # plot_test_sample_image(test_sample, figno=1)
+    # fig1.savefig(f"{output_dir}{test_sample_fig_basename}_final.{fig_format}")
+    # fig1.canvas.draw_idle()
+    # e = plot_latent_image(21, figno=3)  # noqa: F841
+    # fig3.savefig(f"{output_dir}{latent_space_fig_basename}_final.{fig_format}")
+    # fig3.canvas.draw_idle()
 
     # # ...and once again with a training dataset overlay
     # # out of memory on GPU, let's not do this in training
