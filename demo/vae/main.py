@@ -342,8 +342,8 @@ def main():
     fig1.savefig(f"{output_dir}{test_sample_fig_basename}_0000.{fig_format}")
     fig1.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
-    e = plot_latent_image(21, figno=3, epoch=0)
-    e = plot_latent_image(21, figno=3, epoch=0)  # and again to prevent axes crawling
+    plot_latent_image(21, figno=3, epoch=0)
+    plot_latent_image(21, figno=3, epoch=0)  # and again to prevent axes crawling
     fig3.savefig(f"{output_dir}{latent_space_fig_basename}_0000.{fig_format}")
     fig3.canvas.draw_idle()
 
@@ -397,7 +397,7 @@ def main():
                 fig2.canvas.draw_idle()
 
                 # Latent space
-                e = plot_latent_image(21, figno=3, epoch=epoch)
+                plot_latent_image(21, figno=3, epoch=epoch)
                 fig3.savefig(f"{output_dir}{latent_space_fig_basename}_{epoch:04d}.{fig_format}")
                 fig3.canvas.draw_idle()
                 # overlay_datapoints(train_images, train_labels, e)  # out of memory on GPU
@@ -477,7 +477,7 @@ def main():
 
     # # ...and once again with a training dataset overlay
     # # out of memory on GPU, let's not do this in training
-    # overlay_datapoints(train_images, train_labels, e)
+    # overlay_datapoints(train_images, train_labels, latent_image)
     # fig3.savefig(f"{output_dir}{latent_space_fig_basename}_annotated.{fig_format}")
     # fig3.canvas.draw_idle()
 
