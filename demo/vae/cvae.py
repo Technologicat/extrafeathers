@@ -21,7 +21,7 @@ from .util import clear_and_create_directory
 # --------------------------------------------------------------------------------
 # NN architecture
 
-extra_layer_size = 16
+# extra_layer_size = 16  # The extra layer is omitted in recent revisions (better performance)
 dropout_fraction = 0.1
 
 # Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
