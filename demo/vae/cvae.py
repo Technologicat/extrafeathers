@@ -231,7 +231,7 @@ def make_encoder(variant):
                                     name="cnn_output")(x)
 
     elif variant == 10:  # add another level of feature maps; test ELBO 1362
-        # First level - full spatial resolution, low-level feature map (28×28). (New.)
+        # Level 1 - full spatial resolution, low-level feature map (28×28). (New.)
         #
         # A full bottleneck block is inefficient here at the input side, because we have only one
         # input channel, so the only thing the initial projection can do is to create copies of the
@@ -254,25 +254,25 @@ def make_encoder(variant):
         # Then proceed as usual - remix the detected features, at the same number of channels.
         x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # output of first level
+        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # output of level 1
 
-        # Second level - spatial downscale and remix, generate mid-level feature map (14×14)
+        # Level 2 - spatial downscale and remix, generate mid-level feature map (14×14)
         x = ConvolutionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)  # output of second level
+        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)  # output of level 2
 
-        # Third level - spatial downscale and remix, generate high-level feature map (7×7)
+        # Level 3 - spatial downscale and remix, generate high-level feature map (7×7)
         x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
         x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                             bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)  # output of third level
+        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)  # output of level 3
 
-        # Fourth level
+        # Level 4
         # Can't spatially downscale 7×7 any more (reversibly), so we just remix into a higher-dimensional
         # space (more channels) at the same spatial resolution. We already have a lot of channels to use
         # as input, so we hope also this part of the network will learn something useful. :)
@@ -481,12 +481,15 @@ def make_decoder(variant, encoder_cnn_final_shape):
                                         bottleneck_factor=2)(x)
 
     elif variant == 10:
+        # Level 4
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
         x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
         x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                        bottleneck_factor=2)(x)
+
+        # Level 3
         x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
@@ -494,6 +497,7 @@ def make_decoder(variant, encoder_cnn_final_shape):
         x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3,
                                         bottleneck_factor=2)(x)
 
+        # Level 2
         x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
@@ -501,11 +505,12 @@ def make_decoder(variant, encoder_cnn_final_shape):
         x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3,
                                         bottleneck_factor=2)(x)
 
-        # test with one more identity block
+        # Level 1
         x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                      bottleneck_factor=2)(x)
 
+        # The inverse of the final two-thirds of a bottleneck block:
         # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
         x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
         x = tf.keras.layers.Conv2DTranspose(filters=16, kernel_size=1,
