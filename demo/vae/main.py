@@ -148,6 +148,20 @@ import unpythonic.net.server as repl_server
 #     skip-connections from the encoder side to the decoder side.
 #   - But how to run such a network in decoder-only mode (i.e. generative mode), where the encoder layers are not available?
 #     For real data, we could save the encoder layer states as part of the coded representation. But for generating new data, that's a no-go.
+#   - Maybe we shouldn't do that; in unsupervised learning (such as in a VAE), where the goal is to explain and reconstruct the input
+#     by applying a bottleneck simplification, the encoder and decoder should be thought of as separate entities. The goal of a VAE is representation
+#     learning, not perfect reconstruction (which would be trivial if the skip-connections did all the work, but the learned representation
+#     would then be completely useless). This is different from supervised learning, such as in a U-Net, where the output is a segmentation map;
+#     crucially, it is NOT a reconstruction of the input! In this case, connecting the similarly sized layers between the halves of the "U" does indeed help.
+#         https://www.reddit.com/r/deeplearning/comments/ds1245/comment/f6mqy4q/
+#     See the original U-Net paper by Ronneberger et al. (2015). The authors explain in the abstract that the "contracting path [...]
+#     captures context", while the "symmetric expanding path" (connected with such cross-skip-connections) "enables precise localization"
+#     of that context in the network output (the segmentation map).
+#         https://arxiv.org/pdf/1505.04597.pdf
+#   - What we could do instead:
+#     - In the encoder, connect also lower-level feature maps from previous CNN layers to the `Dense` layer that computes the latent representation.
+#     - In the decoder, add skips from the code point `z` to each layer; see the skip-VAE by Dieng et al. (2019):
+#         https://arxiv.org/pdf/1807.04863.pdf
 
 # TODO: For use with PDE solution fields:
 #   - Project the PDE solution to a uniform grid (uniform, since we use a convolutional NN)
