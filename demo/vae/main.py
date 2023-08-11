@@ -196,7 +196,7 @@ test_images = preprocess_images(test_images)
 # n_epochs = 10
 
 # Choose the model variant. See `cvae.py`.
-variant = 10
+variant = 11
 
 # We use the standard definition of "epoch": an epoch is one full pass over the training data set.
 n_epochs = 200
@@ -210,10 +210,8 @@ n_epochs = 200
 # batch_size = 32  # CPU
 if variant <= 7:
     batch_size = 1024  # 6GB VRAM, fp16, model variant 7; optimal training speed on RTX Quadro 3000 Mobile?
-elif variant in (8, 9):
-    batch_size = 512  # 6GB VRAM, fp32, model variant 7; or fp16, model variant 8 or 9
-elif variant == 10:
-    batch_size = 512
+else:
+    batch_size = 512  # 6GB VRAM, fp32, model variant 7; or fp16, model variant ≥ 8
 
 # Choose dtype policy (which is best depends on your device)
 #   https://tensorflow.org/guide/mixed_precision

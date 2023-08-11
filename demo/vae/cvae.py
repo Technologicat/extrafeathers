@@ -115,480 +115,544 @@ dropout_fraction = 0.1
 #           https://arxiv.org/pdf/1807.04863.pdf
 #         This adds a shorter path that promotes the use of different information (vs. going through the decoder ResNet blocks).
 
-def make_encoder(variant):
-    """Set up an encoder neural network for a CVAE.
+def make_codec(variant):
+    """Set up compatible encoder and decoder neural networks for a CVAE.
 
-    Return value is a `tf.keras.Model`.
+    Return value is a `tuple` of two `tf.keras.Model`s::
+
+        (encoder, decoder)
 
     Mainly meant for use by `CVAE.__init__`.
 
     We provide several variants of the CVAE, with different neural network geometries.
     See the source code for details.
-
-    !!! When making the corresponding decoder, use the same `variant` number! !!!
     """
-    encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
+    # --------------------------------------------------------------------------------
+    # Encoder
 
-    # # Data augmentation on GPU (used automatically when the encoder is called with `training=True`)
-    # # This is very slow, so let's not do it for now.
-    # x = tf.keras.layers.RandomRotation(factor=(-0.05, 0.05),  # 5% = 18°
-    #                                    fill_mode="constant", fill_value=0.0)(encoder_inputs)
-    # x = tf.keras.layers.RandomTranslation(height_factor=(-0.1, 0.1), width_factor=(-0.1, 0.1),
-    #                                       fill_mode="constant", fill_value=0.0)(x)
-    x = encoder_inputs
+    def make_encoder():
+        encoder_inputs = tf.keras.Input(shape=(28, 28, 1))
 
-    if variant == 0:  # classical VAE
-        x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(x)     # 28×28×1 → 14×14×32
-        x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-                                   strides=2, padding="same",
-                                   name="cnn_output")(x)             # 14×14×32 → 7×7×64
+        # # Data augmentation on GPU (used automatically when the encoder is called with `training=True`)
+        # # This is very slow, so let's not do it for now.
+        # x = tf.keras.layers.RandomRotation(factor=(-0.05, 0.05),  # 5% = 18°
+        #                                    fill_mode="constant", fill_value=0.0)(encoder_inputs)
+        # x = tf.keras.layers.RandomTranslation(height_factor=(-0.1, 0.1), width_factor=(-0.1, 0.1),
+        #                                       fill_mode="constant", fill_value=0.0)(x)
+        x = encoder_inputs
 
-    elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
-        x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(x)                  # 28×28×1 → 14×14×32
-        x = IdentityBlock2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32→ 14×14×32
-        x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
-                                   strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, bottleneck_factor=1,
-                            name="cnn_output")(x)                                 # 7×7×64 → 7×7×64
+        if variant == 0:  # classical VAE
+            x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
+                                       strides=2, padding="same")(x)     # 28×28×1 → 14×14×32
+            x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
+                                       strides=2, padding="same",
+                                       name="cnn_output")(x)             # 14×14×32 → 7×7×64
 
-    elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-                               bottleneck_factor=1)(x)               # 28×28×1 → 14×14×32
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-                            bottleneck_factor=1)(x)                  # 14×14×32→ 14×14×32
-        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
-                               bottleneck_factor=1)(x)               # 14×14×32 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            bottleneck_factor=1,
-                            name="cnn_output")(x)                    # 7×7×64 → 7×7×64
+        elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
+            x = tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation="relu",
+                                       strides=2, padding="same")(x)                  # 28×28×1 → 14×14×32
+            x = IdentityBlock2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32→ 14×14×32
+            x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, activation="relu",
+                                       strides=2, padding="same")(x)                  # 14×14×32 → 7×7×64
+            x = IdentityBlock2D(filters=64, kernel_size=3, bottleneck_factor=1,
+                                name="cnn_output")(x)                                 # 7×7×64 → 7×7×64
 
-    elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(x)               # 28×28×1 → 14×14×32
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
-        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            name="cnn_output")(x)                                             # 7×7×64 → 7×7×64
+        elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+                                   bottleneck_factor=1)(x)               # 28×28×1 → 14×14×32
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                                bottleneck_factor=1)(x)                  # 14×14×32→ 14×14×32
+            x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+                                   bottleneck_factor=1)(x)               # 14×14×32 → 7×7×64
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                                bottleneck_factor=1,
+                                name="cnn_output")(x)                    # 7×7×64 → 7×7×64
 
-    elif variant == 4:  # ResNet attempt 4
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(x)               # 28×28×1 → 14×14×32
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
-        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            name="cnn_output")(x)                                             # 7×7×64 → 7×7×64
+        elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(x)               # 28×28×1 → 14×14×32
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
+            x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                                name="cnn_output")(x)                                             # 7×7×64 → 7×7×64
 
-    elif variant == 5:  # ResNet attempt 5
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-                               bottleneck_factor=2)(x)               # 28×28×1 → 14×14×32
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-                            bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
-                            bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
-        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
-                               bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            bottleneck_factor=2,
-                            name="cnn_output")(x)                    # 7×7×64 → 7×7×64
+        elif variant == 4:  # ResNet attempt 4
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu")(x)               # 28×28×1 → 14×14×32
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu")(x)                  # 14×14×32→ 14×14×32
+            x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu")(x)               # 14×14×32 → 7×7×64
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu")(x)                  # 7×7×64 → 7×7×64
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                                name="cnn_output")(x)                                             # 7×7×64 → 7×7×64
 
-    elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
-                               bottleneck_factor=2)(x)                   # 28×28×1 → 14×14×32
-        for _ in range(3):
+        elif variant == 5:  # ResNet attempt 5
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+                                   bottleneck_factor=2)(x)               # 28×28×1 → 14×14×32
             x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
                                 bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
-        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
-                               bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
-        for _ in range(2):
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                                bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
+            x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+                                   bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
             x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
                                 bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
-                            bottleneck_factor=2,
-                            name="cnn_output")(x)  # like previous two, but only the final CNN block should have this name.
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                                bottleneck_factor=2,
+                                name="cnn_output")(x)                    # 7×7×64 → 7×7×64
 
-    elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 959 348 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
-        # According to He et al. (2015), adding depth to a convolution network beyond a certain
-        # (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
-        # channels, i.e. `filters`) can still increase the capacity of the model usefully.
-        #   https://arxiv.org/abs/1502.01852
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                              bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                              bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2,
-                            name="cnn_output")(x)
+        elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation="relu",
+                                   bottleneck_factor=2)(x)                   # 28×28×1 → 14×14×32
+            for _ in range(3):
+                x = IdentityBlock2D(filters=32, kernel_size=3, activation="relu",
+                                    bottleneck_factor=2)(x)                  # 14×14×32 → 14×14×32
+            x = ConvolutionBlock2D(filters=64, kernel_size=3, activation="relu",
+                                   bottleneck_factor=2)(x)               # 14×14×32 → 7×7×64
+            for _ in range(2):
+                x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                                    bottleneck_factor=2)(x)                  # 7×7×64 → 7×7×64
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation="relu",
+                                bottleneck_factor=2,
+                                name="cnn_output")(x)  # like previous two, but only the final CNN block should have this name.
 
-    elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                              bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+        elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 959 348 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
+            # According to He et al. (2015), adding depth to a convolution network beyond a certain
+            # (problem-dependent) point, accuracy starts to degrade. Instead, adding width (number of
+            # channels, i.e. `filters`) can still increase the capacity of the model usefully.
+            #   https://arxiv.org/abs/1502.01852
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                  bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                  bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2,
+                                name="cnn_output")(x)
 
-        x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                              bottleneck_factor=2)(x)
-        x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
-                                    name="cnn_output")(x)
+        elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                  bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
 
-    elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
-        x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
-        x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                              bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                  bottleneck_factor=2)(x)
+            x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
+                                        name="cnn_output")(x)
 
-        x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
-        x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
-        x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                              bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
-        x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
-                                    name="cnn_output")(x)
+        elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
+            x = ConvolutionBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = ProjectionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                  bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
 
-    elif variant == 10:  # add another level of feature maps; test ELBO 1362
-        # Level 1 - full spatial resolution, low-level feature map (28×28). (New.)
+            x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                  bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
+                                        name="cnn_output")(x)
+
+        elif variant in (10, 11):  # add another level of feature maps; test ELBO 1362
+            # Level 1 - full spatial resolution, low-level feature map (28×28). (New.)
+            #
+            # A full bottleneck block is inefficient here at the input side, because we have only one
+            # input channel, so the only thing the initial projection can do is to create copies of the
+            # same data (introducing 28×28×8 = 6272 mixing coefficients that have no effect on the output).
+            #
+            # So to slightly optimize performance, let's use two-thirds of a bottleneck block,
+            # skipping the initial channel mixer.
+            x = tf.keras.layers.Conv2D(filters=16, kernel_size=3, strides=1,
+                                       kernel_initializer="he_normal",
+                                       padding="same")(x)
+            x = tf.keras.layers.PReLU()(x)
+            x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+            x = tf.keras.layers.Conv2D(filters=32, kernel_size=1,
+                                       kernel_initializer="he_normal",
+                                       padding="same")(x)
+            x = tf.keras.layers.PReLU()(x)
+            x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+            # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # for some reason, normalizing here breaks the whole NN (will not train usefully)
+
+            # Then proceed as usual - remix the detected features, at the same number of channels.
+            x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # output of level 1
+
+            # Level 2 - spatial downscale and remix, generate mid-level feature map (14×14)
+            x = ConvolutionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)  # output of level 2
+
+            # Level 3 - spatial downscale and remix, generate high-level feature map (7×7)
+            x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                   bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)  # output of level 3
+
+            # Level 4
+            # Can't spatially downscale 7×7 any more (reversibly), so we just remix into a higher-dimensional
+            # space (more channels) at the same spatial resolution. We already have a lot of channels to use
+            # as input, so we hope also this part of the network will learn something useful. :)
+            x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                  bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
+                                        name="cnn_output")(x)  # final CNN output
+
+        else:
+            raise ValueError(f"Unknown model variant {variant}, see source code for available models")
+
+        x = tf.keras.layers.Flatten()(x)
+
+        # TODO: How well does this work without the extra Dense layer? Better; let's drop it!
         #
-        # A full bottleneck block is inefficient here at the input side, because we have only one
-        # input channel, so the only thing the initial projection can do is to create copies of the
-        # same data (introducing 28×28×8 = 6272 mixing coefficients that have no effect on the output).
+        # # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
+        # # if we add a small dense layer after the convolutions, and connect that to the outputs, we will have
+        # # much fewer trainable parameters (in total) than if we connect the last convolution layer to the outputs
+        # # directly. As pointed out by:
+        # # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
+        # #
+        # # Note that this trick only helps if `2 * latent_dim > extra_layer_size`; otherwise the architecture
+        # # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity slightly
+        # # (but in practice we get better results if we add more layers in the convolution part instead of making
+        # # this one larger).
+        # x = tf.keras.layers.Dense(units=extra_layer_size)(x)
+        # x = tf.keras.layers.PReLU()(x)
+
+        # No activation function in the output layers - we want arbitrary real numbers as output.
+        # The outputs will be interpreted as `(μ, log σ)` for the variational posterior qϕ(z|x).
+        # A uniform distribution for these quantities (from the random initialization of the NN)
+        # is a good prior for unknown location and scale parameters, see e.g.:
+        #   https://en.wikipedia.org/wiki/Principle_of_transformation_groups
+        #   https://en.wikipedia.org/wiki/Principle_of_maximum_entropy
+        z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean", dtype="float32")(x)
+        z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var", dtype="float32")(x)
+        encoder_outputs = [z_mean, z_log_var]
+
+        return tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
+
+    # --------------------------------------------------------------------------------
+    # Decoder
+
+    def make_decoder():
+        decoder_inputs = tf.keras.Input(shape=(latent_dim,))
+
+        # How well does this work without the extra Dense layer? Better; let's drop it!
         #
-        # So to slightly optimize performance, let's use two-thirds of a bottleneck block,
-        # skipping the initial channel mixer.
-        x = tf.keras.layers.Conv2D(filters=16, kernel_size=3, strides=1,
-                                   kernel_initializer="he_normal",
-                                   padding="same")(x)
+        # # Here we add the dense extra layer just for architectural symmetry with the encoder.
+        # x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
+        # x = tf.keras.layers.PReLU()(x)
+        x = decoder_inputs
+
+        # The size of the final encoder convolution output depends on the model variant.
+        encoder_cnn_output_layer = encoder.get_layer(name="cnn_output")  # `encoder` initialized below before we call `make_decoder`
+        encoder_cnn_final_shape = encoder_cnn_output_layer.output_shape[1:]  # ignore batch dimension
+        x = tf.keras.layers.Dense(units=prod(encoder_cnn_final_shape))(x)
         x = tf.keras.layers.PReLU()(x)
-        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
-        x = tf.keras.layers.Conv2D(filters=32, kernel_size=1,
-                                   kernel_initializer="he_normal",
-                                   padding="same")(x)
-        x = tf.keras.layers.PReLU()(x)
-        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
-        # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # for some reason, normalizing here breaks the whole NN (will not train usefully)
+        x = tf.keras.layers.Reshape(target_shape=encoder_cnn_final_shape)(x)
 
-        # Then proceed as usual - remix the detected features, at the same number of channels.
-        x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # output of level 1
+        # Now we are at the point of the architecture where we have the Conv2D output,
+        # so let's mirror the encoder architecture to return to the input space.
+        #
+        # Note no activation function in the output layer - we want arbitrary real numbers as output.
+        # The output will be interpreted as parameters `P` for the observation model pθ(x|z).
+        # Here we want just something convenient that we can remap as necessary.
 
-        # Level 2 - spatial downscale and remix, generate mid-level feature map (14×14)
-        x = ConvolutionBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
-        x = IdentityBlock2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)  # output of level 2
+        if variant == 0:  # Classical VAE
+            x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
+                                                strides=2, padding="same")(x)     # 7×7×64 → 14×14×32
+            x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2,
+                                                padding="same")(x)                # 14×14×32 → 28×28×1
 
-        # Level 3 - spatial downscale and remix, generate high-level feature map (7×7)
-        x = ConvolutionBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                               bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
-        x = IdentityBlock2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)  # output of level 3
+        elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
+            x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
+                                                strides=2, padding="same")(x)                  # 7×7×64 → 14×14×32
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32 → 14×14×32
+            x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3,
+                                                strides=2, padding="same")(x)                  # 14×14×32 → 28×28×1
 
-        # Level 4
-        # Can't spatially downscale 7×7 any more (reversibly), so we just remix into a higher-dimensional
-        # space (more channels) at the same spatial resolution. We already have a lot of channels to use
-        # as input, so we hope also this part of the network will learn something useful. :)
-        x = ProjectionBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                              bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
-        x = IdentityBlock2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                            bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction,
-                                    name="cnn_output")(x)  # final CNN output
+        elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                         bottleneck_factor=1)(x)                   # 7×7×64 → 7×7×64
+            x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                            bottleneck_factor=1)(x)                # 7×7×64 → 14×14×32
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                         bottleneck_factor=1)(x)                   # 14×14×32 → 14×14×32
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                            bottleneck_factor=1)(x)                # 14×14×32 → 28×28×1
 
-    else:
-        raise ValueError(f"Unknown model variant {variant}, see source code for available models")
+        elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
+            x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)                      # 14×14×32 → 28×28×1
 
-    x = tf.keras.layers.Flatten()(x)
+        elif variant == 4:  # ResNet attempt 4
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
+            x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)                      # 14×14×32 → 28×28×1
 
-    # TODO: How well does this work without the extra Dense layer? Better; let's drop it!
-    #
-    # # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
-    # # if we add a small dense layer after the convolutions, and connect that to the outputs, we will have
-    # # much fewer trainable parameters (in total) than if we connect the last convolution layer to the outputs
-    # # directly. As pointed out by:
-    # # https://linux-blog.anracom.com/2022/10/23/variational-autoencoder-with-tensorflow-2-8-xii-save-some-vram-by-an-extra-dense-layer-in-the-encoder/
-    # #
-    # # Note that this trick only helps if `2 * latent_dim > extra_layer_size`; otherwise the architecture
-    # # with the extra layer uses *more* VRAM. However, in that scenario it increases the model capacity slightly
-    # # (but in practice we get better results if we add more layers in the convolution part instead of making
-    # # this one larger).
-    # x = tf.keras.layers.Dense(units=extra_layer_size)(x)
-    # x = tf.keras.layers.PReLU()(x)
-
-    # No activation function in the output layers - we want arbitrary real numbers as output.
-    # The outputs will be interpreted as `(μ, log σ)` for the variational posterior qϕ(z|x).
-    # A uniform distribution for these quantities (from the random initialization of the NN)
-    # is a good prior for unknown location and scale parameters, see e.g.:
-    #   https://en.wikipedia.org/wiki/Principle_of_transformation_groups
-    #   https://en.wikipedia.org/wiki/Principle_of_maximum_entropy
-    z_mean = tf.keras.layers.Dense(units=latent_dim, name="z_mean", dtype="float32")(x)
-    z_log_var = tf.keras.layers.Dense(units=latent_dim, name="z_log_var", dtype="float32")(x)
-    encoder_outputs = [z_mean, z_log_var]
-    encoder = tf.keras.Model(encoder_inputs, encoder_outputs, name="encoder")
-
-    encoder_cnn_output_layer = encoder.get_layer(name="cnn_output")
-    return encoder, encoder_cnn_output_layer.output_shape[1:]  # ignore batch dimension
-
-def make_decoder(variant, encoder_cnn_final_shape):
-    """Set up a decoder neural network for a CVAE.
-
-    Return value is a `tf.keras.Model`.
-
-    Mainly meant for use by `CVAE.__init__`.
-
-    We provide several variants of the CVAE, with different neural network geometries.
-    See the source code for details.
-
-    !!! Use the same `variant` number you used when calling `make_encoder`! !!!
-    """
-    # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
-    decoder_inputs = tf.keras.Input(shape=(latent_dim,))
-
-    # How well does this work without the extra Dense layer? Better; let's drop it!
-    #
-    # # Here we add the dense extra layer just for architectural symmetry with the encoder.
-    # x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
-    # x = tf.keras.layers.PReLU()(x)
-    x = decoder_inputs
-
-    # The size of the final encoder convolution output depends on the model variant.
-    x = tf.keras.layers.Dense(units=prod(encoder_cnn_final_shape))(x)
-    x = tf.keras.layers.PReLU()(x)
-    x = tf.keras.layers.Reshape(target_shape=encoder_cnn_final_shape)(x)
-
-    # Now we are at the point of the architecture where we have the Conv2D output,
-    # so let's mirror the encoder architecture to return to the input space.
-    #
-    # Note no activation function in the output layer - we want arbitrary real numbers as output.
-    # The output will be interpreted as parameters `P` for the observation model pθ(x|z).
-    # Here we want just something convenient that we can remap as necessary.
-
-    if variant == 0:  # Classical VAE
-        x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-                                            strides=2, padding="same")(x)     # 7×7×64 → 14×14×32
-        x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=2,
-                                            padding="same")(x)                # 14×14×32 → 28×28×1
-
-    elif variant == 1:  # ResNet attempt 1 (performs about as well as attempt 2)
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, bottleneck_factor=1)(x)    # 7×7×64 → 7×7×64
-        x = tf.keras.layers.Conv2DTranspose(filters=32, kernel_size=3, activation="relu",
-                                            strides=2, padding="same")(x)                  # 7×7×64 → 14×14×32
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, bottleneck_factor=1)(x)    # 14×14×32 → 14×14×32
-        x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3,
-                                            strides=2, padding="same")(x)                  # 14×14×32 → 28×28×1
-
-    elif variant == 2:  # ResNet attempt 2 - large shallow model, good results
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-                                     bottleneck_factor=1)(x)                   # 7×7×64 → 7×7×64
-        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                        bottleneck_factor=1)(x)                # 7×7×64 → 14×14×32
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                     bottleneck_factor=1)(x)                   # 14×14×32 → 14×14×32
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-                                        bottleneck_factor=1)(x)                # 14×14×32 → 28×28×1
-
-    elif variant == 3:  # ResNet attempt 3 - default bottleneck factor of 4, smaller model, but more blurred output
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
-        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)                      # 14×14×32 → 28×28×1
-
-    elif variant == 4:  # ResNet attempt 4
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu")(x)     # 7×7×64 → 7×7×64
-        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)  # 7×7×64 → 14×14×32
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu")(x)     # 14×14×32 → 14×14×32
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)                      # 14×14×32 → 28×28×1
-
-    elif variant == 5:  # ResNet attempt 5
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-                                     bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
-                                     bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                        bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                     bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                     bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)  # 14×14×32 → 28×28×1
-
-    elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
-        for _ in range(3):
+        elif variant == 5:  # ResNet attempt 5
             x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
                                          bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
-        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
-                                        bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
-        for _ in range(3):
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                         bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+            x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                            bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
             x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
                                          bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)  # 14×14×32 → 28×28×1
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                         bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)  # 14×14×32 → 28×28×1
 
-    elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 755 810 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
-        x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                       bottleneck_factor=2)(x)
-        x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                        bottleneck_factor=2)(x)
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                       bottleneck_factor=2)(x)
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-                                        bottleneck_factor=2)(x)
+        elif variant == 6:  # ResNet attempt 6 - deeper network (more layers) - very good results
+            for _ in range(3):
+                x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation="relu",
+                                             bottleneck_factor=2)(x)     # 7×7×64 → 7×7×64
+            x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                            bottleneck_factor=2)(x)  # 7×7×64 → 14×14×32
+            for _ in range(3):
+                x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation="relu",
+                                             bottleneck_factor=2)(x)     # 14×14×32 → 14×14×32
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3)(x)  # 14×14×32 → 28×28×1
 
-    elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                       bottleneck_factor=2)(x)
-        x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                        bottleneck_factor=2)(x)
+        elif variant == 7:  # ResNet attempt 7 - wider network (more channels), 755 810 parameters, 4.4GB total VRAM usage (during training, for complete CVAE)
+            x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
+            x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                            bottleneck_factor=2)(x)
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                            bottleneck_factor=2)(x)
 
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                       bottleneck_factor=2)(x)
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-                                        bottleneck_factor=2)(x)
+        elif variant == 8:  # Dropout experiment - dropout after each spatial level (14×14, 7×7)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
+            x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                            bottleneck_factor=2)(x)
 
-    elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
-        x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                       bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
-        x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                        bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                            bottleneck_factor=2)(x)
 
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
-        x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                       bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
-        x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
-                                        bottleneck_factor=2)(x)
+        elif variant == 9:  # Dropout experiment 2 - dropout after each ResNet block; best results up to this point (test ELBO 1360)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                            bottleneck_factor=2)(x)
 
-    elif variant == 10:
-        # Level 4
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
-        x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                       bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = ProjectionBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = ConvolutionBlockTranspose2D(filters=1, kernel_size=3,
+                                            bottleneck_factor=2)(x)
 
-        # Level 3
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
-        x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3,
-                                        bottleneck_factor=2)(x)
+        elif variant == 10:
+            # Level 4
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
 
-        # Level 2
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
-        x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
-        x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3,
-                                        bottleneck_factor=2)(x)
+            # Level 3
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3,
+                                            bottleneck_factor=2)(x)
 
-        # Level 1
-        x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
-        x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
-                                     bottleneck_factor=2)(x)
+            # Level 2
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3,
+                                            bottleneck_factor=2)(x)
 
-        # The inverse of the final two-thirds of a bottleneck block:
-        # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
-        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
-        x = tf.keras.layers.Conv2DTranspose(filters=16, kernel_size=1,
-                                            kernel_initializer="he_normal",
-                                            padding="same")(x)
-        x = tf.keras.layers.PReLU()(x)
-        x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
-        x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=1,
-                                            kernel_initializer="he_normal",
-                                            padding="same")(x)
-        x = tf.keras.layers.PReLU()(x)
+            # Level 1
+            x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
 
-    else:
-        raise ValueError(f"Unknown model variant {variant}, see source code for available models")
+            # The inverse of the final two-thirds of a bottleneck block:
+            # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+            x = tf.keras.layers.Conv2DTranspose(filters=16, kernel_size=1,
+                                                kernel_initializer="he_normal",
+                                                padding="same")(x)
+            x = tf.keras.layers.PReLU()(x)
+            x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+            x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=1,
+                                                kernel_initializer="he_normal",
+                                                padding="same")(x)
+            x = tf.keras.layers.PReLU()(x)
 
-    # Cast final output of decoder to float32. Important when running under a mixed-precision policy.
-    # We do this also for float32 (it's then a no-op), so that the topology of the NN does not depend on the policy.
-    #
-    # Should use slightly less VRAM, if done here as a separate operation (need at most 2 float32s per pixel)
-    # instead of using float32 as the dtype of the final convolution transpose block (which does actual compute).
-    #   https://tensorflow.org/guide/mixed_precision
-    decoder_outputs = tf.keras.layers.Activation("linear", dtype="float32")(x)  # identity function, cast only
+        elif variant == 11:  # Otherwise like 10, but with extra skip-connections. Test ELBO 1362.
+            # Inspired by skip-VAE of Dieng et al. (2019); connect the code point `z` to the input of each decoder layer.
+            #     https://arxiv.org/pdf/1807.04863.pdf
+            # As to how to connect it when we don't use a conditional decoder that can accept concatenated inputs
+            # (like the Gated PixelCNN of van den Oord et al., used in the original study), see the code by Dieng et al.:
+            #     https://github.com/yoonkim/skip-vae/blob/master/models_img_skip.py
+            # Especially, see the `MLPVAE`, which just projects by a `torch.nn.Linear` layer (the Keras equivalent
+            # of which is a `tf.keras.layers.Dense` with default settings), and then adds the result to `x`,
+            # much like a residual connection.
+            #
+            # So we're essentially just setting up classical residual connections. However, by connecting them
+            # directly to the decoder inputs (code point `z`), this path is shorter, and thus promotes the use
+            # of different information than the residual path through the ResNet blocks.
+            def connect_input(x):
+                # HACK, because no `.numpy()` method available at this stage
+                x_shape = tf.shape(x)._inferred_value[1:]  # ignore batch dimension
+                skip = tf.keras.layers.Dense(units=prod(x_shape))(decoder_inputs)
+                skip = tf.keras.layers.Reshape(target_shape=x_shape)(skip)
+                return tf.keras.layers.Add()([x, skip])
 
-    decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
-    return decoder
+            # Level 4
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=256, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=256, rate=dropout_fraction)(x)
+            x = ProjectionBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                           bottleneck_factor=2)(x)
+
+            # Level 3
+            x = connect_input(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=128, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=128, rate=dropout_fraction)(x)
+            x = ConvolutionBlockTranspose2D(filters=64, kernel_size=3,
+                                            bottleneck_factor=2)(x)
+
+            # Level 2
+            x = connect_input(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=64, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+            x = GNDropoutRegularization(groups=64, rate=dropout_fraction)(x)
+            x = ConvolutionBlockTranspose2D(filters=32, kernel_size=3,
+                                            bottleneck_factor=2)(x)
+
+            # Level 1
+            x = connect_input(x)
+            x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = IdentityBlockTranspose2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
+                                         bottleneck_factor=2)(x)
+
+            # The inverse of the final two-thirds of a bottleneck block:
+            # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)
+            x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+            x = tf.keras.layers.Conv2DTranspose(filters=16, kernel_size=1,
+                                                kernel_initializer="he_normal",
+                                                padding="same")(x)
+            x = tf.keras.layers.PReLU()(x)
+            x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
+            x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=3, strides=1,
+                                                kernel_initializer="he_normal",
+                                                padding="same")(x)
+            x = tf.keras.layers.PReLU()(x)
+
+        else:
+            raise ValueError(f"Unknown model variant {variant}, see source code for available models")
+
+        # Cast final output of decoder to float32. Important when running under a mixed-precision policy.
+        # We do this also for float32 (it's then a no-op), so that the topology of the NN does not depend on the policy.
+        #
+        # Should use slightly less VRAM, if done here as a separate operation (need at most 2 float32s per pixel)
+        # instead of using float32 as the dtype of the final convolution transpose block (which does actual compute).
+        #   https://tensorflow.org/guide/mixed_precision
+        decoder_outputs = tf.keras.layers.Activation("linear", dtype="float32")(x)  # identity function, cast only
+
+        return tf.keras.Model(decoder_inputs, decoder_outputs, name="decoder")
+
+    encoder = make_encoder()
+    decoder = make_decoder()
+    return encoder, decoder
+
 
 class CVAE(tf.keras.Model):
     """Convolutional variational autoencoder.
@@ -620,8 +684,7 @@ class CVAE(tf.keras.Model):
         super().__init__()
         self.latent_dim = latent_dim
         self.variant = variant
-        self.encoder, encoder_cnn_final_shape = make_encoder(variant)
-        self.decoder = make_decoder(variant, encoder_cnn_final_shape)
+        self.encoder, self.decoder = make_codec(variant)
         # https://keras.io/guides/customizing_what_happens_in_fit/#going-lowerlevel
         self.loss_tracker = tf.keras.metrics.Mean(name="loss")
 
