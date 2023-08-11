@@ -760,8 +760,8 @@ class CVAE(tf.keras.Model):
     #   - Overriding `train_step` customizes what `fit` does
     #   - Overriding `test_step` customizes what `evaluate` does
     #   - Overriding `call` customizes what `predict` does, but:
-    #     - if no custom `train_step`, also affects `fit` (calls the model with `training=True`)
-    #     - if no custom `test_step`, also affects `evaluate` (calls the model with `training=False`)
+    #     - if no custom `train_step`, also affects `fit` (which calls the model with `training=True`)
+    #     - if no custom `test_step`, also affects `evaluate` (which calls the model with `training=False`)
 
     @tf.function
     def train_step(self, x):
