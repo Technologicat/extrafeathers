@@ -48,20 +48,73 @@ dropout_fraction = 0.1
 #     `(μ, log σ)`. (We would need to reduce it into a sample anyway when computing
 #     the Monte Carlo approximation to the ELBO loss.)
 #
+# Note the encoder/decoder don't need to be mirror images. Actually, in a VAE they are
+# completely separate entities, and can be *anything* that is applicable to the desired job.
+# The only point of connection between them is the latent representation. All we need are
+# two highly nonlinear functions:
+#   - Encoder: takes an input picture and extracts its features into a code.
+#   - Decoder: takes such a code, and draws the corresponding picture.
+# The reason for packaging these functions into a VAE for joint training is that this
+# forces the learned code to become Lipschitz-continuous (with a reasonably small Lipschitz parameter),
+# i.e. makes it so that *any* small change in the input picture maps to small change in the code point.
+#
+# The decoder can be thought of as a conditional generative model, conditioned on the code point `z`.
+# This is somewhat like Stable Diffusion, but much smaller and more limited, the code point playing
+# the role of the prompt. Also the encoder can be thought of as a relative of img2img, to get the latent
+# representation for a given image. (Though since we don't add noise during inference, the learned mapping
+# becomes deterministic - which is what makes this useful as a computational accelerator.)
+
+# See e.g. the study by Dieng et al. (2019), which uses a ResNet as the encoder, and a Gated PixelCNN
+# as the decoder:
+#   https://arxiv.org/pdf/1807.04863.pdf
+#
 # TODO: Parameterize the input data shape. The encoder is currently hardcoded for 28×28×1.
 # TODO: Note also the decoder, which reshapes to 7×7×n just before feeding the
 # TODO: first convolution-transpose layer, and finally outputs 28×28×1.
 #
 # TODO: Improve the NN architecture?
 #
+# Implement a PINN (physically informed neural network) mechanism for penalizing the deviation of a decoded image
+# from a valid numerical solution of a given PDE.
+#
 # Try various different kernel sizes?
 #
 # A spatial pyramid pooling (SPP) layer before the final fully connected layer(s) is also an
 # option. This is especially useful for producing a fixed-length representation for varying input
-# image sizes. But is there an inverse of SPP, for the decoder?
+# image sizes. But is there an inverse of SPP, for the decoder? (No, but strictly we don't need one;
+# see above.)
 #   https://arxiv.org/abs/1406.4729
 #   https://github.com/yhenon/keras-spp
 #
+# Explore skip-connections more fully.
+#   - At least two styles exist for re-using inputs of earlier layers: ResNet, and concatenation.
+#   - Skip-connections from an encoder layer to the decoder layer of the same size?
+#     - This kind of architecture is commonly seen in autoencoder designs used for approximating PDE solutions
+#       (PINNs, physically informed neural networks); it should speed up training of the encoder/decoder combination
+#       by allowing the decoded output to directly influence the weights on the encoder side.
+#         - Using the functional API, we should be able to set up three `Model`s that share layer instances:
+#           the encoder, the decoder, and (for training) the full autoencoder that combines both and adds the
+#           skip-connections from the encoder side to the decoder side.
+#         - But how to run such a network in decoder-only mode (i.e. generative mode), where the encoder layers are not available?
+#           For real data, we could save the encoder layer states as part of the coded representation. But for generating new data, that's a no-go.
+#     - OTOH, maybe we shouldn't do that; in unsupervised learning (such as in a VAE), where the goal is to explain and reconstruct the input
+#       by applying a bottleneck simplification, the encoder and decoder should be thought of as separate entities. The goal of a VAE is representation
+#       learning, not perfect reconstruction (which would be trivial if the skip-connections did all the work; this would make the learned representation
+#       completely useless). This is different from supervised learning, such as in a U-Net, where the output is a segmentation map; crucially, in that case
+#       the goal is NOT a reconstruction of the input! In such cases, connecting the similarly sized layers between the halves of the "U" does indeed help.
+#           https://www.reddit.com/r/deeplearning/comments/ds1245/comment/f6mqy4q/
+#       See the original U-Net paper by Ronneberger et al. (2015). The authors explain in the abstract that the "contracting path [...]
+#       captures context", while the "symmetric expanding path" (connected with such cross-skip-connections) "enables precise localization"
+#       of that context in the network output (i.e. in the segmentation map).
+#           https://arxiv.org/pdf/1505.04597.pdf
+#     - What we could do instead:
+#       - In the encoder, connect also lower-level feature maps from previous CNN layers to the `Dense` layer that computes the latent representation.
+#         Not sure if this will help, though, because we want the latent representation to encode high-level features, which live in the output of the
+#         final CNN layer.
+#       - In the decoder, add skips from the code point `z` to each layer; see the skip-VAE by Dieng et al. (2019):
+#           https://arxiv.org/pdf/1807.04863.pdf
+#         This adds a shorter path that promotes the use of different information (vs. going through the decoder ResNet blocks).
+
 def make_encoder(variant):
     """Set up an encoder neural network for a CVAE.
 
