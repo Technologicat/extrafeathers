@@ -342,7 +342,7 @@ def make_encoder(variant):
 
     x = tf.keras.layers.Flatten()(x)
 
-    # TODO: How well does this work without the extra Dense layer?
+    # TODO: How well does this work without the extra Dense layer? Better; let's drop it!
     #
     # # VRAM saving trick from the Keras example: the encoder has *two* outputs: mean and logvar. Hence,
     # # if we add a small dense layer after the convolutions, and connect that to the outputs, we will have
@@ -386,7 +386,7 @@ def make_decoder(variant, encoder_cnn_final_shape):
     # decoder - exact mirror image of encoder (w.r.t. tensor sizes at each step)
     decoder_inputs = tf.keras.Input(shape=(latent_dim,))
 
-    # How well does this work without the extra Dense layer?
+    # How well does this work without the extra Dense layer? Better; let's drop it!
     #
     # # Here we add the dense extra layer just for architectural symmetry with the encoder.
     # x = tf.keras.layers.Dense(units=extra_layer_size)(decoder_inputs)
