@@ -133,7 +133,22 @@ import unpythonic.net.server as repl_server
 #     https://github.com/run-ai/runai/tree/master/runai/ga
 #     How this interacts with the loss-scaling wrapper is an open question (which order should we nest them in?).
 
-# TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step to compress into 2d. Process the `z` space via e.g. diffusion maps or t-SNE.
+# TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step to compress into 2d.
+#  - We should keep the embedding as stable as possible so as to facilitate making animations. Deterministic methods are preferable.
+#    At the very least, if the method is stochastic, we should use a deterministic initialization (such as PCA for t-SNE).
+#  - Spectral embedding (Laplacian eigenmaps) is equivalent with diffusion maps. See Böhm et al. (2022, Appendix A):
+#      https://arxiv.org/abs/2007.08902
+#  - `scikit-learn` implements many dimension reduction methods:
+#      https://scikit-learn.org/stable/modules/manifold.html
+#  - Detecting the dimension of the manifold:
+#      The reconstruction error computed by each routine can be used to choose the optimal output dimension.
+#      For a `d`-dimensional manifold embedded in a `D`-dimensional parameter space, the reconstruction error
+#      will decrease as `n_components` is increased until `n_components == d`.
+#
+#      Note that noisy data can "short-circuit" the manifold, in essence acting as a bridge between parts
+#      of the manifold that would otherwise be well-separated. Manifold learning on noisy and/or incomplete
+#      data is an active area of research.
+#        https://scikit-learn.org/stable/modules/manifold.html#tips-on-practical-use
 
 # TODO: For handling experimental data, add denoising, see e.g. https://davidstutz.de/denoising-variational-auto-encoders/
 #   - The implementation is a small modification to the ELBO objective, but the theory behind it is significantly different from the classical VAE.
