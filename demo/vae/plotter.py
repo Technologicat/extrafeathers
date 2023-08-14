@@ -9,6 +9,7 @@ from collections import defaultdict
 import math
 import typing
 
+from unpythonic import timer
 from unpythonic.env import env
 
 import numpy as np
@@ -17,6 +18,9 @@ import matplotlib.pyplot as plt
 
 import tensorflow as tf
 import tensorflow_probability as tfp
+
+import sklearn.manifold  # for visualizing latent spaces of dimension > 2
+import sklearn.preprocessing
 
 from extrafeathers import plotmagic
 
@@ -605,5 +609,119 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     fig.set_figwidth(fig.get_figheight() * 1.2)
     onresize(None)  # force-update overlay position once, even if no resizing took place
 
+    plt.draw()
+    plotmagic.pause(0.1)  # force redraw
+
+
+# TODO: make a version compatible with `plot_latent_image` so that we can `overlay_datapoints` on this (to see the variances).
+def plot_manifold(x: tf.Tensor,
+                  labels: tf.Tensor,
+                  alpha: float = 0.1,
+                  model: typing.Optional[CVAE] = None,
+                  epoch: typing.Optional[int] = None,
+                  figno: int = 1) -> None:
+    """Plot learned manifold in 3+ dimensional latent space, via dimension reduction to 2D.
+
+    `x`: tensor of shape [N, 28, 28, 1], containing training and/or test images.
+    `labels`: tensor of shape [N], integer labels corresponding to the data points.
+    `alpha`: opacity of the scatterplot points.
+    `model`: `CVAE` instance, or `None` to use the default instance.
+    `epoch`: if specified, included in the figure title.
+    `figno`: matplotlib figure number.
+
+    This makes a scatterplot with the integer labels, applying the following dimension
+    reduction algorithms from `scikit-learn`, each in its own subplot:
+
+      - LTSA: Local Tangent Space Alignment
+      - MLLE: Modified Locally Linear Embedding
+      - MDS: MultiDimensional Scaling
+      - SE: Spectral Embedding a.k.a. laplacian eigenmap; equivalent to diffusion map.
+
+    These particular methods were chosen because each produces different-looking results
+    for some toy datasets, and they are all rather fast (compared to t-SNE). Still,
+    dimension reduction in general is slow; e.g. for 4000 datapoints, on the dev machine:
+        LTSA: 12.6s, MLLE: 4.2s, MDS: 25.9s, SE: 2.8s
+
+    We suggest something like::
+
+        plot_manifold(test_images[:4000, :, :, :], test_labels[:4000])
+
+    to keep things semi-fast.
+
+    For more information, see:
+        https://scikit-learn.org/stable/modules/manifold.html
+    """
+    if model is None:
+        from . import main
+        model = main.model
+    assert isinstance(model, CVAE)
+
+    # Compute latent representation (now `z` has ≥ 3 dimensions)
+    mean, logvar = model.encoder.predict(x, batch_size=1024)
+    ignored_eps, z = model.reparameterize(mean, logvar)
+
+    # Reduce dimension, using several different methods. Helpful code examples:
+    #   https://scikit-learn.org/stable/auto_examples/manifold/plot_compare_methods.html
+    #   https://scikit-learn.org/stable/auto_examples/manifold/plot_manifold_sphere.html
+    #   https://scikit-learn.org/stable/auto_examples/manifold/plot_lle_digits.html
+    # TODO: tune dimension reduction parameters (esp. the number of neighbors)
+    k = 100  # number of neighbors
+    d = 2    # target dimension
+    ltsa = sklearn.manifold.LocallyLinearEmbedding(n_components=d,
+                                                   n_neighbors=k,
+                                                   method="ltsa")  # Local Tangent Space Alignment
+    mlle = sklearn.manifold.LocallyLinearEmbedding(n_components=d,
+                                                   n_neighbors=k,
+                                                   method="modified")  # Modified Locally Linear Embedding
+    mds = sklearn.manifold.MDS(n_components=d,
+                               n_init=1,
+                               max_iter=120,
+                               n_jobs=2,
+                               normalized_stress="auto")  # MultiDimensional Scaling  # TODO: tune params?
+    spectral = sklearn.manifold.SpectralEmbedding(n_components=d,
+                                                  random_state=0,
+                                                  eigen_solver="arpack")  # laplacian eigenmap; equivalent to diffusion map
+
+    transformers = (("LTSA", ltsa), ("MLLE", mlle), ("MDS", mds), ("SE", spectral))
+    z = sklearn.preprocessing.MinMaxScaler().fit_transform(z)
+    data = []  # dimension-reduced latent data
+    for name, transformer in transformers:
+        print(f"Reducing dimension with transformer {name}...")
+        with timer() as tim:
+            data.append((name, transformer.fit_transform(z, labels)))
+        print(f"    Done in {tim.dt:0.6g}s.")
+    print("Plotting manifold.")
+
+    # Plot the result
+    #
+    fig = plt.figure(figno)
+    if not fig.axes:
+        plt.subplot(2, 2, 1)  # create Axes
+        fig.set_figwidth(10)
+        fig.set_figheight(10)
+    fig.tight_layout()  # prevent axes crawling
+
+    for sub, (name, zhat) in enumerate(data):
+        print(f"Plotting results of transformer {name}...")
+        with timer() as tim:
+            ax = plt.subplot(2, 2, 1 + sub)
+            ax.cla()
+            plt.sca(ax)
+            for digit in range(min(labels), max(labels) + 1):
+                ax.scatter(*zhat[labels == digit].T,
+                           marker=f"${digit}$",
+                           s=60,
+                           color=plt.cm.Dark2(digit),
+                           alpha=0.425,
+                           zorder=2)
+            ax.axis("off")
+            ax.set_title(name)
+        print(f"    Done in {tim.dt:0.6g}s.")
+    print("Manifold plotting done.")
+
+    epoch_str = f"; epoch {epoch}" if epoch is not None else ""
+    plt.suptitle(f"Latent manifold{epoch_str}")
+
+    fig.tight_layout()
     plt.draw()
     plotmagic.pause(0.1)  # force redraw
