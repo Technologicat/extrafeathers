@@ -278,6 +278,7 @@ lr_schedule = clr.ExponentialCyclicalLearningRate(lr0=INIT_LR,
 # exit(0)
 
 # Choose the optimizer algorithm. This can be any Keras optimizer that takes in a `learning_rate` kwarg.
+# Optimizer = tf.keras.optimizers.SGD  # 5% faster than Adam, and produces clear cycles in the ELBO graphs, but converges slower, and the final result is not as good.
 Optimizer = tf.keras.optimizers.Adam
 
 # --------------------------------------------------------------------------------
