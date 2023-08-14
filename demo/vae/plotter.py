@@ -82,9 +82,9 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     ax.cla()
     plt.sca(ax)
     fig.tight_layout()  # prevent axes crawling
+
     ax.imshow(image, cmap="Greys_r", vmin=0.0, vmax=1.0)
     ax.axis("off")
-
     epoch_str = f"; epoch {epoch}" if epoch is not None else ""
     ax.set_title(f"Test sample (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$){epoch_str}")
 
