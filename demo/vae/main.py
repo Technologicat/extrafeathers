@@ -174,6 +174,7 @@ import unpythonic.net.server as repl_server
 #  - To classify a new data point, encode it. Use the labels of nearby training code points to predict what the class should be.
 #  - E.g., form a confidence score for each class, based on an inverse-distance-weighted proportion of each training label within some configurable radius r.
 
+from collections import defaultdict
 import shutil
 import sys
 
@@ -338,23 +339,54 @@ def main():
 
     # Train the model
 
-    num_examples_to_generate = 16
-
     # Keeping the random vector constant for generation (prediction), it will be easier to see the improvement.
+    # num_examples_to_generate = 16
     # random_vector_for_generation = tf.random.normal(shape=[num_examples_to_generate, latent_dim])
 
-    # Or... we can pick a sample of the test set for generating the corresponding reconstructed images.
-    assert num_examples_to_generate <= batch_size
-    for test_batch in test_dataset.take(1):
-        test_sample = test_batch[0:num_examples_to_generate, :, :, :]
+    # # Or... we can pick a sample of the test set for generating the corresponding reconstructed images (roundtrip through the VAE).
+    # num_examples_to_generate = 16
+    # assert num_examples_to_generate <= batch_size
+    # for test_batch in test_dataset.take(1):
+    #     test_sample = test_batch[0:num_examples_to_generate, :, :, :]
+
+    # Or... improving further, pick a sample containing `n` examples from each class.
+    n_per_class = 10
+    def prepare_test_sample():  # just a namespace to drop temporaries to the GC as early as possible (don't keep unnecessary copies of the test data in RAM)
+        test_examples_dict = defaultdict(list)
+        for label, image in zip(test_labels, test_images):
+            test_examples_dict[label].append(image)
+            counts_by_class = [len(v) for v in test_examples_dict.values()]
+            if min(counts_by_class) >= n_per_class:
+                break
+        n_classes = len(test_examples_dict)
+        assert n_classes == 10  # MNIST digits data
+        test_examples_dict = {k: v[:n_per_class] for k, v in test_examples_dict.items()}  # cut away any extra examples from each class
+        test_examples_list = sorted(test_examples_dict.items(), key=lambda kv: kv[0])  # sort the classes: 0s first, then 1s, ...
+        test_examples_list = [v[1] for v in test_examples_list]  # drop class labels
+        test_examples_list = [tf.stack(v) for v in test_examples_list]  # stack the examples within each class
+        test_sample = tf.concat(test_examples_list, axis=0)  # merge the stacks into a single batch (now containing examples of all classes, in sorted order)
+        assert test_sample.shape[0] == n_classes * n_per_class
+        return test_sample
+    test_sample = prepare_test_sample()
+
+    # # Recipe for finding dict keys from an unknown TF dataset:
+    # # https://stackoverflow.com/questions/48825785/how-can-i-filter-tf-data-dataset-by-specific-values
+    # import json
+    # from google.protobuf.json_format import MessageToJson
+    # for raw_record in no_idea_dataset.take(1):
+    #     example = tf.train.Example()
+    #     example.ParseFromString(raw_record.numpy())
+    #     ##print(example) ##if image it will be toooolong
+    #     m = json.loads(MessageToJson(example))
+    #     print(m['features']['feature'].keys())
 
     # Debug / info
     model.encoder.summary()
     model.decoder.summary()
 
     # Plot the random initial state
-    plot_test_sample_image(test_sample, epoch=0, figno=1)
-    plot_test_sample_image(test_sample, epoch=0, figno=1)  # and again to prevent axes crawling
+    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=n_per_class)
+    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=n_per_class)  # and again to prevent axes crawling
     fig1.savefig(f"{output_dir}{test_sample_fig_basename}_0000.{fig_format}")
     fig1.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
@@ -396,7 +428,7 @@ def main():
             # Plot the progress
             with timer() as tim_plot:
                 # Test sample
-                plot_test_sample_image(test_sample, epoch=epoch, figno=1)
+                plot_test_sample_image(test_sample, epoch=epoch, figno=1, cols=n_per_class)
                 fig1.savefig(f"{output_dir}{test_sample_fig_basename}_{epoch:04d}.{fig_format}")
                 fig1.canvas.draw_idle()
 
@@ -484,7 +516,7 @@ def main():
                  dst=f"{output_dir}{test_sample_fig_basename}_final.{fig_format}")
     shutil.copy2(src=f"{output_dir}{latent_space_fig_basename}_{best_epoch:04d}.{fig_format}",
                  dst=f"{output_dir}{latent_space_fig_basename}_final.{fig_format}")
-    # plot_test_sample_image(test_sample, figno=1)
+    # plot_test_sample_image(test_sample, figno=1, cols=n_per_class)
     # fig1.savefig(f"{output_dir}{test_sample_fig_basename}_final.{fig_format}")
     # fig1.canvas.draw_idle()
     # latent_image = plot_latent_image(21, figno=3)  # noqa: F841

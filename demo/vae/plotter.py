@@ -6,6 +6,7 @@ __all__ = ["plot_test_sample_image",
            "overlay_datapoints", "remove_overlay"]
 
 from collections import defaultdict
+import math
 import typing
 
 from unpythonic.env import env
@@ -24,13 +25,17 @@ from .cvae import CVAE
 def plot_test_sample_image(test_sample: tf.Tensor, *,
                            model: typing.Optional[CVAE] = None,
                            epoch: typing.Optional[int] = None,
-                           figno: int = 1) -> None:
+                           figno: int = 1,
+                           cols: typing.Optional[int] = None,
+                           zoom: float = 1.0) -> None:
     """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE).
 
-    `test_sample`: tensor of size `[n, 28, 28, 1]`, where `n = 16` (test sample size).
+    `test_sample`: tensor of size `[n, 28, 28, 1]`.
     `model`: `CVAE` instance, or `None` to use the default instance.
     `epoch`: if specified, included in the figure title.
     `figno`: matplotlib figure number.
+    `cols`: number of columns in plot; `None` means `cols = floor(sqrt(n))`.
+    `zoom`: figure size tuning factor. The default is fine for `cols` = 4 ... 10.
     """
     if model is None:
         from . import main
@@ -38,24 +43,31 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     assert isinstance(model, CVAE)
 
     batch_size, n_pixels_y, n_pixels_x, n_channels = tf.shape(test_sample).numpy()
-    assert batch_size == 16, f"This function currently assumes a test sample of size 16, got {batch_size}"
     assert n_channels == 1, f"This function currently assumes grayscale images, got {n_channels} channels"
 
     mean, logvar = model.encoder(test_sample, training=False)
     ignored_eps, z = model.reparameterize(mean, logvar)
     predictions = model.sample(z, training=False)
 
-    n = 4  # how many images per row/column; sqrt(batch_size)
-    image_width = (2 * n + 1) * n_pixels_x  # extra empty column at center, as separator
-    image_height = n * n_pixels_y
+    # If `cols` is not given, auto-pick the most appropriate square layout.
+    # For illustration, consider for example:
+    #   n = 15 → rows=4, cols=4, one empty slot on last row
+    #   n = 16 → rows=4, cols=4, filled exactly
+    #   n = 17 → rows=5, cols=4, only one image on last row
+    if cols is None:
+        cols = math.floor(math.sqrt(batch_size))
+    rows = math.ceil(batch_size / cols)
+
+    image_width = (2 * cols + 1) * n_pixels_x  # extra empty column at center, as separator
+    image_height = rows * n_pixels_y
     image = np.zeros((image_height, image_width))
 
     for i in range(batch_size):
         x_orig = test_sample[i, :, :, 0]
         x_hat = predictions[i, :, :, 0]
-        row, base_col = divmod(i, n)
+        row, base_col = divmod(i, cols)
         col1 = base_col  # original image (input)
-        col2 = base_col + n + 1  # reconstructed image
+        col2 = base_col + cols + 1  # reconstructed image
         image[row * n_pixels_y: (row + 1) * n_pixels_y,
               col1 * n_pixels_x: (col1 + 1) * n_pixels_x] = x_orig.numpy()
         image[row * n_pixels_y: (row + 1) * n_pixels_y,
@@ -64,8 +76,8 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     fig = plt.figure(figno)
     if not fig.axes:
         plt.subplot(1, 1, 1)  # create Axes
-        fig.set_figwidth(8)
-        fig.set_figheight(4)
+        fig.set_figwidth(zoom * float(2 * cols + 1))
+        fig.set_figheight(zoom * float(cols))
     ax = fig.axes[0]
     ax.cla()
     plt.sca(ax)
