@@ -63,19 +63,36 @@ dropout_fraction = 0.1
 # the role of the prompt. Also the encoder can be thought of as a relative of img2img, to get the latent
 # representation for a given image. (Though since we don't add noise during inference, the learned mapping
 # becomes deterministic - which is what makes this useful as a computational accelerator.)
+#
+# The decoder can be *anything*. So, how to compute `log pθ(x|z)` given just a black-box output? Fortunately,
+# we can pretend - just like for the original "mirror-image" NN decoder, after its sigmoid activation - that
+# the decoder output is not actually a picture, but the pixelwise λ parameter for the continuous Bernoulli distribution,
+# and estimate `log pθ(x|z)` accordingly. This is no different from how the original version works; and it works
+# as long as each pixel in the input data is approximately continuous-Bernoulli distributed; which should be true
+# for any picture (at least in the classical low dynamic range regime). Non-pictorial data (such as PDE solution fields)
+# may require tweaking the observation model.
 
 # See e.g. the study by Dieng et al. (2019), which uses a ResNet as the encoder, and a Gated PixelCNN
 # as the decoder:
 #   https://arxiv.org/pdf/1807.04863.pdf
 #
-# TODO: Parameterize the input data shape. The encoder is currently hardcoded for 28×28×1.
-# TODO: Note also the decoder, which reshapes to 7×7×n just before feeding the
-# TODO: first convolution-transpose layer, and finally outputs 28×28×1.
+# And, why do we need a CVAE at all - why not directly use t-SNE, or some other classical dimension reduction method,
+# to produce the latent? This is because the ranges of applicability are different. Methods such as t-SNE take a
+# couple dozen features, and map them down to just a few. A CVAE takes *whole pictures*, which in real applications
+# can be up to megapixels in size, and describes them in those couple dozen features.
+
+# TODO: Parameterize the input data shape. The encoder is currently hardcoded for 28×28×1, a measly 768 pixels,
+# TODO: and it spatially downsamples twice. Note also the decoder architecture, which upsamples twice.
 #
 # TODO: Improve the NN architecture?
 #
 # Implement a PINN (physically informed neural network) mechanism for penalizing the deviation of a decoded image
 # from a valid numerical solution of a given PDE.
+#
+# We may need finite differences (to compute on GPU), or perhaps the Tikhonov-regularized derivative, if data is noisy; see e.g.:
+#   https://ejde.math.txstate.edu/conf-proc/21/k3/knowles.pdf
+#   https://www.researchgate.net/publication/255907171_Numerical_Differentiation_of_Noisy_Nonsmooth_Data
+#   https://www.researchgate.net/profile/Rick-Chartrand/publication/321682456_Numerical_differentiation_of_noisy_nonsmooth_multidimensional_data
 #
 # Try various different kernel sizes?
 #
