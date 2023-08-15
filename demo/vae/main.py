@@ -133,23 +133,6 @@ import unpythonic.net.server as repl_server
 #     https://github.com/run-ai/runai/tree/master/runai/ga
 #     How this interacts with the loss-scaling wrapper is an open question (which order should we nest them in?).
 
-# TODO: For `latent_dim > 2`, in the plotter, add a second dimension reduction step to compress into 2d.
-#  - We should keep the embedding as stable as possible so as to facilitate making animations. Deterministic methods are preferable.
-#    At the very least, if the method is stochastic, we should use a deterministic initialization (such as PCA for t-SNE).
-#  - Spectral embedding (Laplacian eigenmaps) is equivalent with diffusion maps. See Böhm et al. (2022, Appendix A):
-#      https://arxiv.org/abs/2007.08902
-#  - `scikit-learn` implements many dimension reduction methods:
-#      https://scikit-learn.org/stable/modules/manifold.html
-#  - Detecting the dimension of the manifold:
-#      The reconstruction error computed by each routine can be used to choose the optimal output dimension.
-#      For a `d`-dimensional manifold embedded in a `D`-dimensional parameter space, the reconstruction error
-#      will decrease as `n_components` is increased until `n_components == d`.
-#
-#      Note that noisy data can "short-circuit" the manifold, in essence acting as a bridge between parts
-#      of the manifold that would otherwise be well-separated. Manifold learning on noisy and/or incomplete
-#      data is an active area of research.
-#        https://scikit-learn.org/stable/modules/manifold.html#tips-on-practical-use
-
 # TODO: For handling experimental data, add denoising, see e.g. https://davidstutz.de/denoising-variational-auto-encoders/
 #   - The implementation is a small modification to the ELBO objective, but the theory behind it is significantly different from the classical VAE.
 #   - Simulation-based data is clean, shouldn't need a denoiser.
@@ -197,7 +180,8 @@ from . import clr
 from .cvae import CVAE
 from .plotter import (plot_test_sample_image,
                       plot_elbo,
-                      plot_latent_image)
+                      plot_latent_image,
+                      plot_manifold)
 from .util import clear_and_create_directory, preprocess_images
 
 # --------------------------------------------------------------------------------
@@ -213,6 +197,14 @@ test_images = preprocess_images(test_images)
 
 # Choose the model variant. See `cvae.py`.
 variant = 11
+
+# test sample visualization
+n_per_class = 40
+test_sample_columns = 20
+test_sample_zoom = 0.5
+
+# When `latent_dim >= 3`, how many test samples to use to visualize the learned manifold.
+manifold_samples = 4000
 
 # We use the standard definition of "epoch": an epoch is one full pass over the training data set.
 n_epochs = 200
@@ -319,11 +311,15 @@ def main():
     clear_and_create_directory(f"{output_dir}model")
 
     # Set up figures
-    fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))  # test example
+    fig1, axs1 = plt.subplots(1, 1, figsize=(test_sample_zoom * float(2 * test_sample_columns + 1),
+                                             test_sample_zoom * float(test_sample_columns)))  # test example
     fig1.tight_layout()
     fig2, axs2 = plt.subplots(1, 1, figsize=(6, 4))  # ELBO history
     fig2.tight_layout()
-    fig3, axs3 = plt.subplots(1, 1, figsize=(10, 10))  # latent space
+    if latent_dim == 2:
+        fig3, axs3 = plt.subplots(1, 1, figsize=(10, 10))  # latent space
+    else:
+        fig3, axs3 = plt.subplots(1, 1, figsize=(5, 5))  # learned manifold (while training, we'll be plotting in "fast" mode with t-SNE only)
     fig3.tight_layout()
 
     # must call `plt.show` once before `plotmagic.pause` works
@@ -350,7 +346,6 @@ def main():
     #     test_sample = test_batch[0:num_examples_to_generate, :, :, :]
 
     # Or... improving further, pick a sample containing `n` examples from each class.
-    n_per_class = 10
     def prepare_test_sample():  # just a namespace to drop temporaries to the GC as early as possible (don't keep unnecessary copies of the test data in RAM)
         test_examples_dict = defaultdict(list)
         for label, image in zip(test_labels, test_images):
@@ -385,13 +380,17 @@ def main():
     model.decoder.summary()
 
     # Plot the random initial state
-    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=n_per_class)
-    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=n_per_class)  # and again to prevent axes crawling
+    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)
+    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)  # and again to prevent axes crawling
     fig1.savefig(f"{output_dir}{test_sample_fig_basename}_0000.{fig_format}")
     fig1.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
 
-    plot_latent_image(21, figno=3, epoch=0)
-    plot_latent_image(21, figno=3, epoch=0)  # and again to prevent axes crawling
+    if latent_dim == 2:
+        plot_latent_image(21, figno=3, epoch=0)
+        plot_latent_image(21, figno=3, epoch=0)  # and again to prevent axes crawling
+    else:
+        plot_manifold(test_images[:manifold_samples, :, :, :], test_labels[:manifold_samples], methods="fast", figno=3, epoch=0)
+        plot_manifold(test_images[:manifold_samples, :, :, :], test_labels[:manifold_samples], methods="fast", figno=3, epoch=0)  # and again to prevent axes crawling
     fig3.savefig(f"{output_dir}{latent_space_fig_basename}_0000.{fig_format}")
     fig3.canvas.draw_idle()
 
@@ -428,7 +427,7 @@ def main():
             # Plot the progress
             with timer() as tim_plot:
                 # Test sample
-                plot_test_sample_image(test_sample, epoch=epoch, figno=1, cols=n_per_class)
+                plot_test_sample_image(test_sample, epoch=epoch, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)
                 fig1.savefig(f"{output_dir}{test_sample_fig_basename}_{epoch:04d}.{fig_format}")
                 fig1.canvas.draw_idle()
 
@@ -445,7 +444,11 @@ def main():
                 fig2.canvas.draw_idle()
 
                 # Latent space
-                plot_latent_image(21, figno=3, epoch=epoch)
+                if latent_dim == 2:
+                    plot_latent_image(21, figno=3, epoch=epoch)
+                    # overlay_datapoints(train_images, train_labels, e)  # very slow, let's not do it while training
+                else:
+                    plot_manifold(test_images[:manifold_samples, :, :, :], test_labels[:manifold_samples], methods="fast", figno=3, epoch=epoch)
                 fig3.savefig(f"{output_dir}{latent_space_fig_basename}_{epoch:04d}.{fig_format}")
                 fig3.canvas.draw_idle()
 

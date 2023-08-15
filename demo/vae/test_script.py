@@ -46,8 +46,13 @@ main.model = tf.keras.models.load_model(f"{config.output_dir}model/{snapshot}.ke
 
 # plt.ion()  # interactive mode doesn't seem to work well with our heavily customized overlay plot
 
-e = plotter.plot_latent_image(21)
-plotter.overlay_datapoints(train_images, train_labels, e)
+if main.model.latent_dim == 2:
+    latent_image = plotter.plot_latent_image(21)
+    plotter.overlay_datapoints(train_images, train_labels, latent_image)
+else:
+    n = 4000  # in practice fine
+    # n = test_images.shape[0]  # using all of the data is VERY slow, but gives the best view.
+    plotter.plot_manifold(test_images[:n, :, :, :], test_labels[:n], methods="all")
 
 fig = plt.figure(1)
 fig.savefig(f"{config.output_dir}{config.overlay_fig_basename}_{snapshot}_from_test_script.{config.fig_format}")

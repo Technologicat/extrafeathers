@@ -19,8 +19,11 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-import sklearn.manifold  # for visualizing latent spaces of dimension > 2
+# for visualizing learned manifold in latent spaces of dimension > 2
+import sklearn.manifold
 import sklearn.preprocessing
+import openTSNE
+import umap
 
 from extrafeathers import plotmagic
 
@@ -613,18 +616,45 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     plotmagic.pause(0.1)  # force redraw
 
 
+# For `latent_dim > 2`, a second dimension reduction step to compress into 2d.
+#  - We should keep the embedding as stable as possible so as to facilitate making animations. Deterministic methods are preferable.
+#    At the very least, if the method is stochastic, we should use a deterministic initialization (such as PCA for t-SNE).
+#  - Detecting the dimension of the manifold:
+#      The reconstruction error computed by each routine can be used to choose the optimal output dimension.
+#      For a `d`-dimensional manifold embedded in a `D`-dimensional parameter space, the reconstruction error
+#      will decrease as `n_components` is increased until `n_components == d`.
+#
+#      Note that noisy data can "short-circuit" the manifold, in essence acting as a bridge between parts
+#      of the manifold that would otherwise be well-separated. Manifold learning on noisy and/or incomplete
+#      data is an active area of research.
+#        https://scikit-learn.org/stable/modules/manifold.html#tips-on-practical-use
+#
 # TODO: make a version compatible with `plot_latent_image` so that we can `overlay_datapoints` on this (to see the variances).
 def plot_manifold(x: tf.Tensor,
                   labels: tf.Tensor,
-                  alpha: float = 0.1,
+                  k: int = 100,
+                  alpha: float = 0.2,
+                  methods: str = "all",
                   model: typing.Optional[CVAE] = None,
                   epoch: typing.Optional[int] = None,
                   figno: int = 1) -> None:
     """Plot learned manifold in 3+ dimensional latent space, via dimension reduction to 2D.
 
+    Dimension reduction in general is slow. We suggest limiting the amount of data::
+
+        n = 4000
+        plot_manifold(test_images[:n, :, :, :], test_labels[:n])
+
     `x`: tensor of shape [N, 28, 28, 1], containing training and/or test images.
     `labels`: tensor of shape [N], integer labels corresponding to the data points.
+    `k`: number of nearest neighbors to consider in dimension reduction algorithms
+         that use a neighborhood. Note some algorithms have quadratic cost in `k`.
     `alpha`: opacity of the scatterplot points.
+    `methods`: one of:
+            "fast": Apply only the fastest algorithm (t-SNE). For online visualization
+                    during training.
+            "all":  Apply all algorithms (see below), producing a 2x3 grid of subplots.
+                    For visualization of final results, to get the most insight.
     `model`: `CVAE` instance, or `None` to use the default instance.
     `epoch`: if specified, included in the figure title.
     `figno`: matplotlib figure number.
@@ -632,24 +662,20 @@ def plot_manifold(x: tf.Tensor,
     This makes a scatterplot with the integer labels, applying the following dimension
     reduction algorithms from `scikit-learn`, each in its own subplot:
 
-      - LTSA: Local Tangent Space Alignment
-      - MLLE: Modified Locally Linear Embedding
-      - MDS: MultiDimensional Scaling
+      - UMAP: Uniform Manifold Approximation and Projection
+      - MDS: MultiDimensional Scaling (preserves distance in high-dimensional ambient space)
+      - ISOMAP (preserves distance *along manifold*)
       - SE: Spectral Embedding a.k.a. laplacian eigenmap; equivalent to diffusion map.
+      - t-SNE: t-distributed Stochastic Neighbor Embedding
 
-    These particular methods were chosen because each produces different-looking results
-    for some toy datasets, and they are all rather fast (compared to t-SNE). Still,
-    dimension reduction in general is slow; e.g. for 4000 datapoints, on the dev machine:
-        LTSA: 12.6s, MLLE: 4.2s, MDS: 25.9s, SE: 2.8s
+    If `openTSNE` is installed, it is used instead of `scikit-learn` to compute the t-SNE.
 
-    We suggest something like::
-
-        plot_manifold(test_images[:4000, :, :, :], test_labels[:4000])
-
-    to keep things semi-fast.
+    `UMAP` is available if `umap-learn` is installed.
 
     For more information, see:
         https://scikit-learn.org/stable/modules/manifold.html
+        https://opentsne.readthedocs.io/en/stable/
+        https://umap-learn.readthedocs.io/en/latest/
     """
     if model is None:
         from . import main
@@ -660,67 +686,197 @@ def plot_manifold(x: tf.Tensor,
     mean, logvar = model.encoder.predict(x, batch_size=1024)
     ignored_eps, z = model.reparameterize(mean, logvar)
 
-    # Reduce dimension, using several different methods. Helpful code examples:
+    # Scale the latent for postprocessing by dimension reduction
+    z = sklearn.preprocessing.MinMaxScaler().fit_transform(z)
+
+    # Reduce dimension, using several different methods.
+    # Configure the transformers.
+    #
+    # Helpful code examples (with links to API docs):
     #   https://scikit-learn.org/stable/auto_examples/manifold/plot_compare_methods.html
     #   https://scikit-learn.org/stable/auto_examples/manifold/plot_manifold_sphere.html
     #   https://scikit-learn.org/stable/auto_examples/manifold/plot_lle_digits.html
-    # TODO: tune dimension reduction parameters (esp. the number of neighbors)
-    k = 100  # number of neighbors
     d = 2    # target dimension
-    ltsa = sklearn.manifold.LocallyLinearEmbedding(n_components=d,
-                                                   n_neighbors=k,
-                                                   method="ltsa")  # Local Tangent Space Alignment
-    mlle = sklearn.manifold.LocallyLinearEmbedding(n_components=d,
-                                                   n_neighbors=k,
-                                                   method="modified")  # Modified Locally Linear Embedding
+    n_jobs = 6  # number of parallel jobs, where applicable (note not all methods parallelize well even if they take this arg)
+    random_state = 42  # RNG seed
+
+    # # Not useful for CVAE-encoded MNIST data
+    # # Local Tangent Space Alignment
+    # ltsa = sklearn.manifold.LocallyLinearEmbedding(n_components=d,
+    #                                                n_neighbors=k,
+    #                                                n_jobs=n_jobs,
+    #                                                random_state=random_state,
+    #                                                method="ltsa")
+    # # Modified Locally Linear Embedding
+    # mlle = sklearn.manifold.LocallyLinearEmbedding(n_components=d,
+    #                                                n_neighbors=k,
+    #                                                n_jobs=n_jobs,
+    #                                                random_state=random_state,
+    #                                                method="modified")
+
+    # MDS (MultiDimensional Scaling) attempts to preserve distances in ambient high-dimensional space
     mds = sklearn.manifold.MDS(n_components=d,
                                n_init=1,
                                max_iter=120,
-                               n_jobs=2,
-                               normalized_stress="auto")  # MultiDimensional Scaling  # TODO: tune params?
-    spectral = sklearn.manifold.SpectralEmbedding(n_components=d,
-                                                  random_state=0,
-                                                  eigen_solver="arpack")  # laplacian eigenmap; equivalent to diffusion map
+                               n_jobs=n_jobs,
+                               random_state=random_state,
+                               normalized_stress="auto")  # unused in metric mode (default); suppress FutureWarning for v1.4
 
-    transformers = (("LTSA", ltsa), ("MLLE", mlle), ("MDS", mds), ("SE", spectral))
-    z = sklearn.preprocessing.MinMaxScaler().fit_transform(z)
-    data = []  # dimension-reduced latent data
-    for name, transformer in transformers:
-        print(f"Reducing dimension with transformer {name}...")
-        with timer() as tim:
-            data.append((name, transformer.fit_transform(z, labels)))
-        print(f"    Done in {tim.dt:0.6g}s.")
-    print("Plotting manifold.")
+    # ISOMAP attempts to preserve distances *along the manifold*
+    isomap = sklearn.manifold.Isomap(n_components=d,
+                                     n_neighbors=k,
+                                     n_jobs=n_jobs)
+
+    # UMAP (Uniform Manifold Approximation and Projection) assumes that the data is uniformly distributed
+    # on a Riemannian manifold; the Riemannian metric is locally constant (at least approximately);
+    # and that the manifold is locally connected. It attempts to preserve the topological structure
+    # of this manifold.
+    tumap = umap.UMAP(n_components=d,
+                      n_neighbors=k,
+                      metric="cosine",
+                      min_dist=0.8,
+                      n_jobs=n_jobs,
+                      random_state=random_state,
+                      low_memory=False)
+
+    # t-distributed Stochastic Neighbor Embedding
+    #
+    # We use the empirical settings by Gove et al. (2022) that generally (across 691 different datasets)
+    # prioritize accurate neighbors (rather than accurate distances).
+    #
+    # Gove et al. write:
+    #
+    #   If those hyperparameters don’t produce good visualizations, try using perplexity in the range 2-16,
+    #   exaggeration in the range 1-8, and learning rate in the range 10-640. We found that accurate visualizations
+    #   tended to have hyperparameters in these ranges. To guide your exploration, you can first try perplexity
+    #   near 16 or n/100 (where n is the number of data points); exaggeration near 1; and learning rate near 10 or n/12.
+    #
+    # Blog post, with link to preprint PDF (Gove et al., 2022. New Guidance for Using t-SNE: Alternative Defaults,
+    # Hyperparameter Selection Automation, and Comparative Evaluation):
+    #   https://twosixtech.com/new-guidance-for-using-t-sne/
+    #
+    # See also Böhm et al. (2022), which discusses the similarities between the nonlinear projections produced by
+    # t-SNE, UMAP, and laplacian eigenmaps.
+    #   https://arxiv.org/abs/2007.08902
+    #
+    # See also:
+    #   https://pgg1610.github.io/blog_fastpages/python/data-visualization/2021/02/03/tSNEvsUMAP.html
+
+    # tsne = sklearn.manifold.TSNE(n_components=d,
+    #                              perplexity=16.0,
+    #                              learning_rate=10.0,
+    #                              n_iter=500,
+    #                              n_iter_without_progress=150,
+    #                              n_jobs=n_jobs,
+    #                              init="pca",
+    #                              random_state=random_state)
+    # https://opentsne.readthedocs.io/en/stable/api/index.html
+    tsne = openTSNE.TSNE(n_components=d,
+                         perplexity=max(16.0, z.shape[0] / 100.0),
+                         exaggeration=1.0,
+                         learning_rate=10.0,
+                         metric="cosine",
+                         n_iter=500,
+                         n_jobs=n_jobs,
+                         initialization="pca",
+                         random_state=random_state)
+
+    # Spectral embedding via laplacian eigenmap.
+    #
+    # Note the first two eigenvectors don't seem to be enough to separate MNIST.
+    # This indicates the dimension of the manifold is > 2. This would explain why
+    # the CVAE performs acceptably with `latent_dim = 20`, but with `latent_dim = 2`,
+    # has serious trouble encoding some variations of the MNIST digits.
+    #
+    # Laplacian eigenmaps are equivalent to diffusion maps. They are also
+    # approximately the  ρ → ∞  limit of t-SNE (where ρ is the exaggeration
+    # parameter). See Böhm et al. (2022, Appendix A):
+    #   https://arxiv.org/abs/2007.08902
+    spectral = sklearn.manifold.SpectralEmbedding(n_components=d,
+                                                  eigen_solver="arpack",
+                                                  n_jobs=n_jobs,
+                                                  random_state=random_state)
+
+    # Transformers in subplot order: left-to-right, top-down
+    if methods == "fast":
+        nrows = 1
+        ncols = 1
+        transformers = (("t-SNE", tsne.fit),)
+    elif methods == "all":
+        nrows = 2
+        ncols = 3
+        # Note the progression on the attraction/repulsion spectrum (Böhm et al., 2022) on the first row of subplots.
+        # On the second row, we have the distance-preserving transformations.
+        transformers = (("t-SNE", tsne.fit),
+                        ("UMAP", tumap.fit_transform),
+                        ("SE", spectral.fit_transform),
+                        ("MDS", mds.fit_transform),
+                        ("ISOMAP", isomap.fit_transform))
+    else:
+        raise ValueError(f"Unknown `methods` setting '{methods}'; known: 'fast', 'all'.")
+
+    print(f"Projecting learned manifold to 2D with {', '.join([k for k, v in transformers])}...")
+    with timer() as tim_total:
+        data = []
+        for name, fit_transform in transformers:
+            if len(transformers) > 1:
+                print(f"    {name}...")
+            with timer() as tim:
+                data.append((name, fit_transform(z)))
+            if len(transformers) > 1:
+                print(f"        Done in {tim.dt:0.6g}s.")
+    print(f"    Done in {tim_total.dt:0.6g}s.")
 
     # Plot the result
     #
+    print("Plotting projected manifold...")
     fig = plt.figure(figno)
     if not fig.axes:
-        plt.subplot(2, 2, 1)  # create Axes
-        fig.set_figwidth(10)
-        fig.set_figheight(10)
+        plt.subplot(nrows, ncols, 1)  # create Axes
+        fig.set_figwidth(ncols * 5)
+        fig.set_figheight(nrows * 5)
     fig.tight_layout()  # prevent axes crawling
 
-    for sub, (name, zhat) in enumerate(data):
-        print(f"Plotting results of transformer {name}...")
-        with timer() as tim:
-            ax = plt.subplot(2, 2, 1 + sub)
+    with timer() as tim_total:
+        cmap = mpl.colormaps.get("viridis")
+        minlabel = min(labels)
+        maxlabel = max(labels)
+        # Labels 0...9 need an upper bound of 10 to have a region for the "9" (in the BoundaryNorm,
+        # the region 9...10 maps to 9). The other +1 is for one-past-end.
+        color_bounds = np.arange(minlabel, (maxlabel + 1) + 1)
+        color_norm = mpl.colors.BoundaryNorm(color_bounds, cmap.N)
+
+        for sub, (name, zhat) in enumerate(data):
+            print(f"    {name}...")
+            ax = plt.subplot(nrows, ncols, 1 + sub)
             ax.cla()
             plt.sca(ax)
-            for digit in range(min(labels), max(labels) + 1):
-                ax.scatter(*zhat[labels == digit].T,
+            for digit in range(minlabel, maxlabel + 1):
+                zhat_thisdigit = zhat[labels == digit]
+                ax.scatter(*zhat_thisdigit.T,
                            marker=f"${digit}$",
                            s=60,
-                           color=plt.cm.Dark2(digit),
-                           alpha=0.425,
+                           c=digit * np.ones(len(zhat_thisdigit)),
+                           norm=color_norm,
+                           alpha=alpha,
                            zorder=2)
             ax.axis("off")
             ax.set_title(name)
-        print(f"    Done in {tim.dt:0.6g}s.")
-    print("Manifold plotting done.")
+
+        if len(transformers) == 5:  # have an empty subplot slot?
+            ax = plt.subplot(nrows, ncols, 6)
+            ax.cla()
+            plt.sca(ax)
+            cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed    # noqa: F841
+                              ticks=color_bounds + 0.5, format="%d",
+                              orientation="horizontal",
+                              fraction=0.5)
+            ax.axis("off")
+
+    print(f"    Done in {tim_total.dt:0.6g}s.")
 
     epoch_str = f"; epoch {epoch}" if epoch is not None else ""
-    plt.suptitle(f"Latent manifold{epoch_str}")
+    plt.suptitle(f"Latent space (dimension {model.latent_dim}){epoch_str}")
 
     fig.tight_layout()
     plt.draw()
