@@ -449,6 +449,10 @@ def main():
                 fig3.savefig(f"{output_dir}{latent_space_fig_basename}_{epoch:04d}.{fig_format}")
                 fig3.canvas.draw_idle()
 
+                # TODO: plot AU ("active units": in test set, number of latent dimensions `j` where `z[j]` is not approximately zero; maybe histogram `z[j]`?)
+                # See Dieng et al. (2019):
+                #     https://arxiv.org/pdf/1807.04863.pdf
+
             # Store current learning rate, for visualization/debugging of the learning schedule
             prev_learning_rate = lr_schedule(prev_iterations)
             learning_rate = lr_schedule(optimizer.iterations)
