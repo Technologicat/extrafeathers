@@ -21,7 +21,7 @@ from .util import clear_and_create_directory
 # --------------------------------------------------------------------------------
 # NN architecture
 
-# extra_layer_size = 16  # The extra layer is omitted in recent revisions (better performance)
+# extra_layer_size = 16  # The extra layer is omitted in recent revisions (better performance, i.e. higher ELBO)
 dropout_fraction = 0.1
 
 # Encoder/decoder architecture modified from https://keras.io/examples/generative/vae/
@@ -325,7 +325,7 @@ def make_codec(variant):
             x = tf.keras.layers.SpatialDropout2D(rate=dropout_fraction)(x)
             # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # for some reason, normalizing here breaks the whole NN (will not train usefully)
 
-            # Then proceed as usual - remix the detected features, at the same number of channels.
+            # Then proceed as usual in a ResNet - remix the detected features, at the same number of channels.
             x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                 bottleneck_factor=2)(x)
             x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # output of level 1
