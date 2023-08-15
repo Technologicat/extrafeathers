@@ -465,6 +465,7 @@ def main():
             # Similar to GL(t) in Prechelt (2000): "Early stopping, but when?"; but our ELBOs are positive
             # (because continuous distribution p(x)), which makes our loss function negative, so we adapt
             # the definition slightly.
+            #   https://www.researchgate.net/publication/2874749_Early_Stopping_-_But_When
             max_test_elbo = max(test_elbos)  # only running a couple hundred epochs; O(n) not a problem.
             generalization_loss = 1.0 - test_elbo / max_test_elbo
             generalization_losses.append(generalization_loss)
