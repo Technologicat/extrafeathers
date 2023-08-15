@@ -448,7 +448,6 @@ def main():
                 plot_latent_image(21, figno=3, epoch=epoch)
                 fig3.savefig(f"{output_dir}{latent_space_fig_basename}_{epoch:04d}.{fig_format}")
                 fig3.canvas.draw_idle()
-                # overlay_datapoints(train_images, train_labels, e)  # out of memory on GPU
 
             # Store current learning rate, for visualization/debugging of the learning schedule
             prev_learning_rate = lr_schedule(prev_iterations)
