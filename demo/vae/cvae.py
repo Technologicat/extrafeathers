@@ -1,4 +1,4 @@
-"""The CVAE model (convolutional variational autoencoder)."""
+"""The CVAE model (convolutional variational autoencoder). To compress is to understand."""
 
 __all__ = ["CVAE",
            "elbo_loss"]
