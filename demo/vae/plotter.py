@@ -686,7 +686,7 @@ def plot_manifold(x: tf.Tensor,
                   model: typing.Optional[CVAE] = None,
                   epoch: typing.Optional[int] = None,
                   figno: int = 1) -> None:
-    """Plot learned manifold in 3+ dimensional latent space, via dimension reduction to 2D.
+    """Plot data in 3+ dimensional latent space, via dimension reduction to 2D.
 
     Dimension reduction in general is slow. We suggest limiting the amount of data::
 
