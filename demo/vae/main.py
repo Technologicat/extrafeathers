@@ -258,7 +258,10 @@ if variant == 9:
     # Model variant 9 needs a higher max LR, maybe because it uses many more dropout layers.
     INIT_LR, MAX_LR = 1e-4, 2e-2
 elif variant in (10, 11):
-    INIT_LR, MAX_LR = 2e-4, 1e-2
+    if latent_dim == 2:
+        INIT_LR, MAX_LR = 2e-4, 1e-2
+    else:  # tested with `latent_dim = 20`
+        INIT_LR, MAX_LR = 2e-4, 2e-2
 else:
     # Primarily tested with model variants 7 and 8.
     INIT_LR, MAX_LR = 1e-4, 2e-3
