@@ -50,8 +50,8 @@ if main.model.latent_dim == 2:
     latent_image = plotter.plot_latent_image(21)
     plotter.overlay_datapoints(train_images, train_labels, latent_image)
 else:
-    n = 4000  # in practice fine
-    # n = test_images.shape[0]  # using all of the data is VERY slow, but gives the best view.
+    # n = 4000  # in practice fine
+    n = test_images.shape[0]  # using all of the data is VERY slow (~10 minutes), but gives the best view.
     plotter.plot_manifold(test_images[:n, :, :, :], test_labels[:n], methods="all")
 
 fig = plt.figure(1)
