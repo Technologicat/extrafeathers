@@ -673,7 +673,11 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
 #      data is an active area of research.
 #        https://scikit-learn.org/stable/modules/manifold.html#tips-on-practical-use
 #
-# TODO: make a version compatible with `plot_latent_image` so that we can `overlay_datapoints` on this (to see the variances).
+# TODO: Make a version compatible with `plot_latent_image` so that we can `overlay_datapoints` on this (to see the variances).
+# TODO: Interactive plot: make the data clickable, imshow the corresponding sample
+#   - On click, find the nearest point in the dimension-reduced representation
+#   - Get the input sample with the same index, show it
+#   - Highlight the corresponding sample on the plot (re-use one `Artist` for this so we can update its position on every click)
 def plot_manifold(x: tf.Tensor,
                   labels: tf.Tensor,
                   k: int = 100,
