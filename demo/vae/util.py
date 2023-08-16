@@ -75,7 +75,7 @@ def compute_squared_l2_error(x: tf.Tensor, xhat: tf.Tensor):
 
     `x`, `xhat`: tensor of shape `[N, ny, nx, c]`
 
-    Returns a tensor of shape `[N]`.
+    Returns a tensor of shape `[N]`, the squared l2 error for each sample in `x`.
     """
     return tf.reduce_sum((x - xhat)**2, axis=[1, 2, 3])
 
@@ -87,14 +87,13 @@ def sorted_by_l2_error(x: tf.Tensor, xhat: tf.Tensor, *,
     `reverse`: If `True`, sort in descending order.
                If `False` (default), sort in ascending order.
 
-    Return `(e2, ks)`, where:
-      `e2`: rank-1 `np.array`, (‖xhat - x‖_l2)**2
-      `ks`: rank-1 `np.array` of indices that sort `squared_l2_error`,
-             as in `np.argsort`.
+    Returns `(e2s, ks)`, where:
+      `e2s`: rank-1 `np.array`, length `N`; (‖xhat - x‖_l2)**2 for each sample in `x`.
+      `ks`: rank-1 `np.array`, length `N`; indices that sort `e2s`, as in `np.argsort`.
     """
-    e2 = compute_squared_l2_error(x, xhat).numpy()
-    objective = -e2 if reverse else e2
-    return e2, np.argsort(objective, kind="stable")
+    e2s = compute_squared_l2_error(x, xhat).numpy()
+    objective = -e2s if reverse else e2s
+    return e2s, np.argsort(objective, kind="stable")
 
 # --------------------------------------------------------------------------------
 
