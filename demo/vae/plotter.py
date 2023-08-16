@@ -39,7 +39,7 @@ def find_adversarial_samples(x: tf.Tensor, labels: typing.Optional[tf.Tensor] = 
     We roundtrip `x` through the CVAE, and compute ∑ ‖xhat - x‖_l2 (sum over `N`).
 
     `x`: tensor of shape `[N, ny, nx, c]`.
-    `labels`: optional tensor of shape `[N]`.
+    `labels`: optional tensor of shape `[N]`, of labels corresponding to `x`.
     `model`: `CVAE` instance, or `None` to use the default instance.
 
     If `labels is None`:
@@ -52,7 +52,8 @@ def find_adversarial_samples(x: tf.Tensor, labels: typing.Optional[tf.Tensor] = 
         Return `(e, {label0: ks0, ...})`,
 
         In other words, split `ks` by label, and collect these results
-        into a dict.
+        into a dict. This is useful when working with labeled data, for
+        visualizing the worst-case performance for each class separately.
     """
     if model is None:
         from . import main
