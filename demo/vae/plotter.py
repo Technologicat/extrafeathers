@@ -39,8 +39,7 @@ def find_adversarial_samples(x: tf.Tensor, labels: typing.Optional[tf.Tensor] = 
     We roundtrip `x` through the CVAE, and compute ∑ ‖xhat - x‖_l2 (sum over `N`).
 
     `x`: tensor of shape `[N, ny, nx, c]`.
-    `labels`: optional tensor of shape `[N]`. If specified, sort primarily by label,
-              then secondarily by l2 error (thus grouping the results by label).
+    `labels`: optional tensor of shape `[N]`.
     `model`: `CVAE` instance, or `None` to use the default instance.
 
     If `labels is None`:
@@ -50,8 +49,8 @@ def find_adversarial_samples(x: tf.Tensor, labels: typing.Optional[tf.Tensor] = 
                 order of l2 error.
 
     Otherwise return a `dict`, keyed by the label, where each value
-    is in the same format as in the above case. (In other words, split
-    the return value by label, and collect these results into a dict.)
+    is in the same format as in the above case. (In other words,
+    split `ks` by label, and collect these results into a dict.)
     """
     if model is None:
         from . import main
