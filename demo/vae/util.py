@@ -2,6 +2,8 @@
 
 __all__ = ["layer_to_model",
            "preprocess_images",
+           "compute_squared_l2_error",
+           "sorted_by_l2_error",
            "delete_directory_recursively",
            "create_directory",
            "clear_and_create_directory"]
@@ -64,6 +66,35 @@ def preprocess_images(images, digit_size=28, channels=1, discrete=False):
     # ])
     # images = resize_and_rescale(images)
     return images.astype("float32")
+
+# --------------------------------------------------------------------------------
+
+@tf.function
+def compute_squared_l2_error(x: tf.Tensor, xhat: tf.Tensor):
+    """Compute (‖xhat - x‖_l2)**2. Convenience function.
+
+    `x`, `xhat`: tensor of shape `[N, ny, nx, c]`
+
+    Returns a tensor of shape `[N]`.
+    """
+    return tf.reduce_sum((x - xhat)**2, axis=[1, 2, 3])
+
+def sorted_by_l2_error(x: tf.Tensor, xhat: tf.Tensor, *,
+                       reverse: bool = False):
+    """Given inputs `x` and corresponding predictions `xhat`, sort by l2 error.
+
+    `x`, `xhat`: tensor of shape [N, ny, nx, c]
+    `reverse`: If `True`, sort in descending order.
+               If `False` (default), sort in ascending order.
+
+    Return `(e2, ks)`, where:
+      `e2`: rank-1 `np.array`, (‖xhat - x‖_l2)**2
+      `ks`: rank-1 `np.array` of indices that sort `squared_l2_error`,
+             as in `np.argsort`.
+    """
+    e2 = compute_squared_l2_error(x, xhat).numpy()
+    objective = -e2 if reverse else e2
+    return e2, np.argsort(objective, kind="stable")
 
 # --------------------------------------------------------------------------------
 

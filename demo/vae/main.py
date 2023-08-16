@@ -178,7 +178,8 @@ from .config import (latent_dim,
                      elbo_fig_filename)
 from . import clr
 from .cvae import CVAE
-from .plotter import (plot_test_sample_image,
+from .plotter import (find_adversarial_samples,
+                      plot_test_sample_image,
                       plot_elbo,
                       plot_latent_image,
                       plot_manifold)
@@ -311,16 +312,27 @@ def main():
     clear_and_create_directory(f"{output_dir}model")
 
     # Set up figures
+
+    # Representative test sample
     fig1, axs1 = plt.subplots(1, 1, figsize=(test_sample_zoom * float(2 * test_sample_columns + 1),
-                                             test_sample_zoom * float(test_sample_columns)))  # test example
+                                             test_sample_zoom * float(test_sample_columns)))
     fig1.tight_layout()
-    fig2, axs2 = plt.subplots(1, 1, figsize=(6, 4))  # ELBO history
+
+    # ELBO history
+    fig2, axs2 = plt.subplots(1, 1, figsize=(6, 4))
     fig2.tight_layout()
+
+    # Latent space
     if latent_dim == 2:
         fig3, axs3 = plt.subplots(1, 1, figsize=(10, 10))  # latent space
     else:
-        fig3, axs3 = plt.subplots(1, 1, figsize=(5, 5))  # learned manifold (while training, we'll be plotting in "fast" mode with t-SNE only)
+        fig3, axs3 = plt.subplots(1, 1, figsize=(6, 5))  # learned manifold (while training, we'll be plotting in "fast" mode with t-SNE only)
     fig3.tight_layout()
+
+    # Adversarial test sample (worst l2 error in pixel space)
+    fig4, axs4 = plt.subplots(1, 1, figsize=(test_sample_zoom * float(2 * test_sample_columns + 1),
+                                             test_sample_zoom * float(test_sample_columns)))
+    fig4.tight_layout()
 
     # must call `plt.show` once before `plotmagic.pause` works
     plt.show()
@@ -346,6 +358,17 @@ def main():
     #     test_sample = test_batch[0:num_examples_to_generate, :, :, :]
 
     # Or... improving further, pick a sample containing `n` examples from each class.
+    def to_stacked_array(data_dict, n_per_class):  # Helper function: {label0: [image0, ...], ...} -> tensor [N, ny, nx, 1]
+        data_dict = {k: v[:n_per_class] for k, v in data_dict.items()}  # Cut away any extra examples from each class
+        assert all(len(v) == n_per_class for v in data_dict.values())   # The data should have at least the desired number of examples of each class
+        sorted_data = sorted(data_dict.items(), key=lambda kv: kv[0])        # Sort classes: 0s first, then 1s, ...
+        images_by_class = [v[1] for v in sorted_data]                   # Drop class labels: {label0: [image0, ...], ...} -> [[image0, ...], ...]
+        stacked_by_class = [tf.stack(v) for v in images_by_class]       # Stack within each class: [[ny, nx, 1], ...] -> [K, ny, nx, 1]
+        batched = tf.concat(stacked_by_class, axis=0)                   # Merge the stacks into a single batch
+        n_classes = len(data_dict)
+        assert batched.shape[0] == n_classes * n_per_class
+        return batched
+
     def prepare_test_sample():  # just a namespace to drop temporaries to the GC as early as possible (don't keep unnecessary copies of the test data in RAM)
         test_examples_dict = defaultdict(list)
         for label, image in zip(test_labels, test_images):
@@ -353,14 +376,8 @@ def main():
             counts_by_class = [len(v) for v in test_examples_dict.values()]
             if min(counts_by_class) >= n_per_class:
                 break
-        n_classes = len(test_examples_dict)
-        assert n_classes == 10  # MNIST digits data
-        test_examples_dict = {k: v[:n_per_class] for k, v in test_examples_dict.items()}  # cut away any extra examples from each class
-        test_examples_list = sorted(test_examples_dict.items(), key=lambda kv: kv[0])  # sort the classes: 0s first, then 1s, ...
-        test_examples_list = [v[1] for v in test_examples_list]  # drop class labels
-        test_examples_list = [tf.stack(v) for v in test_examples_list]  # stack the examples within each class
-        test_sample = tf.concat(test_examples_list, axis=0)  # merge the stacks into a single batch (now containing examples of all classes, in sorted order)
-        assert test_sample.shape[0] == n_classes * n_per_class
+        assert len(test_examples_dict) == 10  # MNIST digits data; should have found at least one example of each class
+        test_sample = to_stacked_array(test_examples_dict, n_per_class)
         return test_sample
     test_sample = prepare_test_sample()
 
@@ -379,11 +396,44 @@ def main():
     model.encoder.summary()
     model.decoder.summary()
 
+    def plot_adversarial_sample_image(epoch):
+        # Sorted by class (easier to see which classes the CVAE struggles with)
+        print("Finding test samples with highest pixel-space l2 error...")
+        with timer() as tim:
+            total_l2_error, ks_by_l2_error = find_adversarial_samples(test_images, test_labels)  # yes, all 10k of them!
+        print(f"    Done in {tim.dt:0.6g}s.")
+        # prepare the adversarial samples in the same format as in `prepare_test_sample`
+        test_examples_dict = {k: test_images[v, :, :, :] for k, v in ks_by_l2_error.items()}
+        assert len(test_examples_dict) == 10  # MNIST digits data; should have found at least one example of each class
+        test_sample = to_stacked_array(test_examples_dict, n_per_class)
+        mean_l2_error = total_l2_error / test_images.shape[0]  # for the whole test data (not just the adversarial samples)
+        plot_test_sample_image(test_sample,
+                               custom_title=f"Test samples with highest pixel-space l2 error (per class), test set mean l2 error {mean_l2_error:0.6g}",
+                               epoch=epoch, figno=4, cols=test_sample_columns, zoom=test_sample_zoom)
+
+        # # Not sorted by class
+        # total_l2_error, ks_by_l2_error = find_adversarial_samples(test_images)
+        # n = test_sample.shape[0]  # plot the same total number of samples as in figure 1
+        # test_sample = tf.constant(test_images[ks_by_l2_error[:n], :, :, :])
+        # mean_l2_error = total_l2_error / test_images.shape[0]  # for the whole test data (not just the adversarial samples)
+        # plot_test_sample_image(test_sample,
+        #                        custom_title=f"Test samples with highest pixel-space l2 error, test set mean l2 error {mean_l2_error:0.6g}",
+        #                        epoch=epoch, figno=4, cols=test_sample_columns, zoom=test_sample_zoom)
+
     # Plot the random initial state
-    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)
-    plot_test_sample_image(test_sample, epoch=0, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)  # and again to prevent axes crawling
+    plot_test_sample_image(test_sample,
+                           custom_title="Representative test samples",
+                           epoch=0, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)
+    plot_test_sample_image(test_sample,
+                           custom_title="Representative test samples",
+                           epoch=0, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)  # and again to prevent axes crawling
     fig1.savefig(f"{output_dir}{test_sample_fig_basename}_0000.{fig_format}")
     fig1.canvas.draw_idle()   # see source of `plt.savefig`; need this if 'transparent=True' to reset colors
+
+    plot_adversarial_sample_image(epoch=0)
+    plot_adversarial_sample_image(epoch=0)  # and again to prevent axes crawling
+    fig4.savefig(f"{output_dir}{test_sample_fig_basename}_worstl2_0000.{fig_format}")
+    fig4.canvas.draw_idle()
 
     if latent_dim == 2:
         plot_latent_image(21, figno=3, epoch=0)
@@ -426,10 +476,17 @@ def main():
 
             # Plot the progress
             with timer() as tim_plot:
-                # Test sample
-                plot_test_sample_image(test_sample, epoch=epoch, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)
+                # Representative test sample
+                plot_test_sample_image(test_sample,
+                                       custom_title="Representative test samples",
+                                       epoch=epoch, figno=1, cols=test_sample_columns, zoom=test_sample_zoom)
                 fig1.savefig(f"{output_dir}{test_sample_fig_basename}_{epoch:04d}.{fig_format}")
                 fig1.canvas.draw_idle()
+
+                # Adversarial test sample
+                plot_adversarial_sample_image(epoch=epoch)
+                fig4.savefig(f"{output_dir}{test_sample_fig_basename}_worstl2_{epoch:04d}.{fig_format}")
+                fig4.canvas.draw_idle()
 
                 # ELBO
                 epochs = np.arange(1, epoch + 1)
@@ -520,6 +577,8 @@ def main():
                  dst=f"{output_dir}{test_sample_fig_basename}_final.{fig_format}")
     shutil.copy2(src=f"{output_dir}{latent_space_fig_basename}_{best_epoch:04d}.{fig_format}",
                  dst=f"{output_dir}{latent_space_fig_basename}_final.{fig_format}")
+    shutil.copy2(src=f"{output_dir}{test_sample_fig_basename}_worstl2_{best_epoch:04d}.{fig_format}",
+                 dst=f"{output_dir}{test_sample_fig_basename}_worstl2_final.{fig_format}")
 
     print("Model training complete.")
 

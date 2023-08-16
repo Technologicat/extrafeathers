@@ -1,6 +1,7 @@
 """Plotters for the VAE example."""
 
-__all__ = ["plot_test_sample_image",
+__all__ = ["find_adversarial_samples",
+           "plot_test_sample_image",
            "plot_elbo",
            "plot_latent_image",
            "overlay_datapoints", "remove_overlay"]
@@ -28,20 +29,63 @@ import umap
 from extrafeathers import plotmagic
 
 from .cvae import CVAE
+from .util import sorted_by_l2_error
+
+
+def find_adversarial_samples(x: tf.Tensor, labels: typing.Optional[tf.Tensor] = None, *,
+                             model: typing.Optional[CVAE] = None) -> (float, np.array):
+    """Find the worst-performing inputs, as measured by l2 error.
+
+    We roundtrip `x` through the CVAE, and compute ∑ ‖xhat - x‖_l2 (sum over `N`).
+
+    `x`: tensor of shape `[N, ny, nx, c]`.
+    `labels`: optional tensor of shape `[N]`. If specified, sort primarily by label,
+              then secondarily by l2 error (thus grouping the results by label).
+    `model`: `CVAE` instance, or `None` to use the default instance.
+
+    If `labels is None`:
+        Return `(e, ks)`, where:
+          `e`: sum of l2 errors over `x`.
+          `ks`: rank-1 `np.array`, indices that sort `x` in descending
+                order of l2 error.
+
+    Otherwise return a `dict`, keyed by the label, where each value
+    is in the same format as in the above case. (In other words, split
+    the return value by label, and collect these results into a dict.)
+    """
+    if model is None:
+        from . import main
+        model = main.model
+    assert isinstance(model, CVAE)
+
+    xhat = model.predict(x)
+    e2s, ks = sorted_by_l2_error(x, xhat, reverse=True)  # descending sort
+    e = np.sum(np.sqrt(e2s))
+
+    if labels is not None:
+        ks_by_label = defaultdict(list)
+        for k in ks:  # ks: indices that sort `x` and `labels` by the l2 error
+            label = labels[k]
+            ks_by_label[label].append(k)
+        return e, {k: np.array(v) for k, v in ks_by_label.items()}  # unify return type
+    return e, ks
+
 
 def plot_test_sample_image(test_sample: tf.Tensor, *,
                            model: typing.Optional[CVAE] = None,
+                           custom_title: typing.Optional[str] = "Test samples",
                            epoch: typing.Optional[int] = None,
                            figno: int = 1,
                            cols: typing.Optional[int] = None,
                            zoom: float = 1.0) -> None:
     """Plot image of test sample and the corresponding prediction (by feeding the sample through the CVAE).
 
-    `test_sample`: tensor of size `[n, 28, 28, 1]`.
+    `test_sample`: tensor of shape `[N, ny, nx, 1]`.
     `model`: `CVAE` instance, or `None` to use the default instance.
+    `custom_title`: optional custom title for the figure.
     `epoch`: if specified, included in the figure title.
     `figno`: matplotlib figure number.
-    `cols`: number of columns in plot; `None` means `cols = floor(sqrt(n))`.
+    `cols`: number of columns in plot; `None` means `cols = floor(sqrt(N))`.
     `zoom`: figure size tuning factor. The default is fine for `cols` = 4 ... 10.
     """
     if model is None:
@@ -93,7 +137,7 @@ def plot_test_sample_image(test_sample: tf.Tensor, *,
     ax.imshow(image, cmap="Greys_r", vmin=0.0, vmax=1.0)
     ax.axis("off")
     epoch_str = f"; epoch {epoch}" if epoch is not None else ""
-    ax.set_title(f"Test sample (left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}$){epoch_str}")
+    ax.set_title(f"{custom_title}; left: input $\\mathbf{{x}}$, right: prediction $\\hat{{\\mathbf{{x}}}}${epoch_str}")
 
     fig.tight_layout()
     plt.draw()
