@@ -660,7 +660,9 @@ def overlay_datapoints(x: tf.Tensor, labels: tf.Tensor, figdata: env, alpha: flo
     plotmagic.pause(0.1)  # force redraw
 
 
+# --------------------------------------------------------------------------------
 # For `latent_dim > 2`, a second dimension reduction step to compress into 2d.
+#
 #  - We should keep the embedding as stable as possible so as to facilitate making animations. Deterministic methods are preferable.
 #    At the very least, if the method is stochastic, we should use a deterministic initialization (such as PCA for t-SNE).
 #  - Detecting the dimension of the manifold:
