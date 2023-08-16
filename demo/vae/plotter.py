@@ -48,9 +48,11 @@ def find_adversarial_samples(x: tf.Tensor, labels: typing.Optional[tf.Tensor] = 
           `ks`: rank-1 `np.array`, indices that sort `x` in descending
                 order of l2 error.
 
-    Otherwise return a `dict`, keyed by the label, where each value
-    is in the same format as in the above case. (In other words,
-    split `ks` by label, and collect these results into a dict.)
+    If `labels` is given:
+        Return `(e, {label0: ks0, ...})`,
+
+        In other words, split `ks` by label, and collect these results
+        into a dict.
     """
     if model is None:
         from . import main
