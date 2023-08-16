@@ -36,7 +36,7 @@ def layer_to_model(layer: tf.keras.layers.Layer,
         model.summary()
     """
     inputs = tf.keras.Input(shape=input_shape, name="input")
-    outputs = layer.call(inputs)
+    outputs = layer(inputs)
     return tf.keras.Model(inputs, outputs)
 
 # --------------------------------------------------------------------------------
