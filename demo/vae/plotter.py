@@ -877,7 +877,7 @@ def plot_manifold(x: tf.Tensor,
     else:
         raise ValueError(f"Unknown `methods` setting '{methods}'; known: 'fast', 'all'.")
 
-    print(f"Projecting learned manifold to 2D with {', '.join([k for k, v in transformers])}...")
+    print(f"Computing 2D visualization with {', '.join([k for k, v in transformers])}...")
     with timer() as tim_total:
         data = []
         for name, fit_transform in transformers:
