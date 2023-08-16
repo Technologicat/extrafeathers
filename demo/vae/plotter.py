@@ -701,29 +701,35 @@ def plot_manifold(x: tf.Tensor,
     `methods`: one of:
             "fast": Apply only the fastest algorithm (t-SNE). For online visualization
                     during training.
-            "all":  Apply all algorithms (see below), producing a 2x3 grid of subplots.
-                    For visualization of final results, to get the most insight.
+            "semifast": Apply t-SNE and UMAP.
+            "all":  Apply all algorithms.
+               Both "semifast" and "all" modes exist, because for some datasets
+               (MNIST with CVAE `latent_dim = 20`), MDS, ISOMAP and SE in 2D are
+               essentially useless.
     `model`: `CVAE` instance, or `None` to use the default instance.
     `epoch`: if specified, included in the figure title.
     `figno`: matplotlib figure number.
 
     This makes a scatterplot with the integer labels, applying the following dimension
-    reduction algorithms from `scikit-learn`, each in its own subplot:
+    reduction algorithms, each in its own subplot.
 
-      - UMAP: Uniform Manifold Approximation and Projection
-      - MDS: MultiDimensional Scaling (preserves distance in high-dimensional ambient space)
-      - ISOMAP (preserves distance *along manifold*)
-      - SE: Spectral Embedding a.k.a. laplacian eigenmap; equivalent to diffusion map.
+    From `openTSNE`:
       - t-SNE: t-distributed Stochastic Neighbor Embedding
 
-    If `openTSNE` is installed, it is used instead of `scikit-learn` to compute the t-SNE.
+    From `umap-learn`:
+      - UMAP: Uniform Manifold Approximation and Projection, attempts to preserve
+              the topological structure of the manifold.
 
-    `UMAP` is available if `umap-learn` is installed.
+    From `scikit-learn`:
+      - MDS: MultiDimensional Scaling, attempts to preserve distance in the
+             high-dimensional ambient space.
+      - ISOMAP, attempts to preserve distance *along the manifold*.
+      - SE: Spectral Embedding a.k.a. laplacian eigenmap; equivalent to diffusion map.
 
     For more information, see:
-        https://scikit-learn.org/stable/modules/manifold.html
         https://opentsne.readthedocs.io/en/stable/
         https://umap-learn.readthedocs.io/en/latest/
+        https://scikit-learn.org/stable/modules/manifold.html
     """
     if model is None:
         from . import main
@@ -849,10 +855,18 @@ def plot_manifold(x: tf.Tensor,
     if methods == "fast":
         nrows = 1
         ncols = 1
+        extra_width = 1  # adjustment for figure width to accommodate colorbar
         transformers = (("t-SNE", tsne.fit),)
+    elif methods == "semifast":
+        nrows = 1
+        ncols = 3  # one column for colorbar
+        extra_width = 0
+        transformers = (("t-SNE", tsne.fit),
+                        ("UMAP", tumap.fit_transform))
     elif methods == "all":
         nrows = 2
         ncols = 3
+        extra_width = 0
         # Note the progression on the attraction/repulsion spectrum (Böhm et al., 2022) on the first row of subplots.
         # On the second row, we have the distance-preserving transformations.
         transformers = (("t-SNE", tsne.fit),
@@ -877,51 +891,49 @@ def plot_manifold(x: tf.Tensor,
 
     # Plot the result
     #
-    print("Plotting projected manifold...")
     fig = plt.figure(figno)
     if not fig.axes:
         plt.subplot(nrows, ncols, 1)  # create Axes
-        fig.set_figwidth(ncols * 5)
+        fig.set_figwidth(ncols * 5 + extra_width)
         fig.set_figheight(nrows * 5)
     fig.tight_layout()  # prevent axes crawling
 
-    with timer() as tim_total:
-        cmap = mpl.colormaps.get("viridis")
-        minlabel = min(labels)
-        maxlabel = max(labels)
-        # Labels 0...9 need an upper bound of 10 to have a region for the "9" (in the BoundaryNorm,
-        # the region 9...10 maps to 9). The other +1 is for one-past-end.
-        color_bounds = np.arange(minlabel, (maxlabel + 1) + 1)
-        color_norm = mpl.colors.BoundaryNorm(color_bounds, cmap.N)
+    cmap = mpl.colormaps.get("viridis")
+    minlabel = min(labels)
+    maxlabel = max(labels)
+    # Labels 0...9 need an upper bound of 10 to have a region for the "9" (in the BoundaryNorm,
+    # the region 9...10 maps to 9). The other +1 is for one-past-end.
+    color_bounds = np.arange(minlabel, (maxlabel + 1) + 1)
+    color_norm = mpl.colors.BoundaryNorm(color_bounds, cmap.N)
 
-        for sub, (name, zhat) in enumerate(data):
-            print(f"    {name}...")
-            ax = plt.subplot(nrows, ncols, 1 + sub)
-            ax.cla()
-            plt.sca(ax)
-            for digit in range(minlabel, maxlabel + 1):
-                zhat_thisdigit = zhat[labels == digit]
-                ax.scatter(*zhat_thisdigit.T,
-                           marker=f"${digit}$",
-                           s=60,
-                           c=digit * np.ones(len(zhat_thisdigit)),
-                           norm=color_norm,
-                           alpha=alpha,
-                           zorder=2)
-            ax.axis("off")
-            ax.set_title(name)
+    for sub, (name, zhat) in enumerate(data):
+        ax = plt.subplot(nrows, ncols, 1 + sub)
+        ax.cla()
+        plt.sca(ax)
+        for digit in range(minlabel, maxlabel + 1):
+            zhat_thisdigit = zhat[labels == digit]
+            ax.scatter(*zhat_thisdigit.T,
+                       marker=f"${digit}$",
+                       s=60,
+                       c=digit * np.ones(len(zhat_thisdigit)),  # easier than extracting an argument for `color=...` from the cmap
+                       norm=color_norm,
+                       alpha=alpha,
+                       zorder=2)
+        ax.axis("off")
+        ax.set_title(name)
 
-        if len(transformers) == 5:  # have an empty subplot slot?
-            ax = plt.subplot(nrows, ncols, 6)
-            ax.cla()
-            plt.sca(ax)
-            cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed    # noqa: F841
-                              ticks=color_bounds + 0.5, format="%d",
-                              orientation="horizontal",
-                              fraction=0.5)
-            ax.axis("off")
-
-    print(f"    Done in {tim_total.dt:0.6g}s.")
+    if len(transformers) == 1:
+        cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed    # noqa: F841
+                          ticks=color_bounds + 0.5, format="%d")
+    elif nrows * ncols > len(transformers):  # have at least one empty subplot slot?
+        ax = plt.subplot(nrows, ncols, nrows * ncols)
+        ax.cla()
+        plt.sca(ax)
+        cb = fig.colorbar(None, ax=ax, norm=color_norm,  # cmap=... if needed    # noqa: F841
+                          ticks=color_bounds + 0.5, format="%d",
+                          orientation="horizontal",
+                          fraction=0.5)
+        ax.axis("off")
 
     epoch_str = f"; epoch {epoch}" if epoch is not None else ""
     plt.suptitle(f"Latent space (dimension {model.latent_dim}){epoch_str}")
