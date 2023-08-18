@@ -16,7 +16,7 @@ from .resnet import (IdentityBlock2D, IdentityBlockTranspose2D,
                      ProjectionBlock2D, ProjectionBlockTranspose2D,
                      ConvolutionBlock2D, ConvolutionBlockTranspose2D,
                      GNDropoutRegularization)
-from .util import clear_and_create_directory
+from .util import clear_and_create_directory, batched
 
 # --------------------------------------------------------------------------------
 # NN architecture
@@ -1189,3 +1189,199 @@ def elbo_loss(model, x, training=None):
         elbo /= n_mc_samples
 
     return -elbo  # with sign flipped → ELBO loss
+
+
+# --------------------------------------------------------------------------------
+# Performance metrics
+
+def active_units(model, x, *, eps=0.1):
+    """Compute AU, the number of latent active units.
+
+    `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
+
+    It is preferable to pass as much data as possible (e.g. all of the
+    training data) to get a good estimate of AU.
+
+    We define AU as::
+
+        AU := #{i = 1, ..., d: abs(cov_x( E(z ~ qϕ(z|x))[zi] )) > ϵ}
+
+    where d is the dimension of the latent space, ϵ is a suitable small number,
+    and #{} counts the number of elements of a set.
+
+    AU measures how many of the available latent dimensions a trained VAE actually uses.
+    The log of the covariance typically has a bimodal distribution, so AU is not very
+    sensitive to the value of ϵ, as long as it is between the peaks.
+
+    See Burda et al. (2016):
+       https://arxiv.org/abs/1509.00519
+    """
+    # As a classical numericist totally not versed in any kind of statistics / #helpwanted:
+    #
+    # Burda's original definition of the activation statistic AU is essentially
+    #
+    #   AU := #{u: Au > ϵ}
+    #
+    # where (and I quote literally)
+    #
+    #   Au := Cov_{x}( E(u ∼ qφ(u|x))[u] )
+    #
+    # Here u is a component of the code point vector z (in our notation, u → zi),
+    # and the x is boldface, denoting the whole input picture. The authors used ϵ = 0.01.
+    #
+    # No one else (except other papers citing this exact definition from Burda et al.)
+    # seems to use that subscript notation for covariance, not to mention using an initial
+    # capital "C"; I couldn't find a definitive definition *anywhere* pinning down the
+    # exact meaning of this variant of the notation.
+    #
+    # The text in section 5.2 of the paper implies it is indeed some kind of covariance,
+    # since the use case of this activation statistic is to measure whether each u (i.e. zi)
+    # affects the output of the generative model (decoder) or not.
+    #
+    # Two more details are missing from the paper:
+    #
+    #   - The input picture x, interpreted as a data vector, has  n_pixels = ny * nx * c
+    #     components. The latent code z has latent_dim components. Therefore,
+    #     the sample covariance between observations x and z is a matrix of size
+    #     [n_pixels, latent_dim]. But the paper hints that the maximum possible value
+    #     of AU is latent_dim; which implies we should reduce over the pixels, leaving
+    #     only latent_dim components for the covariance (aggregate effect of each zi on
+    #     the picture x). Should we sum over the pixels? Take the mean over the pixels?
+    #     Something else? (We have chosen to sum.)
+    #
+    #   - Generally, covariance may also be negative, the sign giving the sense of
+    #     the detected linear relationship. Yet in Appendix C, the authors speak of
+    #     plotting its (real-valued) log, which for a negative input is clearly NaN.
+    #     I think the definition must be missing an abs(), unless this is implied by
+    #     the notation "Cov_{x}(...)" instead of the standard "cov(x, ...)".
+    #     (We have chosen to take abs() before comparing to ϵ.)
+    #
+    # If I understand this right,  E(z ~ qϕ(z|x)) = μ  from the encoder.
+    # We give the encoder the variational parameters ϕ (trained NN coefficients)
+    # and an input picture x, and it gives us a multivariate gaussian with diagonal
+    # covariance, parameterized by the vectors (μ, log σ), and conditioned on the
+    # input x. For the given input x, the expectation of this gaussian is μ.
+    #
+    # To compute the covariance, we must then encode the whole dataset (that we wish
+    # to use to estimate AU), and find the sample mean of this expectation, μbar.
+    #
+    # Covariance between two continuous random variables x and y is defined as
+    #
+    #   covar(x, y) := ∫ (x - xbar) (y - ybar) dp
+    #                = ∫ (x - xbar) (y - ybar) p(x, y) dx dy
+    #
+    # But we're working with a dataset, so more directly relevant for us is the
+    # sample covariance:
+    #
+    #   covar(x, y) := (1 / (N - 1)) ∑k (xk - xbar) (yk - ybar)
+    #
+    # where k indexes the observations. Note we essentially want to correlate the
+    # behavior of the variables X and Y across observations, so we need equally many
+    # observations xk and yk. (Which we indeed have, since encoding one x produces one μ.)
+    #
+    # The -1 is Bessel's correction; it accounts for the fact that the population mean
+    # is unknown, so we use the sample mean, which is not independent of the samples.
+    batch_size = 1024
+
+    μ, ignored_logσ = model.encoder.predict(x, batch_size=batch_size)
+    xbar = tf.reduce_mean(x, axis=0)  # pixelwise mean (over dataset)
+    μbar = tf.reduce_mean(μ, axis=0)  # latent-dimension-wise mean (over dataset)
+
+    # Like the scatter matrix in statistics, but summed over pixels and channels of `x`.
+    @batched(batch_size)  # won't fit in VRAM on the full training dataset
+    def scatter(x, μ):  # ([N, xy, nx, c], [N, xy, nx, c]) -> [N, latent_dim]
+        xdiff = tf.reduce_sum((x - xbar), axis=[1, 2, 3])  # TODO: is this the right thing to do here?
+        outs = []
+        for d in range(latent_dim):  # covar(x, z_d)
+            outs.append(xdiff * (μ[:, d] - μbar[d]))  # -> [batch_size]
+        return tf.stack(outs, axis=-1)  # -> [batch_size, latent_dim]
+    N = tf.shape(x)[0]
+    sample_covar = (1. / (float(N) - 1.)) * tf.reduce_sum(scatter(x, μ), axis=0)
+    return int(tf.reduce_sum(tf.where(tf.greater(tf.math.abs(sample_covar), eps), 1.0, 0.0)))
+
+
+def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
+    """Compute the negative log-likelihood (NLL).
+
+    For an input x, NLL is defined as::
+
+        log pθ(x) = -log( E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ] )
+
+    When `x` is held-out data, this measures generalization.
+
+    The expression is intractable; we approximate it using Monte Carlo::
+
+        log pθ(x) ≈ -log( (1/S) ∑s (pθ(x, z[s]) / qϕ(z[s]|x)) )
+
+    where z[s] are the Monte Carlo samples of z ~ qϕ(z|x).
+
+    Original to this implementation, we also avoid evaluating `pθ(x, z[s])`
+    directly, preferring to work on `log pθ(x, z[s])` instead. For example,
+    for the continuous-Bernoulli VAE, on MNIST, `log pθ(x|z) ~ +1500`
+    (which is technically fine, because pθ is a probability *density*)
+    so it cannot be exp'd without causing overflow. We use the softplus
+    identity to express `log(∑s r[s])` in terms of the `log(r[s])`.
+
+    See Sinha and Dieng (2022):
+      https://arxiv.org/pdf/2105.14859.pdf
+    """
+    print("NLL: encoding...")
+    mean, logvar = model.encoder.predict(x, batch_size=batch_size)
+
+    @batched(batch_size)
+    def compute_logratio(x, mean, logvar):  # these are function parameters so they get @batched
+        """log(pθ(x, z) / qϕ(z|x)), drawing one MC sample of z"""
+        ignored_eps, z = model.reparameterize(mean, logvar)  # draw MC sample
+        # Rewriting the joint probability:
+        #   pθ(x, z) = pθ(x|z) pθ(z)
+        # we have
+        #   log pθ(x, z) = log(pθ(x|z) pθ(z))
+        #                = log pθ(x|z) + log pθ(z)
+        #
+        # Note, for the continuous-Bernoulli VAE, on MNIST, log pθ(x|z) ~ +1500
+        # (pθ is a probability *density*, so it's technically fine).
+        # To avoid overflow, we must avoid `tf.exp()`ing it, operating
+        # with logs as much as possible.
+        logpx_z = log_px_z(model, x, z, training=False)  # log pθ(x|z)
+        logpz = log_normal_pdf(z, 0., 0.)                # log pθ(z)
+        logpxz = logpx_z + logpz                         # log pθ(x, z)
+
+        logqz_x = log_normal_pdf(z, mean, logvar)        # log qϕ(z|x)
+        logratio = logpxz - logqz_x
+        return logratio
+
+    print(f"NLL: MC sampling (n = {n_mc_samples})...")
+    acc = [compute_logratio(x, mean, logvar) for _ in range(n_mc_samples)]
+    acc = tf.concat(acc, axis=0)  # concatenate the MC samples
+    print("NLL: computing MC estimate...")
+
+    # Numerical considerations. We need to compute:
+    #   log(α ∑s xs)
+    # but to avoid overflow, we must write this in terms of `log(xs)`.
+    # First, because
+    #   log(α x) = log α + log x
+    # we can extract the scaling factor:
+    #   log(α ∑s xs) = log α + log(∑s xs)
+    # What remains to be done is to rewrite the second term. A sum
+    # inside a logarithm can be expressed via softplus as:
+    #   log(x + y) = log x + softplus(log y - log x)
+    # where
+    #   softplus(x) := log(1 + exp(x))
+    # We can reduce the sum with this formula in a loop.
+    # See:
+    #   https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
+    #
+    # Although there is a risk of catastrophic cancellation, we still want
+    # a reasonable amount of cancellation, to keep the argument to softplus small.
+    # So let's sort the logratios before summing.
+    acc = tf.sort(acc, axis=0, direction="ASCENDING")
+    # # What we want to do:
+    # from unpythonic import window
+    # out = acc[0]  # log(r[0])
+    # for prev, curr in window(2, acc):  # log(r[k]) - log(r[k-1])
+    #     out += tf.math.softplus(curr - prev)
+    sp_diffs = tf.math.softplus(acc[1:] - acc[:-1])  # softplus(log(r[k]) - log(r[k-1]))
+    out = acc[0] + tf.reduce_sum(sp_diffs)
+
+    out += tf.math.log(1. / float(n_mc_samples))  # scaling
+    return -out.numpy()  # *negative* log-likelihood
