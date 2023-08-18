@@ -1197,7 +1197,7 @@ def elbo_loss(model, x, training=None):
 # --------------------------------------------------------------------------------
 # Performance metrics
 
-def active_units(model, x, *, eps=0.1):
+def active_units(model, x, *, batch_size=1024, eps=0.1):
     """Compute AU, the number of latent active units.
 
     `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
@@ -1284,8 +1284,6 @@ def active_units(model, x, *, eps=0.1):
     #
     # The -1 is Bessel's correction; it accounts for the fact that the population mean
     # is unknown, so we use the sample mean, which is not independent of the samples.
-    batch_size = 1024
-
     μ, ignored_logσ = model.encoder.predict(x, batch_size=batch_size)
     xbar = tf.reduce_mean(x, axis=0)  # pixelwise mean (over dataset)
     μbar = tf.reduce_mean(μ, axis=0)  # latent-dimension-wise mean (over dataset)
