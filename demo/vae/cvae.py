@@ -1046,7 +1046,9 @@ def log_px_z(model, x, z, training=None):
     lam = tf.clip_by_value(lam, 1e-4, 1 - 1e-4)  # avoid log(0)
     logpx_z = x * tf.math.log(lam) + (1 - x) * tf.math.log(1 - lam) + cont_bern_log_norm(lam)  # log pθ(x|z) (observation model)
 
-    # multivariate (pixels of `x`); sum of logs = product of probability densities
+    # multivariate (pixels of `x`)
+    # sum of logs = log of product of pixelwise probability densities
+    #             = joint log-probability for independently distributed pixels
     return tf.reduce_sum(logpx_z, axis=[1, 2, 3])  # log pθ(x|z) (observation model)
 
 
