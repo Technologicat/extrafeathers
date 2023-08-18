@@ -938,6 +938,9 @@ class CVAE(tf.keras.Model):
 #   sum_i(-0.5 * (eps_i**2 + logvar + log2pi))
 # which matches Kingma and Welling (2019, algorithm 2).
 #
+# Note this is a multivariate gaussian with diagonal covariance, and we sum the logs,
+# hence we take the product of the marginal probability densities of each component,
+# thus yielding the probability at point `x` (just one real number... for each input in the batch).
 def log_normal_pdf(x, mean, logvar, raxis=1):
     log2pi = tf.math.log(2 * np.pi)
     return tf.reduce_sum(-0.5 * ((x - mean)**2 * tf.exp(-logvar) + logvar + log2pi),
