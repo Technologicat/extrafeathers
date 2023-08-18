@@ -1200,6 +1200,9 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
 
     `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
 
+    Returns an int, the number of latent active units for given model,
+    estimated using the given data.
+
     It is preferable to pass as much data as possible (e.g. all of the
     test data) to get a good estimate of AU.
 
@@ -1304,6 +1307,10 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
 def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     """[performance metric] Compute the negative log-likelihood (NLL).
 
+    `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
+
+    Returns a float, the mean NLL for the given data, using the given model.
+
     When `x` is held-out data, NLL measures generalization (smaller is better).
     For a single input sample `x`, the NLL is defined as::
 
@@ -1363,7 +1370,13 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
     @batched(batch_size)
     def samplewise_elbo(x, mean, logvar):  # positional parameters get @batched
-        """log(pθ(x, z) / qϕ(z|x)), drawing one MC sample of z"""
+        """log(pθ(x, z) / qϕ(z|x)) for each sample of x, drawing one MC sample of z.
+
+        `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
+        `mean`, `logvar`: output of encoder with input `x`
+
+        Returns a tensor of shape (N,).
+        """
         ignored_eps, z = model.reparameterize(mean, logvar)  # draw MC sample
         # Rewriting the joint probability:
         #   pθ(x, z) = pθ(x|z) pθ(z)
@@ -1382,10 +1395,10 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     acc = [samplewise_elbo(x, mean, logvar) for _ in range(n_mc_samples)]  # -> [[N], [N], ...]
     acc = tf.stack(acc, axis=1)  # -> [N, n_mc_samples]
 
-    # TODO: Is it correct to reduce linearly here, or should we treat the batch dimension the same as the MC sample dimension?
+    # TODO: I think this is correct, we should reduce linearly here. But check just to be sure.
     # Taking the mean like this computes (albeit averaging over `x` too early; strictly, we should accumulate the MC samples first):
     #   -E(x ~ data)[log E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ]]
-    # whereas treating both dimensions the same would compute:
+    # whereas treating both dimensions the same (flatten, send to accumulation loop) would compute:
     #   -log E(x ~ data)[E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ]]
     acc = tf.reduce_mean(acc, axis=0)  # -> [n_mc_samples]
     print("NLL: computing MC estimate...")
