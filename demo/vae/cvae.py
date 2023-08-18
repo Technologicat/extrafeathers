@@ -1196,12 +1196,18 @@ def elbo_loss(model, x, training=None):
 # Performance metrics
 
 def active_units(model, x, *, batch_size=1024, eps=0.1):
-    """Compute AU, the number of latent active units.
+    """[performance metric] Compute AU, the number of latent active units.
 
     `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
 
     It is preferable to pass as much data as possible (e.g. all of the
-    training data) to get a good estimate of AU.
+    test data) to get a good estimate of AU.
+
+    AU measures how many of the available latent dimensions a trained VAE actually uses,
+    so the maximum possible value is `latent_dim`. A higher value is better.
+
+    The log of the covariance typically has a bimodal distribution, so AU is not very
+    sensitive to the value of ϵ, as long as it is between the peaks.
 
     We define AU as::
 
@@ -1209,10 +1215,6 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
 
     where d is the dimension of the latent space, ϵ is a suitable small number,
     and #{} counts the number of elements of a set.
-
-    AU measures how many of the available latent dimensions a trained VAE actually uses.
-    The log of the covariance typically has a bimodal distribution, so AU is not very
-    sensitive to the value of ϵ, as long as it is between the peaks.
 
     See Burda et al. (2016):
        https://arxiv.org/abs/1509.00519
