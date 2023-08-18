@@ -786,7 +786,7 @@ class CVAE(tf.keras.Model):
 
         Supports fp32, fp16 and bf16 precision.
 
-        `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
+        `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
         """
         policy = tf.keras.mixed_precision.global_policy()
         fp16 = (policy.compute_dtype == "float16")  # fp16 needs loss scaling, fp32 and bf16 do not
@@ -818,7 +818,7 @@ class CVAE(tf.keras.Model):
 
         Note we have no separate target data `y`, because this is an autoencoder.
 
-        `x`: array-like of size (N, 28, 28, 1); data batch of grayscale pictures
+        `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
         """
         self.compute_loss(x)
         return {m.name: m.result() for m in self.metrics}
