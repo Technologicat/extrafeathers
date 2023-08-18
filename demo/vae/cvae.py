@@ -1282,7 +1282,7 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
     #   covar(x, y) := (1 / (N - 1)) ∑k (xk - xbar) (yk - ybar)
     #
     # where k indexes the observations. Note we essentially want to correlate the
-    # behavior of the variables X and Y across observations, so we need equally many
+    # behavior of the random variables X and Y across observations, so we need equally many
     # observations xk and yk. (Which we indeed have, since encoding one x produces one μ.)
     #
     # The -1 is Bessel's correction; it accounts for the fact that the population mean
@@ -1294,7 +1294,7 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
     # Like the scatter matrix in statistics, but summed over pixels and channels of `x`.
     @batched(batch_size)  # won't fit in VRAM on the full training dataset
     def scatter(x, μ):  # ([N, xy, nx, c], [N, xy, nx, c]) -> [N, latent_dim]
-        xdiff = tf.reduce_sum((x - xbar), axis=[1, 2, 3])  # TODO: is this the right thing to do here?
+        xdiff = tf.reduce_sum((x - xbar), axis=[1, 2, 3])  # TODO: is this the right kind of reduction here?
         outs = []
         for d in range(latent_dim):  # covar(x, z_d)
             outs.append(xdiff * (μ[:, d] - μbar[d]))  # -> [batch_size]
