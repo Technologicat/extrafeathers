@@ -1214,7 +1214,7 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
 
     We define AU as::
 
-        AU := #{i = 1, ..., d: abs(cov_x( E(z ~ qϕ(z|x))[zi] )) > ϵ}
+        AU := #{i = 1, ..., d: abs(cov_x( E[z ~ qϕ(z|x)](zi) )) > ϵ}
 
     where d is the dimension of the latent space, ϵ is a suitable small number,
     and #{} counts the number of elements of a set.
@@ -1262,7 +1262,7 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
     #     the notation "Cov_{x}(...)" instead of the standard "cov(x, ...)".
     #     (We have chosen to take abs() before comparing to ϵ.)
     #
-    # If I understand this right,  E(z ~ qϕ(z|x)) = μ  from the encoder.
+    # If I understand this right,  E[z ~ qϕ(z|x)](z) = μ  from the encoder.
     # We give the encoder the variational parameters ϕ (trained NN coefficients)
     # and an input picture x, and it gives us a multivariate gaussian with diagonal
     # covariance, parameterized by the vectors (μ, log σ), and conditioned on the
@@ -1314,14 +1314,14 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     When `x` is held-out data, NLL measures generalization (smaller is better).
     For a single input sample `x`, the NLL is defined as::
 
-        log pθ(x) = -log( E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ] )
+        log pθ(x) = -log( E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ) )
 
     This expression is intractable, so we approximate it using Monte Carlo::
 
         log pθ(x) ≈ -log( (1/S) ∑s (pθ(x, z[s]) / qϕ(z[s]|x)) )
 
-    where z[s] are the Monte Carlo samples of z ~ qϕ(z|x). The NLL is
-    pretty much the ELBO as used in VAE training, but with some differences:
+    where `S = n_mc_samples` and z[s] are the Monte Carlo samples of z ~ qϕ(z|x).
+    The NLL is pretty much the ELBO as used in VAE training, but with some differences:
 
       - Multiple MC samples to improve accuracy.
       - The mean is computed over the whole dataset `x`, not over each batch.
@@ -1397,9 +1397,9 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
     # TODO: I think this is correct, we should reduce linearly here. But check just to be sure.
     # Taking the mean like this computes (albeit averaging over `x` too early; strictly, we should accumulate the MC samples first):
-    #   -E(x ~ data)[log E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ]]
+    #   -E[x ~ data](log E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ))
     # whereas treating both dimensions the same (flatten, send to accumulation loop) would compute:
-    #   -log E(x ~ data)[E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ]]
+    #   -log E[x ~ data](E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ))
     acc = tf.reduce_mean(acc, axis=0)  # -> [n_mc_samples]
     print("NLL: computing MC estimate...")
 
