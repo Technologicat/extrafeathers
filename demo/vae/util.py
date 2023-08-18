@@ -114,6 +114,10 @@ def batched(batch_size: int) -> typing.Callable:
     The operation may take any number of tensors as positional arguments,
     and any keyword arguments. Only the positional arguments are batched.
 
+    (And yes, *all* positional arguments are batched, so if you want to
+     avoid batching something, send it in by name when you call your
+     batched operation.)
+
     The operation may return either a single tensor, or a tuple of tensors.
     In the output, the batches are reassembled.
 
@@ -123,7 +127,7 @@ def batched(batch_size: int) -> typing.Callable:
         def op(x, y, *, furble):
             # ... do tf math on tensors here ...
             return T  # or return T0, T1, ...
-        op(x, y, furble=True)  # now this computes in batches of 1024
+        T = op(x, y, furble=True)  # transparently computes in batches of 1024
     """
     def batcher(f: typing.Callable) -> typing.Callable:  # batcher, batcher, mushroom
         @wraps(f)
