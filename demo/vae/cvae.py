@@ -1302,35 +1302,67 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
 
 
 def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
-    """Compute the negative log-likelihood (NLL).
+    """[performance metric] Compute the negative log-likelihood (NLL).
 
-    For an input x, NLL is defined as::
+    When `x` is held-out data, NLL measures generalization (smaller is better).
+    For a single input sample `x`, the NLL is defined as::
 
         log pθ(x) = -log( E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ] )
 
-    When `x` is held-out data, this measures generalization.
-
-    The expression is intractable; we approximate it using Monte Carlo::
+    This expression is intractable, so we approximate it using Monte Carlo::
 
         log pθ(x) ≈ -log( (1/S) ∑s (pθ(x, z[s]) / qϕ(z[s]|x)) )
 
-    where z[s] are the Monte Carlo samples of z ~ qϕ(z|x).
+    where z[s] are the Monte Carlo samples of z ~ qϕ(z|x). The NLL is
+    pretty much the ELBO as used in VAE training, but with some differences:
 
-    Original to this implementation, we also avoid evaluating `pθ(x, z[s])`
-    directly, preferring to work on `log pθ(x, z[s])` instead. For example,
-    for the continuous-Bernoulli VAE, on MNIST, `log pθ(x|z) ~ +1500`
-    (which is technically fine, because pθ is a probability *density*)
-    so it cannot be exp'd without causing overflow. We use the softplus
-    identity to express `log(∑s r[s])` in terms of the `log(r[s])`.
+      - Multiple MC samples to improve accuracy.
+      - The mean is computed over the whole dataset `x`, not over each batch.
 
-    See Sinha and Dieng (2022):
+    For numerical reasons, we accumulate the MC samples without evaluating
+    `pθ(x, z[s])` directly, preferring to work on `log pθ(x, z[s])` instead.
+    Consider that the joint probability can be rewritten as
+
+        pθ(x, z) = pθ(x|z) pθ(z)
+
+    Whereas pθ(z) and qϕ(z|x) are gaussians, with reasonable log-probabilities,
+    for the continuous-Bernoulli VAE, on MNIST, `log pθ(x|z) ~ +1500` (!).
+    This is technically fine, because pθ is a probability *density*, but it
+    cannot be exp'd without causing overflow, even at float64.
+
+    To overcome this, we use the softplus identity for the logarithm of a sum.
+    Let `r[s] := pθ(x, z[s]) / qϕ(z[s]|x)`. The identity allows us to express
+    `log(∑s r[s])` in terms of the `log(r[s])`::
+
+        log(x + y) = log x + softplus(log y - log x)
+
+    where::
+
+        softplus(x) ≡ log(1 + exp(x))
+
+    To obtain `log(∑s r[s])`, we start from `log r[0]`, and then (using the
+    associative property of addition) accumulate over 2-tuples in a loop
+    (which we vectorize for speed).
+
+    The final detail is to handle the global scaling factor in the MC
+    representation of the expectation, but this is easy::
+
+       log(α x) = log α + log x
+
+    so that we actually evaluate::
+
+        log(α ∑s r[s]) = log α + log(∑s r[s])
+
+    The definition of the NLL metric is given e.g. in Sinha and Dieng (2022):
       https://arxiv.org/pdf/2105.14859.pdf
+    The softplus identity for the logarithm of a sum is discussed e.g. in:
+      https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
     """
     print("NLL: encoding...")
     mean, logvar = model.encoder.predict(x, batch_size=batch_size)
 
     @batched(batch_size)
-    def compute_logratio(x, mean, logvar):  # these are function parameters so they get @batched
+    def samplewise_elbo(x, mean, logvar):  # positional parameters get @batched
         """log(pθ(x, z) / qϕ(z|x)), drawing one MC sample of z"""
         ignored_eps, z = model.reparameterize(mean, logvar)  # draw MC sample
         # Rewriting the joint probability:
@@ -1338,43 +1370,40 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
         # we have
         #   log pθ(x, z) = log(pθ(x|z) pθ(z))
         #                = log pθ(x|z) + log pθ(z)
-        #
-        # Note, for the continuous-Bernoulli VAE, on MNIST, log pθ(x|z) ~ +1500
-        # (pθ is a probability *density*, so it's technically fine).
-        # To avoid overflow, we must avoid `tf.exp()`ing it, operating
-        # with logs as much as possible.
         logpx_z = log_px_z(model, x, z, training=False)  # log pθ(x|z)
         logpz = log_normal_pdf(z, 0., 0.)                # log pθ(z)
         logpxz = logpx_z + logpz                         # log pθ(x, z)
 
         logqz_x = log_normal_pdf(z, mean, logvar)        # log qϕ(z|x)
-        logratio = logpxz - logqz_x
-        return logratio
+
+        return logpxz - logqz_x
 
     print(f"NLL: MC sampling (n = {n_mc_samples})...")
-    acc = [compute_logratio(x, mean, logvar) for _ in range(n_mc_samples)]
-    acc = tf.concat(acc, axis=0)  # concatenate the MC samples
+    acc = [samplewise_elbo(x, mean, logvar) for _ in range(n_mc_samples)]  # -> [[N], [N], ...]
+    acc = tf.stack(acc, axis=1)  # -> [N, n_mc_samples]
+
+    # TODO: Is it correct to reduce linearly here, or should we treat the batch dimension the same as the MC sample dimension?
+    # Taking the mean like this computes (albeit averaging over `x` too early; strictly, we should accumulate the MC samples first):
+    #   -E(x ~ data)[log E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ]]
+    # whereas treating both dimensions the same would compute:
+    #   -log E(x ~ data)[E(z ~ qϕ(z|x))[ pθ(x, z) / qϕ(z|x) ]]
+    acc = tf.reduce_mean(acc, axis=0)  # -> [n_mc_samples]
     print("NLL: computing MC estimate...")
 
-    # Numerical considerations. We need to compute:
-    #   log(α ∑s xs)
-    # but to avoid overflow, we must write this in terms of `log(xs)`.
-    # First, because
-    #   log(α x) = log α + log x
-    # we can extract the scaling factor:
-    #   log(α ∑s xs) = log α + log(∑s xs)
-    # What remains to be done is to rewrite the second term. A sum
-    # inside a logarithm can be expressed via softplus as:
+    # Accumulate the log samples with the help of the softplus identity
+    # for the logarithm of a sum:
+    #
     #   log(x + y) = log x + softplus(log y - log x)
-    # where
-    #   softplus(x) := log(1 + exp(x))
-    # We can reduce the sum with this formula in a loop.
-    # See:
-    #   https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
     #
     # Although there is a risk of catastrophic cancellation, we still want
     # a reasonable amount of cancellation, to keep the argument to softplus small.
-    # So let's sort the logratios before summing.
+    # So we sort the logratios before summing.
+    #
+    # Starting the summation from the smallest numbers should allow us to accumulate them
+    # before we lose the mantissa bits to represent them due to the increasing exponent.
+    # If this is really important, we could do it in pure Python, and `math.fsum` them.
+    # But we have likely already lost more accuracy due to cancellation, so let's not bother
+    # overengineering this part.
     acc = tf.sort(acc, axis=0, direction="ASCENDING")
     # # What we want to do:
     # from unpythonic import window
@@ -1384,5 +1413,5 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     sp_diffs = tf.math.softplus(acc[1:] - acc[:-1])  # softplus(log(r[k]) - log(r[k-1]))
     out = acc[0] + tf.reduce_sum(sp_diffs)
 
-    out += tf.math.log(1. / float(n_mc_samples))  # scaling
+    out += tf.math.log(1. / float(tf.shape(acc)))  # scaling in the expectation operator
     return -out.numpy()  # *negative* log-likelihood
