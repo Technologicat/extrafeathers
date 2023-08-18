@@ -1,7 +1,9 @@
 """The CVAE model (convolutional variational autoencoder). To compress is to understand."""
 
 __all__ = ["CVAE",
-           "elbo_loss"]
+           "elbo_loss",
+           "active_units",
+           "negative_log_likelihood"]
 
 import pathlib
 
