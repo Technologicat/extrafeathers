@@ -133,6 +133,7 @@ dropout_fraction = 0.1
 #       - In the decoder, add skips from the code point `z` to each layer; see the skip-VAE by Dieng et al. (2019):
 #           https://arxiv.org/pdf/1807.04863.pdf
 #         This adds a shorter path that promotes the use of different information (vs. going through the decoder ResNet blocks).
+#         Model variant 11 does exactly this.
 
 def make_codec(variant):
     """Set up compatible encoder and decoder neural networks for a CVAE.
