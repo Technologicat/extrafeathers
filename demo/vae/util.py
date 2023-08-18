@@ -4,10 +4,12 @@ __all__ = ["layer_to_model",
            "preprocess_images",
            "compute_squared_l2_error",
            "sorted_by_l2_error",
+           "batched",
            "delete_directory_recursively",
            "create_directory",
            "clear_and_create_directory"]
 
+from functools import wraps
 import os
 import pathlib
 import typing
@@ -94,6 +96,49 @@ def sorted_by_l2_error(x: tf.Tensor, xhat: tf.Tensor, *,
     e2s = compute_squared_l2_error(x, xhat).numpy()
     objective = -e2s if reverse else e2s
     return e2s, np.argsort(objective, kind="stable")
+
+# --------------------------------------------------------------------------------
+
+# TODO: Surely there is something like this already available in TensorFlow, but I can't find it?
+# (`Model.fit` et al. have a `batch_size` parameter, which goes to a dataset handler, which also takes a bunch of unrelated parameters,
+#  but there doesn't seem to be a batched evaluation wrapper for math operations.)
+def batched(batch_size: int) -> typing.Callable:
+    """Parametric decorator: transparently batch some TensorFlow math.
+
+    Like the `batch_size` argument in `Model.fit` et al., but for arbitrary
+    TF math on tensor(s) where the first axis indexes the dataset.
+
+    This is useful when the operation on a full dataset won't fit in VRAM,
+    and needs to be computed in batches.
+
+    The operation may take any number of tensors as positional arguments,
+    and any keyword arguments. Only the positional arguments are batched.
+
+    The operation may return either a single tensor, or a tuple of tensors.
+    In the output, the batches are reassembled.
+
+    Usage::
+
+        @batched(1024)
+        def op(x, y, *, furble):
+            # ... do tf math on tensors here ...
+            return T  # or return T0, T1, ...
+        op(x, y, furble=True)  # now this computes in batches of 1024
+    """
+    def batcher(f: typing.Callable) -> typing.Callable:  # batcher, batcher, mushroom
+        @wraps(f)
+        def evaluate_batched(*args, **kwargs):
+            batched_args = [tf.data.Dataset.from_tensor_slices(tensor).batch(batch_size) for tensor in args]  # [T0, T1, ...] -> [batches(c0), batches(c1), ...]
+            batches_in = [[batch for batch in batches] for batches in batched_args]  # -> [[b0_T0, b1_T0, ...], [b0_T1, b1_T1, ...], ...]
+            batches_in = list(zip(*batches_in))  # -> [[b0_T0, b0_T1, ...], [b1_T0, b1_T1, ...], ...]
+            batches_out = [f(*xs, **kwargs) for xs in batches_in]
+            has_multiple_outputs = batches_out and isinstance(batches_out[0], tuple)
+            if not has_multiple_outputs:  # single tensor
+                return tf.concat(batches_out, axis=0)  # [b0_T, b1_T, ...] -> T
+            components_out = list(zip(*batches_out))  # [[b0_T0, b0_T1, ...], [b1_T0, b1_T1, ...], ...] -> [[b0_T0, b1_T0, ...], [b0_T1, b1_T1, ...], ...]
+            return tuple(tf.concat(x, axis=0) for x in components_out)  # -> [T0, T1, ...]
+        return evaluate_batched
+    return batcher
 
 # --------------------------------------------------------------------------------
 
