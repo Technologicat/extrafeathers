@@ -1076,7 +1076,8 @@ def elbo_loss(model, x, training=None):
     # the distribution of such points z.
     mean, logvar = model.encoder(x, training=training)
 
-    # Optional multiple-sample Monte Carlo just for the lulz.
+    # We could use multiple-sample Monte Carlo; see `negative_log_likelihood` for how to average the samples
+    # correctly (we're dealing with log-probabilities, and expectation doesn't commute with log).
     #
     # Using more than one sample multiplies the computational cost, but usually increases quality only slightly.
     # At least qualitatively, it seems it is more cost-efficient (for test-set ELBO gain per unit of wall time
@@ -1088,110 +1089,105 @@ def elbo_loss(model, x, training=None):
     #
     # An important reason is that we are not just evaluating `z`; we must evaluate all terms of the ELBO consistently.
     # A Monte Carlo point estimate is a computationally efficient way to achieve this consistency.
+
+    # Sample the variational posterior qϕ(z|x) to obtain *a* latent point z corresponding to the input x.
+    # That is, draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
+    # reparameterization transformation z = g(ε, ϕ, x).
     #
-    n_mc_samples = 1
-    elbo = 0.0
-    for _ in range(n_mc_samples):
-        # Sample the variational posterior qϕ(z|x) to obtain *a* latent point z corresponding to the input x.
-        # That is, draw a single sample z ~ qϕ(z|x), using a single noise sample ε ~ p(ε) and the deterministic
-        # reparameterization transformation z = g(ε, ϕ, x).
-        #
-        # In the implementation, actually z = g(μ, log σ); the dependencies on ϕ and x have been absorbed into
-        # μ(ϕ, x) and log σ(ϕ, x). The `reparameterize` function internally draws the noise sample ε, so we
-        # don't need to supply it here.
-        #
-        # We choose our class of variational posteriors (which we optimize over) as factorized Gaussian,
-        # mainly for convenience. Thus we interpret the (initially arbitrary) numbers coming from the encoder
-        # as (μ, log σ) for a factorized Gaussian, and plug them in in those roles.
-        #
-        # Note that initially, the encoder output is essentially just `2 * latent_dim` arbitrary real numbers.
-        # The encoder itself does not know the meaning of its outputs. That meaning is established *here*,
-        # by the training process. *Because* we use the encoder outputs as (μ, log σ), the training process
-        # adjusts the encoder coefficients so that those numbers actually become to represent (i.e. converge
-        # to reasonable values for) (μ, log σ).
-        #
-        # (Let that sink in for a moment: the training process guides some arbitrary outputs to "magically"
-        # become what we wanted them to represent. As always, the magic is an illusion; essentially, this
-        # setup is no different from a classical optimization problem, say, over polynomials. We fix the
-        # structure of a computational algorithm (which is now much more complex than a single polynomial)
-        # and then optimize to find good values for its coefficients. The structure of the algorithm
-        # fixes the meaning of the coefficients. Only humans see the meaning; the optimizer sees just
-        # a vector of coefficients, which it tunes in order to improve the value of the objective function.)
-        #
-        # Finally, we re-emphasize that z is encoded stochastically. Even feeding in the same x produces
-        # a different z each time (for each MC sample), since z is sampled from the variational posterior.
-        eps, z = model.reparameterize(mean, logvar)
+    # In the implementation, actually z = g(μ, log σ); the dependencies on ϕ and x have been absorbed into
+    # μ(ϕ, x) and log σ(ϕ, x). The `reparameterize` function internally draws the noise sample ε, so we
+    # don't need to supply it here.
+    #
+    # We choose our class of variational posteriors (which we optimize over) as factorized Gaussian,
+    # mainly for convenience. Thus we interpret the (initially arbitrary) numbers coming from the encoder
+    # as (μ, log σ) for a factorized Gaussian, and plug them in in those roles.
+    #
+    # Note that initially, the encoder output is essentially just `2 * latent_dim` arbitrary real numbers.
+    # The encoder itself does not know the meaning of its outputs. That meaning is established *here*,
+    # by the training process. *Because* we use the encoder outputs as (μ, log σ), the training process
+    # adjusts the encoder coefficients so that those numbers actually become to represent (i.e. converge
+    # to reasonable values for) (μ, log σ).
+    #
+    # (Let that sink in for a moment: the training process guides some arbitrary outputs to "magically"
+    # become what we wanted them to represent. As always, the magic is an illusion; essentially, this
+    # setup is no different from a classical optimization problem, say, over polynomials. We fix the
+    # structure of a computational algorithm (which is now much more complex than a single polynomial)
+    # and then optimize to find good values for its coefficients. The structure of the algorithm
+    # fixes the meaning of the coefficients. Only humans see the meaning; the optimizer sees just
+    # a vector of coefficients, which it tunes in order to improve the value of the objective function.)
+    #
+    # Finally, we re-emphasize that z is encoded stochastically. Even feeding in the same x produces
+    # a different z each time (for each MC sample), since z is sampled from the variational posterior.
+    eps, z = model.reparameterize(mean, logvar)
 
-        # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z):
-        #   z → NN_dec(θ, z) = P(θ, z)
-        # Here θ are the decoder NN coefficients. In our implementation, the observation model
-        # takes just one parameter (per pixel), P.
-        #
-        # Note the output dimensionality: the decoder maps a latent point z (a point, not a distribution!)
-        # back to the raw data space (pixel space). Since we work with grayscale pictures, the output has
-        # one P value per pixel.
-        #
-        # We implement the classic VAE: we choose our class of observation models as factorized Bernoulli
-        # (pixel-wise). Thus we interpret the (again, initially arbitrary) numbers coming from the decoder
-        # as logits for a factorized Bernoulli distribution, and plug them in in that role.
-        #
-        logpx_z = log_px_z(model, x, z, training=training)
+    # Decode the sampled `z`, obtain parameters (at each pixel) for observation model pθ(x|z):
+    #   z → NN_dec(θ, z) = P(θ, z)
+    # Here θ are the decoder NN coefficients. In our implementation, the observation model
+    # takes just one parameter (per pixel), P.
+    #
+    # Note the output dimensionality: the decoder maps a latent point z (a point, not a distribution!)
+    # back to the raw data space (pixel space). Since we work with grayscale pictures, the output has
+    # one P value per pixel.
+    #
+    # We implement the classic VAE: we choose our class of observation models as factorized Bernoulli
+    # (pixel-wise). Thus we interpret the (again, initially arbitrary) numbers coming from the decoder
+    # as logits for a factorized Bernoulli distribution, and plug them in in that role.
+    #
+    logpx_z = log_px_z(model, x, z, training=training)
 
-        # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(μ=0, σ=1).
-        # Note this spherical unit Gaussian is distinct from the one we used for the noise variable ε.
-        # Note also the function `log_normal_pdf` takes `log σ`, not bare `σ`.
-        logpz = log_normal_pdf(z, 0., 0.)                    # log pθ(z)   (latent prior, at *sampled* z)
+    # We choose the latent prior pθ(z) to be a spherical unit Gaussian, N(μ=0, σ=1).
+    # Note this spherical unit Gaussian is distinct from the one we used for the noise variable ε.
+    # Note also the function `log_normal_pdf` takes `log σ`, not bare `σ`.
+    logpz = log_normal_pdf(z, 0., 0.)                    # log pθ(z)   (latent prior, at *sampled* z)
 
-        logqz_x = log_normal_pdf(z, mean, logvar)            # log qϕ(z|x) (variational posterior)
+    logqz_x = log_normal_pdf(z, mean, logvar)            # log qϕ(z|x) (variational posterior)
 
-        # Finally, evaluate the ELBO. We have
-        #
-        #   ELBO[θ,ϕ](x) := E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
-        #                 = E[qϕ(z|x)] [log (pθ(x|z) pθ(z)) - log qϕ(z|x)]       (rewrite joint probability)
-        #                 = E[qϕ(z|x)] [log pθ(x|z) + log pθ(z) - log qϕ(z|x)]   (log arithmetic)
-        #                 = E[p(ε)] [log pθ(x|z) + log pθ(z) - log qϕ(z|x)]      (reparameterization trick)
-        #                 ≃ log pθ(x|z) + log pθ(z) - log qϕ(z|x)
-        #
-        # where E[var][expr] is the expectation, and the simeq symbol ≃ denotes that one side
-        # (here the right-hand side) is an unbiased estimator of the other side. The definition
-        # on the first line is sometimes called the *joint-contrastive* form of the ELBO.
-        #
-        # The last line above is the one that is easily computable. For understanding how the ELBO works,
-        # consider an alternative form:
-        #
-        #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
-        #                = E[qϕ(z|x)] [log (pθ(x|z) pθ(z)) - log qϕ(z|x)]
-        #                = E[qϕ(z|x)] [log pθ(x|z) - [log qϕ(z|x) - log pθ(z)]]
-        #                ≡ E[qϕ(z|x)] [log pθ(x|z)] - DKL(qϕ(z|x) ‖ pθ(z))
-        #
-        # where DKL is the Kullback--Leibler divergence. So the above expression is the sum of
-        # a reconstruction quality term (expectation, with z drawn from qϕ(z|x), of the log-likelihood
-        # of the input x, given the code z) and a regularization term (KL divergence of qϕ(z|x) from the
-        # latent *prior*). This is the *prior-contrastive* form of the ELBO.
-        #
-        # On the other hand, by rewriting the joint probability the other way, we have also
-        #
-        #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
-        #                = E[qϕ(z|x)] [log (pθ(x) pθ(z|x)) - log qϕ(z|x)]
-        #                = E[qϕ(z|x)] [log pθ(x) - [log qϕ(z|x) - log pθ(z|x)]]
-        #                = E[qϕ(z|x)] [log pθ(x)] - E[qϕ(z|x)] [log qϕ(z|x) - log pθ(z|x)]]
-        #                ≡ E[qϕ(z|x)] [log pθ(x)] - DKL(qϕ(z|x) ‖ pθ(z|x))
-        #                ≡ log pθ(x) - DKL(qϕ(z|x) ‖ pθ(z|x))
-        #
-        # which, since  DKL ≥ 0,  highlights two important facts. First,
-        #
-        #   ELBO[θ,ϕ](x) ≤ log p(x)
-        #
-        # for all θ,ϕ; and secondly, the tightness of this inequality depends on how close the
-        # approximate variational posterior qϕ(z|x) is to the unknown true *posterior* pθ(z|x).
-        # So maximizing the ELBO over distributions qϕ(z|x), we should find the optimal qϕ(z|x),
-        # which approximates pθ(z|x) best, within our chosen class of distributions qϕ(z|x).
-        #
-        # Finally, keep in mind that for a continuous distribution p(x), the ELBO may actually take on
-        # positive values, because p(x) is then a probability *density*, which may in general exceed 1.
-        elbo += tf.reduce_mean(logpx_z + logpz - logqz_x)
-    if n_mc_samples > 1:  # take the mean
-        elbo /= n_mc_samples
+    # Finally, evaluate the ELBO. We have
+    #
+    #   ELBO[θ,ϕ](x) := E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
+    #                 = E[qϕ(z|x)] [log (pθ(x|z) pθ(z)) - log qϕ(z|x)]       (rewrite joint probability)
+    #                 = E[qϕ(z|x)] [log pθ(x|z) + log pθ(z) - log qϕ(z|x)]   (log arithmetic)
+    #                 = E[p(ε)] [log pθ(x|z) + log pθ(z) - log qϕ(z|x)]      (reparameterization trick)
+    #                 ≃ log pθ(x|z) + log pθ(z) - log qϕ(z|x)
+    #
+    # where E[var][expr] is the expectation, and the simeq symbol ≃ denotes that one side
+    # (here the right-hand side) is an unbiased estimator of the other side. The definition
+    # on the first line is sometimes called the *joint-contrastive* form of the ELBO.
+    #
+    # The last line above is the one that is easily computable. For understanding how the ELBO works,
+    # consider an alternative form:
+    #
+    #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
+    #                = E[qϕ(z|x)] [log (pθ(x|z) pθ(z)) - log qϕ(z|x)]
+    #                = E[qϕ(z|x)] [log pθ(x|z) - [log qϕ(z|x) - log pθ(z)]]
+    #                ≡ E[qϕ(z|x)] [log pθ(x|z)] - DKL(qϕ(z|x) ‖ pθ(z))
+    #
+    # where DKL is the Kullback--Leibler divergence. So the above expression is the sum of
+    # a reconstruction quality term (expectation, with z drawn from qϕ(z|x), of the log-likelihood
+    # of the input x, given the code z) and a regularization term (KL divergence of qϕ(z|x) from the
+    # latent *prior*). This is the *prior-contrastive* form of the ELBO.
+    #
+    # On the other hand, by rewriting the joint probability the other way, we have also
+    #
+    #   ELBO[θ,ϕ](x) ≡ E[qϕ(z|x)] [log pθ(x,z) - log qϕ(z|x)]
+    #                = E[qϕ(z|x)] [log (pθ(x) pθ(z|x)) - log qϕ(z|x)]
+    #                = E[qϕ(z|x)] [log pθ(x) - [log qϕ(z|x) - log pθ(z|x)]]
+    #                = E[qϕ(z|x)] [log pθ(x)] - E[qϕ(z|x)] [log qϕ(z|x) - log pθ(z|x)]]
+    #                ≡ E[qϕ(z|x)] [log pθ(x)] - DKL(qϕ(z|x) ‖ pθ(z|x))
+    #                ≡ log pθ(x) - DKL(qϕ(z|x) ‖ pθ(z|x))
+    #
+    # which, since  DKL ≥ 0,  highlights two important facts. First,
+    #
+    #   ELBO[θ,ϕ](x) ≤ log p(x)
+    #
+    # for all θ,ϕ; and secondly, the tightness of this inequality depends on how close the
+    # approximate variational posterior qϕ(z|x) is to the unknown true *posterior* pθ(z|x).
+    # So maximizing the ELBO over distributions qϕ(z|x), we should find the optimal qϕ(z|x),
+    # which approximates pθ(z|x) best, within our chosen class of distributions qϕ(z|x).
+    #
+    # Finally, keep in mind that for a continuous distribution p(x), the ELBO may actually take on
+    # positive values, because p(x) is then a probability *density*, which may in general exceed 1.
+    elbo = tf.reduce_mean(logpx_z + logpz - logqz_x)
 
     return -elbo  # with sign flipped → ELBO loss
 
