@@ -1494,13 +1494,18 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     #   x * 4 = x + x + x + x
     #   ...
     #
-    # This also gives a pretty notation for the `log` of a sum:
+    # In analogy with the `log` of a product:
+    #
+    #   log(x y) = log x + log y
+    #
+    # the `𝕄` notation also gives a pretty expression for the `log` of a sum:
     #
     #   log(x + y) = log x 𝕄 log y
     #
-    # in analogy with the `log` of a product:
+    # where
     #
-    #   log(x y) = log x + log y
+    #   x 𝕄 y := x + ⟦y - x⟧+    (smoothmax)
+    #   ⟦x⟧+ := log(1 + exp(x))   (softplus, notation in analogy with positive part "[x]+")
 
     # The benefit of the softplus identity is that it allows us to work with
     # logarithms only, except for the evaluation of the softplus. Whenever its
