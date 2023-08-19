@@ -1424,13 +1424,14 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     #
     #   smoothmax(x, y) := x + softplus(y - x)
     #
-    # the softplus identity shortens into
+    # we see that most of the usual properties of addition (commutativity,
+    # associativity, distributivity) hold for `smoothmax`. The softplus
+    # identity shortens into
     #
     #   log(x + y) = smoothmax(log x, log y)
     #
-    # We see that `log` turns a sum into a smoothed maximum. Indeed
-    # most of the usual properties of addition (commutativity,
-    # associativity, distributivity) hold for `smoothmax`.
+    # or in other words, the `log` of a sum is a smoothed maximum of the
+    # logs of the summands.
     #
     # The one to watch out for is the identity property. Since we assumed
     # `x, y > 0` to keep all arguments in the domain of (real-valued)
@@ -1492,6 +1493,14 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     #   x * 3 = x + x + x
     #   x * 4 = x + x + x + x
     #   ...
+    #
+    # This also gives a pretty notation for the `log` of a sum:
+    #
+    #   log(x + y) = log x 𝕄 log y
+    #
+    # in analogy with the `log` of a product:
+    #
+    #   log(x y) = log x + log y
 
     # The benefit of the softplus identity is that it allows us to work with
     # logarithms only, except for the evaluation of the softplus. Whenever its
