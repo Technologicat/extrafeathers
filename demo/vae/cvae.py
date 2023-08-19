@@ -1468,21 +1468,21 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     #   repeated addition of a number with itself, strengthening the
     #   notion that this operation is sort-of one order lower than addition.
     #
-    # This perhaps looks clearer if we use some symbol, say `⇈`,
+    # This perhaps looks clearer if we use some symbol, say `𝕄`,
     # as infix notation for `smoothmax`:
     #
     #   x + log 1 = x
-    #   x + log 2 = x ⇈ x
-    #   x + log 3 = x ⇈ (x ⇈ x)
-    #   x + log 4 = x ⇈ (x ⇈ (x ⇈ x))
+    #   x + log 2 = x 𝕄 x
+    #   x + log 3 = x 𝕄 (x 𝕄 x)
+    #   x + log 4 = x 𝕄 (x 𝕄 (x 𝕄 x))
     #   ...
     #
     # and since `smoothmax` is associative, we can drop the parentheses:
     #
     #   x + log 1 = x
-    #   x + log 2 = x ⇈ x
-    #   x + log 3 = x ⇈ x ⇈ x
-    #   x + log 4 = x ⇈ x ⇈ x ⇈ x
+    #   x + log 2 = x 𝕄 x
+    #   x + log 3 = x 𝕄 x 𝕄 x
+    #   x + log 4 = x 𝕄 x 𝕄 x 𝕄 x
     #   ...
     #
     # which indeed looks similar to
