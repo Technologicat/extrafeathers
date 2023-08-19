@@ -1423,13 +1423,13 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     #
     #   softplus(x) ≡ log(1 + exp(x))
     #
-    # Incidentally, defining a C∞ continuous analog of the `max` function:
+    # Incidentally, let us define a C∞ continuous analog of the `max` function:
     #
     #   smoothmax(x, y) := x + softplus(y - x)
     #
-    # we see that most of the usual properties of addition (commutativity,
-    # associativity, distributivity) hold for `smoothmax`. The softplus
-    # identity shortens into
+    # Upon close inspection (proof omitted here), we see that most of the
+    # usual properties of addition (commutativity, associativity, distributivity)
+    # hold for `smoothmax`. The softplus identity shortens into:
     #
     #   log(x + y) = smoothmax(log x, log y)
     #
