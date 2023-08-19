@@ -1195,6 +1195,9 @@ def elbo_loss(model, x, training=None):
 # --------------------------------------------------------------------------------
 # Performance metrics
 
+# TODO: These should perhaps be moved into a separate module (`performance_metrics.py`?),
+# TODO: since there is a lot of wordy math documentation here.
+
 def active_units(model, x, *, batch_size=1024, eps=0.1):
     """[performance metric] Compute AU, the number of latent active units.
 
