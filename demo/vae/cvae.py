@@ -1403,16 +1403,105 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     acc = tf.reduce_mean(acc, axis=0)  # -> [n_mc_samples]
     print("NLL: computing MC estimate...")
 
-    # Accumulate the log samples with the help of the softplus identity
-    # for the logarithm of a sum:
+    # We can accumulate the log samples with the help of the softplus identity
+    # for the logarithm of a sum.
     #
-    #   log(x + y) = log x + softplus(log y - log x)
+    # Discussion summarized from:
+    #   https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
     #
-    # Although there is a risk of catastrophic cancellation, we still want
-    # a reasonable amount of cancellation, to keep the argument to softplus small.
-    # So we sort the logratios before summing.
+    # For all `x, y > 0`, it holds that:
     #
-    # Starting the summation from the smallest numbers should allow us to accumulate them
+    #   log(x + y) = log(x * (1 + y / x))
+    #              = log x + log(1 + y / x)
+    #              = log x + log(1 + exp(log(y / x)))
+    #              = log x + log(1 + exp(log y - log x))
+    #              ≡ log x + softplus(log y - log x)
+    # where
+    #
+    #   softplus(x) ≡ log(1 + exp(x))
+    #
+    # Incidentally, defining a C∞ continuous analog of the `max` function:
+    #
+    #   smoothmax(x, y) := x + softplus(y - x)
+    #
+    # the softplus identity shortens into
+    #
+    #   log(x + y) = smoothmax(log x, log y)
+    #
+    # We see that `log` turns a sum into a smoothed maximum. Indeed
+    # most of the usual properties of addition (commutativity,
+    # associativity, distributivity) hold for `smoothmax`.
+    #
+    # The one to watch out for is the identity property. Since we assumed
+    # `x, y > 0` to keep all arguments in the domain of (real-valued)
+    # `log`, strictly speaking the softplus identity is not applicable
+    # when `y = 0`. In the limit, though, we have:
+    #
+    #   lim[y → -∞] smoothmax(x, y) = x
+    #
+    # so we *can* say that:
+    #
+    #   lim[y → 0+] log(x + y) = lim[y → 0+] smoothmax(log x, log y)
+    #                          = log x
+    #
+    # Also keep in mind `smoothmax` is not `max`, although it behaves
+    # somewhat similarly for most values of its arguments. It differs
+    # from `max` the most when `|x - y|` is small. The extreme case is:
+    #
+    #   smoothmax(x, x) = x + softplus(0)
+    #                   = x + log(1 + exp(0))
+    #                   = x + log(1 + 1)
+    #                   = x + log(2)
+    #
+    # Finally, observe that:
+    #
+    #   x + log 1 = x
+    #   x + log 2 = smoothmax(x, x)
+    #   x + log 3 = smoothmax(x, smoothmax(x, x))
+    #   x + log 4 = smoothmax(x, smoothmax(x, smoothmax(x, x)))
+    #   ...
+    #
+    # Proof by induction, omitted. The original author writes:
+    #   [This] resembles a sort of definition of addition of log-naturals
+    #   as “repeated smoothmax of a number with itself”, in very much the
+    #   same sense that multiplication by naturals can be defined as
+    #   repeated addition of a number with itself, strengthening the
+    #   notion that this operation is sort-of one order lower than addition.
+    #
+    # This perhaps looks clearer if we use some symbol, say `⇈`,
+    # as infix notation for `smoothmax`:
+    #
+    #   x + log 1 = x
+    #   x + log 2 = x ⇈ x
+    #   x + log 3 = x ⇈ (x ⇈ x)
+    #   x + log 4 = x ⇈ (x ⇈ (x ⇈ x))
+    #   ...
+    #
+    # and since `smoothmax` is associative, we can drop the parentheses:
+    #
+    #   x + log 1 = x
+    #   x + log 2 = x ⇈ x
+    #   x + log 3 = x ⇈ x ⇈ x
+    #   x + log 4 = x ⇈ x ⇈ x ⇈ x
+    #   ...
+    #
+    # which indeed looks similar to
+    #
+    #   x * 1 = x
+    #   x * 2 = x + x
+    #   x * 3 = x + x + x
+    #   x * 4 = x + x + x + x
+    #   ...
+
+    # The benefit of the softplus identity is that it allows us to work with
+    # logarithms only, except for the evaluation of the softplus. Whenever its
+    # argument is small, the `exp` can be taken without numerical issues.
+    #
+    # Although there is a risk of catastrophic cancellation in `log y - log x`,
+    # we still want a reasonable amount of cancellation, to keep the argument
+    # to softplus small. So we sort the logratios before summing.
+    #
+    # Starting the summation from the *smallest* numbers should allow us to accumulate them
     # before we lose the mantissa bits to represent them due to the increasing exponent.
     # If this is really important, we could do it in pure Python, and `math.fsum` them.
     # But we have likely already lost more accuracy due to cancellation, so let's not bother
