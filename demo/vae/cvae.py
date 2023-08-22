@@ -1307,129 +1307,140 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
     return int(tf.reduce_sum(tf.where(tf.greater(tf.math.abs(sample_covar), eps), 1.0, 0.0)))
 
 
-# TODO: refactor `lopsum` to `util` and move the explanations to this docstring.
-def logsum(logxs):
-    """`log(∑k x[k])`, computed in terms of `log x[k]`, using the smoothmax identity.
+# TODO: refactor `logsumxs` to `util`
+def logsumxs(logxs):
+    """`log(∑k x[k])`, computed in terms of `log x[k]`, without evaluating `x[k]`.
 
     `logxs`: rank-1 tensor, containing `[log x[0], log x[1], ...]`
 
     Returns `log(∑k x[k])`.
 
-    This is computed in a numerically stable way; we actually never evaluate `x[k]`.
-    This is useful when only the logarithms are available (e.g. to prevent overflow
-    from large exponents).
-    """
-    # We can accumulate the log samples with the help of the smoothmax identity
-    # for the logarithm of a sum.
-    #
-    # Discussion summarized from:
-    #   https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
-    #
-    # For all `x, y > 0`, it holds that:
-    #
-    #   log(x + y) = log(x * (1 + y / x))
-    #              = log x + log(1 + y / x)
-    #              = log x + log(1 + exp(log(y / x)))
-    #              = log x + log(1 + exp(log y - log x))
-    #              ≡ log x + softplus(log y - log x)
-    # where
-    #
-    #   softplus(x) ≡ log(1 + exp(x))
-    #
-    # Incidentally, let us define a C∞ continuous analog of the `max` function:
-    #
-    #   smoothmax(x, y) := x + softplus(y - x)
-    #
-    # Upon close inspection (proof omitted here), we see that most of the
-    # usual properties of addition (commutativity, associativity, distributivity)
-    # hold for `smoothmax`. The identity for the logarithm of a sum shortens into:
-    #
-    #   log(x + y) = smoothmax(log x, log y)
-    #
-    # or in other words, the `log` of a sum is a smoothed maximum of the
-    # logs of the summands.
-    #
-    # The one to watch out for is the identity property. Since we assumed
-    # `x, y > 0` to keep all arguments in the domain of (real-valued)
-    # `log`, strictly speaking the smoothmax identity is not applicable
-    # when `y = 0`. In the limit, though, we have:
-    #
-    #   lim[y → -∞] smoothmax(x, y) = x
-    #
-    # so we *can* say that:
-    #
-    #   lim[y → 0+] log(x + y) = lim[y → 0+] smoothmax(log x, log y)
-    #                          = log x
-    #
-    # Also keep in mind `smoothmax` is not `max`, although it behaves
-    # somewhat similarly for most values of its arguments. It differs
-    # from `max` the most when `|x - y|` is small. The extreme case is:
-    #
-    #   smoothmax(x, x) = x + softplus(0)
-    #                   = x + log(1 + exp(0))
-    #                   = x + log(1 + 1)
-    #                   = x + log(2)
-    #
-    # Finally, observe that:
-    #
-    #   x + log 1 = x
-    #   x + log 2 = smoothmax(x, x)
-    #   x + log 3 = smoothmax(x, smoothmax(x, x))
-    #   x + log 4 = smoothmax(x, smoothmax(x, smoothmax(x, x)))
-    #   ...
-    #
-    # Proof by induction, omitted. The original author writes:
-    #   [This] resembles a sort of definition of addition of log-naturals
-    #   as “repeated smoothmax of a number with itself”, in very much the
-    #   same sense that multiplication by naturals can be defined as
-    #   repeated addition of a number with itself, strengthening the
-    #   notion that this operation is sort-of one order lower than addition.
-    #
-    # This perhaps looks clearer if we use some symbol, say `𝕄`,
-    # as infix notation for `smoothmax`:
-    #
-    #   x + log 1 = x
-    #   x + log 2 = x 𝕄 x
-    #   x + log 3 = x 𝕄 (x 𝕄 x)
-    #   x + log 4 = x 𝕄 (x 𝕄 (x 𝕄 x))
-    #   ...
-    #
-    # and since `smoothmax` is associative, we can drop the parentheses:
-    #
-    #   x + log 1 = x
-    #   x + log 2 = x 𝕄 x
-    #   x + log 3 = x 𝕄 x 𝕄 x
-    #   x + log 4 = x 𝕄 x 𝕄 x 𝕄 x
-    #   ...
-    #
-    # which indeed looks similar to
-    #
-    #   x * 1 = x
-    #   x * 2 = x + x
-    #   x * 3 = x + x + x
-    #   x * 4 = x + x + x + x
-    #   ...
-    #
-    # In analogy with the `log` of a product:
-    #
-    #   log(x y) = log x + log y
-    #
-    # the `𝕄` notation also gives a pretty expression for the `log` of a sum:
-    #
-    #   log(x + y) = log x 𝕄 log y
-    #
-    # where
-    #
-    #   x 𝕄 y := x + ⟦y - x⟧+    (smoothmax)
-    #   ⟦x⟧+ := log(1 + exp(x))   (softplus, notation in analogy with positive part "[x]+")
+    This is mostly numerically stable, and particularly useful when only the
+    logarithms are available (e.g. to prevent overflow from very large exponents).
 
+    **Background**:
+
+    Discussion summarized from:
+      https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
+
+    For all `x, y > 0`, it holds that:
+
+      log(x + y) = log(x * (1 + y / x))
+                 = log x + log(1 + y / x)
+                 = log x + log(1 + exp(log(y / x)))
+                 = log x + log(1 + exp(log y - log x))
+                 ≡ log x + ⟦log y - log x⟧+
+    where
+
+      ⟦x⟧+ ≡ log(1 + exp(x))
+
+    is the `softplus` function (notation in analogy with positive part "[x]+").
+    Actually, let us define the following C∞ continuous analog of the `max` function:
+
+      smoothmax(x, y) := x + ⟦y - x⟧+
+
+    Upon close inspection, most of the usual properties of addition
+    (commutativity, associativity, distributivity) hold for `smoothmax`.
+    For example:
+
+      smoothmax(log x, log y) = log x + ⟦log y - log x⟧+
+                              = log(x + y)
+                              = log(y + x)
+                              = log y + ⟦log x - log y⟧+
+                              = smoothmax(log y, log x)
+
+    Since `log x` and `log y` are arbitrary real numbers, `smoothmax` is
+    commutative for any values of its arguments. Proofs for the other
+    two properties omitted.
+
+    This gives us the *smoothmax identity* for the logarithm of a sum:
+
+      log(x + y) = smoothmax(log x, log y)
+
+    In other words, the `log` of a sum is a smoothed maximum of the
+    logs of the summands.
+
+    The one to watch out for is the identity property. Since we assumed
+    `x, y > 0` to keep all arguments in the domain of (real-valued)
+    `log`, strictly speaking the identity is not applicable when `y = 0`.
+    In the limit, though, we have:
+
+      lim[y → -∞] smoothmax(x, y) = x
+
+    so we *can* say that:
+
+      lim[y → 0+] log(x + y) = lim[y → 0+] smoothmax(log x, log y)
+                             = log x
+
+    Also keep in mind `smoothmax` is not `max`, although it behaves
+    somewhat similarly when the arguments are far apart. It differs
+    from `max` the most when `|x - y|` is small. The extreme case is:
+
+      smoothmax(x, x) = x + ⟦0⟧+
+                      = x + log(1 + exp(0))
+                      = x + log(1 + 1)
+                      = x + log(2)
+
+    Finally, observe that:
+
+      x + log 1 = x
+      x + log 2 = smoothmax(x, x)
+      x + log 3 = smoothmax(x, smoothmax(x, x))
+      x + log 4 = smoothmax(x, smoothmax(x, smoothmax(x, x)))
+      ...
+
+    Proof by induction, omitted. The original author writes:
+      [This] resembles a sort of definition of addition of log-naturals
+      as “repeated smoothmax of a number with itself”, in very much the
+      same sense that multiplication by naturals can be defined as
+      repeated addition of a number with itself, strengthening the
+      notion that this operation is sort-of one order lower than addition.
+
+    This perhaps looks clearer if we use some symbol, say `𝕄`,
+    as infix notation for `smoothmax`:
+
+      x + log 1 = x
+      x + log 2 = x 𝕄 x
+      x + log 3 = x 𝕄 (x 𝕄 x)
+      x + log 4 = x 𝕄 (x 𝕄 (x 𝕄 x))
+      ...
+
+    and since `smoothmax` is associative, we can drop the parentheses:
+
+      x + log 1 = x
+      x + log 2 = x 𝕄 x
+      x + log 3 = x 𝕄 x 𝕄 x
+      x + log 4 = x 𝕄 x 𝕄 x 𝕄 x
+      ...
+
+    which indeed looks similar to
+
+      x * 1 = x
+      x * 2 = x + x
+      x * 3 = x + x + x
+      x * 4 = x + x + x + x
+      ...
+
+    In analogy with the `log` of a product:
+
+      log(x y) = log x + log y
+
+    the `𝕄` notation also gives a pretty expression for the `log` of a sum:
+
+      log(x + y) = log x 𝕄 log y
+
+    where
+
+      x 𝕄 y := x + ⟦y - x⟧+    (smoothmax)
+      ⟦x⟧+ := log(1 + exp(x))   (softplus)
+    """
     # The benefit of the smoothmax identity is that it allows us to work with
-    # logarithms only, except for the evaluation of the softplus. Whenever its
+    # logarithms only, except in the evaluation of the softplus. Whenever its
     # argument is small, the `exp` can be taken without numerical issues.
     #
     # Although there is a risk of catastrophic cancellation in `log y - log x`,
     # we still want a reasonable amount of cancellation, to keep the argument
-    # to softplus small. So we sort the logratios before summing.
+    # to softplus small. So we sort the `logxs`.
     #
     # Starting the summation from the *smallest* numbers should allow us to accumulate them
     # before we lose the mantissa bits to represent them due to the increasing exponent.
@@ -1439,7 +1450,7 @@ def logsum(logxs):
     logxs = tf.sort(logxs, axis=0, direction="ASCENDING")
     # # What we want to do:
     # from unpythonic import window
-    # out = acc[0]  # log(x[0])
+    # out = logxs[0]  # log(x[0])
     # for prev, curr in window(2, logxs):  # log(x[k]) - log(x[k-1])
     #     out += tf.math.softplus(curr - prev)
     sp_diffs = tf.math.softplus(logxs[1:] - logxs[:-1])  # softplus(log(x[k]) - log(x[k-1]))
@@ -1546,7 +1557,7 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
     print("NLL: computing MC estimate...")
     # `log(∑k r[k])`, in terms of `log r[k]`, using the smoothmax identity.
-    out = logsum(acc)
+    out = logsumxs(acc)
     out += tf.math.log(1. / float(tf.shape(acc)))  # scaling in the expectation operator
     return -out.numpy()  # *negative* log-likelihood
 
@@ -1706,7 +1717,7 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
             logqz_x = log_normal_pdf(z, mean, logvar)  # log qϕ(z|x)  # [n_mc_samples]
 
             # `log(∑k qφ(z|xk))`, in terms of `log qφ(z|xk)`, using the smoothmax identity.
-            logqz = logsum(logqz_x)
+            logqz = logsumxs(logqz_x)
             logqz += tf.math.log(1. / float(tf.shape(logqz_x)))  # scaling in the expectation operator
             return logqz
 
