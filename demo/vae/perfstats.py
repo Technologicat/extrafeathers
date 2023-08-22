@@ -579,7 +579,7 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
     #
     # TODO: refactor; there's a lot of useful stuff here (e.g. `compute_logqz` is useful on its own, to plot the aggregated posterior log-density).
     # TODO: when using the whole dataset for MC samples, we could precompute `mean` and `logvar` in one go for *all* `x`.
-    def dkl_qz_from_pz(n_mc_samples):
+    def dkl_qz_from_pz(nz, nx):
         """Estimate the KL divergence of the aggregated posterior from the latent prior.
 
         This term appears in the mutual information (MI).
@@ -587,8 +587,8 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
         Defined as::
             DKL(qϕ(z) ‖ pθ(z)) ≡ E[z ~ qϕ(z)]( log qϕ(z) - log pθ(z) )
 
-        `n_z_mc_samples` is the number of Monte Carlo samples to use to
-        estimate the expectation.
+        `nz`: number of MC samples for ancestral sampling of qϕ(z)
+        `nx`: number of MC samples for `x`, for evaluating `log qϕ(z)`
         """
         def sample_x(n):
             """Sample `x ~ pd(x)`, i.e. draw random samples from the dataset.
@@ -609,37 +609,41 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
             xs = sample_x(n)
             # Step 2: sample one `z` for each `x`.
             mean, logvar = model.encoder.predict(xs, batch_size=batch_size)
-            zs = model.reparameterize(mean, logvar)
+            ignored_eps, zs = model.reparameterize(mean, logvar)
             return zs
 
         # TODO: vectorize for many `z` at once
-        def compute_logqz(z, n_mc_samples):
-            """Evaluate aggregated posterior qφ(z) at `z`, using MC sampling."""
-            xk = sample_x(n_mc_samples)  # inner MC sample: for evaluation of qφ(z)
+        def compute_logqz(z, n):
+            """Evaluate aggregated posterior qφ(z) at `z`, using MC sampling.
+
+            `n`: number of `x` samples for estimating the aggregated posterior
+            """
+            xk = sample_x(n)  # inner MC sample: for evaluation of qφ(z)
 
             # For each sample `xk`, evaluate `log qϕ(z|xk)`.
             # For this we need the variational posterior parameters, so encode `xk`:
-            mean, logvar = model.encoder.predict(xk, batch_size=batch_size)  # each of mean, logvar: [n_mc_samples, latent_dim]
+            mean, logvar = model.encoder.predict(xk, batch_size=batch_size)  # each of mean, logvar: [n, latent_dim]
 
-            # z_broadcast = tf.expand_dims(z, axis=0)
-            logqz_x = log_normal_pdf(z, mean, logvar)  # log qϕ(z|x)  # [n_mc_samples]
+            z_broadcast = tf.expand_dims(z, axis=0)
+            logqz_x = log_normal_pdf(z_broadcast, mean, logvar)  # log qϕ(z|x)  # [n]
 
             # `log(∑k qφ(z|xk))`, in terms of `log qφ(z|xk)`, using the smoothmax identity.
             logqz = logsumxs(logqz_x)
-            logqz += tf.math.log(1. / float(tf.shape(logqz_x)))  # scaling in the expectation operator
+            logqz += tf.math.log(1. / n)  # scaling in the expectation operator
             return logqz
 
         # Compute the DKL, and average over the MC samples `(z, log qφ(z))`.
         # With the above definitions, this is as simple as:
         dkls = []
-        for z in sample_qz(n_mc_samples):  # outer MC sample: for ancestral sampling of `z`
-            logqz = compute_logqz(z, n_mc_samples)
-            logpz = log_normal_pdf(z, 0., 0.)
+        for z in sample_qz(nz):  # outer MC sample: for ancestral sampling of `z`
+            logqz = compute_logqz(z, nx)
+            z_broadcast = tf.expand_dims(z, axis=0)
+            logpz = log_normal_pdf(z_broadcast, 0., 0.)
             dkls.append(logqz - logpz)
         dkl = tf.reduce_mean(dkls).numpy()  # evaluate the MC expectation
         return dkl
 
-    second_dkl_term = dkl_qz_from_pz(n_mc_samples)  # just a scalar
+    second_dkl_term = dkl_qz_from_pz(nz=n_mc_samples, nx=n_mc_samples)  # just a scalar
 
     MI = first_dkl_term - second_dkl_term
 
