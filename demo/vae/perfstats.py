@@ -71,7 +71,7 @@ def logsumxs(logxs):
 
     which was to be shown.
 
-    Distributivity:
+    Distributivity (over addition):
 
       log x + smoothmax(log y, log z) = log x + log(y + z)
                                       = log(x (y + z))
@@ -83,7 +83,7 @@ def logsumxs(logxs):
 
       x + smoothmax(y, z) = smoothmax(x + y, x + z)
 
-    and we see `smoothmax` is distributive (over summation; like summation is
+    and we see `smoothmax` is distributive (over addition; like addition is
     distributive over multiplication).
 
     Proof for associativity omitted.
