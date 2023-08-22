@@ -79,7 +79,7 @@ def logsumxs(logxs):
       = log(exp(smoothmax(log x, log y)) + z)
       = smoothmax(smoothmax(log x, log y), log z)
 
-    so
+    Since `log x`, `log y` and `log z` are arbitrary real numbers, we have:
 
       smoothmax(x, smoothmax(y, z)) = smoothmax(smoothmax(x, y), z)
 
@@ -93,12 +93,12 @@ def logsumxs(logxs):
                                       = smoothmax(log(x y), log(x z))
                                       = smoothmax(log x + log y, log x + log z)
 
-    Since `log x`, `log y` and `log z` are arbitrary real numbers, we have:
+    so
 
       x + smoothmax(y, z) = smoothmax(x + y, x + z)
 
-    and we see `smoothmax` is distributive (over addition; like addition is
-    distributive over multiplication).
+    as claimed. Note `smoothmax` distributes **over addition**; like addition
+    distributes over multiplication.
 
     The one to watch out for is the identity property. Since we assumed
     `x, y > 0` to keep all arguments in the domain of (real-valued)
