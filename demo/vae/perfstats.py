@@ -421,7 +421,7 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
         log(α ∑s r[s]) = log α + log(∑s r[s])
 
-    The definition of the NLL metric is given e.g. in Sinha and Dieng (2022):
+    The definition of the NLL statistic is given e.g. in Sinha and Dieng (2022):
       https://arxiv.org/pdf/2105.14859.pdf
     The smoothmax identity for the logarithm of a sum is discussed e.g. in:
       https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
@@ -473,7 +473,7 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
     """[performance statistic] Compute mutual information between x and its code z.
 
-    We actually compute and return two related metrics; the KL regularization
+    We actually compute and return two related statistics; the KL regularization
     term of the ELBO, namely the KL divergence of the variational posterior
     from the latent prior::
 
@@ -498,12 +498,12 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
 
     The return value is `(DKL, MI)`, approximated using Monte Carlo.
 
-    Slightly different definitions the MI metric are given e.g. in
+    Slightly different definitions the MI statistic are given e.g. in
     Sinha and Dieng (2022), and in Dieng et al. (2019):
       https://arxiv.org/pdf/2105.14859.pdf
       https://arxiv.org/pdf/1807.04863.pdf
     """
-    # TODO: Refactor this, useful as-is (the "KL" metric reported in some papers).
+    # TODO: Refactor this, useful as-is (the "KL" statistic reported in some papers).
     #
     # TODO: Investigate: if qϕ(z|x) and pθ(z) are both gaussian (as they are here), Takahashi et al. (2019)
     #       note that it should be possible to evaluate the KL divergence in closed form, citing the
