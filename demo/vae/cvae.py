@@ -1288,7 +1288,7 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
     # behavior of the random variables X and Y across observations, so we need equally many
     # observations xk and yk. (Which we indeed have, since encoding one x produces one μ.)
     #
-    # The -1 is Bessel's correction; it accounts for the fact that the population mean
+    # The -1 is Bessel's correction, accounting for the fact that the population mean
     # is unknown, so we use the sample mean, which is not independent of the samples.
     μ, ignored_logσ = model.encoder.predict(x, batch_size=batch_size)
     xbar = tf.reduce_mean(x, axis=0)  # pixelwise mean (over dataset)
