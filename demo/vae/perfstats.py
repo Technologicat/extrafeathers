@@ -69,6 +69,22 @@ def logsumxs(logxs):
 
     which was to be shown.
 
+    Associativity:
+
+        smoothmax(log x, smoothmax(log y, log z))
+      = log(x + exp(smoothmax(log y, log z)))
+      = log(x + exp(log(y + z)))
+      = log(x + y + z)
+      = log(exp(log(x + y)) + z)
+      = log(exp(smoothmax(log x, log y)) + z)
+      = smoothmax(smoothmax(log x, log y), log z)
+
+    so
+
+      smoothmax(x, smoothmax(y, z)) = smoothmax(smoothmax(x, y), z)
+
+    as claimed.
+
     Distributivity (over addition):
 
       log x + smoothmax(log y, log z) = log x + log(y + z)
@@ -83,8 +99,6 @@ def logsumxs(logxs):
 
     and we see `smoothmax` is distributive (over addition; like addition is
     distributive over multiplication).
-
-    Proof for associativity omitted.
 
     The one to watch out for is the identity property. Since we assumed
     `x, y > 0` to keep all arguments in the domain of (real-valued)
