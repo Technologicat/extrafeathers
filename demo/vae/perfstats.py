@@ -470,7 +470,7 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     return -out.numpy()  # *negative* log-likelihood
 
 
-def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
+def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_samples=1000):
     """[performance statistic] Compute mutual information between x and its code z.
 
     We actually compute and return two related statistics; the KL regularization
@@ -537,7 +537,7 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
 
     # The first DKL term. For each given `x`:
     #   DKL(qϕ(z|x) ‖ pθ(z)) ≡ E[z ~ qϕ(z|x)]( log qϕ(z|x) - log pθ(z) )
-    first_dkl_term = dkl_qz_x_from_pz(x, n_mc_samples)  # [N]
+    first_dkl_term = dkl_qz_x_from_pz(x, n_z_mc_samples)  # [N]
 
     # The second DKL term (note this does not depend on `x`):
     #   DKL(qϕ(z) ‖ pθ(z)) = E[z ~ qϕ(z)]( log qϕ(z) - log pθ(z) ),
@@ -588,6 +588,14 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
 
         `nz`: number of MC samples for ancestral sampling of qϕ(z)
         `nx`: number of MC samples for `x`, for evaluating `log qϕ(z)`
+
+        Ideally, `nx` should be large; the "qφ(z)" is estimated based on
+        only the sampled instances of "qφ(z|x)". If `nx` is small, the
+        "aggregate" will overemphasize the latents for some data samples,
+        while ignoring most.
+
+        The accuracy of the computed MI is much more sensitive to `nx`
+        than it is to `nz`.
         """
         def sample_x(n):
             """Sample `x ~ pd(x)`, i.e. draw random samples from the dataset.
@@ -612,23 +620,28 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
             return zs
 
         # TODO: vectorize for many `z` at once
-        def compute_logqz(z, n):
+        def compute_logqz(z, nx):
             """Evaluate aggregated posterior qφ(z) at `z`, using MC sampling.
 
-            `n`: number of `x` samples for estimating the aggregated posterior
-            """
-            xk = sample_x(n)  # inner MC sample: for evaluation of qφ(z)
+            `nx`: number of `x` MC samples for aggregating
 
-            # For each sample `xk`, evaluate `log qϕ(z|xk)`.
+            Ideally, `nx` should be large; the "qφ(z)" is estimated based on
+            only the sampled instances of "qφ(z|x)". If `nx` is small, the
+            "aggregate" will overemphasize the latents for some data samples,
+            while ignoring most.
+            """
+            xk = sample_x(nx)  # inner MC sample: for evaluation of qφ(z)
+
+            # For each sample `xk`, evaluate `log qϕ(z|xk)`, at the already sampled `z`.
             # For this we need the variational posterior parameters, so encode `xk`:
-            mean, logvar = model.encoder.predict(xk, batch_size=batch_size)  # each of mean, logvar: [n, latent_dim]
+            mean, logvar = model.encoder.predict(xk, batch_size=batch_size)  # each of mean, logvar: [nx, latent_dim]
 
             z_broadcast = tf.expand_dims(z, axis=0)
-            logqz_x = log_normal_pdf(z_broadcast, mean, logvar)  # log qϕ(z|x)  # [n]
+            logqz_x = log_normal_pdf(z_broadcast, mean, logvar)  # log qϕ(z|x)  # [nx]
 
             # `log(∑k qφ(z|xk))`, in terms of `log qφ(z|xk)`, using the smoothmax identity.
             logqz = logsumxs(logqz_x)
-            logqz += tf.math.log(1. / n)  # scaling in the expectation operator
+            logqz += tf.math.log(1. / nx)  # scaling in the expectation operator
             return logqz
 
         # Compute the DKL, and average over the MC samples `(z, log qφ(z))`.
@@ -642,7 +655,7 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
         dkl = tf.reduce_mean(dkls).numpy()  # evaluate the MC expectation
         return dkl
 
-    second_dkl_term = dkl_qz_from_pz(nz=n_mc_samples, nx=n_mc_samples)  # just a scalar
+    second_dkl_term = dkl_qz_from_pz(nz=n_z_mc_samples, nx=n_x_mc_samples)  # just a scalar
 
     MI = first_dkl_term - second_dkl_term
 
