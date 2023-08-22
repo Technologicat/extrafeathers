@@ -510,7 +510,7 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
     #       original VAE paper by Kingma and Welling (2013):
     #       [Kingma and Welling 2013] Kingma, D. P., and Welling, M.2013. Auto-encoding variational Bayes.
     #       arXiv preprint arXiv:1312.6114.
-    def dkl_qz_x_from_pz(x, n_mc_samples):
+    def dkl_qz_x_from_pz(x, nz):
         """Estimate the KL divergence of the variational posterior from the latent prior.
 
         This is the KL regularization term that appears in the ELBO
@@ -519,8 +519,7 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
         Defined as::
             DKL(qϕ(z|x) ‖ pθ(z)) ≡ E[z ~ qϕ(z|x)]( log qϕ(z|x) - log pθ(z) )
 
-        `n_z_mc_samples` is the number of Monte Carlo samples to use to
-        estimate the expectation.
+        `nz`: number of `z` MC samples for estimating the expectation.
         """
         mean, logvar = model.encoder.predict(x, batch_size=batch_size)  # prevent re-batching into smaller subbatches
         @batched(batch_size)
@@ -532,8 +531,8 @@ def mutual_information(model, x, *, batch_size=1024, n_mc_samples=10):
             return logqz_x - logpz
 
         # E[z ~ qϕ(z|x)](...)
-        out = [logratio(x, mean, logvar) for _ in range(n_mc_samples)]  # [N, n_mc_samples]
-        out = tf.reduce_mean(out, axis=1)  # [N]
+        out = [logratio(x, mean, logvar) for _ in range(nz)]  # [nz, N]
+        out = tf.reduce_mean(out, axis=0)  # [N]
         return out
 
     # The first DKL term. For each given `x`:
