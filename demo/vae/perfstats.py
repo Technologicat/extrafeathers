@@ -58,10 +58,8 @@ def logsumxs(logxs):
 
     Commutativity:
 
-      smoothmax(log x, log y) = log x + ⟦log y - log x⟧+
-                              = log(x + y)
-                              = log(y + x)
-                              = log y + ⟦log x - log y⟧+
+      smoothmax(log x, log y) = log(x + y)   (by the above)
+                              = log(y + x)   (commutativity of addition)
                               = smoothmax(log y, log x)
 
     Since `log x` and `log y` are arbitrary real numbers, we may as well rewrite
