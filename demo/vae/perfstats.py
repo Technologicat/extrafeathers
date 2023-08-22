@@ -470,8 +470,29 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     return -out.numpy()  # *negative* log-likelihood
 
 
-def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_samples=1000):
+def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
     """[performance statistic] Compute mutual information between x and its code z.
+
+    `nz`: Number of `z` MC samples.
+          Used for two purposes:
+            - For `z ~ qϕ(z|x)` in `DKL[qϕ(z|x) ‖ pθ(z)]`, i.e. how many `z` to draw
+              for each data sample `x`.
+            - For ancestral sampling of `z ~ qϕ(z)`` in `DKL[qϕ(z) ‖ pθ(z)]`.
+
+    `nx`: Number of `x` MC samples for `x`. Special value `"all"` uses
+          *all* of the data samples `x`.
+
+          This is used for evaluating the aggregate posterior `log qϕ(z)`
+          in `DKL[qϕ(z) ‖ pθ(z)]`.
+
+          Ideally, `nx` should be large. Our MC estimate of `qφ(z)` is based
+          on only the sampled instances of `qφ(z|x)`. If `nx` is small, the
+          computed "aggregate" will overemphasize the latents of the data
+          samples it saw, while ignoring all others, making `DKL[qϕ(z) ‖ pθ(z)]`
+          inaccurate, or worse, into complete nonsense.
+
+          The accuracy of the computed MI is much more sensitive to `nx`
+          than it is to `nz`.
 
     We actually compute and return two related statistics; the KL regularization
     term of the ELBO, namely the KL divergence of the variational posterior
@@ -492,17 +513,22 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
 
         qϕ(z, x) := qϕ(z|x) pd(x)
 
-    or in other words,
+    or in other words, we marginalize `x` away:
 
         qφ(z) ≡ ∫ qφ(z|x) pd(x) dx
 
-    The return value is `(DKL, MI)`, approximated using Monte Carlo.
+    In practice this is done by a Monte Carlo estimate of the expectation.
+
+    The return value is `(DKL, MI)`.
 
     Slightly different definitions the MI statistic are given e.g. in
     Sinha and Dieng (2022), and in Dieng et al. (2019):
       https://arxiv.org/pdf/2105.14859.pdf
       https://arxiv.org/pdf/1807.04863.pdf
     """
+    print("MI: Encoding data into latent space...")
+    all_x_mean, all_x_logvar = model.encoder.predict(x, batch_size=batch_size)  # prevent re-batching into smaller subbatches
+
     # TODO: Refactor this, useful as-is (the "KL" statistic reported in some papers).
     #
     # TODO: Investigate: if qϕ(z|x) and pθ(z) are both gaussian (as they are here), Takahashi et al. (2019)
@@ -510,7 +536,7 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
     #       original VAE paper by Kingma and Welling (2013):
     #       [Kingma and Welling 2013] Kingma, D. P., and Welling, M.2013. Auto-encoding variational Bayes.
     #       arXiv preprint arXiv:1312.6114.
-    def dkl_qz_x_from_pz(x, nz):
+    def dkl_qz_x_from_pz(nz):
         """Estimate the KL divergence of the variational posterior from the latent prior.
 
         This is the KL regularization term that appears in the ELBO
@@ -521,7 +547,8 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
 
         `nz`: number of `z` MC samples for estimating the expectation.
         """
-        mean, logvar = model.encoder.predict(x, batch_size=batch_size)  # prevent re-batching into smaller subbatches
+        # mean, logvar = model.encoder.predict(x, batch_size=batch_size)  # prevent re-batching into smaller subbatches
+        mean, logvar = all_x_mean, all_x_logvar
         @batched(batch_size)
         def logratio(x, mean, logvar):  # positional parameters get @batched
             # Given an `x`, we draw a single MC sample of `z ~ qϕ(z|x)`, where the distribution is given by the encoder.
@@ -537,7 +564,8 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
 
     # The first DKL term. For each given `x`:
     #   DKL(qϕ(z|x) ‖ pθ(z)) ≡ E[z ~ qϕ(z|x)]( log qϕ(z|x) - log pθ(z) )
-    first_dkl_term = dkl_qz_x_from_pz(x, n_z_mc_samples)  # [N]
+    print("MI: Computing DKL(qϕ(z|x) ‖ pθ(z)) for all given `x`...")
+    first_dkl_term = dkl_qz_x_from_pz(nz)  # [N]
 
     # The second DKL term (note this does not depend on `x`):
     #   DKL(qϕ(z) ‖ pθ(z)) = E[z ~ qϕ(z)]( log qϕ(z) - log pθ(z) ),
@@ -557,7 +585,7 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
     #     https://arxiv.org/pdf/1809.05284.pdf
     #
     # That gives us a single Monte Carlo sample of `z ~ qφ(z)`, which we can plug into `log qφ(z)` (and thus into
-    # the second DKL term). To get the expectation, we average this MC sampling over `z` the usual way.
+    # the second DKL term). To compute the expectation, we average this MC sampling over `z` the usual way.
     #
     # For each sample `z`, how to actually evaluate the log-density `log qφ(z)`? The aggregated posterior is:
     #
@@ -571,10 +599,9 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
     #             = log(1/K) + log(∑k qφ(z|xk))
     #
     # We can use the smoothmax identity to evaluate the logarithm of the sum in terms of `log qφ(z|xk)`.
-    # We evaluate each `log qφ(z|xk)` at the already sampled values `z ~ qφ(z)` and `xk ~ pd(x)`.
-    # In practice:
-    #    - Use the already sampled `z`
-    #    - Use (μ, log σ) of the model corresponding to each sampled `xk`
+    # We evaluate each `log qφ(z|xk)` with:
+    #    - The already sampled `z ~ qφ(z)`, from the outer MC loop, and
+    #    - `(μ, log σ)` of the model corresponding to each sampled `xk ~ pd(x)`.
     #
     # TODO: refactor; there's a lot of useful stuff here (e.g. `compute_logqz` is useful on its own, to plot the aggregated posterior log-density).
     # TODO: when using the whole dataset for MC samples, we could precompute `mean` and `logvar` in one go for *all* `x`.
@@ -587,7 +614,8 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
             DKL(qϕ(z) ‖ pθ(z)) ≡ E[z ~ qϕ(z)]( log qϕ(z) - log pθ(z) )
 
         `nz`: number of MC samples for ancestral sampling of qϕ(z)
-        `nx`: number of MC samples for `x`, for evaluating `log qϕ(z)`
+        `nx`: number of MC samples for `x`, for evaluating `log qϕ(z)`,
+              or "all", to use *all* data samples `x`.
 
         Ideally, `nx` should be large; the "qφ(z)" is estimated based on
         only the sampled instances of "qφ(z|x)". If `nx` is small, the
@@ -630,24 +658,30 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
             "aggregate" will overemphasize the latents for some data samples,
             while ignoring most.
             """
-            xk = sample_x(nx)  # inner MC sample: for evaluation of qφ(z)
+            # TODO: is it cheaper to re-send to GPU, or re-compute?
+            if nx == "all":
+                mean, logvar = all_x_mean, all_x_logvar
+            else:
+                xk = sample_x(nx)  # inner MC sample: for evaluation of qφ(z)
 
-            # For each sample `xk`, evaluate `log qϕ(z|xk)`, at the already sampled `z`.
-            # For this we need the variational posterior parameters, so encode `xk`:
-            mean, logvar = model.encoder.predict(xk, batch_size=batch_size)  # each of mean, logvar: [nx, latent_dim]
+                # For each sample `xk`, evaluate `log qϕ(z|xk)`, at the already sampled `z`.
+                # For this we need the variational posterior parameters, so encode `xk`:
+                mean, logvar = model.encoder.predict(xk, batch_size=batch_size)  # each of mean, logvar: [nx, latent_dim]
 
             z_broadcast = tf.expand_dims(z, axis=0)
             logqz_x = log_normal_pdf(z_broadcast, mean, logvar)  # log qϕ(z|x)  # [nx]
 
             # `log(∑k qφ(z|xk))`, in terms of `log qφ(z|xk)`, using the smoothmax identity.
             logqz = logsumxs(logqz_x)
-            logqz += tf.math.log(1. / nx)  # scaling in the expectation operator
+            n = float(tf.shape(logqz_x))
+            logqz += tf.math.log(1. / n)  # scaling in the expectation operator
             return logqz
 
         # Compute the DKL, and average over the MC samples `(z, log qφ(z))`.
         # With the above definitions, this is as simple as:
         dkls = []
-        for z in sample_qz(nz):  # outer MC sample: for ancestral sampling of `z`
+        for j, z in enumerate(sample_qz(nz), start=1):  # outer MC sample: for ancestral sampling of `z`
+            print(f"MI: Evaluating qφ(z) at MC sample {j} out of {nz}...")
             logqz = compute_logqz(z, nx)
             z_broadcast = tf.expand_dims(z, axis=0)
             logpz = log_normal_pdf(z_broadcast, 0., 0.)
@@ -655,7 +689,8 @@ def mutual_information(model, x, *, batch_size=1024, n_z_mc_samples=10, n_x_mc_s
         dkl = tf.reduce_mean(dkls).numpy()  # evaluate the MC expectation
         return dkl
 
-    second_dkl_term = dkl_qz_from_pz(nz=n_z_mc_samples, nx=n_x_mc_samples)  # just a scalar
+    print("MI: Computing DKL(qϕ(z) ‖ pθ(z))...")
+    second_dkl_term = dkl_qz_from_pz(nz, nx)  # just a scalar
 
     MI = first_dkl_term - second_dkl_term
 
