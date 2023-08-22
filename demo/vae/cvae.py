@@ -977,7 +977,7 @@ def cont_bern_log_norm(lam, l_lim=0.49, u_lim=0.51):
 
 @tf.function
 def log_px_z(model, x, z, training=None):
-    """Compute `log pθ(x|z)`.
+    """Compute observation log-likelihood `log pθ(x|z)`.
 
     Note this is a probability density, which can be larger than unity,
     so the logarithm may be positive (and large).
@@ -1061,7 +1061,7 @@ def log_px_z(model, x, z, training=None):
 
 @tf.function
 def elbo_loss(model, x, training=None):
-    """VAE loss function: negative of the ELBO, for a data batch `x`.
+    """VAE loss function: negative of the ELBO (evidence lower bound), for a data batch `x`.
 
     Evaluated by drawing a single-sample Monte Carlo estimate. Kingma and Welling (2019) note
     that this yields an unbiased estimator for the expectation that appears in the ELBO formula.
