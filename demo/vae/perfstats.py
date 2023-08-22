@@ -153,9 +153,14 @@ def logsumxs(logxs):
       smoothmax(x, x) = x + ⟦0⟧+
                       = x + log(1 + exp(0))
                       = x + log(1 + 1)
-                      = x + log(2)
+                      = x + log 2
 
-    Note what happens if we `smoothmax` this again with `x`:
+    We could have deduced this from:
+
+      log(x + x) = log(2 x) = log 2 + log x                  (well known)
+      log(x + x) = smoothmax(log x, log x) = log x + log 2   (by the above)
+
+    Note what happens if we apply `smoothmax` again:
 
         smoothmax(x, smoothmax(x, x))
       = smoothmax(x, x + log 2)        (previous result)
