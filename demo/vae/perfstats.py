@@ -28,10 +28,8 @@ def logsumxs(logxs):
     This is mostly numerically stable, and particularly useful when only the
     logarithms are available (e.g. to prevent overflow from very large exponents).
 
-    **Background**:
 
-    Discussion summarized from:
-      https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
+    **Overview**:
 
     For all `x, y > 0`, it holds that:
 
@@ -45,47 +43,81 @@ def logsumxs(logxs):
       ⟦x⟧+ ≡ log(1 + exp(x))
 
     is the `softplus` function (notation in analogy with positive part "[x]+").
-    Actually, let us define the following C∞ continuous analog of the `max` function:
+    Actually, it behooves us to define the following C∞ continuous analogue
+    of the `max` function:
 
       smoothmax(x, y) := x + ⟦y - x⟧+
 
-    This gives us the *smoothmax identity* for the logarithm of a sum:
+    (We use the name `smoothmax`, because the arguably correct name `softmax`
+     already has a different standard meaning, namely the same as `softargmax`.)
+
+    Thus we have the *smoothmax identity* for the logarithm of a sum:
 
       log(x + y) = smoothmax(log x, log y)
 
-    Upon close inspection, most of the usual properties of addition
-    (commutativity, associativity, distributivity) hold for `smoothmax`.
+    For three or more terms, we reduce:
 
-    Commutativity:
+      log(x0 + x1 + x2 + ...) = smoothmax(log x0, log(x1 + x2 + ...))
+                              = smoothmax(log x0, smoothmax(log x1, log(x2 + ...)))
+                              = ...
 
-      smoothmax(log x, log y) = log(x + y)   (by the above)
+    which can be unpacked into a single vectorized operation:
+
+      log(x0 + x1 + x2 + ...) = log x0 + ⟦log x1 - log x0⟧+ + ⟦log x2 - log x1⟧+ + ...
+
+    The benefit of the smoothmax identity is that it allows us to work with
+    logarithms only, except in the evaluation of the softplus. Whenever its
+    argument is small, the `exp` can be taken without numerical issues; and
+    accurately numerically evaluating `log(1 + x)` for small `x` is a solved
+    problem.
+
+    Although there is a risk of catastrophic cancellation in the `log y - log x`,
+    we still want a reasonable amount of cancellation, to keep the argument
+    to softplus small. We actually sort the `logxs` in ascending order.
+
+    Starting the summation from the smallest logs should allow us to accumulate them
+    before we lose the mantissa bits to represent the result due to the increasing exponent.
+    If this is really important, we could do it in pure Python, and `math.fsum` them
+    to keep full precision; but at that point we have likely already lost more accuracy
+    due to cancellation, so currently we don't bother.
+
+
+    **Additional background**:
+
+    The `smoothmax` function has some interesting properties: it is commutative,
+    associative, and distributes over addition.
+
+    First, to show *commutativity*, for any `x, y > 0`:
+
+      smoothmax(log x, log y) = log(x + y)   (smoothmax identity, above)
                               = log(y + x)   (commutativity of addition)
                               = smoothmax(log y, log x)
 
     Since `log x` and `log y` are arbitrary real numbers, we may as well rewrite
     the first and last forms as:
 
-      smoothmax(x, y) = smoothmax(y, x)
+      smoothmax(a, b) = smoothmax(b, a)
 
-    which was to be shown.
+    where `a, b ∈ ℝ`; which was to be shown.
 
-    Associativity:
+    *Associativity*. For any `x, y, z > 0`:
 
         smoothmax(log x, smoothmax(log y, log z))
-      = log(x + exp(smoothmax(log y, log z)))
-      = log(x + exp(log(y + z)))
+      = log(x + exp(smoothmax(log y, log z)))      (smoothmax identity)
+      = log(x + exp(log(y + z)))                   (smoothmax identity again)
       = log(x + y + z)
       = log(exp(log(x + y)) + z)
-      = log(exp(smoothmax(log x, log y)) + z)
-      = smoothmax(smoothmax(log x, log y), log z)
+      = log(exp(smoothmax(log x, log y)) + z)      (again)
+      = smoothmax(smoothmax(log x, log y), log z)  (and again)
 
-    Since `log x`, `log y` and `log z` are arbitrary real numbers, we have:
+    Since `log x`, `log y` and `log z` are arbitrary real numbers, we may
+    as well write:
 
-      smoothmax(x, smoothmax(y, z)) = smoothmax(smoothmax(x, y), z)
+      smoothmax(a, smoothmax(b, c)) = smoothmax(smoothmax(a, b), c)
 
-    as claimed.
+    where `a, b, c ∈ ℝ`; as claimed.
 
-    Distributivity (over addition):
+    *Distributivity* (over addition). For any `x, y, z > 0`:
 
       log x + smoothmax(log y, log z) = log x + log(y + z)
                                       = log(x (y + z))
@@ -93,28 +125,30 @@ def logsumxs(logxs):
                                       = smoothmax(log(x y), log(x z))
                                       = smoothmax(log x + log y, log x + log z)
 
-    so
+    And since `log x`, `log y` and `log z` are arbitrary real numbers,
 
-      x + smoothmax(y, z) = smoothmax(x + y, x + z)
+      a + smoothmax(b, c) = smoothmax(a + b, a + c)
 
-    as claimed. Note `smoothmax` distributes **over addition**; like addition
+    where `a, b, c ∈ ℝ`; as claimed. Note `smoothmax` distributes
+    **over addition**, like `max` does; similarly to how addition
     distributes over multiplication.
 
-    The one to watch out for is the identity property. Since we assumed
-    `x, y > 0` to keep all arguments in the domain of (real-valued)
-    `log`, strictly speaking the identity is not applicable when `y = 0`.
-    In the limit, though, we have:
+    As for an *identity element*; just like for `max`, it is the
+    limit at -∞:
 
       lim[y → -∞] smoothmax(x, y) = x
 
-    so we *can* say that:
+    Note that by commutativity, this holds for either argument.
 
-      lim[y → 0+] log(x + y) = lim[y → 0+] smoothmax(log x, log y)
-                             = log x
+    The smoothmax identity is consistent at the limit:
 
-    Also keep in mind `smoothmax` is not `max`, although it behaves
-    somewhat similarly when the arguments are far apart. It differs
-    from `max` the most when `|x - y|` is small. The extreme case is:
+      log x = lim[y → 0+] log(x + y)
+            = lim[y → 0+] smoothmax(log x, log y)
+            = log x
+
+    The `smoothmax(x, y)` operation behaves somewhat similarly to `max`
+    when the arguments are far apart, hence the name. It differs from
+    `max` the most when `|x - y|` is small. The extreme case is:
 
       smoothmax(x, x) = x + ⟦0⟧+
                       = x + log(1 + exp(0))
@@ -129,7 +163,7 @@ def logsumxs(logxs):
       x + log 4 = smoothmax(x, smoothmax(x, smoothmax(x, x)))
       ...
 
-    Proof by induction, omitted. The original author writes:
+    Proof by induction, omitted. Here the original author writes:
       [This] resembles a sort of definition of addition of log-naturals
       as “repeated smoothmax of a number with itself”, in very much the
       same sense that multiplication by naturals can be defined as
@@ -173,20 +207,13 @@ def logsumxs(logxs):
 
       x 𝕄 y := x + ⟦y - x⟧+    (smoothmax)
       ⟦x⟧+ := log(1 + exp(x))   (softplus)
+
+    Discussion summarized from:
+      https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
+
+    The proofs for the properties of `smoothmax` are original, as is the
+    `𝕄` notation, and mathematical clarity has been slightly improved.
     """
-    # The benefit of the smoothmax identity is that it allows us to work with
-    # logarithms only, except in the evaluation of the softplus. Whenever its
-    # argument is small, the `exp` can be taken without numerical issues.
-    #
-    # Although there is a risk of catastrophic cancellation in `log y - log x`,
-    # we still want a reasonable amount of cancellation, to keep the argument
-    # to softplus small. So we sort the `logxs`.
-    #
-    # Starting the summation from the *smallest* numbers should allow us to accumulate them
-    # before we lose the mantissa bits to represent them due to the increasing exponent.
-    # If this is really important, we could do it in pure Python, and `math.fsum` them.
-    # But we have likely already lost more accuracy due to cancellation, so let's not bother
-    # overengineering this part.
     logxs = tf.sort(logxs, axis=0, direction="ASCENDING")
     # # What we want to do:
     # from unpythonic import window
