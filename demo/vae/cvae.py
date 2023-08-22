@@ -943,6 +943,15 @@ class CVAE(tf.keras.Model):
 # hence we take the product of the marginal probability densities of each component,
 # thus yielding the probability at point `x` (just one real number... for each input in the batch).
 def log_normal_pdf(x, mean, logvar, raxis=1):
+    """Compute the logarithm of the normal distribution probability density.
+
+    This is a multivariate product of `d` gaussians, with diagonal covariance.
+
+    `x`: tensor of shape [N, d]; point(s) to evaluate the log-PDF at
+    `mean`: tensor of shape [d]; `μ` for each dimension
+    `logvar`: tensor of shape [d]; `log σ` for each dimension
+    `raxis`: axis to reduce over (dimensions)
+    """
     log2pi = tf.math.log(2 * np.pi)
     return tf.reduce_sum(-0.5 * ((x - mean)**2 * tf.exp(-logvar) + logvar + log2pi),
                          axis=raxis)
