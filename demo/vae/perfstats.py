@@ -57,13 +57,21 @@ def logsumxs(logxs):
 
     For three or more terms, we reduce:
 
-      log(x0 + x1 + x2 + ...) = smoothmax(log x0, log(x1 + x2 + ...))
-                              = smoothmax(log x0, smoothmax(log x1, log(x2 + ...)))
-                              = ...
+      log x0
+      log(x0 + x1) = log x0 + ⟦log x1 - log x0⟧+
+      log((x0 + x1) + x2) = log(x0 + x1) + ⟦log x2 - log(x0 + x1)⟧+
+      ...
 
-    which can be unpacked into a single vectorized operation:
+    Note how each step uses the previous result.
 
-      log(x0 + x1 + x2 + ...) = log x0 + ⟦log x1 - log x0⟧+ + ⟦log x2 - log x1⟧+ + ...
+    This can also be written as, showing three terms for an example:
+
+      log(x0 + x1 + x2) =  smoothmax(log x0, log(x1 + x2))
+                        =  smoothmax(log x0, smoothmax(log x1, log x2))
+                        =: log x0 𝕄 log x1 𝕄 log x2
+
+    where `𝕄` is an infix notation for smoothmax. (Parentheses dropped, because
+    it is associative; proof below.)
 
     The benefit of the smoothmax identity is that it allows us to work with
     logarithms only, except in the evaluation of the softplus. Whenever its
@@ -229,13 +237,20 @@ def logsumxs(logxs):
     `𝕄` notation, and mathematical clarity has been slightly improved.
     """
     logxs = tf.sort(logxs, axis=0, direction="ASCENDING")
-    # # What we want to do:
-    # from unpythonic import window
-    # out = logxs[0]  # log(x[0])
-    # for prev, curr in window(2, logxs):  # log(x[k]) - log(x[k-1])
-    #     out += tf.math.softplus(curr - prev)
-    sp_diffs = tf.math.softplus(logxs[1:] - logxs[:-1])  # softplus(log(x[k]) - log(x[k-1]))
-    return logxs[0] + tf.reduce_sum(sp_diffs)
+    def smoothmax(x, y):
+        return x + tf.math.softplus(y - x)
+    logsum = logxs[0]
+    for logx in logxs[1:]:
+        logsum = smoothmax(logsum, logx)
+    return logsum
+    # logxs = tf.sort(logxs, axis=0, direction="ASCENDING")
+    # # # What we want to do:
+    # # from unpythonic import window
+    # # out = logxs[0]  # log(x[0])
+    # # for prev, curr in window(2, logxs):  # log(x[k]) - log(x[k-1])
+    # #     out += tf.math.softplus(curr - prev)
+    # sp_diffs = tf.math.softplus(logxs[1:] - logxs[:-1])  # softplus(log(x[k]) - log(x[k-1]))
+    # return logxs[0] + tf.reduce_sum(sp_diffs)
 
 
 # --------------------------------------------------------------------------------
