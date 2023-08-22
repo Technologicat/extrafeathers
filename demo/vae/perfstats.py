@@ -157,8 +157,7 @@ def logsumxs(logxs):
 
     We could have deduced this from:
 
-      log(x + x) = log(2 x) = log 2 + log x                  (well known)
-      log(x + x) = smoothmax(log x, log x) = log x + log 2   (by the above)
+      smoothmax(log x, log x) = log(x + x) = log(2 x) = log 2 + log x
 
     Note what happens if we apply `smoothmax` again:
 
