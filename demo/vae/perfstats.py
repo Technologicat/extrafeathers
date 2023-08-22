@@ -473,10 +473,9 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
     """[performance statistic] Compute mutual information between x and its code z.
 
-    `nz`: Number of `z` MC samples.
-          Used for two purposes:
-            - For `z ~ qϕ(z|x)` in `DKL[qϕ(z|x) ‖ pθ(z)]`, i.e. how many `z` to draw
-              for each data sample `x`.
+    `nz`: Number of `z` MC samples. Used for two purposes:
+            - For `z ~ qϕ(z|x)` in `DKL[qϕ(z|x) ‖ pθ(z)]`, i.e. how many `z` samples
+              to draw for each data sample `x`.
             - For ancestral sampling of `z ~ qϕ(z)`` in `DKL[qϕ(z) ‖ pθ(z)]`.
 
     `nx`: Number of `x` MC samples for `x`. Special value `"all"` uses
