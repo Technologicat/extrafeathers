@@ -85,7 +85,7 @@ def logsumxs(logxs):
     **Additional background**:
 
     The `smoothmax` function has some interesting properties: it is commutative,
-    associative, and distributes over addition.
+    associative, and distributes **over addition** (like `max` does).
 
     First, to show *commutativity*, for any `x, y > 0`:
 
@@ -155,7 +155,17 @@ def logsumxs(logxs):
                       = x + log(1 + 1)
                       = x + log(2)
 
-    Finally, observe that:
+    Note what happens if we `smoothmax` this again with `x`:
+
+        smoothmax(x, smoothmax(x, x))
+      = smoothmax(x, x + log 2)        (previous result)
+      = x + smoothmax(0, log 2)        (distributivity)
+      = x + 0 + ⟦log 2 - 0⟧+           (def. of smoothmax)
+      = x + log(1 + exp(log 2))        (def. of softplus)
+      = x + log(1 + 2)
+      = x + log(3)
+
+    Induction yields:
 
       x + log 1 = x
       x + log 2 = smoothmax(x, x)
@@ -163,7 +173,7 @@ def logsumxs(logxs):
       x + log 4 = smoothmax(x, smoothmax(x, smoothmax(x, x)))
       ...
 
-    Proof by induction, omitted. Here the original author writes:
+    Here the original author writes:
       [This] resembles a sort of definition of addition of log-naturals
       as “repeated smoothmax of a number with itself”, in very much the
       same sense that multiplication by naturals can be defined as
