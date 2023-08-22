@@ -49,9 +49,14 @@ def logsumxs(logxs):
 
       smoothmax(x, y) := x + ⟦y - x⟧+
 
+    This gives us the *smoothmax identity* for the logarithm of a sum:
+
+      log(x + y) = smoothmax(log x, log y)
+
     Upon close inspection, most of the usual properties of addition
     (commutativity, associativity, distributivity) hold for `smoothmax`.
-    For example:
+
+    Commutativity:
 
       smoothmax(log x, log y) = log x + ⟦log y - log x⟧+
                               = log(x + y)
@@ -59,16 +64,29 @@ def logsumxs(logxs):
                               = log y + ⟦log x - log y⟧+
                               = smoothmax(log y, log x)
 
-    Since `log x` and `log y` are arbitrary real numbers, `smoothmax` is
-    commutative for any (real) values of its arguments. Proofs for the
-    other two properties omitted.
+    Since `log x` and `log y` are arbitrary real numbers, we may as well rewrite
+    the first and last forms as:
 
-    This gives us the *smoothmax identity* for the logarithm of a sum:
+      smoothmax(x, y) = smoothmax(y, x)
 
-      log(x + y) = smoothmax(log x, log y)
+    which was to be shown.
 
-    In other words, the `log` of a sum is a smoothed maximum of the
-    logs of the summands.
+    Distributivity:
+
+      log x + smoothmax(log y, log z) = log x + log(y + z)
+                                      = log(x (y + z))
+                                      = log(x y + x z)
+                                      = smoothmax(log(x y), log(x z))
+                                      = smoothmax(log x + log y, log x + log z)
+
+    Since `log x`, `log y` and `log z` are arbitrary real numbers, we have:
+
+      x + smoothmax(y, z) = smoothmax(x + y, x + z)
+
+    and we see `smoothmax` is distributive (over summation; like summation is
+    distributive over multiplication).
+
+    Proof for associativity omitted.
 
     The one to watch out for is the identity property. Since we assumed
     `x, y > 0` to keep all arguments in the domain of (real-valued)
