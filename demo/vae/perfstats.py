@@ -385,7 +385,9 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     Returns a float, the mean NLL for the given data, using the given model.
 
     When `x` is held-out data, NLL measures generalization (smaller is better).
-    For a single input sample `x`, the NLL is defined as::
+
+    For a single input sample `x`, the negative log-likelihood under the
+    fitted model is defined as::
 
         log pθ(x) = -log( E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ) )
 
