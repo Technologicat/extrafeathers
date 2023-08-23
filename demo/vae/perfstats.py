@@ -414,8 +414,6 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
     The definition of the NLL statistic is given e.g. in Sinha and Dieng (2022):
       https://arxiv.org/pdf/2105.14859.pdf
-    The smoothmax identity for the logarithm of a sum is discussed e.g. in:
-      https://cdsmithus.medium.com/the-logarithm-of-a-sum-69dd76199790
     """
     print("NLL: encoding...")
     mean, logvar = model.encoder.predict(x, batch_size=batch_size)
