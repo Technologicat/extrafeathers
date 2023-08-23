@@ -271,19 +271,16 @@ def logsumexp(x):
 def active_units(model, x, *, batch_size=1024, eps=0.1):
     """[performance statistic] Compute AU, the number of latent active units.
 
-    `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
-
-    Returns an int, the number of latent active units for given model,
-    estimated using the given data.
+    `x`: tensor of shape (N, 28, 28, 1); grayscale pictures
 
     It is preferable to pass as much data as possible (e.g. all of the
     test data) to get a good estimate of AU.
 
+    Returns an int, the number of latent active units for given model,
+    estimated using the given data.
+
     AU measures how many of the available latent dimensions a trained VAE actually uses,
     so the maximum possible value is `latent_dim`. A higher value is better.
-
-    The log of the covariance typically has a bimodal distribution, so AU is not very
-    sensitive to the value of ϵ, as long as it is between the peaks.
 
     We define AU as::
 
@@ -291,6 +288,9 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
 
     where d is the dimension of the latent space, ϵ is a suitable small number,
     and #{} counts the number of elements of a set.
+
+    The log of the covariance typically has a bimodal distribution, so AU is not very
+    sensitive to the value of ϵ, as long as it is between the peaks.
 
     See Burda et al. (2016):
        https://arxiv.org/abs/1509.00519
@@ -380,11 +380,11 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
 
 
 def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
-    """[performance statistic] Compute the negative log-likelihood (NLL).
+    """[performance statistic] Estimate the mean NLL of data `x` under `model`.
 
-    `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
+    `x`: tensor of shape (N, 28, 28, 1); grayscale pictures
 
-    Returns a float, the mean NLL for the given data, using the given model.
+    Returns a float.
 
     When `x` is held-out data, NLL measures generalization (smaller is better).
 
@@ -479,7 +479,7 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
 
 def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
-    """[performance statistic] Compute mutual information between x and its code z.
+    """[performance statistic] Estimate mutual information between `x` and its code `z`.
 
     `nz`: Number of `z` MC samples. Used for two purposes:
             - For `z ~ qϕ(z|x)` in `DKL[qϕ(z|x) ‖ pθ(z)]`, i.e. how many `z` samples
@@ -512,7 +512,7 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
     term of the ELBO, namely the KL divergence of the variational posterior
     from the latent prior::
 
-        E[x ~ pd(x)]( DKL[qϕ(z|x) ‖ pθ(z)] )
+        D := E[x ~ pd(x)]( DKL[qϕ(z|x) ‖ pθ(z)] )
 
     and the mutual information induced by the variational joint::
 
@@ -533,7 +533,7 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
 
     In practice this is done by a Monte Carlo estimate of the expectation.
 
-    The return value is `(DKL, MI)`.
+    The return value is `(D, MI)`.
 
     Slightly different definitions the MI statistic are given e.g. in
     Sinha and Dieng (2022), and in Dieng et al. (2019):
