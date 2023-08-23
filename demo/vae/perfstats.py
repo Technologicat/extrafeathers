@@ -17,16 +17,26 @@ from .util import batched
 # --------------------------------------------------------------------------------
 # Helper functions
 
-# TODO: refactor `logsumxs` to `util`
-def logsumxs(logxs):
-    """`log(∑k x[k])`, computed in terms of `log x[k]`, without evaluating `x[k]`.
+# TODO: refactor `logsumexp` to `util`... or maybe to `unpythonic.numutil`?
+def logsumexp(x):
+    """`log(∑k exp(x[k]))`, computed in terms of `x[k]`, without evaluating `exp(x[k])`.
 
-    `logxs`: rank-1 tensor, containing `[log x[0], log x[1], ...]`
+    `x`: rank-1 tensor.
 
-    Returns `log(∑k x[k])`.
+    Returns `log(∑k exp(x[k]))`.
 
     This is mostly numerically stable, and particularly useful when only the
     logarithms are available (e.g. to prevent overflow from very large exponents).
+
+    See also `tf.math.reduce_logsumexp`, but this uses a different algorithm.
+    TF computes::
+
+      m + log(sum(exp(x - m))),  where  m = max(x)
+
+    Our algorithm is explained below. For a length-2 input, the algorithms are identical;
+    for more, the reduction step is done differently.
+
+    Prefer TF's implementation when possible, since it runs on the GPU.
 
 
     **Overview**:
@@ -236,9 +246,9 @@ def logsumxs(logxs):
     The proofs for the properties of `smoothmax` are original, as is the
     `𝕄` notation, and mathematical clarity has been slightly improved.
     """
-    logxs = tf.sort(logxs, axis=0, direction="ASCENDING")
     def smoothmax(x, y):
         return x + tf.math.softplus(y - x)
+    logxs = tf.sort(x, axis=0, direction="ASCENDING")
     logsum = logxs[0]
     for logx in logxs[1:]:
         logsum = smoothmax(logsum, logx)
@@ -464,8 +474,7 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     acc = tf.reduce_mean(acc, axis=0)  # -> [n_mc_samples]
 
     print("NLL: computing MC estimate...")
-    # `log(∑k r[k])`, in terms of `log r[k]`, using the smoothmax identity.
-    out = logsumxs(acc)
+    out = tf.reduce_logsumexp(acc)
     out += tf.math.log(1. / float(tf.shape(acc)))  # scaling in the expectation operator
     return -out.numpy()  # *negative* log-likelihood
 
@@ -669,9 +678,7 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
 
             z_broadcast = tf.expand_dims(z, axis=0)
             logqz_x = log_normal_pdf(z_broadcast, mean, logvar)  # log qϕ(z|x)  # [nx]
-
-            # `log(∑k qφ(z|xk))`, in terms of `log qφ(z|xk)`, using the smoothmax identity.
-            logqz = logsumxs(logqz_x)
+            logqz = tf.reduce_logsumexp(logqz_x)
             n = float(tf.shape(logqz_x))
             logqz += tf.math.log(1. / n)  # scaling in the expectation operator
             return logqz
