@@ -401,6 +401,8 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
     For numerical reasons, we accumulate the MC samples without evaluating
     `pθ(x, z[s])` directly, preferring to work on `log pθ(x, z[s])` instead.
+    This is done by `logsumexp`.
+
     Consider that the joint probability can be rewritten as
 
         pθ(x, z) = pθ(x|z) pθ(z)
@@ -409,29 +411,6 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     for the continuous-Bernoulli VAE, on MNIST, `log pθ(x|z) ~ +1500` (!).
     This is technically fine, because pθ is a probability *density*, but it
     cannot be exp'd without causing overflow, even at float64.
-
-    To overcome this, we use the smoothmax identity for the logarithm of a sum.
-    Let `r[s] := pθ(x, z[s]) / qϕ(z[s]|x)`. The identity allows us to express
-    `log(∑s r[s])` in terms of the `log(r[s])`::
-
-        log(x + y) = log x + softplus(log y - log x)
-
-    where::
-
-        softplus(x) ≡ log(1 + exp(x))
-
-    To obtain `log(∑s r[s])`, we start from `log r[0]`, and then (using the
-    associative property of addition) accumulate over 2-tuples in a loop
-    (which we vectorize for speed).
-
-    The final detail is to handle the global scaling factor in the MC
-    representation of the expectation, but this is easy::
-
-       log(α x) = log α + log x
-
-    so that we actually evaluate::
-
-        log(α ∑s r[s]) = log α + log(∑s r[s])
 
     The definition of the NLL statistic is given e.g. in Sinha and Dieng (2022):
       https://arxiv.org/pdf/2105.14859.pdf
@@ -468,16 +447,17 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     acc = [samplewise_elbo(x, mean, logvar) for _ in range(n_mc_samples)]  # -> [[N], [N], ...]
     acc = tf.stack(acc, axis=1)  # -> [N, n_mc_samples]
 
-    # TODO: I think this is correct, we should reduce linearly here. But check just to be sure.
-    # Taking the mean like this computes (albeit averaging over `x` too early; strictly, we should accumulate the MC samples first):
-    #   -E[x ~ data](log E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ))
-    # whereas treating both dimensions the same (flatten, send to accumulation loop) would compute:
-    #   -log E[x ~ data](E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ))
-    acc = tf.reduce_mean(acc, axis=0)  # -> [n_mc_samples]
-
+    #   log E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) )
+    # ≈ log( (1/S) ∑s (pθ(x, z[s]) / qϕ(z[s]|x)) )       (MC estimate)
+    # = log(1/S) + log( ∑s (pθ(x, z[s]) / qϕ(z[s]|x)) )
+    # = log(1/S) + logsumexp( log pθ(x, z[s]) - log qϕ(z[s]|x) )
     print("NLL: computing MC estimate...")
-    out = tf.reduce_logsumexp(acc)
-    out += tf.math.log(1. / float(tf.shape(acc)))  # scaling in the expectation operator
+    out = tf.reduce_logsumexp(acc, axis=1)  # [N]
+    out += tf.math.log(1. / float(n_mc_samples))
+
+    # E[x ~ pd(x)](...),  where `pd(x)` is the data distribution
+    out = tf.reduce_mean(out, axis=0)  # scalar
+
     return -out.numpy()  # *negative* log-likelihood
 
 
@@ -576,8 +556,9 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
             return logqz_x - logpz
 
         # # E[z ~ qϕ(z|x)](...)
-        # out = [logratio(mean, logvar) for _ in range(nz)]  # [nz, N]
-        # out = tf.reduce_mean(out, axis=0)  # [N]
+        # out = [logratio(mean, logvar) for _ in range(nz)]  # [[N], [N], ...]
+        # out = tf.stack(out, axis=1)  # -> [N, n_mc_samples]
+        # out = tf.reduce_mean(out, axis=1)  # [N]
 
         # E[z ~ qϕ(z|x)](...), vectorized
         mean = tf.repeat(mean, nz, axis=0)  # [nz * N, latent_dim] (`μ` corresponding to each `x` repeated `nz` times, contiguously)
@@ -625,8 +606,8 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
     #
     #   log qφ(z) ≈ log( (1/K) ∑k qφ(z|xk) )
     #             = log(1/K) + log(∑k qφ(z|xk))
+    #             = log(1/K) + logsumexp(log qφ(z|xk))
     #
-    # We can use the smoothmax identity to evaluate the logarithm of the sum in terms of `log qφ(z|xk)`.
     # We evaluate each `log qφ(z|xk)` with:
     #    - The already sampled `z ~ qφ(z)`, from the outer MC loop, and
     #    - `(μ, log σ)` of the model corresponding to each sampled `xk ~ pd(x)`.
