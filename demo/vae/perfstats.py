@@ -386,30 +386,41 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
 
     When `x` is held-out data, NLL measures generalization (smaller is better).
 
-    For a single input sample `x`, the negative log-likelihood under the
-    fitted model is defined as::
+    The likelihood of an input sample `x`, under the *fitted* model, is::
 
-        log pθ(x) = -log( E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ) )
+        pθ(x) = ∫ p(x, z) dz
+              = ∫ pθ(x) qϕ(z|x) dz
+              = E[z ~ qϕ(z|x)]( pθ(x) )
+              = E[z ~ qϕ(z|x)]( qϕ(z|x) pθ(x) / qϕ(z|x) )
+              = E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) )
+              = E[z ~ qϕ(z|x)]( pθ(x|z) pθ(z) / qϕ(z|x) )
 
-    This expression is intractable, so we approximate it using Monte Carlo::
+    where on the final right-hand side, all three densities are computable.
+    Taking the log, we have the log-likelihood::
 
-        log pθ(x) ≈ -log( (1/S) ∑s (pθ(x, z[s]) / qϕ(z[s]|x)) )
+        log pθ(x) = log( E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) ) )
 
-    where `S = n_mc_samples` and z[s] are the Monte Carlo samples of z ~ qϕ(z|x).
-    The NLL is pretty much the ELBO as used in VAE training, but with some differences:
+    We approximate the expectation using Monte Carlo::
 
-      - Multiple MC samples to improve accuracy.
-      - The mean is computed over the whole dataset `x`, not over each batch.
+        log pθ(x) ≈ log( (1/S) ∑s (pθ(x, z[s]) / qϕ(z[s]|x)) )
+
+    where `S = n_mc_samples`, and `z[s]` are the MC samples of `z ~ qϕ(z|x)`.
+
+    Finally, the NLL is `-log pθ(x)`.
+
+    Note the difference::
+        LL (this):  log( E[z ~ qϕ(z|x)](pθ(x, z) / qϕ(z|x)) )
+        ELBO:       E[z ~ qϕ(z|x)] (log pθ(x, z) - log qϕ(z|x))
 
     For numerical reasons, we accumulate the MC samples without evaluating
-    `pθ(x, z[s])` directly, preferring to work on `log pθ(x, z[s])` instead.
-    This is done by `logsumexp`.
+    `pθ(x, z[s])`, working on `log pθ(x, z[s])` instead. This is done via
+    `logsumexp`.
 
-    Consider that the joint probability can be rewritten as
+    Concerning numerical magnitudes; consider the joint probability
 
         pθ(x, z) = pθ(x|z) pθ(z)
 
-    Whereas pθ(z) and qϕ(z|x) are gaussians, with reasonable log-probabilities,
+    Whereas pθ(z) and qϕ(z|x) are gaussians with reasonable log-probabilities,
     for the continuous-Bernoulli VAE, on MNIST, `log pθ(x|z) ~ +1500` (!).
     This is technically fine, because pθ is a probability *density*, but it
     cannot be exp'd without causing overflow, even at float64.
@@ -421,8 +432,12 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
     mean, logvar = model.encoder.predict(x, batch_size=batch_size)
 
     @batched(batch_size)
-    def samplewise_elbo(x, mean, logvar):  # positional parameters get @batched
+    def logratio(x, mean, logvar):  # positional parameters get @batched
         """log(pθ(x, z) / qϕ(z|x)) for each sample of x, drawing one MC sample of z.
+
+        Note the difference:
+            LL (this):  log( E[z ~ qϕ(z|x)](pθ(x, z) / qϕ(z|x)) )
+            ELBO:       E[z ~ qϕ(z|x)] (log pθ(x, z) - log qϕ(z|x))
 
         `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
         `mean`, `logvar`: output of encoder with input `x`
@@ -444,7 +459,7 @@ def negative_log_likelihood(model, x, *, batch_size=1024, n_mc_samples=10):
         return logpxz - logqz_x
 
     print(f"NLL: MC sampling (n = {n_mc_samples})...")
-    acc = [samplewise_elbo(x, mean, logvar) for _ in range(n_mc_samples)]  # -> [[N], [N], ...]
+    acc = [logratio(x, mean, logvar) for _ in range(n_mc_samples)]  # -> [[N], [N], ...]
     acc = tf.stack(acc, axis=1)  # -> [N, n_mc_samples]
 
     #   log E[z ~ qϕ(z|x)]( pθ(x, z) / qϕ(z|x) )
@@ -684,6 +699,17 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
             logqz += tf.math.log(1. / n)  # scaling in the expectation operator
             return logqz
 
+        # TODO: vectorize for many `z` at once
+        def logratio(z, nx):
+            """log qφ(z) - log pθ(z)
+
+            `nx`: number of MC samples for aggregating `qφ(z)`
+            """
+            logqz = compute_logqz(z, nx)
+            z_broadcast = tf.expand_dims(z, axis=0)
+            logpz = log_normal_pdf(z_broadcast, 0., 0.)
+            return logqz - logpz
+
         # Compute the DKL, and average over the MC samples `(z, log qφ(z))`.
         # With the above definitions, this is as simple as:
         logratios = []
@@ -692,10 +718,7 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
         print("MI:     Evaluating qϕ(z)...")
         for j, z in enumerate(zs, start=1):  # outer MC sample: for ancestral sampling of `z`
             # print(f"MI: Evaluating qφ(z) at MC sample {j} out of {nz}...")
-            logqz = compute_logqz(z, nx)
-            z_broadcast = tf.expand_dims(z, axis=0)
-            logpz = log_normal_pdf(z_broadcast, 0., 0.)
-            logratios.append(logqz - logpz)
+            logratios.append(logratio(z, nx))
         # E[z ~ qϕ(z)](...)
         # logratios: [nz]
         dkl = tf.reduce_mean(logratios)  # scalar
