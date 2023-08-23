@@ -33,6 +33,9 @@ from unpythonic import safeissubclass
 # TODO: Upsampling type? We use bilerp; nearest-neighbor would be a better match if we switch to max-pooling.
 
 # TODO: Add batch normalization (BN) to the resnet blocks to allow building deeper nets.
+# But beware, BN can misfire in non-obvious ways:
+#   https://mindee.com/blog/batch-normalization/
+#   https://www.alexirpan.com/2017/04/26/perils-batch-norm.html
 
 # --------------------------------------------------------------------------------
 

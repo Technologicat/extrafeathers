@@ -602,6 +602,10 @@ def make_codec(variant):
             # So we're essentially just setting up classical residual connections. However, by connecting them
             # directly to the decoder inputs (code point `z`), this path is shorter, and thus promotes the use
             # of different information than the residual path through the ResNet blocks.
+            #
+            # As for the PixelCNN (not used here), see van den Oord et al. (2016):
+            #  https://arxiv.org/abs/1606.05328
+            #
             def connect_input(x):
                 # HACK, because no `.numpy()` method available at this stage
                 x_shape = tf.shape(x)._inferred_value[1:]  # ignore batch dimension
