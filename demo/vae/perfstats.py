@@ -373,6 +373,7 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
         for d in range(latent_dim):  # covar(x, z_d)
             outs.append(xdiff * (μ[:, d] - μbar[d]))  # -> [batch_size]
         return tf.stack(outs, axis=-1)  # -> [batch_size, latent_dim]
+    # TODO: could be useful to compute just `sample_covar`, without reducing to AU. Export a function for that, too.
     N = tf.shape(x)[0]
     sample_covar = (1. / (float(N) - 1.)) * tf.reduce_sum(scatter(x, μ), axis=0)
     return int(tf.reduce_sum(tf.where(tf.greater(tf.math.abs(sample_covar), eps), 1.0, 0.0)))
