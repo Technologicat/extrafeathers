@@ -8,6 +8,8 @@ __all__ = ["active_units",
            "negative_log_likelihood",
            "mutual_information"]
 
+from unpythonic import timer
+
 import tensorflow as tf
 
 from .config import latent_dim
@@ -487,17 +489,24 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
               to draw for each data sample `x`.
             - For ancestral sampling of `z ~ qϕ(z)`` in `DKL[qϕ(z) ‖ pθ(z)]`.
 
-    `nx`: Number of `x` MC samples for `x`. Special value `"all"` uses
-          *all* of the data samples `x`.
+    `nx`: Number of `x` MC samples, or special value `"all"`.
 
-          This is used for evaluating the aggregate posterior `log qϕ(z)`
-          in `DKL[qϕ(z) ‖ pθ(z)]`.
+          Used for estimating the aggregate posterior `log qϕ(z)` in
+          `DKL[qϕ(z) ‖ pθ(z)]`, by MC sampling `qφ(z|x)` over `x`.
 
-          Ideally, `nx` should be large. Our MC estimate of `qφ(z)` is based
-          on only the sampled instances of `qφ(z|x)`. If `nx` is small, the
-          computed "aggregate" will overemphasize the latents of the data
+          For each `z` sample, `nx` samples are drawn and encoded to obtain
+          `(μ, log σ)`, so the total cost of estimating `E[z](log qϕ(z))`
+          is `O(nx * nz)`.
+
+          Special value `"all"` uses *all* of the data samples `x`. Then the full
+          dataset is encoded only once, since `(μ, log σ)` of the full dataset
+          can be re-used.
+
+          Ideally, `nx` should be large, hence the default `"all"`. The MC estimate
+          of `qφ(z)` is based on only the sampled instances of `qφ(z|x)`. If `nx` is
+          small, the computed "aggregate" will overemphasize the latents of the data
           samples it saw, while ignoring all others, making `DKL[qϕ(z) ‖ pθ(z)]`
-          inaccurate, or worse, into complete nonsense.
+          inaccurate, or worse, complete nonsense.
 
           The accuracy of the computed MI is much more sensitive to `nx`
           than it is to `nz`.
@@ -508,7 +517,7 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
 
         E[x ~ pd(x)]( DKL[qϕ(z|x) ‖ pθ(z)] )
 
-    and the mutual information induced by the variational joint, defined as::
+    and the mutual information induced by the variational joint::
 
         I[q](x, z) := E[x ~ pd(x)]( DKL[qϕ(z|x) ‖ pθ(z)] - DKL[qϕ(z) ‖ pθ(z)] )
 
@@ -516,8 +525,8 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
 
         DKL[q(z) ‖ p(z)] ≡ E[z ~ q(z)]( log q(z) - log p(z) ),
 
-    pd(x) is the empirical data distribution, and qϕ(z) is the aggregated posterior,
-    which is the marginal over z induced by the joint::
+    `pd(x)` is the empirical data distribution, and `qϕ(z)` is the aggregated posterior,
+    which is the marginal over `z` induced by the joint::
 
         qϕ(z, x) := qϕ(z|x) pd(x)
 
@@ -534,7 +543,7 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
       https://arxiv.org/pdf/2105.14859.pdf
       https://arxiv.org/pdf/1807.04863.pdf
     """
-    print("MI: Encoding data into latent space...")
+    print("MI: Encoding `x` into latent space...")
     all_x_mean, all_x_logvar = model.encoder.predict(x, batch_size=batch_size)  # prevent re-batching into smaller subbatches
 
     # TODO: Refactor this, useful as-is (the "KL" statistic reported in some papers).
@@ -555,25 +564,36 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
 
         `nz`: number of `z` MC samples for estimating the expectation.
         """
+        # # mean, logvar: [N, latent_dim]
         # mean, logvar = model.encoder.predict(x, batch_size=batch_size)  # prevent re-batching into smaller subbatches
         mean, logvar = all_x_mean, all_x_logvar
         @batched(batch_size)
-        def logratio(x, mean, logvar):  # positional parameters get @batched
+        def logratio(mean, logvar):  # positional parameters get @batched
             # Given an `x`, we draw a single MC sample of `z ~ qϕ(z|x)`, where the distribution is given by the encoder.
             ignored_eps, z = model.reparameterize(mean, logvar)
             logqz_x = log_normal_pdf(z, mean, logvar)  # log qϕ(z|x)
             logpz = log_normal_pdf(z, 0., 0.)          # log pθ(z)
             return logqz_x - logpz
 
-        # E[z ~ qϕ(z|x)](...)
-        out = [logratio(x, mean, logvar) for _ in range(nz)]  # [nz, N]
-        out = tf.reduce_mean(out, axis=0)  # [N]
+        # # E[z ~ qϕ(z|x)](...)
+        # out = [logratio(mean, logvar) for _ in range(nz)]  # [nz, N]
+        # out = tf.reduce_mean(out, axis=0)  # [N]
+
+        # E[z ~ qϕ(z|x)](...), vectorized
+        mean = tf.repeat(mean, nz, axis=0)  # [nz * N, latent_dim] (`μ` corresponding to each `x` repeated `nz` times, contiguously)
+        logvar = tf.repeat(logvar, nz, axis=0)  # [nz * N, latent_dim]
+        out = logratio(mean, logvar)  # [nz * N]
+        # de-interleaving reshape: [x0_s0, x0_s1, ..., x1_s0, x1_s1, ...] -> [x0_s0, x1_s0, ...], [x0_s1, x1_s1, ...], ...
+        mc_samples = [out[j::nz] for j in range(nz)]  # [nz, N]
+        out = tf.reduce_mean(mc_samples, axis=0)  # [N]
         return out
 
     # The first DKL term. For each given `x`:
     #   DKL(qϕ(z|x) ‖ pθ(z)) ≡ E[z ~ qϕ(z|x)]( log qϕ(z|x) - log pθ(z) )
-    print("MI: Computing DKL(qϕ(z|x) ‖ pθ(z)) for all given `x`...")
-    first_dkl_term = dkl_qz_x_from_pz(nz)  # [N]
+    print("MI: Computing DKL(qϕ(z|x) ‖ pθ(z)) for each `x`...")
+    with timer() as tim:
+        first_dkl_term = dkl_qz_x_from_pz(nz)  # [N]
+    print(f"    Done in {tim.dt:0.6g}s.")
 
     # The second DKL term (note this does not depend on `x`):
     #   DKL(qϕ(z) ‖ pθ(z)) = E[z ~ qϕ(z)]( log qϕ(z) - log pθ(z) ),
@@ -685,22 +705,29 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
 
         # Compute the DKL, and average over the MC samples `(z, log qφ(z))`.
         # With the above definitions, this is as simple as:
-        dkls = []
-        for j, z in enumerate(sample_qz(nz), start=1):  # outer MC sample: for ancestral sampling of `z`
-            print(f"MI: Evaluating qφ(z) at MC sample {j} out of {nz}...")
+        logratios = []
+        print("MI:     Ancestral sampling z ~ qϕ(z)...")
+        zs = sample_qz(nz)
+        print("MI:     Evaluating qϕ(z)...")
+        for j, z in enumerate(zs, start=1):  # outer MC sample: for ancestral sampling of `z`
+            # print(f"MI: Evaluating qφ(z) at MC sample {j} out of {nz}...")
             logqz = compute_logqz(z, nx)
             z_broadcast = tf.expand_dims(z, axis=0)
             logpz = log_normal_pdf(z_broadcast, 0., 0.)
-            dkls.append(logqz - logpz)
-        dkl = tf.reduce_mean(dkls).numpy()  # evaluate the MC expectation
+            logratios.append(logqz - logpz)
+        # E[z ~ qϕ(z)](...)
+        # logratios: [nz]
+        dkl = tf.reduce_mean(logratios).numpy()  # scalar
         return dkl
 
     print("MI: Computing DKL(qϕ(z) ‖ pθ(z))...")
-    second_dkl_term = dkl_qz_from_pz(nz, nx)  # just a scalar
+    with timer() as tim:
+        second_dkl_term = dkl_qz_from_pz(nz, nx)  # just a scalar
+    print(f"    Done in {tim.dt:0.6g}s.")
 
     MI = first_dkl_term - second_dkl_term
 
-    # Finally, average over the dataset `x`.
+    # E[x ~ pd(x)](...)
     dkl = tf.reduce_mean(first_dkl_term).numpy()
     MI = tf.reduce_mean(MI).numpy()
     return dkl, MI
