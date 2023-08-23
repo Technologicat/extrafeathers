@@ -365,6 +365,7 @@ def active_units(model, x, *, batch_size=1024, eps=0.1):
     μbar = tf.reduce_mean(μ, axis=0)  # latent-dimension-wise mean (over dataset)
 
     # Like the scatter matrix in statistics, but summed over pixels and channels of `x`.
+    # https://en.wikipedia.org/wiki/Scatter_matrix
     @batched(batch_size)  # won't fit in VRAM on the full training dataset
     def scatter(x, μ):  # ([N, xy, nx, c], [N, xy, nx, c]) -> [N, latent_dim]
         xdiff = tf.reduce_sum((x - xbar), axis=[1, 2, 3])  # TODO: is this the right kind of reduction here?
