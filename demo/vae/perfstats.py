@@ -698,8 +698,8 @@ def mutual_information(model, x, *, batch_size=1024, nz=30, nx="all"):
             logratios.append(logqz - logpz)
         # E[z ~ qϕ(z)](...)
         # logratios: [nz]
-        dkl = tf.reduce_mean(logratios).numpy()  # scalar
-        return dkl
+        dkl = tf.reduce_mean(logratios)  # scalar
+        return dkl.numpy()
 
     print("MI: Computing DKL(qϕ(z) ‖ pθ(z))...")
     with timer() as tim:
