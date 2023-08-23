@@ -789,6 +789,8 @@ def plot_manifold(x: tf.Tensor,
     # on a Riemannian manifold; the Riemannian metric is locally constant (at least approximately);
     # and that the manifold is locally connected. It attempts to preserve the topological structure
     # of this manifold.
+    # See McInnes et al. (2020, revised v3 of paper originally published in 2018):
+    #   https://arxiv.org/abs/1802.03426
     tumap = umap.UMAP(n_components=d,
                       n_neighbors=k,
                       metric="cosine",
