@@ -266,7 +266,7 @@ def logsumexp(x):
 
 
 # --------------------------------------------------------------------------------
-# The actual performance statistics
+# Performance statistics
 
 def active_units(model, x, *, batch_size=1024, eps=0.1):
     """[performance statistic] Compute AU, the number of latent active units.
