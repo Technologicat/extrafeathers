@@ -983,9 +983,10 @@ def log_px_z(model, x, z, training=None):
     so the logarithm may be positive (and large).
 
     `x`: tensor of shape (N, 28, 28, 1); data batch of grayscale pictures
+         (the observation whose log-likelihood to compute)
     `z`: tensor of shape (N, latent_dim); data batch of code points
-         (drawn from variational posterior; get them by encoding `x`
-          and reparameterizing)
+         corresopnding to `x` (drawn from variational posterior;
+         get them by encoding `x` and reparameterizing)
     """
     # Many tutorial implementations are unnecessarily confusing here; logits and the binary cross-entropy
     # are a sideshow, specific to the discrete Bernoulli observation model of the classic VAE, which
