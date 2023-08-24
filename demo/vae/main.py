@@ -87,6 +87,8 @@ References:
 
   Ian Goodfellow, Yoshua Bengio, and Aaron Courville. 2016. Deep Learning. MIT press.
   http://www.deeplearningbook.org
+
+Many more can be found in more specific docstrings, and in the source code comments.
 """
 
 # The REPL server allows inspecting/saving anything accessible from module-global scope
