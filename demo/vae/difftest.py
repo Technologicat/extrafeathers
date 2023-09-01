@@ -18,6 +18,40 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 
+# TODO: this is now `padding="valid"`; implement `padding="same"` mode (extrapolate linearly?)
+def denoise(N: int, f):
+    """Attempt to denoise the function values data.
+
+    We use a discrete convolution with the Friedrichs mollifier.
+    A continuous version is sometimes used as a differentiation technique:
+
+       Ian Knowles and Robert J. Renka. Methods of numerical differentiation of noisy data.
+       Electronic journal of differential equations, Conference 21 (2014), pp. 235-246.
+
+    but we use a simple discrete implementation, and only as a preprocessor.
+
+    `N`: neighborhood size, for constructing the box to look up neighbors in.
+    """
+    def friedrichs_mollifier(x, *, eps=0.001):  # not normalized!
+        return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
+
+    offset_X, offset_Y = np.meshgrid(np.arange(-N, N + 1), np.arange(-N, N + 1))  # neighbor offsets
+    offset_R = np.sqrt(offset_X**2 + offset_Y**2)
+    rmax = np.ceil(np.max(offset_R))  # the offset distance at which we want the mollifier to vanish
+
+    smoothing_kernel = friedrichs_mollifier(offset_R / rmax)
+    smoothing_kernel = smoothing_kernel / np.sum(smoothing_kernel)
+
+    f = tf.expand_dims(f, axis=0)  # batch
+    f = tf.expand_dims(f, axis=-1)  # channels
+    smoothing_kernel = tf.expand_dims(smoothing_kernel, axis=-1)  # input channels
+    smoothing_kernel = tf.expand_dims(smoothing_kernel, axis=-1)  # output channels
+    f = tf.nn.convolution(f, smoothing_kernel, padding="VALID")
+    f = tf.squeeze(f, axis=-1)  # channels
+    f = tf.squeeze(f, axis=0)  # batch
+    return f.numpy()
+
+
 def main():
     # --------------------------------------------------------------------------------
     # Parameters
@@ -66,31 +100,8 @@ def main():
         noise = np.random.normal(loc=0.0, scale=σ, size=np.shape(X))
         f += noise
 
-        # Smooth away the noise so we get a reasonable hessian, too.
-        #
-        # To smooth the data, we use a discrete convolution with the Friedrichs mollifier.
-        # A continuous version is sometimes used as a differentiation technique:
-        #
-        #    Ian Knowles and Robert J. Renka. Methods of numerical differentiation of noisy data.
-        #    Electronic journal of differential equations, Conference 21 (2014), pp. 235-246.
-        #
-        # but we use a simple discrete implementation, and only as a preprocessor. We send the output
-        # to the quadratic surrogate fitter.
-        def friedrichs_mollifier(x, *, eps=0.001):  # not normalized!
-            return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
-        offset_X, offset_Y = np.meshgrid(np.arange(-N, N + 1), np.arange(-N, N + 1))  # neighbors
-        offset_R = np.sqrt(offset_X**2 + offset_Y**2)
-        rmax = np.ceil(np.max(offset_R))  # the offset distance at which we want the mollifier to vanish
-        smoothing_kernel = friedrichs_mollifier(offset_R / rmax)
-        smoothing_kernel = smoothing_kernel / np.sum(smoothing_kernel)
-        f = tf.expand_dims(f, axis=0)  # batch
-        f = tf.expand_dims(f, axis=-1)  # channels
-        smoothing_kernel = tf.expand_dims(smoothing_kernel, axis=-1)  # input channels
-        smoothing_kernel = tf.expand_dims(smoothing_kernel, axis=-1)  # output channels
-        f = tf.nn.convolution(f, smoothing_kernel, padding="VALID")
-        f = tf.squeeze(f, axis=-1)  # channels
-        f = tf.squeeze(f, axis=0)  # batch
-        f = f.numpy()
+        f = denoise(N, f)
+
         # The edges are nonsense with padding="SAME", so we use "VALID", and chop off the edges of X and Y correspondingly.
         X = X[N:-N, N:-N]
         Y = Y[N:-N, N:-N]
