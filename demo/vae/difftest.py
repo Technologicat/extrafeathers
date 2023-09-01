@@ -115,6 +115,7 @@ def denoise(N: int, f):
 
 
 # TODO: this is now `padding="valid"`; implement `padding="same"` mode (extrapolate linearly?)
+# TODO: implement a version for arbitrary geometries (data point dependent `A` and `c`)
 coeffs = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
 def differentiate(N, X, Y, Z):
     """Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
