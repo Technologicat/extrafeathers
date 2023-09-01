@@ -212,6 +212,8 @@ def main():
     # --------------------------------------------------------------------------------
     # Compute the test data
 
+    print("Setup...")
+
     # Differentiate symbolically to obtain ground truths for the jacobian and hessian to benchmark against.
     dfdx_expr = sy.diff(expr, x, 1)
     dfdy_expr = sy.diff(expr, y, 1)
@@ -236,16 +238,19 @@ def main():
 
     if σ > 0:
         # Corrupt the data with synthetic noise...
+        print("Noise simulation...")
         noise = np.random.normal(loc=0.0, scale=σ, size=np.shape(X))
         Z += noise
 
         # ...and then attempt to remove the noise.
+        print("Denoise...")
         Z = denoise(N, Z)
         X, Y = chop_edges(N, X, Y)
 
     # --------------------------------------------------------------------------------
     # Compute the derivatives.
 
+    print("Derivatives...")
     dZ = differentiate(N, X, Y, Z)
     X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)
 
@@ -255,6 +260,7 @@ def main():
     # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
     # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
     # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
+    print("Plotting.")
     fig = plt.figure(1)
     ax = fig.add_subplot(2, 3, 1, projection="3d")
     surf = ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False)  # noqa: F841
