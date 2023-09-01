@@ -130,8 +130,6 @@ def differentiate(N, X, Y, Z):
     `N`: neighborhood size parameter
     `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively
     """
-    neighbors = make_stencil(N)
-
     # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
     # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing (in raw coordinate space) as the scale.
     xscale = X[0, 1] - X[0, 0]
@@ -140,59 +138,134 @@ def differentiate(N, X, Y, Z):
     def cki(dx, dy):
         """Compute the `c[k, i]` coefficients for surrogate fitting.
 
+        Essentially, the quadratic surrogate is based on::
+
+          f(xk, yk) ≈ f(xi, yi) + ∂f/∂x dx + ∂f/∂y dy + ∂²f/∂x² (1/2 dx²) + ∂²f/∂x∂y dx dy + ∂²f/∂y² (1/2 dy²)
+                   =: f(xi, yi) + ∂f/∂x c[k,0] + ∂f/∂y c[k,1] + ∂²f/∂x² c[k,2] + ∂²f/∂x∂y c[k,3] + ∂²f/∂y² c[k,4]
+
+        where the c[k,i] are known. Given a neighborhood around (xi, yi) with enough data points (xk, yk, fk),
+        we can write a linear equation system that yields the derivatives of the quadratic surrogate at (xi, yi).
+
         `dx`, `dy`: offset distance in raw coordinate space. Either:
-            - `float`, for data coming from a single pair of data points (single neighbor `k`)
-            - rank-1 `np.array`, for data coming from a batch of data point pairs
-              (many neighbors `k` for the same center point, or same relative neighbor `k` for many center points)
+            - `float`, for a single pair of data points
+            - rank-1 `np.array`, for a batch of data point pairs
 
         Return value:
             For float input: `c[i]`, rank-1 `np.array` of shape `(5,)`
-            For array input: `c[k, i]`, rank-2 `np.array` of shape `(N, 5)`
+            For array input with `k` elements: `c[k, i]`, rank-2 `np.array` of shape `(n, 5)`
         """
         dx = dx / xscale
         dy = dy / yscale
         return np.array([dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
-    ncoeffs = np.shape(cki(0, 0))[-1]  # 5
 
     # Since we have a uniform grid in this application, the distance matrix of neighbors for each point is the same,
     # so we need to assemble only one.
-    # TODO: tensorize? (we might have a lot of neighbors)
-    A = np.zeros((ncoeffs, ncoeffs))
+
+    # Generic offset distance stencil for all neighbors.
     iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
-    for offset_y, offset_x in neighbors:
-        dx = X[iy + offset_y, ix + offset_x] - X[iy, ix]
-        dy = Y[iy + offset_y, ix + offset_x] - Y[iy, ix]
-        c = cki(dx, dy)
-        for j in range(ncoeffs):
-            for n in range(ncoeffs):
-                A[j, n] += c[j] * c[n]
-    A = tf.constant(A)
+    neighbors = make_stencil(N)  # [#k, 2]
+    dx = X[iy + neighbors[:, 0], ix + neighbors[:, 1]] - X[iy, ix]  # [#k]
+    dy = Y[iy + neighbors[:, 0], ix + neighbors[:, 1]] - Y[iy, ix]  # [#k]
+
+    # Tensor viewpoint. Define the indices as follows:
+    #   `n`: datapoint in batch,
+    #   `k`: neighbor,
+    #   `i`: row of MLS equation system "A x = b"
+    #   `j`: column of MLS equation system "A x = b"
+    # and let `f[n] = f(x[n], y[n])`.
+    #
+    # Then, in the general case, the MLS equation systems for the batch are given by:
+    #   A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
+    #   b[n,i] = ∑k( (f[g[n,k]] - f[n]) * c[n,k,i] )
+    #
+    # where `g[n,k]` is the (global) data point index, of neighbor `k` of data point `n`.
+    #
+    # On a uniform grid, c[n1,k,i] = c[n2,k,i] =: c[k,i] for any n1, n2, so this simplifies to:
+    #   A[i,j] = ∑k( c[k,i] * c[k,j] )
+    #   b[n,i] = ∑k( (f[g[n,k]] - f[n]) * c[k,i] )
+    #
+    # In practice we still have to chop the edges, which modifies the data point indexing slightly.
+    # Since we use a single stencil, we can form the equations for the interior part only, whereas
+    # for the neighbor data values we need to use the full original data.
+
+    # Assemble `A`:
+    c = cki(dx, dy)  # [#k, 5]
+    A = tf.einsum("ki,kj->ij", c, c)  # A[i,j] = ∑k( c[k,i] * c[k,j] )
+
+    # # In other words:
+    # A = np.zeros((5, 5))
+    # iy, ix = N, N
+    # for offset_y, offset_x in neighbors:
+    #     dx = X[iy + offset_y, ix + offset_x] - X[iy, ix]
+    #     dy = Y[iy + offset_y, ix + offset_x] - Y[iy, ix]
+    #     c = cki(dx, dy)
+    #     for j in range(5):
+    #         for n in range(5):
+    #             A[j, n] += c[j] * c[n]
+    # A = tf.constant(A)
 
     # Form the right-hand side for each point. This is the only part that depends on the data values f.
-    # TODO: tensorize, this is the slowest part, and O(n) on the data.
-    ny, nx = np.shape(X)
-    bs = []
-    for iy in range(N, ny - N):
-        for ix in range(N, nx - N):
-            b = np.zeros((ncoeffs,))
-            for offset_y, offset_x in neighbors:
-                dx = X[iy + offset_y, ix + offset_x] - X[iy, ix]
-                dy = Y[iy + offset_y, ix + offset_x] - Y[iy, ix]
-                c = cki(dx, dy)
-                for j in range(ncoeffs):
-                    b[j] += (Z[iy + offset_y, ix + offset_x] - Z[iy, ix]) * c[j]
-            bs.append(b)
-    bs = tf.stack(bs, axis=1)
+    #
+    # As per the above summary, we need to compute:
+    #   b[n,i] = ∑k( (f[g[n,k]] - f[n]) * c[k,i] )
+    #
+    # Let
+    #   df[n,k] := f[g[n,k]] - f[n]
+    # Then
+    #   b[n,i] = ∑k( df[n,k] * c[k,i] )
+    # which can be implemented as:
+    #   b = tf.einsum("nk,ki->ni", df, c)
+    #
+    # The tricky part is computing the index sets for df. First, we index the function value data linearly:
+    f = tf.reshape(Z, [-1])
+
+    # Then determine the multi-indices for the interior points:
+    all_multi_idx = tf.reshape(tf.range(tf.reduce_prod(tf.shape(X))), tf.shape(X))  # e.g. [[0, 1, 2], [3, 4, 5], ...]
+    interior_multi_idx = all_multi_idx[N:-N, N:-N]
+
+    interior_idx = tf.reshape(interior_multi_idx, [-1])  # [n_interior_points], linear index of each interior data point
+    # neighbors data ordering: [y, x] -> linear index = y * size_x + x
+    offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
+
+    # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
+    n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
+    offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+
+    # Now we can evaluate df, and finally b.
+    df = tf.gather(f, gnk) - tf.gather(f, n)  # [n_interior_points, #k]
+    # bs = tf.einsum("nk,ki->ni", df, c)  # This would be clearer...
+    bs = tf.einsum("nk,ki->in", df, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+
+    # # In other words:
+    # ny, nx = np.shape(X)
+    # bs = []
+    # for iy in range(N, ny - N):
+    #     for ix in range(N, nx - N):
+    #         b = np.zeros((5,))
+    #         for offset_y, offset_x in neighbors:
+    #             dx = X[iy + offset_y, ix + offset_x] - X[iy, ix]
+    #             dy = Y[iy + offset_y, ix + offset_x] - Y[iy, ix]
+    #             dz = Z[iy + offset_y, ix + offset_x] - Z[iy, ix]
+    #             c = cki(dx, dy)
+    #             for j in range(5):
+    #                 b[j] += dz * c[j]
+    #         bs.append(b)
+    # bs = tf.stack(bs, axis=1)
 
     # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
-    df = tf.linalg.solve(A, bs)  # [ncoeffs, n_datapoints]
+    df = tf.linalg.solve(A, bs)  # [5, n_interior_points]
 
     # Undo the derivative scaling,  d/dx' → d/dx
     scale = tf.constant([xscale, yscale, xscale**2, xscale * yscale, yscale**2])
-    scale = tf.expand_dims(scale, axis=-1)  # for broadcasting to all data points
+    scale = tf.expand_dims(scale, axis=-1)  # for broadcasting
     df = df / scale
 
-    df = tf.reshape(df, (ncoeffs, ny - 2 * N, nx - 2 * N))
+    # # Old reshape code:
+    # ny, nx = np.shape(X)
+    # df = tf.reshape(df, (5, ny - 2 * N, nx - 2 * N))
+
+    df = tf.reshape(df, (5, *tf.shape(interior_multi_idx)))
     return df
 
 
@@ -201,7 +274,7 @@ def main():
     # Parameters
     N = 5  # neighborhood size parameter for surrogate fitting
     σ = 0.01  # optional: stdev for simulated i.i.d. gaussian noise in data
-    xx = np.linspace(0, np.pi, 51)
+    xx = np.linspace(0, np.pi, 256)
     yy = xx
 
     # --------------------------------------------------------------------------------
