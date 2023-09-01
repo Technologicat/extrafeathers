@@ -135,7 +135,7 @@ def differentiate(N, X, Y, Z):
     xscale = X[0, 1] - X[0, 0]
     yscale = Y[1, 0] - Y[0, 0]
 
-    def fcoeffs(dx, dy):
+    def cki(dx, dy):
         """Compute the `c[k, i]` coefficients for surrogate fitting.
 
         `dx`, `dy`: offset distance in raw coordinate space. Either:
@@ -150,7 +150,7 @@ def differentiate(N, X, Y, Z):
         dx = dx / xscale
         dy = dy / yscale
         return np.array([dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
-    ncoeffs = np.shape(fcoeffs(0, 0))[-1]  # 5
+    ncoeffs = np.shape(cki(0, 0))[-1]  # 5
 
     # Since we have a uniform grid in this application, the distance matrix of neighbors for each point is the same,
     # so we need to assemble only one.
@@ -160,7 +160,7 @@ def differentiate(N, X, Y, Z):
     for offset_y, offset_x in neighbors:
         dx = X[iy + offset_y, ix + offset_x] - X[iy, ix]
         dy = Y[iy + offset_y, ix + offset_x] - Y[iy, ix]
-        c = fcoeffs(dx, dy)
+        c = cki(dx, dy)
         for j in range(ncoeffs):
             for n in range(ncoeffs):
                 A[j, n] += c[j] * c[n]
@@ -176,7 +176,7 @@ def differentiate(N, X, Y, Z):
             for offset_y, offset_x in neighbors:
                 dx = X[iy + offset_y, ix + offset_x] - X[iy, ix]
                 dy = Y[iy + offset_y, ix + offset_x] - Y[iy, ix]
-                c = fcoeffs(dx, dy)
+                c = cki(dx, dy)
                 for j in range(ncoeffs):
                     b[j] += (Z[iy + offset_y, ix + offset_x] - Z[iy, ix]) * c[j]
             bs.append(b)
