@@ -131,14 +131,25 @@ def differentiate(N, X, Y, Z):
     neighbors = make_stencil(N)
 
     # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
-    # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing as the scale.
+    # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing (in raw coordinate space) as the scale.
     xscale = X[0, 1] - X[0, 0]
     yscale = Y[1, 0] - Y[0, 0]
+
     def fcoeffs(dx, dy):
+        """Compute the `c` coefficients for surrogate fitting.
+
+        `dx`, `dy`: offset distance in raw coordinate space. Either:
+            - `float`, for data coming from a single pair of data points
+            - rank-1 `np.array`, for data coming from a batch of data point pairs
+
+        Return value:
+            For float input: rank-1 `np.array` of shape `(5,)`
+            For array input: rank-2 `np.array` of shape `(N, 5)`
+        """
         dx = dx / xscale
         dy = dy / yscale
-        return np.array([dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2])  # Taylor
-    ncoeffs = len(fcoeffs(0, 0))
+        return np.array([dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
+    ncoeffs = np.shape(fcoeffs(0, 0))[-1]  # 5
 
     # Since we have a uniform grid in this application, the distance matrix of neighbors for each point is the same,
     # so we need to assemble only one.
