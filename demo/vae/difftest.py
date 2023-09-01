@@ -141,7 +141,7 @@ def differentiate(N, X, Y, Z):
         `dx`, `dy`: offset distance in raw coordinate space. Either:
             - `float`, for data coming from a single pair of data points (single neighbor `k`)
             - rank-1 `np.array`, for data coming from a batch of data point pairs
-              (many neighbors `k` for the same center point)
+              (many neighbors `k` for the same center point, or same relative neighbor `k` for many center points)
 
         Return value:
             For float input: `c[i]`, rank-1 `np.array` of shape `(5,)`
