@@ -19,6 +19,47 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 
+# TODO: move to `extrafeathers.plotmagic`; or create a new small module for `pause` and this, since the rest is FEniCS-specific and these are general.
+def link_3d_subplot_cameras(fig, axes):
+    """Link view angles and zooms of several 3d subplots in the same Matplotlib figure.
+
+    `fig`: a Matplotlib figure object
+    `axes`: a list of Matplotlib `Axes` objects in figure `fig`
+
+    Return value is a handle to a Matplotlib `motion_notify_event`;
+    you can disconnect this event later if you want to unlink the cameras.
+
+    Example::
+
+        fig = plt.figure(1)
+        ax1 = fig.add_subplot(2, 3, 1, projection="3d")
+        ax2 = fig.add_subplot(2, 3, 1, projection="3d")
+        link_3d_subplot_cameras(fig, [ax1, ax2])
+
+    Adapted from recipe at:
+        https://github.com/matplotlib/matplotlib/issues/11181
+    """
+    def on_move(event):
+        sender = [ax for ax in axes if event.inaxes == ax]
+        if not sender:
+            return
+        assert len(sender) == 1
+        sender = sender[0]
+        others = [ax for ax in axes if ax is not sender]
+        if sender.button_pressed in sender._rotate_btn:
+            for ax in others:
+                ax.view_init(elev=sender.elev, azim=sender.azim)
+        elif sender.button_pressed in sender._zoom_btn:
+            for ax in others:
+                ax.set_xlim3d(sender.get_xlim3d())
+                ax.set_ylim3d(sender.get_ylim3d())
+                ax.set_zlim3d(sender.get_zlim3d())
+        else:
+            return
+        fig.canvas.draw_idle()
+    return fig.canvas.mpl_connect("motion_notify_event", on_move)
+
+
 def make_stencil(N: int) -> np.array:
     """Return an array of integer offset pairs for a stencil of N×N points.
 
@@ -150,48 +191,51 @@ def main():
     yy = xx
 
     # --------------------------------------------------------------------------------
-    # Function
+    # Set up an expression to generate test data
+
     x, y = sy.symbols("x, y")
-    f = sy.sin(x) * sy.cos(y)
-    # f = x**2 + y
+    expr = sy.sin(x) * sy.cos(y)
+    # expr = x**2 + y
 
     # --------------------------------------------------------------------------------
-    # General init
+    # Compute the test data
 
     # Differentiate symbolically to obtain ground truths for the jacobian and hessian to benchmark against.
-    dfdx = sy.diff(f, x, 1)
-    dfdy = sy.diff(f, y, 1)
-    d2fdx2 = sy.diff(f, x, 2)
-    d2fdxdy = sy.diff(sy.diff(f, x, 1), y, 1)
-    d2fdy2 = sy.diff(f, y, 2)
+    dfdx_expr = sy.diff(expr, x, 1)
+    dfdy_expr = sy.diff(expr, y, 1)
+    d2fdx2_expr = sy.diff(expr, x, 2)
+    d2fdxdy_expr = sy.diff(sy.diff(expr, x, 1), y, 1)
+    d2fdy2_expr = sy.diff(expr, y, 2)
 
-    f = sy.lambdify((x, y), f)
-    dfdx = sy.lambdify((x, y), dfdx)
-    dfdy = sy.lambdify((x, y), dfdy)
-    d2fdx2 = sy.lambdify((x, y), d2fdx2)
-    d2fdxdy = sy.lambdify((x, y), d2fdxdy)
-    d2fdy2 = sy.lambdify((x, y), d2fdy2)
-    ground_truths = {"dx": dfdx, "dy": dfdy, "dx2": d2fdx2, "dxdy": d2fdxdy, "dy2": d2fdy2}
+    dfdx = sy.lambdify((x, y), dfdx_expr)
+    dfdy = sy.lambdify((x, y), dfdy_expr)
+    d2fdx2 = sy.lambdify((x, y), d2fdx2_expr)
+    d2fdxdy = sy.lambdify((x, y), d2fdxdy_expr)
+    d2fdy2 = sy.lambdify((x, y), d2fdy2_expr)
 
+    ground_truth_functions = {"dx": dfdx, "dy": dfdy, "dx2": d2fdx2, "dxdy": d2fdxdy, "dy2": d2fdy2}
+
+    f = sy.lambdify((x, y), expr)
     X, Y = np.meshgrid(xx, yy)
-    f = f(X, Y)
+    Z = f(X, Y)
 
     # --------------------------------------------------------------------------------
-    # Noisy input simulation.
+    # Simulate noisy input, for testing the denoiser.
+
     if σ > 0:
         # Corrupt the data with synthetic noise...
         noise = np.random.normal(loc=0.0, scale=σ, size=np.shape(X))
-        f += noise
+        Z += noise
 
         # ...and then attempt to remove the noise.
-        f = denoise(N, f)
+        Z = denoise(N, Z)
         X, Y = chop_edges(N, X, Y)
 
     # --------------------------------------------------------------------------------
     # Compute the derivatives.
 
-    df = differentiate(N, X, Y, f)
-    Xdf, Ydf = chop_edges(N, X, Y)
+    dZ = differentiate(N, X, Y, Z)
+    X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)
 
     # --------------------------------------------------------------------------------
     # Plot the results
@@ -201,7 +245,7 @@ def main():
     # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
     fig = plt.figure(1)
     ax = fig.add_subplot(2, 3, 1, projection="3d")
-    surf = ax.plot_surface(X, Y, f, linewidth=0, antialiased=False)  # noqa: F841
+    surf = ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False)  # noqa: F841
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
@@ -209,39 +253,18 @@ def main():
     all_axes = [ax]
     for idx, key in enumerate(coeffs.keys(), start=2):
         ax = fig.add_subplot(2, 3, idx, projection="3d")
-        surf = ax.plot_surface(Xdf, Ydf, df[coeffs[key], :, :], linewidth=0, antialiased=False)  # noqa: F841
+        surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs[key], :, :], linewidth=0, antialiased=False)  # noqa: F841
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("z")
         ax.set_title(key)
         all_axes.append(ax)
 
-        ground_truth = ground_truths[key](Xdf, Ydf)
-        max_l1_error = np.max(np.abs(ground_truth - df[coeffs[key], :, :]))
+        ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
+        max_l1_error = np.max(np.abs(ground_truth - dZ[coeffs[key], :, :]))
         print(f"max absolute l1 error {key} = {max_l1_error:0.3g}")
     fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
-
-    # Link the subplot cameras (view angles and zooms)
-    # https://github.com/matplotlib/matplotlib/issues/11181
-    def on_move(event):
-        sender_ax = [ax for ax in all_axes if event.inaxes == ax]
-        if not sender_ax:
-            return
-        assert len(sender_ax) == 1
-        sender_ax = sender_ax[0]
-        other_axes = [ax for ax in all_axes if ax is not sender_ax]
-        if sender_ax.button_pressed in sender_ax._rotate_btn:
-            for ax in other_axes:
-                ax.view_init(elev=sender_ax.elev, azim=sender_ax.azim)
-        elif sender_ax.button_pressed in sender_ax._zoom_btn:
-            for ax in other_axes:
-                ax.set_xlim3d(sender_ax.get_xlim3d())
-                ax.set_ylim3d(sender_ax.get_ylim3d())
-                ax.set_zlim3d(sender_ax.get_zlim3d())
-        else:
-            return
-        fig.canvas.draw_idle()
-    on_move_event = fig.canvas.mpl_connect('motion_notify_event', on_move)  # noqa: F841
+    link_3d_subplot_cameras(fig, all_axes)
 
 if __name__ == '__main__':
     main()
