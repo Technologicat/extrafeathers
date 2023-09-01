@@ -191,6 +191,7 @@ def main():
     # Compute the derivatives.
 
     df = differentiate(N, X, Y, f)
+    Xdf, Ydf = chop_edges(N, X, Y)
 
     # --------------------------------------------------------------------------------
     # Plot the results
@@ -208,14 +209,14 @@ def main():
     all_axes = [ax]
     for idx, key in enumerate(coeffs.keys(), start=2):
         ax = fig.add_subplot(2, 3, idx, projection="3d")
-        surf = ax.plot_surface(X[N:-N, N:-N], Y[N:-N, N:-N], df[coeffs[key], :, :], linewidth=0, antialiased=False)  # noqa: F841
+        surf = ax.plot_surface(Xdf, Ydf, df[coeffs[key], :, :], linewidth=0, antialiased=False)  # noqa: F841
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("z")
         ax.set_title(key)
         all_axes.append(ax)
 
-        ground_truth = ground_truths[key](X[N:-N, N:-N], Y[N:-N, N:-N])
+        ground_truth = ground_truths[key](Xdf, Ydf)
         max_l1_error = np.max(np.abs(ground_truth - df[coeffs[key], :, :]))
         print(f"max absolute l1 error {key} = {max_l1_error:0.3g}")
     fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
