@@ -81,7 +81,7 @@ def chop_edges(N: int, X, Y):
 
 # TODO: this is now `padding="valid"`; implement `padding="same"` mode (extrapolate linearly?)
 def denoise(N: int, f):
-    """Attempt to denoise the function values data.
+    """Attempt to denoise function values data.
 
     We use a discrete convolution with the Friedrichs mollifier.
     A continuous version is sometimes used as a differentiation technique:
@@ -92,6 +92,7 @@ def denoise(N: int, f):
     but we use a simple discrete implementation, and only as a preprocessor.
 
     `N`: neighborhood size parameter
+    `f`: function values in meshgrid format, with equal x and y spacing
     """
     def friedrichs_mollifier(x, *, eps=0.001):  # not normalized!
         return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
@@ -127,6 +128,7 @@ def differentiate(N, X, Y, Z):
     becomes unwieldy for a simple example so we haven't done that.
 
     `N`: neighborhood size parameter
+    `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively
     """
     neighbors = make_stencil(N)
 
