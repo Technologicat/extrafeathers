@@ -22,8 +22,8 @@ def main():
     # --------------------------------------------------------------------------------
     # Parameters
     N = 3  # neighborhood size parameter for surrogate fitting
-    σ = 0.01  # optional: simulate i.i.d. gaussian noise in data
     xx = np.linspace(0, np.pi, 21)
+    σ = 0.01  # optional: stdev for simulated i.i.d. gaussian noise in data
     yy = xx
 
     # --------------------------------------------------------------------------------
