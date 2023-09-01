@@ -136,7 +136,7 @@ def differentiate(N, X, Y, Z):
     yscale = Y[1, 0] - Y[0, 0]
 
     def fcoeffs(dx, dy):
-        """Compute the `c[k]` coefficients for surrogate fitting.
+        """Compute the `c[k, i]` coefficients for surrogate fitting.
 
         `dx`, `dy`: offset distance in raw coordinate space. Either:
             - `float`, for data coming from a single pair of data points (single neighbor `k`)
@@ -144,8 +144,8 @@ def differentiate(N, X, Y, Z):
               (many neighbors `k` for the same center point)
 
         Return value:
-            For float input: rank-1 `np.array` of shape `(5,)`
-            For array input: rank-2 `np.array` of shape `(N, 5)`
+            For float input: `c[i]`, rank-1 `np.array` of shape `(5,)`
+            For array input: `c[k, i]`, rank-2 `np.array` of shape `(N, 5)`
         """
         dx = dx / xscale
         dy = dy / yscale
