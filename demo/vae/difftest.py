@@ -141,8 +141,17 @@ def main():
     # more neighbors from the existing side - even the sizes of A and b do not change), but the code becomes
     # unwieldy for a simple example.
     #
-    # TODO: add derivative scaling for numerical stability: x' := x / xref  ⇒  d/dx → (1 / xref) d/dx'. Choose xref so that the magnitudes are near 1.
-    fcoeffs = lambda dx, dy: [dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]  # Taylor
+    # fcoeffs = lambda dx, dy: [dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]  # Taylor
+
+    # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
+    # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing as the scale.
+    xscale = X[0, 1] - X[0, 0]
+    yscale = Y[1, 0] - Y[0, 0]
+    def fcoeffs(dx, dy):
+        dx = dx / xscale
+        dy = dy / yscale
+        return [dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]  # Taylor
+
     ncoeffs = len(fcoeffs(0, 0))
     coeff = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
     A = np.zeros((ncoeffs, ncoeffs))
@@ -171,6 +180,12 @@ def main():
 
     # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
     df = tf.linalg.solve(A, bs)  # [ncoeffs, n_datapoints]
+
+    # Undo the derivative scaling,  d/dx' → d/dx
+    scale = tf.constant([xscale, yscale, xscale**2, xscale * yscale, yscale**2])
+    scale = tf.expand_dims(scale, axis=-1)  # for broadcasting to all data points
+    df = df / scale
+
     df = tf.reshape(df, (ncoeffs, ny - 2 * N, nx - 2 * N))
 
     # --------------------------------------------------------------------------------
