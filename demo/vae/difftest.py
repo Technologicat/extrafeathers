@@ -147,6 +147,15 @@ def differentiate(N, X, Y, Z):
         where the c[k,i] are known. Given a neighborhood around (xi, yi) with enough data points (xk, yk, fk),
         we can write a linear equation system that yields the derivatives of the quadratic surrogate at (xi, yi).
 
+        Note that the surrogate is *not* an exact truncation of the Taylor series of `f`, in the following sense:
+
+        If we were to later fit a higher-order surrogate, and compare the result to the quadratic surrogate,
+        also all the lower-order approximate derivatives would have slightly different values (note that the
+        algorithm is completely deterministic). This is unlike in a Taylor series, where increasing the order
+        adds more terms, but does not change the values of the ones already computed. The surrogate is
+        least-squares optimal, at the given order (and *only* at that order), absorbing also the truncation
+        error into the coefficients.
+
         `dx`, `dy`: offset distance in raw coordinate space. Either:
             - `float`, for a single pair of data points
             - rank-1 `np.array`, for a batch of data point pairs
