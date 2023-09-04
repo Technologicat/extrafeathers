@@ -6,9 +6,9 @@ This method produces approximations for both the jacobian and the hessian in one
 This is basically a technique demo; this can be GPU-accelerated with TF, so we can use it to evaluate the
 spatial derivatives in the PDE residual in a physically informed loss for up to 2nd order PDEs.
 
-The potential issue is that the VAE output might contain some noise, so we need a method that can handle noisy input.
+A potential issue is that the VAE output might contain some noise, so to be safe, we need a method that can handle noisy input.
 
-We need only the very basics here. A more complete Cython implementation, and documentation:
+We need only the very basics here. A complete Cython implementation, and documentation:
     https://github.com/Technologicat/python-wlsqm
 """
 
