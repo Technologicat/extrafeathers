@@ -119,6 +119,7 @@ def denoise(N: int, f):
 # # To actually run with nonhomogeneous neighborhood sizes on the GPU, we need:
 # #   - `hoods_validized`: an extra copy of `hoods` where each `-1` has been replaced with a zero (or any valid index)
 # #   - Filtering, with something like `tf.where(tf.not_equal(hoods_original, -1), data[hoods_validized], 0.0)`
+# #   - Or, we could consider `tf.ragged`: https://www.tensorflow.org/guide/ragged_tensor
 # import scipy.spatial
 # def build_neighborhoods(S, *, r=5.0, max_neighbors=120):  # S: [[x0, y0], [x1, y1], ...]
 #     tree = scipy.spatial.cKDTree(data=S)  # index for fast searching
