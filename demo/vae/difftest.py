@@ -225,7 +225,7 @@ def differentiate(N, X, Y, Z):
     interior_multi_idx = all_multi_idx[N:-N, N:-N]
 
     interior_idx = tf.reshape(interior_multi_idx, [-1])  # [n_interior_points], linear index of each interior data point
-    # neighbors data ordering: [y, x] -> linear index = y * size_x + x
+    # linear index, C storage order: i = iy * size_x + ix
     offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
 
     # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
