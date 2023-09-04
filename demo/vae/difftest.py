@@ -102,7 +102,7 @@ def denoise(N: int, f):
     rmax = np.ceil(np.max(offset_R))  # the grid distance at which we want the mollifier to become zero
 
     kernel = friedrichs_mollifier(offset_R / rmax)
-    kernel = kernel / np.sum(kernel)
+    kernel = kernel / np.sum(kernel)  # normalize kernel so it integrates to 1 (actually making it a mollifier)
 
     f = tf.expand_dims(f, axis=0)  # batch
     f = tf.expand_dims(f, axis=-1)  # channels
