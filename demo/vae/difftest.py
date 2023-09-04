@@ -114,6 +114,32 @@ def denoise(N: int, f):
     return f.numpy()
 
 
+# # Idea: Let's extend this to arbitrary local neighborhoods in arbitrary geometries.
+# # This general neighborhood building code comes from `examples/wlsqm_example.py` in the `wlsqm` package.
+# # To actually run with nonhomogeneous neighborhood sizes on the GPU, we need:
+# #   - `hoods_validized`: an extra copy of `hoods` where each `-1` has been replaced with a zero (or any valid index)
+# #   - Filtering, with something like `tf.where(tf.not_equal(hoods_original, -1), data[hoods_validized], 0.0)`
+# import scipy.spatial
+# def build_neighborhoods(S, *, r=5.0, max_neighbors=120):  # S: [[x0, y0], [x1, y1], ...]
+#     tree = scipy.spatial.cKDTree(data=S)  # index for fast searching
+#     npoints = len(S)
+#     hoods = np.zeros((npoints, max_neighbors), dtype=np.int32) - 1  # hoods[i,k] are the indices of neighbor points of S[i], where -1 means "not present"
+#     n_neighbors = np.empty((npoints,), dtype=np.int32)              # number of actually present neighbors in hoods[i,:]
+#     for i in range(npoints):
+#         idxs = tree.query_ball_point(S[i], r)     # indices k of points S[k] that are neighbors of S[i] at distance <= r (but also including S[i] itself!)
+#         idxs = [idx for idx in idxs if idx != i]  # exclude S[i] itself
+#         if len(idxs) > max_neighbors:
+#             idxs = idxs[:max_neighbors]
+#         idxs = np.array(idxs, dtype=np.int32)
+#         n_neighbors[i] = len(idxs)
+#         hoods[i, :n_neighbors[i]] = idxs
+#     return hoods, n_neighbors
+# x = np.reshape(X, -1)
+# y = np.reshape(Y, -1)
+# S = np.stack((x, y), axis=-1)  # [[x0, y0], [x1, y1], ...]
+# hoods, n_neighbors = build_neighborhoods(S)
+
+
 # TODO: this is now `padding="valid"`; implement `padding="same"` mode (extrapolate linearly?)
 # TODO: Implement another version for arbitrary geometries (data point dependent `A` and `c`). (This version is already fine for meshgrid data.)
 coeffs = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
@@ -338,6 +364,25 @@ def main():
     print("Derivatives...")
     dZ = differentiate(N, X, Y, Z)
     X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)
+
+    # # Idea: chaining wlsqm with denoising between steps, to improve second derivative quality for noisy data.
+    # #
+    # dzdx = dZ[0, :]
+    # X_for_dzdx, Y_for_dzdx = X_for_dZ, Y_for_dZ
+    # dzdx = denoise(N, dzdx)
+    # X_for_dzdx, Y_for_dzdx = chop_edges(N, X_for_dzdx, Y_for_dzdx)
+    # dZ2 = differentiate(N, X_for_dzdx, Y_for_dzdx, dzdx)
+    # X_for_dzdx, Y_for_dzdx = chop_edges(N, X_for_dzdx, Y_for_dzdx)
+    # d2zdx2 = denoise(N, dZ2[0, :])
+    # X_for_dzdx, Y_for_dzdx = chop_edges(N, X_for_dzdx, Y_for_dzdx)
+    #
+    # fig = plt.figure(2)
+    # ax = fig.add_subplot(1, 1, 1, projection="3d")
+    # surf = ax.plot_surface(X_for_dzdx, Y_for_dzdx, d2zdx2)
+    # ax.set_xlabel("x")
+    # ax.set_ylabel("y")
+    # ax.set_zlabel("z")
+    # ax.set_title("d2f/dx2")
 
     # --------------------------------------------------------------------------------
     # Plot the results
