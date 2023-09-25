@@ -61,9 +61,9 @@ def link_3d_subplot_cameras(fig, axes):
 
 
 def make_stencil(N: int) -> np.array:
-    """Return an array of integer offset pairs for a stencil of N×N points.
+    """Return an array of integer offset pairs for a square-shaped stencil of N×N points.
 
-    `N`: neighborhood size parameter
+    `N`: neighborhood size parameter (how many grid spacings on each axis)
 
     Return value is a rank-2 np-array of shape [n_neighbors, 2].
     """
@@ -153,9 +153,9 @@ def differentiate(N, X, Y, Z):
     Note we lose the edges, like in a convolution with padding="VALID", essentially for the same reason.
     This is mathematically trivial to fix (we should just build `A` and `b` without the missing neighbors,
     or take more neighbors from the existing side - even the sizes of A and b do not change), but the code
-    becomes unwieldy for a simple example so we haven't done that.
+    becomes unwieldy, so we haven't done that.
 
-    `N`: neighborhood size parameter
+    `N`: neighborhood size parameter (how many grid spacings on each axis)
     `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively
     """
     # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
@@ -166,18 +166,25 @@ def differentiate(N, X, Y, Z):
     def cki(dx, dy):
         """Compute the `c[k, i]` coefficients for surrogate fitting.
 
-        Essentially, the quadratic surrogate is based on::
+        Essentially, the quadratic surrogate is based on the Taylor series of our function `f`::
 
           f(xk, yk) ≈ f(xi, yi) + ∂f/∂x dx + ∂f/∂y dy + ∂²f/∂x² (1/2 dx²) + ∂²f/∂x∂y dx dy + ∂²f/∂y² (1/2 dy²)
                    =: f(xi, yi) + ∂f/∂x c[k,0] + ∂f/∂y c[k,1] + ∂²f/∂x² c[k,2] + ∂²f/∂x∂y c[k,3] + ∂²f/∂y² c[k,4]
 
-        where the c[k,i] are known. Given a neighborhood around (xi, yi) with enough data points (xk, yk, fk),
-        we can write a linear equation system that yields the derivatives of the quadratic surrogate at (xi, yi).
+        where the c[k,i] are known geometric factors. Given a neighborhood around a given center point (xi, yi)
+        with 6 or more data points (xk, yk, fk), we can write a linear equation system that yields approximate
+        derivatives of the quadratic surrogate at the center point (xi, yi).
 
-        Note that the surrogate is *not* an exact truncation of the Taylor series of `f`, in the following sense:
+        Because we are solving for 5 coefficients, we must use at least 6 neighbors to make the fitting problem
+        overdetermined (hence "least squares meshfree method"). Note that we are not actually solving an
+        overdetermined *linear equation system*. Although our *problem* is overdetermined, it turns out that
+        we can solve this problem using an appropriately constructed linear equation system with a square matrix.
+        See the `python-wlsqm` docs for details.
+
+        Also, the surrogate is *not* an exact truncation of the Taylor series of `f`, in the following sense:
 
         If we were to later fit a higher-order surrogate, and compare the result to the quadratic surrogate,
-        also all the lower-order approximate derivatives would have slightly different values (note that the
+        also all the lower-order approximate derivatives would have slightly different values (even though the
         algorithm is completely deterministic). This is unlike in a Taylor series, where increasing the order
         adds more terms, but does not change the values of the ones already computed. The surrogate is
         least-squares optimal, at the given order (and *only* at that order), absorbing also the truncation
@@ -257,10 +264,11 @@ def differentiate(N, X, Y, Z):
     f = tf.reshape(Z, [-1])
 
     # Then determine the multi-indices for the interior points:
-    all_multi_idx = tf.reshape(tf.range(tf.reduce_prod(tf.shape(X))), tf.shape(X))  # e.g. [[0, 1, 2], [3, 4, 5], ...]
-    interior_multi_idx = all_multi_idx[N:-N, N:-N]
+    npoints = tf.reduce_prod(tf.shape(X))
+    all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
+    interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]
 
-    interior_idx = tf.reshape(interior_multi_idx, [-1])  # [n_interior_points], linear index of each interior data point
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
     # linear index, C storage order: i = iy * size_x + ix
     offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
 
@@ -283,7 +291,7 @@ def differentiate(N, X, Y, Z):
     #         for offset_y, offset_x in neighbors:
     #             dx = X[iy + offset_y, ix + offset_x] - X[iy, ix]
     #             dy = Y[iy + offset_y, ix + offset_x] - Y[iy, ix]
-    #             dz = Z[iy + offset_y, ix + offset_x] - Z[iy, ix]
+    #             dz = Z[iy + offset_y, ix + offset_x] - Z[iy, ix]  # function value delta
     #             c = cki(dx, dy)
     #             for j in range(5):
     #                 b[j] += dz * c[j]
@@ -302,7 +310,7 @@ def differentiate(N, X, Y, Z):
     # ny, nx = np.shape(X)
     # df = tf.reshape(df, (5, ny - 2 * N, nx - 2 * N))
 
-    df = tf.reshape(df, (5, *tf.shape(interior_multi_idx)))
+    df = tf.reshape(df, (5, *tf.shape(interior_multi_to_linear)))
     return df
 
 
