@@ -79,9 +79,85 @@ def chop_edges(N: int, X, Y):
     return X[N:-N, N:-N], Y[N:-N, N:-N]
 
 
-# TODO: this is now `padding="valid"`; implement `padding="same"` mode (extrapolate linearly?)
-def denoise(N: int, f):
-    """Attempt to denoise function values data.
+# TODO: improve to quadratic extrapolation, so that we can estimate second derivatives properly also near the edges.
+@tf.function(reduce_retracing=True)
+def pad_bilinear_one(f):
+    """Pad 2D tensor by one grid unit, by bilinear extrapolation.
+
+    `f`: data in meshgrid format.
+    """
+    # Extrapolate bilinearly one grid unit in each cardinal direction:
+    f_top_extrap = 2 * f[0, :] - f[1, :]
+    f_bottom_extrap = 2 * f[-1, :] - f[-2, :]
+    f_left_extrap = 2 * f[:, 0] - f[:, 1]
+    f_right_extrap = 2 * f[:, -1] - f[:, -2]
+
+    # Corners - extrapolate from the extrapolants that meet at the corner, and average.
+    # +<--
+    # ^x
+    # | x
+    # f_ul_horz = 2 * f_top_extrap[0] - f_top_extrap[1]
+    # f_ul_vert = 2 * f_left_extrap[0] - f_left_extrap[1]
+    # f_ul = (f_ul_horz + f_ul_vert) / 2
+    # Or: extrapolate diagonally directly from data:
+    f_ul = 2 * f[0, 0] - f[1, 1]
+    # -->+
+    #   x^
+    #  x |
+    # f_ur_horz = 2 * f_top_extrap[-1] - f_top_extrap[-2]
+    # f_ur_vert = 2 * f_right_extrap[0] - f_right_extrap[1]
+    # f_ur = (f_ur_horz + f_ur_vert) / 2
+    f_ur = 2 * f[0, -1] - f[1, -2]
+    # | x
+    # vx
+    # +<--
+    # f_ll_horz = 2 * f_bottom_extrap[0] - f_bottom_extrap[1]
+    # f_ll_vert = 2 * f_left_extrap[-1] - f_left_extrap[-2]
+    # f_ll = (f_ll_horz + f_ll_vert) / 2
+    f_ll = 2 * f[-1, 0] - f[-2, 1]
+    #  x |
+    #   xv
+    # -->+
+    # f_lr_horz = 2 * f_bottom_extrap[-1] - f_bottom_extrap[-2]
+    # f_lr_vert = 2 * f_right_extrap[-1] - f_right_extrap[-2]
+    # f_lr = (f_lr_horz + f_lr_vert) / 2
+    f_lr = 2 * f[-1, -1] - f[-2, -2]
+
+    # Assemble the output tensor.
+    #
+    # 1) Assemble padded top and bottom edges, with corners.
+    f_ult = tf.expand_dims(f_ul, axis=0)  # [] -> [1]
+    f_urt = tf.expand_dims(f_ur, axis=0)
+    fulltop = tf.concat([f_ult, f_top_extrap, f_urt], axis=0)  # e.g. [256] -> [258]
+    fulltop = tf.expand_dims(fulltop, axis=0)  # [258] -> [1, 258]
+    f_llt = tf.expand_dims(f_ll, axis=0)
+    f_lrt = tf.expand_dims(f_lr, axis=0)
+    fullbottom = tf.concat([f_llt, f_bottom_extrap, f_lrt], axis=0)
+    fullbottom = tf.expand_dims(fullbottom, axis=0)
+
+    # 2) Assemble middle part, padding left and right.
+    f_left_extrap = tf.expand_dims(f_left_extrap, axis=-1)  # [256] -> [256, 1]
+    f_right_extrap = tf.expand_dims(f_right_extrap, axis=-1)
+    f_widened = tf.concat([f_left_extrap, f, f_right_extrap], axis=1)  # [256, 256] -> [256, 258]
+
+    # 3) Assemble the final tensor.
+    f_padded = tf.concat([fulltop, f_widened, fullbottom], axis=0)  # -> [258, 258]
+    return f_padded
+
+@tf.function
+def pad_bilinear(n: int, f):
+    """Pad 2D tensor by `n` grid units, by bilinear extrapolation.
+
+    `n`: how many grid units to pad by.
+    `f`: data in meshgrid format.
+    """
+    for _ in range(n):
+        f = pad_bilinear_one(f)  # triggers retracing at each enlargement if we don't use `reduce_retracing=True`
+    return f
+
+
+def denoise(N: int, f, *, preserve_range=True):
+    """Attempt to denoise function values data on a 2D meshgrid.
 
     We use a discrete convolution with the Friedrichs mollifier.
     A continuous version is sometimes used as a differentiation technique:
@@ -89,10 +165,25 @@ def denoise(N: int, f):
        Ian Knowles and Robert J. Renka. Methods of numerical differentiation of noisy data.
        Electronic journal of differential equations, Conference 21 (2014), pp. 235-246.
 
-    but we use a simple discrete implementation, and only as a preprocessor.
+    but we use a simple discrete implementation, and only as a denoising preprocessor.
 
-    `N`: neighborhood size parameter
+    As far as the output tensor size is concerned, the edges are handled like `padding="SAME"`
+    in a convolution. The data is internally padded by bilinear extrapolation by `N` grid units
+    in each direction, to produce a useful (even if slightly less accurate) value also near the edges.
+
+    `N`: neighborhood size parameter (how many grid spacings on each axis)
     `f`: function values in meshgrid format, with equal x and y spacing
+
+    `preserve_range`: Denoising brings the function value closer to its neighborhood average, smoothing
+                      out peaks. Thus also global extremal values will be attenuated, causing the data
+                      range to contract slightly.
+
+                      This effect becomes large if the same data is denoised in a loop, applying the
+                      denoiser several times (at each step, feeding in the previous denoised output).
+
+                      If `preserve_range=True`, we rescale the output to preserve the original global min/max
+                      values of `f`. Note that if the noise happens to exaggerate those extrema, this will take
+                      the scaling from the exaggerated values, not the real ones (which are in general unknown).
     """
     def friedrichs_mollifier(x, *, eps=0.001):  # not normalized!
         return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
@@ -102,15 +193,36 @@ def denoise(N: int, f):
     rmax = np.ceil(np.max(offset_R))  # the grid distance at which we want the mollifier to become zero
 
     kernel = friedrichs_mollifier(offset_R / rmax)
-    kernel = kernel / np.sum(kernel)  # normalize kernel so it integrates to 1 (actually making it a mollifier)
+    kernel = kernel / np.sum(kernel)  # normalize our discrete kernel so it sums to 1 (thus actually making it a discrete mollifier)
+
+    # For best numerical results, remap data into [0, 1] before applying the smoother.
+    origmax = tf.math.reduce_max(f)
+    origmin = tf.math.reduce_min(f)
+    f = (f - origmin) / (origmax - origmin)  # [min, max] -> [0, 1]
+
+    # Make `denoise` behave like `padding="same"`, by padding `f` before applying the convolution.
+    # We really need a quality padding, at least bilinear. Simpler paddings are useless here.
+    f = pad_bilinear(N, f)
+    # paddings = tf.constant([[N, N], [N, N]])
+    # f = tf.pad(f, paddings, "SYMMETRIC")
 
     f = tf.expand_dims(f, axis=0)  # batch
     f = tf.expand_dims(f, axis=-1)  # channels
     kernel = tf.expand_dims(kernel, axis=-1)  # input channels
     kernel = tf.expand_dims(kernel, axis=-1)  # output channels
+
     f = tf.nn.convolution(f, kernel, padding="VALID")
     f = tf.squeeze(f, axis=-1)  # channels
     f = tf.squeeze(f, axis=0)  # batch
+
+    if preserve_range:
+        outmax = tf.math.reduce_max(f)
+        outmin = tf.math.reduce_min(f)
+        f = (f - outmin) / (outmax - outmin)  # [ε1, 1 - ε2] -> [0, 1]
+
+    # Undo the temporary scaling:
+    f = origmin + (origmax - origmin) * f  # [0, 1] -> [min, max]
+
     return f.numpy()
 
 
@@ -140,6 +252,27 @@ def denoise(N: int, f):
 # S = np.stack((x, y), axis=-1)  # [[x0, y0], [x1, y1], ...]
 # hoods, n_neighbors = build_neighborhoods(S)
 
+# # Improved version, using ragged tensors:
+# import scipy.spatial
+# def build_neighborhoods(S, *, r=5.0, max_neighbors=None):  # S: [[x0, y0], [x1, y1], ...]
+#     tree = scipy.spatial.cKDTree(data=S)  # index for fast searching
+#     # hoods = []
+#     # for i in range(len(S)):
+#     #     if i % 1000 == 0:
+#     #         print(f"    {i + 1} of {len(S)}...")
+#     #     idxs = tree.query_ball_point(S[i], r, workers=-1)  # indices k of points S[k] that are neighbors of S[i] at distance <= r (but also including S[i] itself!)
+#     #     idxs = [idx for idx in idxs if idx != i]           # exclude S[i] itself
+#     #     if max_neighbors is not None and len(idxs) > max_neighbors:
+#     #         idxs = idxs[:max_neighbors]
+#     #     hoods.append(idxs)
+#     hoods = tree.query_ball_tree(tree, r)  # same thing; should be faster, but has no parallelization option.
+#     return tf.ragged.constant(hoods, dtype=tf.int32)
+
+# TODO: add the 6×6 version that also estimates the unknown function value; can be used as a smoother, too.
+#  - Assume the neighbors fk exact (we're least-squaring over them, anyway), and the center value fi as missing.
+#  - Then least-squares estimate the center value, too.
+
+# TODO: implement classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because more neighbors.)
 
 # TODO: this is now `padding="valid"`; implement `padding="same"` mode (extrapolate linearly?)
 # TODO: Implement another version for arbitrary geometries (data point dependent `A` and `c`). (This version is already fine for meshgrid data.)
@@ -317,17 +450,22 @@ def differentiate(N, X, Y, Z):
 def main():
     # --------------------------------------------------------------------------------
     # Parameters
-    N = 5  # neighborhood size parameter for surrogate fitting
+
+    N = 10  # neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
     σ = 0.01  # optional: stdev for simulated i.i.d. gaussian noise in data
-    xx = np.linspace(0, np.pi, 256)
+    xx = np.linspace(0, np.pi, 512)
     yy = xx
+
+    # If σ > 0, how many times to loop the denoiser.
+    # If σ = 0, the denoiser is skipped, and this setting has no effect.
+    N_denoise_steps = 50
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
 
     x, y = sy.symbols("x, y")
-    expr = sy.sin(x) * sy.cos(y)
-    # expr = x**2 + y
+    # expr = sy.sin(x) * sy.cos(y)
+    expr = x**2 + y
 
     # --------------------------------------------------------------------------------
     # Compute the test data
@@ -353,6 +491,12 @@ def main():
     X, Y = np.meshgrid(xx, yy)
     Z = f(X, Y)
 
+    # # Test the generic neighborhood builder
+    # x = np.reshape(X, -1)
+    # y = np.reshape(Y, -1)
+    # S = np.stack((x, y), axis=-1)  # [[x0, y0], [x1, y1], ...]
+    # hoods = build_neighborhoods(S, r=3.0)
+
     # --------------------------------------------------------------------------------
     # Simulate noisy input, for testing the denoiser.
 
@@ -364,34 +508,81 @@ def main():
 
         # ...and then attempt to remove the noise.
         print("Denoise...")
-        Z = denoise(N, Z)
-        X, Y = chop_edges(N, X, Y)
+        for _ in range(N_denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
+            # print(f"    step {_ + 1} of {N_denoise_steps}...")
+            Z = denoise(N, Z)
+            # X, Y = chop_edges(N, X, Y)
 
     # --------------------------------------------------------------------------------
     # Compute the derivatives.
 
-    print("Derivatives...")
+    print("Differentiating...")
     dZ = differentiate(N, X, Y, Z)
-    X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)
+    X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` loses `N` grid points at the edges, on each axis.
 
-    # # Idea: chaining wlsqm with denoising between steps, to improve second derivative quality for noisy data.
-    # #
-    # dzdx = dZ[0, :]
-    # X_for_dzdx, Y_for_dzdx = X_for_dZ, Y_for_dZ
-    # dzdx = denoise(N, dzdx)
-    # X_for_dzdx, Y_for_dzdx = chop_edges(N, X_for_dzdx, Y_for_dzdx)
-    # dZ2 = differentiate(N, X_for_dzdx, Y_for_dzdx, dzdx)
-    # X_for_dzdx, Y_for_dzdx = chop_edges(N, X_for_dzdx, Y_for_dzdx)
-    # d2zdx2 = denoise(N, dZ2[0, :])
-    # X_for_dzdx, Y_for_dzdx = chop_edges(N, X_for_dzdx, Y_for_dzdx)
-    #
-    # fig = plt.figure(2)
-    # ax = fig.add_subplot(1, 1, 1, projection="3d")
-    # surf = ax.plot_surface(X_for_dzdx, Y_for_dzdx, d2zdx2)
-    # ax.set_xlabel("x")
-    # ax.set_ylabel("y")
-    # ax.set_zlabel("z")
-    # ax.set_title("d2f/dx2")
+    # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
+    print("Smoothed second derivatives:")
+    dzdx = dZ[0, :]
+    dzdy = dZ[1, :]
+    if σ > 0:
+        print("    Denoise first derivatives...")
+        for _ in range(N_denoise_steps):
+            # print(f"        step {_ + 1} of {N_denoise_steps}...")
+            dzdx = denoise(N, dzdx)
+            dzdy = denoise(N, dzdy)
+
+    print("    Differentiate denoised first derivatives...")
+    ddzdx = differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
+    ddzdy = differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
+    X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
+
+    d2zdx2 = ddzdx[0, :]
+    d2zdxdy = ddzdx[1, :]
+    d2zdydx = ddzdy[0, :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
+    d2zdy2 = ddzdy[1, :]
+    if σ > 0:
+        print("    Denoise output...")
+        for _ in range(N_denoise_steps):
+            # print(f"        step {_ + 1} of {N_denoise_steps}...")
+            d2zdx2 = denoise(N, d2zdx2)
+            d2zdxdy = denoise(N, d2zdxdy)
+            d2zdydx = denoise(N, d2zdydx)
+            d2zdy2 = denoise(N, d2zdy2)
+
+    fig = plt.figure(2)
+    ax1 = fig.add_subplot(1, 3, 1, projection="3d")
+    surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
+    ax1.set_xlabel("x")
+    ax1.set_ylabel("y")
+    ax1.set_zlabel("z")
+    ax1.set_title("d2f/dx2")
+    ground_truth = ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2)
+    max_l1_error = np.max(np.abs(ground_truth - d2zdx2))
+    print(f"max absolute l1 error dx2 (smoothed) = {max_l1_error:0.3g}")
+
+    ax2 = fig.add_subplot(1, 3, 2, projection="3d")
+    d2cross = (d2zdxdy + d2zdydx) / 2.0
+    surf = ax2.plot_surface(X_for_dZ2, Y_for_dZ2, d2cross)
+    ax2.set_xlabel("x")
+    ax2.set_ylabel("y")
+    ax2.set_zlabel("z")
+    ax2.set_title("d2f/dxdy")
+    ground_truth = ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2)
+    max_l1_error = np.max(np.abs(ground_truth - d2cross))
+    print(f"max absolute l1 error dxdy (smoothed) = {max_l1_error:0.3g}")
+
+    ax3 = fig.add_subplot(1, 3, 3, projection="3d")
+    surf = ax3.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdy2)
+    ax3.set_xlabel("x")
+    ax3.set_ylabel("y")
+    ax3.set_zlabel("z")
+    ax3.set_title("d2f/dy2")
+    ground_truth = ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)
+    max_l1_error = np.max(np.abs(ground_truth - d2zdy2))
+    print(f"max absolute l1 error dy2 (smoothed) = {max_l1_error:0.3g}")
+
+    fig.suptitle(f"Local quadratic surrogate fit, smoothed second derivatives, noise σ = {σ:0.3g}")
+    link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
 
     # --------------------------------------------------------------------------------
     # Plot the results
