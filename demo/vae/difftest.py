@@ -252,7 +252,8 @@ def denoise(N: int, f, *, preserve_range=True):
 # S = np.stack((x, y), axis=-1)  # [[x0, y0], [x1, y1], ...]
 # hoods, n_neighbors = build_neighborhoods(S)
 
-# # Improved version, using ragged tensors:
+# # Improved version, using ragged tensors.
+# # But searching on the CPU is still too slow, so maybe don't do this at 256×256 or larger resolution.
 # import scipy.spatial
 # def build_neighborhoods(S, *, r=5.0, max_neighbors=None):  # S: [[x0, y0], [x1, y1], ...]
 #     tree = scipy.spatial.cKDTree(data=S)  # index for fast searching
