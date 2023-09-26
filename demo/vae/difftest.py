@@ -685,7 +685,7 @@ def main():
     # --------------------------------------------------------------------------------
     # Parameters
 
-    N = 5  # neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
+    N = 3  # neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
     σ = 0.001  # optional: stdev for simulated i.i.d. gaussian noise in data
     xx = np.linspace(0, np.pi, 512)
     yy = xx
@@ -777,9 +777,9 @@ def main():
     # Compute the derivatives.
 
     print("Differentiating...")
-    dZ = differentiate(N, X, Y, Z, padding="SAME")
-    # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
-    X_for_dZ, Y_for_dZ = X, Y
+    dZ = differentiate(N, X, Y, Z, padding="VALID")
+    X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
+    # X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
 
     # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
     print("Smoothed second derivatives:")
@@ -791,10 +791,10 @@ def main():
         dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy)
 
     print("    Differentiate denoised first derivatives...")
-    ddzdx = differentiate(N, X_for_dZ, Y_for_dZ, dzdx, padding="SAME")  # jacobian and hessian of dzdx
-    ddzdy = differentiate(N, X_for_dZ, Y_for_dZ, dzdy, padding="SAME")  # jacobian and hessian of dzdy
-    # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
-    X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
+    ddzdx = differentiate(N, X_for_dZ, Y_for_dZ, dzdx, padding="VALID")  # jacobian and hessian of dzdx
+    ddzdy = differentiate(N, X_for_dZ, Y_for_dZ, dzdy, padding="VALID")  # jacobian and hessian of dzdy
+    X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
+    # X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
 
     d2zdx2 = ddzdx[0, :]
     d2zdxdy = ddzdx[1, :]
