@@ -861,7 +861,7 @@ def main():
 
     def denoise(N, X, Y, Z):
         tmp = differentiate2(N, X, Y, Z, padding="VALID")  # Fit the interior only...
-        Z = pad_quadratic_2d(N, tmp[coeffs2["f"], :])  # ...then extrapolate from the least-squares fit. Should be more stable than the original data.
+        Z = pad_quadratic_2d(N, tmp[coeffs2["f"], :])  # ...then reconstruct edges from the least-squares fit. Should be more stable than the original data.
 
         for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
             # print(f"    step {_ + 1} of {denoise_steps}...")
