@@ -156,7 +156,10 @@ def pad_bilinear(n: int, f):
     return f
 
 
-def denoise(N: int, f, *, preserve_range=True):
+# --------------------------------------------------------------------------------
+# Denoising
+
+def denoise(N: int, f, *, preserve_range=False):
     """Attempt to denoise function values data on a 2D meshgrid.
 
     We use a discrete convolution with the Friedrichs mollifier.
@@ -168,7 +171,7 @@ def denoise(N: int, f, *, preserve_range=True):
     but we use a simple discrete implementation, and only as a denoising preprocessor.
 
     As far as the output tensor size is concerned, the edges are handled like `padding="SAME"`
-    in a convolution. The data is internally padded by bilinear extrapolation by `N` grid units
+    in a convolution. The data is internally padded by local extrapolation by `N` grid units
     in each direction, to produce a useful (even if slightly less accurate) value also near the edges.
 
     `N`: neighborhood size parameter (how many grid spacings on each axis)
@@ -225,6 +228,9 @@ def denoise(N: int, f, *, preserve_range=True):
 
     return f.numpy()
 
+
+# --------------------------------------------------------------------------------
+# Meshfree differentiation
 
 # # Idea: Let's extend this to arbitrary local neighborhoods in arbitrary geometries.
 # # This general neighborhood building code comes from `examples/wlsqm_example.py` in the `wlsqm` package.
@@ -448,6 +454,9 @@ def differentiate(N, X, Y, Z):
     return df
 
 
+# --------------------------------------------------------------------------------
+# Usage example
+
 def main():
     # --------------------------------------------------------------------------------
     # Parameters
@@ -491,6 +500,11 @@ def main():
     f = sy.lambdify((x, y), expr)
     X, Y = np.meshgrid(xx, yy)
     Z = f(X, Y)
+    print(f"    Function: {expr}")
+    print(f"    Data tensor size: {np.shape(Z)}")
+    print(f"    Neighborhood radius: {N} grid units")
+    print(f"    Synthetic noise stdev: {σ:0.6g}")
+    print(f"    Denoise steps: {N_denoise_steps}")
 
     # # Test the generic neighborhood builder
     # x = np.reshape(X, -1)
@@ -503,7 +517,7 @@ def main():
 
     if σ > 0:
         # Corrupt the data with synthetic noise...
-        print("Noise simulation...")
+        print("Synthetic noise...")
         noise = np.random.normal(loc=0.0, scale=σ, size=np.shape(X))
         Z += noise
 
