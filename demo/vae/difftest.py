@@ -808,7 +808,7 @@ def main():
 
     # If σ > 0, how many times to loop the Friedrichs denoiser.
     # If σ = 0, denoising is skipped, and this setting has no effect.
-    N_denoise_steps = 50
+    denoise_steps = 50
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
