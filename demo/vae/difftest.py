@@ -835,17 +835,18 @@ def main():
     d2fdxdy = sy.lambdify((x, y), d2fdxdy_expr)
     d2fdy2 = sy.lambdify((x, y), d2fdy2_expr)
 
-    ground_truth_functions = {"dx": dfdx, "dy": dfdy, "dx2": d2fdx2, "dxdy": d2fdxdy, "dy2": d2fdy2}
-
     f = sy.lambdify((x, y), expr)
+    ground_truth_functions = {"f": f, "dx": dfdx, "dy": dfdy, "dx2": d2fdx2, "dxdy": d2fdxdy, "dy2": d2fdy2}
+
     X, Y = np.meshgrid(xx, yy)
     Z = f(X, Y)
+
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
     print(f"    Neighborhood radius: {N} grid units")
     if σ > 0:
         print(f"    Synthetic noise stdev: {σ:0.6g}")
-        print(f"    Denoise steps: {N_denoise_steps}")
+        print(f"    Denoise steps: {denoise_steps}")
     else:
         print("    No synthetic noise")
 
@@ -860,28 +861,28 @@ def main():
 
     def denoise(N, X, Y, Z):
         tmp = differentiate2(N, X, Y, Z, padding="VALID")  # Fit the interior only...
-        Z = pad_quadratic(N, tmp[0, :])  # ...then extrapolate from the least-squares fit. Should be more stable than the original data.
+        Z = pad_quadratic_2d(N, tmp[coeffs2["f"], :])  # ...then extrapolate from the least-squares fit. Should be more stable than the original data.
 
-        for _ in range(N_denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
-            # print(f"    step {_ + 1} of {N_denoise_steps}...")
-            Z = friedrichs_smooth(N, Z, padding="SAME")
+        for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
+            # print(f"    step {_ + 1} of {denoise_steps}...")
+            Z = friedrichs_smooth_2d(N, Z, padding="SAME")
             # X, Y = chop_edges(N, X, Y)
 
         return Z
 
     if σ > 0:
         # Corrupt the data with synthetic noise...
-        print("Synthetic noise...")
+        print("Add synthetic noise...")
         noise = np.random.normal(loc=0.0, scale=σ, size=np.shape(X))
         Z += noise
 
         # ...and then attempt to remove the noise.
-        print("Denoise...")
+        print("Denoise function values...")
 
         # But first, let's estimate the amount of noise.
         # Note we only need the noisy data to compute the estimate. We do this by least-squares fitting the function values.
         tmp = differentiate2(N, X, Y, Z, padding="SAME")
-        noise_estimate = Z - tmp[0, :]
+        noise_estimate = Z - tmp[coeffs2["f"], :]
         del tmp
         estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
         true_noise_RMS = np.mean(noise**2)**0.5  # ground truth
@@ -899,8 +900,8 @@ def main():
 
     # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
     print("Smoothed second derivatives:")
-    dzdx = dZ[0, :]
-    dzdy = dZ[1, :]
+    dzdx = dZ[coeffs["dx"], :]
+    dzdy = dZ[coeffs["dy"], :]
     if σ > 0:
         print("    Denoise first derivatives...")
         dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx)
@@ -912,16 +913,19 @@ def main():
     X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
     # X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
 
-    d2zdx2 = ddzdx[0, :]
-    d2zdxdy = ddzdx[1, :]
-    d2zdydx = ddzdy[0, :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
-    d2zdy2 = ddzdy[1, :]
+    d2zdx2 = ddzdx[coeffs["dx"], :]
+    d2zdxdy = ddzdx[coeffs["dy"], :]
+    d2zdydx = ddzdy[coeffs["dx"], :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
+    d2zdy2 = ddzdy[coeffs["dy"], :]
     if σ > 0:
-        print("    Denoise output...")
+        print("    Denoise obtained second derivatives...")
         d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2)
         d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy)
         d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx)
         d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
+
+    # --------------------------------------------------------------------------------
+    # Plot the results
 
     fig = plt.figure(2)
     ax1 = fig.add_subplot(1, 3, 1, projection="3d")
@@ -958,16 +962,13 @@ def main():
     fig.suptitle(f"Local quadratic surrogate fit, smoothed second derivatives, noise σ = {σ:0.3g}")
     link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
 
-    # --------------------------------------------------------------------------------
-    # Plot the results
-
     # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
     # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
     # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
     print("Plotting.")
     fig = plt.figure(1)
     ax = fig.add_subplot(2, 3, 1, projection="3d")
-    surf = ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False)  # noqa: F841
+    surf = ax.plot_surface(X, Y, Z)  # noqa: F841
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
@@ -975,7 +976,7 @@ def main():
     all_axes = [ax]
     for idx, key in enumerate(coeffs.keys(), start=2):
         ax = fig.add_subplot(2, 3, idx, projection="3d")
-        surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs[key], :, :], linewidth=0, antialiased=False)  # noqa: F841
+        surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs[key], :, :])  # noqa: F841  # , linewidth=0, antialiased=False
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("z")
@@ -983,10 +984,30 @@ def main():
         all_axes.append(ax)
 
         ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
-        max_l1_error = np.max(np.abs(ground_truth - dZ[coeffs[key], :, :]))
+        max_l1_error = np.max(np.abs(dZ[coeffs[key], :, :] - ground_truth))
         print(f"max absolute l1 error {key} = {max_l1_error:0.3g}")
     fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
     link_3d_subplot_cameras(fig, all_axes)
+
+    # l1 errors
+    fig, axs = plt.subplots(3, 3, figsize=(12, 12))
+    def plot_one(ax, X, Y, Z, title):
+        L, U = np.min(Z), np.max(Z)
+        v = max(abs(L), abs(U))
+        theplot = ax.pcolormesh(X, Y, Z, vmin=-v, vmax=v, cmap="RdBu_r")
+        fig.colorbar(theplot, ax=ax)
+        ax.set_aspect("equal")
+        ax.set_title(title)
+    plot_one(axs[0, 0], X, Y, Z - ground_truth_functions["f"](X, Y), "f")
+    plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
+    plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
+    plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")
+    plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ), "dxdy")
+    plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ), "dy2")
+    plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (smoothed)")
+    plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (smoothed)")
+    plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (smoothed)")
+    fig.suptitle("l1 error (signed)")
 
 if __name__ == '__main__':
     main()
