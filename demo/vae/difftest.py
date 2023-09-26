@@ -261,20 +261,16 @@ def pad_quadratic(n: int, f):
 # --------------------------------------------------------------------------------
 # Denoising
 
-def denoise(N: int, f, *, padding: str = "SAME", preserve_range: bool = False):
+def friedrichs_smooth(N: int, f, *, padding: str, preserve_range: bool = False):
     """Attempt to denoise function values data on a 2D meshgrid.
 
-    We use a discrete convolution with the Friedrichs mollifier.
+    The method is a discrete convolution with the Friedrichs mollifier.
     A continuous version is sometimes used as a differentiation technique:
 
        Ian Knowles and Robert J. Renka. Methods of numerical differentiation of noisy data.
        Electronic journal of differential equations, Conference 21 (2014), pp. 235-246.
 
     but we use a simple discrete implementation, and only as a denoising preprocessor.
-
-    As far as the output tensor size is concerned, the edges are handled like `padding="SAME"`
-    in a convolution. The data is internally padded by local extrapolation by `N` grid units
-    in each direction, to produce a useful (even if slightly less accurate) value also near the edges.
 
     `N`: neighborhood size parameter (how many grid spacings on each axis)
     `f`: function values in meshgrid format, with equal x and y spacing
@@ -394,7 +390,7 @@ def denoise(N: int, f, *, padding: str = "SAME", preserve_range: bool = False):
 # TODO: Implement another version for arbitrary geometries (data point dependent `A` and `c`). (This version is already fine for meshgrid data.)
 
 coeffs = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
-def differentiate(N, X, Y, Z, *, padding: str = "SAME"):
+def differentiate(N, X, Y, Z, *, padding: str):
     """Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
 
     Note the distance matrix `A` (generated automatically) is 5×5 regardless of `N`, but for large `N`,
@@ -466,10 +462,10 @@ def differentiate(N, X, Y, Z, *, padding: str = "SAME"):
     # Generic offset distance stencil for all neighbors.
     iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     neighbors = make_stencil(N)  # [#k, 2]
-    # # This is what we want to do, but this crashes if we hand it a padded X:
+    # # This is what we want to do, but this crashes (invalid slice) if we hand it a padded `X` (which becomes a `tf.Tensor`):
     # dx = X[iy + neighbors[:, 0], ix + neighbors[:, 1]] - X[iy, ix]  # [#k]
     # dy = Y[iy + neighbors[:, 0], ix + neighbors[:, 1]] - Y[iy, ix]  # [#k]
-    # So let's do it this way instead:
+    # So let's do it the `tf` way instead:
     indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
     dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
     dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
@@ -577,6 +573,109 @@ def differentiate(N, X, Y, Z, *, padding: str = "SAME"):
     return df
 
 
+coeffs2 = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}
+def differentiate2(N, X, Y, Z, *, padding: str):
+    """Like `differentiate`, but fit function values too.
+
+    Note the distance matrix `A` (generated automatically) is 6×6 regardless of `N`, but for large `N`,
+    assembly takes longer because there are more contributions to each matrix element.
+
+    `N`: neighborhood size parameter (how many grid spacings on each axis)
+    `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively
+
+    `padding`: similar to convolution operations, one of:
+        "VALID": Operate in the interior only. This chops off `N` points at the edges on each axis.
+        "SAME": Preserve data tensor dimensions. Automatically use local extrapolation to estimate
+                `X`, `Y`, and `Z` outside the edges.
+    """
+    if padding.upper() not in ("VALID", "SAME"):
+        raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if padding.upper() == "SAME":
+        X = pad_linear(N, X)
+        Y = pad_linear(N, Y)
+        Z = pad_quadratic(N, Z)
+
+    xscale = float(X[0, 1] - X[0, 0])
+    yscale = float(Y[1, 0] - Y[0, 0])
+
+    def cki(dx, dy):
+        dx = dx / xscale
+        dy = dy / yscale
+        return np.array([1.0 + tf.zeros_like(dx), dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
+
+    iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
+    neighbors = make_stencil(N)  # [#k, 2]
+    indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
+    dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
+    dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
+
+    # Tensor viewpoint. Define the indices as follows:
+    #   `n`: datapoint in batch,
+    #   `k`: neighbor,
+    #   `i`: row of MLS equation system "A x = b"
+    #   `j`: column of MLS equation system "A x = b"
+    # and let `f[n] = f(x[n], y[n])`.
+    #
+    # Then, in the general case, the MLS equation systems for the batch are given by:
+    #   A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
+    #   b[n,i] = ∑k( f[g[n,k]] * c[n,k,i] )
+    #
+    # where `g[n,k]` is the (global) data point index, of neighbor `k` of data point `n`.
+    #
+    # On a uniform grid, c[n1,k,i] = c[n2,k,i] =: c[k,i] for any n1, n2, so this simplifies to:
+    #   A[i,j] = ∑k( c[k,i] * c[k,j] )
+    #   b[n,i] = ∑k( f[g[n,k]] * c[k,i] )
+    #
+    # In practice we still have to chop the edges, which modifies the data point indexing slightly.
+    # Since we use a single stencil, we can form the equations for the interior part only, whereas
+    # for the neighbor data values we need to use the full original data.
+
+    # Assemble `A`:
+    c = cki(dx, dy)  # [#k, 6]
+    A = tf.einsum("ki,kj->ij", c, c)  # A[i,j] = ∑k( c[k,i] * c[k,j] )
+
+    # Form the right-hand side for each point. This is the only part that depends on the data values f.
+    #
+    # As per the above summary, we need to compute:
+    #   b[n,i] = ∑k( f[g[n,k]] * c[k,i] )
+    #
+    # which can be implemented as:
+    #   b = tf.einsum("nk,ki->ni", fgnk, c)
+    #
+    # The tricky part is computing the index sets for df. First, we index the function value data linearly:
+    f = tf.reshape(Z, [-1])
+
+    # Then determine the multi-indices for the interior points:
+    npoints = tf.reduce_prod(tf.shape(X))
+    all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
+    interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]
+
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
+    # linear index, C storage order: i = iy * size_x + ix
+    offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
+
+    # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
+    n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
+    offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+
+    # Now we can evaluate df, and finally b.
+    fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
+    # bs = tf.einsum("nk,ki->ni", fgnk, c)  # This would be clearer...
+    bs = tf.einsum("nk,ki->in", fgnk, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+
+    # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
+    df = tf.linalg.solve(A, bs)  # [6, n_interior_points]
+
+    # Undo the derivative scaling,  d/dx' → d/dx
+    scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=df.dtype)
+    scale = tf.expand_dims(scale, axis=-1)  # for broadcasting
+    df = df / scale
+
+    df = tf.reshape(df, (6, *tf.shape(interior_multi_to_linear)))
+    return df
+
+
 # --------------------------------------------------------------------------------
 # Usage example
 
@@ -641,6 +740,17 @@ def main():
     # --------------------------------------------------------------------------------
     # Simulate noisy input, for testing the denoiser.
 
+    def denoise(N, X, Y, Z):
+        tmp = differentiate2(N, X, Y, Z, padding="VALID")  # fit the interior only
+        Z = pad_quadratic(N, tmp[0, :])  # then extrapolate from the lsq fit
+
+        for _ in range(N_denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
+            # print(f"    step {_ + 1} of {N_denoise_steps}...")
+            Z = friedrichs_smooth(N, Z, padding="SAME")
+            # X, Y = chop_edges(N, X, Y)
+
+        return Z
+
     if σ > 0:
         # Corrupt the data with synthetic noise...
         print("Synthetic noise...")
@@ -649,16 +759,23 @@ def main():
 
         # ...and then attempt to remove the noise.
         print("Denoise...")
-        for _ in range(N_denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
-            # print(f"    step {_ + 1} of {N_denoise_steps}...")
-            Z = denoise(N, Z)
-            # X, Y = chop_edges(N, X, Y)
+
+        # But first, let's estimate the amount of noise.
+        # Note we only need the noisy data to compute the estimate. We do this by least-squares fitting the function values.
+        tmp = differentiate2(N, X, Y, Z, padding="SAME")
+        noise_estimate = Z - tmp[0, :]
+        del tmp
+        estimated_mean_noise = np.mean(noise_estimate**2)**0.5
+        true_mean_noise = np.mean(noise**2)**0.5  # ground truth
+        print(f"    Mean noise (abs): estimated {estimated_mean_noise:0.6g}, true {true_mean_noise:0.6g}")
+
+        Z = denoise(N, X, Y, Z)
 
     # --------------------------------------------------------------------------------
     # Compute the derivatives.
 
     print("Differentiating...")
-    dZ = differentiate(N, X, Y, Z)
+    dZ = differentiate(N, X, Y, Z, padding="SAME")
     # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
     X_for_dZ, Y_for_dZ = X, Y
 
@@ -668,14 +785,12 @@ def main():
     dzdy = dZ[1, :]
     if σ > 0:
         print("    Denoise first derivatives...")
-        for _ in range(N_denoise_steps):
-            # print(f"        step {_ + 1} of {N_denoise_steps}...")
-            dzdx = denoise(N, dzdx)
-            dzdy = denoise(N, dzdy)
+        dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx)
+        dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy)
 
     print("    Differentiate denoised first derivatives...")
-    ddzdx = differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
-    ddzdy = differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
+    ddzdx = differentiate(N, X_for_dZ, Y_for_dZ, dzdx, padding="SAME")  # jacobian and hessian of dzdx
+    ddzdy = differentiate(N, X_for_dZ, Y_for_dZ, dzdy, padding="SAME")  # jacobian and hessian of dzdy
     # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
     X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
 
@@ -685,12 +800,10 @@ def main():
     d2zdy2 = ddzdy[1, :]
     if σ > 0:
         print("    Denoise output...")
-        for _ in range(N_denoise_steps):
-            # print(f"        step {_ + 1} of {N_denoise_steps}...")
-            d2zdx2 = denoise(N, d2zdx2)
-            d2zdxdy = denoise(N, d2zdxdy)
-            d2zdydx = denoise(N, d2zdydx)
-            d2zdy2 = denoise(N, d2zdy2)
+        d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2)
+        d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy)
+        d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx)
+        d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
 
     fig = plt.figure(2)
     ax1 = fig.add_subplot(1, 3, 1, projection="3d")
