@@ -90,10 +90,12 @@ def chop_edges(N: int, X, Y):
 # --------------------------------------------------------------------------------
 # Tensor padding by extrapolation
 
+# TODO: Move tensor padding utilities to a new module.
+
 @tf.function
-def _assemble_padded(*, interior: tf.Tensor,
-                     top: tf.Tensor, bottom: tf.Tensor, left: tf.Tensor, right: tf.Tensor,
-                     top_left: float, top_right: float, bottom_left: float, bottom_right: float):
+def _assemble_padded_2d(*, interior: tf.Tensor,
+                        top: tf.Tensor, bottom: tf.Tensor, left: tf.Tensor, right: tf.Tensor,
+                        top_left: float, top_right: float, bottom_left: float, bottom_right: float):
     """Assemble a padded rank-2 tensor from parts.
 
     `interior`: rank-2 tensor, [nrows, ncols]; original tensor to which the padding is to be added
@@ -128,9 +130,22 @@ def _assemble_padded(*, interior: tf.Tensor,
     padded = tf.concat([fulltop, widened, fullbottom], axis=0)  # -> [258, 258]
     return padded
 
+@tf.function
+def _assemble_padded_1d(*, interior: tf.Tensor, left: float, right: float):
+    """Like `_assemble_padded_2d`, but for 1D tensor.
+
+    The return value is populated as follows::
+
+        L i i i R
+    """
+    left = tf.expand_dims(left, axis=0)  # [] -> [1]
+    right = tf.expand_dims(right, axis=0)
+    padded = tf.concat([left, interior, right], axis=0)  # e.g. [256] -> [258]
+    return padded
+
 
 @tf.function(reduce_retracing=True)
-def pad_constant_one(f):
+def pad_constant_2d_one(f):
     """Pad 2D tensor by one grid unit, by copying the nearest value from the edges.
 
     `f`: data in meshgrid format.
@@ -150,11 +165,18 @@ def pad_constant_one(f):
     bl = f[-1, 0]
     br = f[-1, -1]
 
-    return _assemble_padded(interior=f, top=top, bottom=bottom, left=left, right=right,
-                            top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
+    return _assemble_padded_2d(interior=f, top=top, bottom=bottom, left=left, right=right,
+                               top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
 
 @tf.function(reduce_retracing=True)
-def pad_linear_one(f):
+def pad_constant_1d_one(f):
+    """Pad 1D tensor by one grid unit, by copying the nearest value from the edges."""
+    left = f[0]
+    right = f[-1]
+    return _assemble_padded_1d(interior=f, left=left, right=right)
+
+@tf.function(reduce_retracing=True)
+def pad_linear_2d_one(f):
     """Pad 2D tensor by one grid unit, by linear extrapolation.
 
     `f`: data in meshgrid format.
@@ -186,11 +208,18 @@ def pad_linear_one(f):
     bl = 2 * f[-1, 0] - f[-2, 1]
     br = 2 * f[-1, -1] - f[-2, -2]
 
-    return _assemble_padded(interior=f, top=top, bottom=bottom, left=left, right=right,
-                            top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
+    return _assemble_padded_2d(interior=f, top=top, bottom=bottom, left=left, right=right,
+                               top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
 
 @tf.function(reduce_retracing=True)
-def pad_quadratic_one(f):
+def pad_linear_1d_one(f):
+    """Pad 2D tensor by one grid unit, by linear extrapolation."""
+    left = 2 * f[0] - f[1]
+    right = 2 * f[-1] - f[-2]
+    return _assemble_padded_1d(interior=f, left=left, right=right)
+
+@tf.function(reduce_retracing=True)
+def pad_quadratic_2d_one(f):
     """Pad 2D tensor by one grid unit, by quadratic extrapolation.
 
     `f`: data in meshgrid format.
@@ -228,48 +257,95 @@ def pad_quadratic_one(f):
     bl = 3 * f[-1, 0] - 3 * f[-2, 1] + f[-3, 2]
     br = 3 * f[-1, -1] - 3 * f[-2, -2] + f[-3, -3]
 
-    return _assemble_padded(interior=f, top=top, bottom=bottom, left=left, right=right,
-                            top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
+    return _assemble_padded_2d(interior=f, top=top, bottom=bottom, left=left, right=right,
+                               top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
 
+@tf.function(reduce_retracing=True)
+def pad_quadratic_1d_one(f):
+    """Pad 2D tensor by one grid unit, by quadratic extrapolation."""
+    left = 3 * f[0] - 3 * f[1] + f[2]
+    right = 3 * f[-1] - 3 * f[-2] + f[-3]
+    return _assemble_padded_1d(interior=f, left=left, right=right)
 
 @tf.function
-def pad_constant(n: int, f):
+def pad_constant_2d(n: int, f):
     """Pad 2D tensor by `n` grid units, by copying the nearest value from the edges.
 
     `n`: how many grid units to pad by.
     `f`: data in meshgrid format.
     """
     for _ in range(n):
-        f = pad_constant_one(f)  # triggers retracing at each enlargement if we don't use `reduce_retracing=True`
+        f = pad_constant_2d_one(f)  # triggers retracing at each enlargement if we don't use `reduce_retracing=True`
     return f
 
 @tf.function
-def pad_linear(n: int, f):
+def pad_constant_1d(n: int, f):
+    """Pad 1D tensor by `n` grid units, by copying the nearest value from the edges."""
+    for _ in range(n):
+        f = pad_constant_1d_one(f)
+    return f
+
+@tf.function
+def pad_linear_2d(n: int, f):
     """Pad 2D tensor by `n` grid units, by linear extrapolation.
 
     `n`: how many grid units to pad by.
     `f`: data in meshgrid format.
     """
     for _ in range(n):
-        f = pad_linear_one(f)
+        f = pad_linear_2d_one(f)
     return f
 
 @tf.function
-def pad_quadratic(n: int, f):
+def pad_linear_1d(n: int, f):
+    """Pad 1D tensor by `n` grid units, by linear extrapolation."""
+    for _ in range(n):
+        f = pad_linear_1d_one(f)
+    return f
+
+@tf.function
+def pad_quadratic_2d(n: int, f):
     """Pad 2D tensor by `n` grid units, by quadratic extrapolation.
 
     `n`: how many grid units to pad by.
     `f`: data in meshgrid format.
     """
     for _ in range(n):
-        f = pad_quadratic_one(f)
+        f = pad_quadratic_2d_one(f)
+    return f
+
+@tf.function
+def pad_quadratic_1d(n: int, f):
+    """Pad 1D tensor by `n` grid units, by quadratic extrapolation."""
+    for _ in range(n):
+        f = pad_quadratic_1d_one(f)
     return f
 
 
 # --------------------------------------------------------------------------------
 # Denoising
 
-def friedrichs_smooth(N: int, f, *, padding: str, preserve_range: bool = False):
+def friedrichs_mollifier(x, *, eps=0.001):
+    """The Friedrichs mollifier function.
+
+    This is a non-analytic, symmetric bump centered on the origin, that smoothly
+    decreases from `exp(-1)` at `x = 0` to zero at `|x| = 1`. It is zero for any
+    `|x| ≥ 1`.
+
+    The function is C∞ continuous also at the seam at `|x| = 1`, justifying the
+    name "mollifier".
+
+    However, note that we do not normalize the value! (A mollifier, properly,
+    also has the property that its total mass is 1; or in other words, it can
+    be thought of as a probability distribution.)
+
+    `x`: arraylike, rank-1.
+    `eps`: For numerical stability: wherever `|x| ≥ 1 - ε`, we return zero.
+    """
+    return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
+
+
+def friedrichs_smooth_2d(N: int, f, *, padding: str, preserve_range: bool = False):
     """Attempt to denoise function values data on a 2D meshgrid.
 
     The method is a discrete convolution with the Friedrichs mollifier.
@@ -302,10 +378,7 @@ def friedrichs_smooth(N: int, f, *, padding: str, preserve_range: bool = False):
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
 
-    def friedrichs_mollifier(x, *, eps=0.001):  # not normalized!
-        return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
-
-    offset_X, offset_Y = np.meshgrid(np.arange(-N, N + 1), np.arange(-N, N + 1))  # neighbor offsets (in grid points)
+    offset_X, offset_Y = np.meshgrid(np.arange(-N, N + 1), np.arange(-N, N + 1))  # neighbor offsets (in grid units)
     offset_R = np.sqrt(offset_X**2 + offset_Y**2)  # euclidean
     rmax = np.ceil(np.max(offset_R))  # the grid distance at which we want the mollifier to become zero
 
@@ -319,9 +392,51 @@ def friedrichs_smooth(N: int, f, *, padding: str, preserve_range: bool = False):
 
     if padding.upper() == "SAME":
         # We really need a quality padding, at least linear. Simpler paddings are useless here.
-        f = pad_quadratic(N, f)
-        # paddings = tf.constant([[N, N], [N, N]])
-        # f = tf.pad(f, paddings, "SYMMETRIC")
+        f = pad_quadratic_2d(N, f)
+
+        # # paddings = tf.constant([[N, N], [N, N]])
+        # # f = tf.pad(f, paddings, "SYMMETRIC")
+
+        # # Let's try something even fancier. The results seem nonsense, though?
+        # for _ in range(N):
+        #     f = pad_quadratic_2d_one(f).numpy()
+        #     f[0, :] = friedrichs_smooth_1d(N, f[0, :], padding="SAME", preserve_range=preserve_range)
+        #     f[-1, :] = friedrichs_smooth_1d(N, f[-1, :], padding="SAME", preserve_range=preserve_range)
+        #     f[:, 0] = friedrichs_smooth_1d(N, f[:, 0], padding="SAME", preserve_range=preserve_range)
+        #     f[:, -1] = friedrichs_smooth_1d(N, f[:, -1], padding="SAME", preserve_range=preserve_range)
+
+    f = tf.expand_dims(f, axis=0)  # batch
+    f = tf.expand_dims(f, axis=-1)  # channels
+    kernel = tf.expand_dims(kernel, axis=-1)  # input channels
+    kernel = tf.expand_dims(kernel, axis=-1)  # output channels
+
+    f = tf.nn.convolution(f, kernel, padding="VALID")
+    f = tf.squeeze(f, axis=-1)  # channels
+    f = tf.squeeze(f, axis=0)  # batch
+
+    if preserve_range:
+        outmax = tf.math.reduce_max(f)
+        outmin = tf.math.reduce_min(f)
+        f = (f - outmin) / (outmax - outmin)  # [ε1, 1 - ε2] -> [0, 1]
+
+    # Undo the temporary scaling:
+    f = origmin + (origmax - origmin) * f  # [0, 1] -> [min, max]
+
+    return f.numpy()
+
+
+def friedrichs_smooth_1d(N: int, f, *, padding: str, preserve_range: bool = False):
+    """Like `friedrichs_smooth_2d`, but for 1D `f`."""
+    offset_X = np.arange(-N, N + 1)  # neighbor offsets (in grid units)
+    kernel = friedrichs_mollifier(offset_X / N)
+
+    # For best numerical results, remap data into [0, 1] before applying the smoother.
+    origmax = tf.math.reduce_max(f)
+    origmin = tf.math.reduce_min(f)
+    f = (f - origmin) / (origmax - origmin)  # [min, max] -> [0, 1]
+
+    if padding.upper() == "SAME":
+        f = pad_quadratic_1d(N, f)
 
     f = tf.expand_dims(f, axis=0)  # batch
     f = tf.expand_dims(f, axis=-1)  # channels
@@ -392,8 +507,9 @@ def friedrichs_smooth(N: int, f, *, padding: str, preserve_range: bool = False):
 #     hoods = tree.query_ball_tree(tree, r)  # same thing; should be faster, but has no parallelization option.
 #     return tf.ragged.constant(hoods, dtype=tf.int32)
 
+
 # --------------------------------------------------------------------------------
-# The WLSQM differentiator, applied to a meshgrid
+# The WLSQM differentiator, on a meshgrid
 
 # TODO: implement classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because more neighbors.)
 
@@ -418,9 +534,9 @@ def differentiate(N, X, Y, Z, *, padding: str):
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
     if padding.upper() == "SAME":
-        X = pad_linear(N, X)
-        Y = pad_linear(N, Y)
-        Z = pad_quadratic(N, Z)
+        X = pad_linear_2d(N, X)
+        Y = pad_linear_2d(N, Y)
+        Z = pad_quadratic_2d(N, Z)
 
     # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
     # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing (in raw coordinate space) as the scale.
@@ -603,9 +719,9 @@ def differentiate2(N, X, Y, Z, *, padding: str):
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
     if padding.upper() == "SAME":
-        X = pad_linear(N, X)
-        Y = pad_linear(N, Y)
-        Z = pad_quadratic(N, Z)
+        X = pad_linear_2d(N, X)
+        Y = pad_linear_2d(N, Y)
+        Z = pad_quadratic_2d(N, Z)
 
     xscale = float(X[0, 1] - X[0, 0])
     yscale = float(Y[1, 0] - Y[0, 0])
