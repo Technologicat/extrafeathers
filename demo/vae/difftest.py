@@ -261,7 +261,7 @@ def pad_quadratic(n: int, f):
 # --------------------------------------------------------------------------------
 # Denoising
 
-def denoise(N: int, f, *, preserve_range=False):
+def denoise(N: int, f, *, padding: str = "SAME", preserve_range: bool = False):
     """Attempt to denoise function values data on a 2D meshgrid.
 
     We use a discrete convolution with the Friedrichs mollifier.
@@ -279,6 +279,11 @@ def denoise(N: int, f, *, preserve_range=False):
     `N`: neighborhood size parameter (how many grid spacings on each axis)
     `f`: function values in meshgrid format, with equal x and y spacing
 
+    `padding`: similar to convolution operations, one of:
+        "VALID": Operate in the interior only. This chops off `N` points at the edges on each axis.
+        "SAME": Preserve data tensor dimensions. Automatically use local extrapolation to estimate
+                `f` outside the edges.
+
     `preserve_range`: Denoising brings the function value closer to its neighborhood average, smoothing
                       out peaks. Thus also global extremal values will be attenuated, causing the data
                       range to contract slightly.
@@ -290,6 +295,9 @@ def denoise(N: int, f, *, preserve_range=False):
                       values of `f`. Note that if the noise happens to exaggerate those extrema, this will take
                       the scaling from the exaggerated values, not the real ones (which are in general unknown).
     """
+    if padding.upper() not in ("VALID", "SAME"):
+        raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+
     def friedrichs_mollifier(x, *, eps=0.001):  # not normalized!
         return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
 
@@ -305,11 +313,11 @@ def denoise(N: int, f, *, preserve_range=False):
     origmin = tf.math.reduce_min(f)
     f = (f - origmin) / (origmax - origmin)  # [min, max] -> [0, 1]
 
-    # Make `denoise` behave like `padding="same"`, by padding `f` before applying the convolution.
-    # We really need a quality padding, at least linear. Simpler paddings are useless here.
-    f = pad_quadratic(N, f)
-    # paddings = tf.constant([[N, N], [N, N]])
-    # f = tf.pad(f, paddings, "SYMMETRIC")
+    if padding.upper() == "SAME":
+        # We really need a quality padding, at least linear. Simpler paddings are useless here.
+        f = pad_quadratic(N, f)
+        # paddings = tf.constant([[N, N], [N, N]])
+        # f = tf.pad(f, paddings, "SYMMETRIC")
 
     f = tf.expand_dims(f, axis=0)  # batch
     f = tf.expand_dims(f, axis=-1)  # channels
@@ -380,30 +388,38 @@ def denoise(N: int, f, *, preserve_range=False):
 # TODO: add the 6×6 version that also estimates the unknown function value; can be used as a smoother, too.
 #  - Assume the neighbors fk exact (we're least-squaring over them, anyway), and the center value fi as missing.
 #  - Then least-squares estimate the center value, too.
-
+#
 # TODO: implement classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because more neighbors.)
-
-# TODO: this is now `padding="valid"`; implement `padding="same"` mode (extrapolate linearly?)
+#
 # TODO: Implement another version for arbitrary geometries (data point dependent `A` and `c`). (This version is already fine for meshgrid data.)
+
 coeffs = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
-def differentiate(N, X, Y, Z):
+def differentiate(N, X, Y, Z, *, padding: str = "SAME"):
     """Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
 
     Note the distance matrix `A` (generated automatically) is 5×5 regardless of `N`, but for large `N`,
     assembly takes longer because there are more contributions to each matrix element.
 
-    Note we lose the edges, like in a convolution with padding="VALID", essentially for the same reason.
-    This is mathematically trivial to fix (we should just build `A` and `b` without the missing neighbors,
-    or take more neighbors from the existing side - even the sizes of A and b do not change), but the code
-    becomes unwieldy, so we haven't done that.
-
     `N`: neighborhood size parameter (how many grid spacings on each axis)
     `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively
+
+    `padding`: similar to convolution operations, one of:
+        "VALID": Operate in the interior only. This chops off `N` points at the edges on each axis.
+        "SAME": Preserve data tensor dimensions. Automatically use local extrapolation to estimate
+                `X`, `Y`, and `Z` outside the edges.
     """
+    if padding.upper() not in ("VALID", "SAME"):
+        raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if padding.upper() == "SAME":
+        X = pad_linear(N, X)
+        Y = pad_linear(N, Y)
+        Z = pad_quadratic(N, Z)
+
     # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
     # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing (in raw coordinate space) as the scale.
-    xscale = X[0, 1] - X[0, 0]
-    yscale = Y[1, 0] - Y[0, 0]
+    # We need to cast to `float` in case `tf` decides to give us a scalar tensor instead of a pure scalar. (This happens when `X` and `Y` are padded.)
+    xscale = float(X[0, 1] - X[0, 0])
+    yscale = float(Y[1, 0] - Y[0, 0])
 
     def cki(dx, dy):
         """Compute the `c[k, i]` coefficients for surrogate fitting.
@@ -450,8 +466,13 @@ def differentiate(N, X, Y, Z):
     # Generic offset distance stencil for all neighbors.
     iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     neighbors = make_stencil(N)  # [#k, 2]
-    dx = X[iy + neighbors[:, 0], ix + neighbors[:, 1]] - X[iy, ix]  # [#k]
-    dy = Y[iy + neighbors[:, 0], ix + neighbors[:, 1]] - Y[iy, ix]  # [#k]
+    # # This is what we want to do, but this crashes if we hand it a padded X:
+    # dx = X[iy + neighbors[:, 0], ix + neighbors[:, 1]] - X[iy, ix]  # [#k]
+    # dy = Y[iy + neighbors[:, 0], ix + neighbors[:, 1]] - Y[iy, ix]  # [#k]
+    # So let's do it this way instead:
+    indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
+    dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
+    dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
 
     # Tensor viewpoint. Define the indices as follows:
     #   `n`: datapoint in batch,
@@ -544,7 +565,7 @@ def differentiate(N, X, Y, Z):
     df = tf.linalg.solve(A, bs)  # [5, n_interior_points]
 
     # Undo the derivative scaling,  d/dx' → d/dx
-    scale = tf.constant([xscale, yscale, xscale**2, xscale * yscale, yscale**2])
+    scale = tf.constant([xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=df.dtype)
     scale = tf.expand_dims(scale, axis=-1)  # for broadcasting
     df = df / scale
 
@@ -564,7 +585,7 @@ def main():
     # Parameters
 
     N = 5  # neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
-    σ = 0.01  # optional: stdev for simulated i.i.d. gaussian noise in data
+    σ = 0.001  # optional: stdev for simulated i.i.d. gaussian noise in data
     xx = np.linspace(0, np.pi, 512)
     yy = xx
 
@@ -576,8 +597,8 @@ def main():
     # Set up an expression to generate test data
 
     x, y = sy.symbols("x, y")
-    # expr = sy.sin(x) * sy.cos(y)
-    expr = x**2 + y
+    expr = sy.sin(x) * sy.cos(y)
+    # expr = x**2 + y
 
     # --------------------------------------------------------------------------------
     # Compute the test data
@@ -605,8 +626,11 @@ def main():
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
     print(f"    Neighborhood radius: {N} grid units")
-    print(f"    Synthetic noise stdev: {σ:0.6g}")
-    print(f"    Denoise steps: {N_denoise_steps}")
+    if σ > 0:
+        print(f"    Synthetic noise stdev: {σ:0.6g}")
+        print(f"    Denoise steps: {N_denoise_steps}")
+    else:
+        print("    No synthetic noise")
 
     # # Test the generic neighborhood builder
     # x = np.reshape(X, -1)
@@ -635,7 +659,8 @@ def main():
 
     print("Differentiating...")
     dZ = differentiate(N, X, Y, Z)
-    X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` loses `N` grid points at the edges, on each axis.
+    # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
+    X_for_dZ, Y_for_dZ = X, Y
 
     # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
     print("Smoothed second derivatives:")
@@ -651,7 +676,8 @@ def main():
     print("    Differentiate denoised first derivatives...")
     ddzdx = differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
     ddzdy = differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
-    X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
+    # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
+    X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
 
     d2zdx2 = ddzdx[0, :]
     d2zdxdy = ddzdx[1, :]
