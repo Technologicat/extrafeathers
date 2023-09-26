@@ -883,6 +883,9 @@ def main():
 
         # But first, let's estimate the amount of noise.
         # Note we only need the noisy data to compute the estimate. We do this by least-squares fitting the function values.
+        #
+        # We see the estimate works pretty well - the detected RMS noise level is approximately the stdev of the gaussian synthetic noise,
+        # matching the true noise level.
         tmp = differentiate2(N, X, Y, Z, padding="SAME")
         noise_estimate = Z - tmp[coeffs2["f"], :]
         del tmp
