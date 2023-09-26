@@ -801,8 +801,10 @@ def main():
     # --------------------------------------------------------------------------------
     # Parameters
 
-    N = 3  # neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
-    σ = 0.001  # optional: stdev for simulated i.i.d. gaussian noise in data
+    # `N`: neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
+    # `σ`: optional (set to 0 to disable): stdev for simulated i.i.d. gaussian noise in data
+    # N, σ = 2, 0.0001
+    N, σ = 3, 0.001
     xx = np.linspace(0, np.pi, 512)
     yy = xx
 
