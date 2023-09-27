@@ -619,7 +619,7 @@ def differentiate(N: typing.Optional[int],
     # so we need to assemble only one.
 
     # Generic offset distance stencil for all neighbors.
-    neighbors = stencil or make_stencil(N)  # [#k, 2]
+    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
     min_yoffs = np.min(neighbors[:, 0])
     max_yoffs = np.max(neighbors[:, 0])
     min_xoffs = np.min(neighbors[:, 1])
@@ -688,7 +688,12 @@ def differentiate(N: typing.Optional[int],
     # Then determine the multi-indices for the interior points:
     npoints = tf.reduce_prod(tf.shape(X))
     all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
-    interior_multi_to_linear = all_multi_to_linear[-min_yoffs:-max_yoffs, -min_xoffs:-max_xoffs]  # take the valid part
+
+    ystart = -min_yoffs
+    ystop = -max_yoffs if max_yoffs else None
+    xstart = -min_xoffs
+    xstop = -max_xoffs if max_xoffs else None
+    interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
 
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
     # linear index, C storage order: i = iy * size_x + ix
@@ -791,7 +796,7 @@ def differentiate2(N: typing.Optional[int],
         one = tf.ones_like(dx)  # for the constant term of the fit
         return np.array([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
 
-    neighbors = stencil or make_stencil(N)  # [#k, 2]
+    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
     min_yoffs = np.min(neighbors[:, 0])
     max_yoffs = np.max(neighbors[:, 0])
     min_xoffs = np.min(neighbors[:, 1])
@@ -839,7 +844,12 @@ def differentiate2(N: typing.Optional[int],
     # Then determine the multi-indices for the interior points:
     npoints = tf.reduce_prod(tf.shape(X))
     all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
-    interior_multi_to_linear = all_multi_to_linear[-min_yoffs:-max_yoffs, -min_xoffs:-max_xoffs]  # take the valid part
+
+    ystart = -min_yoffs
+    ystop = -max_yoffs if max_yoffs else None
+    xstart = -min_xoffs
+    xstop = -max_xoffs if max_xoffs else None
+    interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
 
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
     # linear index, C storage order: i = iy * size_x + ix
