@@ -615,8 +615,12 @@ def differentiate(N: typing.Optional[int],
     # so we need to assemble only one.
 
     # Generic offset distance stencil for all neighbors.
-    iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     neighbors = stencil or make_stencil(N)  # [#k, 2]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+    iy, ix = -min_yoffs, -min_xoffs  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     # # This is what we want to do, but this crashes (invalid slice) if we hand it a padded `X` (which becomes a `tf.Tensor`):
     # dx = X[iy + neighbors[:, 0], ix + neighbors[:, 1]] - X[iy, ix]  # [#k]
     # dy = Y[iy + neighbors[:, 0], ix + neighbors[:, 1]] - Y[iy, ix]  # [#k]
@@ -680,10 +684,6 @@ def differentiate(N: typing.Optional[int],
     # Then determine the multi-indices for the interior points:
     npoints = tf.reduce_prod(tf.shape(X))
     all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
-    min_yoffs = np.min(neighbors[:, 0])
-    max_yoffs = np.max(neighbors[:, 0])
-    min_xoffs = np.min(neighbors[:, 1])
-    max_xoffs = np.max(neighbors[:, 1])
     interior_multi_to_linear = all_multi_to_linear[-min_yoffs:-max_yoffs, -min_xoffs:-max_xoffs]  # take the valid part
 
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
@@ -781,8 +781,12 @@ def differentiate2(N: typing.Optional[int],
         one = tf.ones_like(dx)  # for the constant term of the fit
         return np.array([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
 
-    iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     neighbors = stencil or make_stencil(N)  # [#k, 2]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+    iy, ix = -min_yoffs, -min_xoffs  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
     dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
     dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
@@ -825,10 +829,6 @@ def differentiate2(N: typing.Optional[int],
     # Then determine the multi-indices for the interior points:
     npoints = tf.reduce_prod(tf.shape(X))
     all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
-    min_yoffs = np.min(neighbors[:, 0])
-    max_yoffs = np.max(neighbors[:, 0])
-    min_xoffs = np.min(neighbors[:, 1])
-    max_xoffs = np.max(neighbors[:, 1])
     interior_multi_to_linear = all_multi_to_linear[-min_yoffs:-max_yoffs, -min_xoffs:-max_xoffs]  # take the valid part
 
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
