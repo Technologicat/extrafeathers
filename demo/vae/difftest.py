@@ -1125,6 +1125,8 @@ def main():
     # --------------------------------------------------------------------------------
     # Plot the results
 
+    print("Plotting.")
+
     fig = plt.figure(2)
     ax1 = fig.add_subplot(1, 3, 1, projection="3d")
     surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
@@ -1163,7 +1165,6 @@ def main():
     # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
     # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
     # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
-    print("Plotting.")
     fig = plt.figure(1)
     ax = fig.add_subplot(2, 3, 1, projection="3d")
     surf = ax.plot_surface(X, Y, Z)  # noqa: F841
@@ -1171,6 +1172,11 @@ def main():
     ax.set_ylabel("y")
     ax.set_zlabel("z")
     ax.set_title("f")
+
+    ground_truth = ground_truth_functions["f"](X, Y)
+    max_l1_error = np.max(np.abs(Z - ground_truth))
+    print(f"max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
+
     all_axes = [ax]
     for idx, key in enumerate(coeffs.keys(), start=2):
         ax = fig.add_subplot(2, 3, idx, projection="3d")
@@ -1205,7 +1211,7 @@ def main():
     plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (smoothed)")
     plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (smoothed)")
     plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (smoothed)")
-    fig.suptitle("l1 error (signed)")
+    fig.suptitle("l1 error (fitted - ground truth)")
 
 if __name__ == '__main__':
     main()
