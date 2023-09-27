@@ -570,11 +570,20 @@ def differentiate(N: typing.Optional[int],
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
 
+    # Generic offset distance stencil for all neighbors.
+    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+    max_abs_yoffs = max(abs(min_yoffs), abs(max_yoffs))
+    max_abs_xoffs = max(abs(min_xoffs), abs(max_xoffs))
+
     # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
     # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing (in raw coordinate space) as the scale.
     # We need to cast to `float` in case `tf` decides to give us a scalar tensor instead of a pure scalar. (This happens when `X` and `Y` are padded.)
-    xscale = float(X[0, 1] - X[0, 0])
-    yscale = float(Y[1, 0] - Y[0, 0])
+    xscale = float(X[0, 1] - X[0, 0]) * max_abs_xoffs
+    yscale = float(Y[1, 0] - Y[0, 0]) * max_abs_yoffs
 
     def cki(dx, dy):
         """Compute the `c[k, i]` coefficients for surrogate fitting.
@@ -618,12 +627,6 @@ def differentiate(N: typing.Optional[int],
     # Since we have a uniform grid in this application, the distance matrix of neighbors for each point is the same,
     # so we need to assemble only one.
 
-    # Generic offset distance stencil for all neighbors.
-    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
-    min_yoffs = np.min(neighbors[:, 0])
-    max_yoffs = np.max(neighbors[:, 0])
-    min_xoffs = np.min(neighbors[:, 1])
-    max_xoffs = np.max(neighbors[:, 1])
     iy, ix = -min_yoffs, -min_xoffs  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     # # This is what we want to do, but this crashes (invalid slice) if we hand it a padded `X` (which becomes a `tf.Tensor`):
     # dx = X[iy + neighbors[:, 0], ix + neighbors[:, 1]] - X[iy, ix]  # [#k]
@@ -787,8 +790,16 @@ def differentiate2(N: typing.Optional[int],
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
 
-    xscale = float(X[0, 1] - X[0, 0])
-    yscale = float(Y[1, 0] - Y[0, 0])
+    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+    max_abs_yoffs = max(abs(min_yoffs), abs(max_yoffs))
+    max_abs_xoffs = max(abs(min_xoffs), abs(max_xoffs))
+
+    xscale = float(X[0, 1] - X[0, 0]) * max_abs_xoffs
+    yscale = float(Y[1, 0] - Y[0, 0]) * max_abs_yoffs
 
     def cki(dx, dy):
         dx = dx / xscale
@@ -796,11 +807,6 @@ def differentiate2(N: typing.Optional[int],
         one = tf.ones_like(dx)  # for the constant term of the fit
         return np.array([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
 
-    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
-    min_yoffs = np.min(neighbors[:, 0])
-    max_yoffs = np.max(neighbors[:, 0])
-    min_xoffs = np.min(neighbors[:, 1])
-    max_xoffs = np.max(neighbors[:, 1])
     iy, ix = -min_yoffs, -min_xoffs  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
     indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
     dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
@@ -981,7 +987,7 @@ def main():
     # `σ`: optional (set to 0 to disable): stdev for simulated i.i.d. gaussian noise in data
     # N, σ = 2, 0.0001
     # N, σ = 3, 0.001
-    N, σ = 5, 0.001
+    N, σ = 8, 0.001
     # N, σ = 3, 0.0
     xx = np.linspace(0, np.pi, 512)
     yy = xx
