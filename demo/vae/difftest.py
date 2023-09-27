@@ -547,9 +547,20 @@ def differentiate(N: typing.Optional[int],
         "VALID": Operate in the interior only. This chops off `N` points at the edges on each axis.
         "SAME": Preserve data tensor dimensions. Automatically use local extrapolation to estimate
                 `X`, `Y`, and `Z` outside the edges.
+
+    `stencil`: Optional: list of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
+               When specified:
+                 - Only the `padding="VALID"` mode is available,
+                 - `N` is ignored,
+                 - This custom `stencil` is used instead of automatically constructing a centered stencil
+                   based on the value of `N`.
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if stencil is not None and N is not None:
+        raise ValueError("Cannot specify both a custom `stencil` and `N`. When using a custom `stencil`, please call with `N=None`.")
+    if stencil is not None and padding.upper() == "SAME":
+        raise ValueError("Cannot use `padding='SAME'` with a custom `stencil`. Please use `padding='VALID'`.")
     if padding.upper() == "SAME":
         X = pad_linear_2d(N, X)
         Y = pad_linear_2d(N, Y)
@@ -742,9 +753,20 @@ def differentiate2(N: typing.Optional[int],
         "VALID": Operate in the interior only. This chops off `N` points at the edges on each axis.
         "SAME": Preserve data tensor dimensions. Automatically use local extrapolation to estimate
                 `X`, `Y`, and `Z` outside the edges.
+
+    `stencil`: Optional: list of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
+               When specified:
+                 - Only the `padding="VALID"` mode is available,
+                 - `N` is ignored,
+                 - This custom `stencil` is used instead of automatically constructing a centered stencil
+                   based on the value of `N`.
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if stencil is not None and N is not None:
+        raise ValueError("Cannot specify both a custom `stencil` and `N`. When using a custom `stencil`, please call with `N=None`.")
+    if stencil is not None and padding.upper() == "SAME":
+        raise ValueError("Cannot use `padding='SAME'` with a custom `stencil`. Please use `padding='VALID'`.")
     if padding.upper() == "SAME":
         X = pad_linear_2d(N, X)
         Y = pad_linear_2d(N, Y)
