@@ -877,6 +877,97 @@ def differentiate2(N: typing.Optional[int],
     return df
 
 
+def hifi_differentiate(N: int,
+                       X: typing.Union[np.array, tf.Tensor],
+                       Y: typing.Union[np.array, tf.Tensor],
+                       Z: typing.Union[np.array, tf.Tensor],
+                       *,
+                       mode: str = "differentiate"):
+    """Like `differentiate` or `differentiate2`, but treat the edges using asymmetric stencils.
+
+    This combines the accuracy advantage of `padding="VALID"` with the range of
+    `padding="SAME"`.
+
+    `N`: Neighborhood size; must be ≥ 2 to make the equation system solvable also near the corners.
+         (There must be at least 6 points in the stencil for `differentiate`, 7 for `differentiate2`,
+          after the central `(2 * N + 1, 2 * N + 1)` stencil is clipped to the data region.)
+
+    `mode`: One of "differentiate" or "differentiate2". Uses the eponymous functions, which see.
+            (If you want to least-squares the function values too, use `mode="differentiate2"`,
+             else use `mode="differentiate"`.)
+    """
+    if N < 2:
+        raise ValueError(f"`hifi_differentiate` requires N ≥ 2; got {N}.")
+    if mode not in ("differentiate", "differentiate2"):
+        raise ValueError(f"`mode` must be one of 'differentiate' or 'differentiate2', got '{mode}'.")
+    if mode == "differentiate":
+        doit = differentiate
+    else:  # mode == "differentiate2":
+        doit = differentiate2
+
+    intarray = lambda x: np.array(x, dtype=int)
+    ny, nx = tf.shape(Z).numpy()
+
+    interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                          for ix in range(-N, N + 1)])
+    interior = doit(N=None, X=X, Y=Y, Z=Z, padding="VALID", stencil=interior_stencil)
+    assert (tf.shape(interior).numpy()[1:] == (ny - 2 * N, nx - 2 * N)).all(), tf.shape(interior)
+
+    top_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
+                                     for ix in range(-N, N + 1)])
+    top = doit(N=None, X=X[:(2 * N), :], Y=Y[:(2 * N), :], Z=Z[:(2 * N), :], padding="VALID", stencil=top_stencil)
+    assert (tf.shape(top).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(top)
+
+    bottom_stencil = intarray([[iy, ix] for iy in range(-N, 1)
+                                        for ix in range(-N, N + 1)])
+    bottom = doit(N=None, X=X[-(2 * N):, :], Y=Y[-(2 * N):, :], Z=Z[-(2 * N):, :], padding="VALID", stencil=bottom_stencil)
+    assert (tf.shape(bottom).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(bottom)
+
+    left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                      for ix in range(0, N + 1)])
+    left = doit(N=None, X=X[:, :(2 * N)], Y=Y[:, :(2 * N)], Z=Z[:, :(2 * N)], padding="VALID", stencil=left_stencil)
+    assert (tf.shape(left).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(left)
+
+    right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                       for ix in range(-N, 1)])
+    right = doit(N=None, X=X[:, -(2 * N):], Y=Y[:, -(2 * N):], Z=Z[:, -(2 * N):], padding="VALID", stencil=right_stencil)
+    assert (tf.shape(right).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(right)
+
+    ul_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
+                                    for ix in range(0, N + 1)])
+    ul = doit(N=None, X=X[:(2 * N), :(2 * N)], Y=Y[:(2 * N), :(2 * N)], Z=Z[:(2 * N), :(2 * N)], padding="VALID", stencil=ul_stencil)
+    assert (tf.shape(ul).numpy()[1:] == (N, N)).all(), tf.shape(ul)
+
+    ur_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
+                                    for ix in range(-N, 1)])
+    ur = doit(N=None, X=X[:(2 * N), -(2 * N):], Y=Y[:(2 * N), -(2 * N):], Z=Z[:(2 * N), -(2 * N):], padding="VALID", stencil=ur_stencil)
+    assert (tf.shape(ur).numpy()[1:] == (N, N)).all(), tf.shape(ur)
+
+    ll_stencil = intarray([[iy, ix] for iy in range(-N, 1)
+                                    for ix in range(0, N + 1)])
+    ll = doit(N=None, X=X[-(2 * N):, :(2 * N)], Y=Y[-(2 * N):, :(2 * N)], Z=Z[-(2 * N):, :(2 * N)], padding="VALID", stencil=ll_stencil)
+    assert (tf.shape(ll).numpy()[1:] == (N, N)).all(), tf.shape(ll)
+
+    lr_stencil = intarray([[iy, ix] for iy in range(-N, 1)
+                                    for ix in range(-N, 1)])
+    lr = doit(N=None, X=X[-(2 * N):, -(2 * N):], Y=Y[-(2 * N):, -(2 * N):], Z=Z[-(2 * N):, -(2 * N):], padding="VALID", stencil=lr_stencil)
+    assert (tf.shape(lr).numpy()[1:] == (N, N)).all(), tf.shape(lr)
+
+    # Assemble the output.
+    # Data format is [channels, rows, columns].
+
+    # 1) Assemble padded top and bottom edges, with corners.
+    fulltop = tf.concat([ul, top, ur], axis=2)  # e.g. [[5, 10, 10], [5, 10, 236], [5, 10, 10]] -> [5, 10, 256]
+    fullbottom = tf.concat([ll, bottom, lr], axis=2)
+
+    # 2) Assemble middle part, padding left and right.
+    widened = tf.concat([left, interior, right], axis=2)  # e.g. [[5, 236, 10], [5, 236, 236], [5, 236, 10]] -> [5, 236, 256]
+
+    # 3) Assemble the final tensor.
+    padded = tf.concat([fulltop, widened, fullbottom], axis=1)  # e.g. [[5, 10, 256], [5, 236, 256], [5, 10, 256]] -> [5, 256, 256]
+    return padded
+
+
 # --------------------------------------------------------------------------------
 # Usage example
 
@@ -888,13 +979,14 @@ def main():
     # `σ`: optional (set to 0 to disable): stdev for simulated i.i.d. gaussian noise in data
     # N, σ = 2, 0.0001
     # N, σ = 3, 0.001
-    N, σ = 3, 0.0
+    N, σ = 5, 0.001
+    # N, σ = 3, 0.0
     xx = np.linspace(0, np.pi, 512)
     yy = xx
 
     # If σ > 0, how many times to loop the Friedrichs denoiser.
     # If σ = 0, denoising is skipped, and this setting has no effect.
-    denoise_steps = 50
+    denoise_steps = 10
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
@@ -946,9 +1038,12 @@ def main():
     # Simulate noisy input, for testing the denoiser.
 
     def denoise(N, X, Y, Z):
-        tmp = differentiate2(N, X, Y, Z, padding="VALID")  # Fit the interior only...
-        Z = pad_quadratic_2d(N, tmp[coeffs2["f"], :])  # ...then reconstruct edges from the least-squares fit. Should be more stable than the original data.
+        # denoise by least squares
+        for _ in range(denoise_steps):
+            tmp = hifi_differentiate(N, X, Y, Z, mode="differentiate2")
+            Z = tmp[coeffs2["f"]]
 
+        # denoise by Friedrichs smoothing
         for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
             # print(f"    step {_ + 1} of {denoise_steps}...")
             Z = friedrichs_smooth_2d(N, Z, padding="SAME")
@@ -970,7 +1065,7 @@ def main():
         #
         # We see the estimate works pretty well - the detected RMS noise level is approximately the stdev of the gaussian synthetic noise,
         # matching the true noise level.
-        tmp = differentiate2(N, X, Y, Z, padding="SAME")
+        tmp = hifi_differentiate(N, X, Y, Z, mode="differentiate2")
         noise_estimate = Z - tmp[coeffs2["f"], :]
         del tmp
         estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
@@ -983,9 +1078,9 @@ def main():
     # Compute the derivatives.
 
     print("Differentiating...")
-    dZ = differentiate(N, X, Y, Z, padding="VALID")
-    X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
-    # X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
+    dZ = hifi_differentiate(N, X, Y, Z)
+    # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
+    X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
 
     # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
     print("Smoothed second derivatives:")
@@ -997,10 +1092,10 @@ def main():
         dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy)
 
     print("    Differentiate denoised first derivatives...")
-    ddzdx = differentiate(N, X_for_dZ, Y_for_dZ, dzdx, padding="VALID")  # jacobian and hessian of dzdx
-    ddzdy = differentiate(N, X_for_dZ, Y_for_dZ, dzdy, padding="VALID")  # jacobian and hessian of dzdy
-    X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
-    # X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
+    ddzdx = hifi_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
+    ddzdy = hifi_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
+    # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
+    X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
 
     d2zdx2 = ddzdx[coeffs["dx"], :]
     d2zdxdy = ddzdx[coeffs["dy"], :]
