@@ -743,10 +743,6 @@ def differentiate(N: typing.Optional[int],
     scale = tf.expand_dims(scale, axis=-1)  # for broadcasting
     df = df / scale
 
-    # # Old reshape code:
-    # ny, nx = np.shape(X)
-    # df = tf.reshape(df, (5, ny - 2 * N, nx - 2 * N))
-
     df = tf.reshape(df, (5, *tf.shape(interior_multi_to_linear)))
     return df * zscale
 
