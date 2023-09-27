@@ -557,11 +557,14 @@ def differentiate(N: typing.Optional[int],
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if stencil is None and N is None:
+        raise ValueError("Must specify exactly one of `stencil` or `N`; neither was given.")
     if stencil is not None and N is not None:
         raise ValueError("Cannot specify both a custom `stencil` and `N`. When using a custom `stencil`, please call with `N=None`.")
     if stencil is not None and padding.upper() == "SAME":
         raise ValueError("Cannot use `padding='SAME'` with a custom `stencil`. Please use `padding='VALID'`.")
     if padding.upper() == "SAME":
+        assert N is not None
         X = pad_linear_2d(N, X)
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
@@ -763,11 +766,14 @@ def differentiate2(N: typing.Optional[int],
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if stencil is None and N is None:
+        raise ValueError("Must specify exactly one of `stencil` or `N`; neither was given.")
     if stencil is not None and N is not None:
         raise ValueError("Cannot specify both a custom `stencil` and `N`. When using a custom `stencil`, please call with `N=None`.")
     if stencil is not None and padding.upper() == "SAME":
         raise ValueError("Cannot use `padding='SAME'` with a custom `stencil`. Please use `padding='VALID'`.")
     if padding.upper() == "SAME":
+        assert N is not None
         X = pad_linear_2d(N, X)
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
