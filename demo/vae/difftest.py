@@ -886,8 +886,9 @@ def hifi_differentiate(N: int,
     """Like `differentiate` or `differentiate2`, but treat the edges using asymmetric stencils.
 
     This combines the accuracy advantage of `padding="VALID"` with the range of `padding="SAME"`.
-    The results won't be *fully* accurate near the edges, but in general they should be better
-    than a simple quadratic interpolation (which is what `padding="SAME"` uses).
+    The results won't be *fully* accurate near the edges, but they do come from the actual data,
+    so in general they should be better than a simple quadratic extrapolation (which is what
+    `padding="SAME"` uses).
 
     `N`: Neighborhood size; must be ≥ 2 to make the equation system solvable also near the corners.
          (There must be at least 6 points in the stencil for `differentiate`, 7 for `differentiate2`,
