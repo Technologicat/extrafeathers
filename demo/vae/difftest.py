@@ -17,6 +17,8 @@ We need only the very basics here. A complete Cython implementation of WLSQM, an
     https://github.com/Technologicat/python-wlsqm
 """
 
+import typing
+
 import numpy as np
 import sympy as sy
 import tensorflow as tf
@@ -76,14 +78,13 @@ def make_stencil(N: int) -> np.array:
     Return value is a rank-2 np-array of shape [n_neighbors, 2].
     """
     neighbors = [[iy, ix] for iy in range(-N, N + 1)
-                          for ix in range(-N, N + 1)
-                          if not (iy == 0 and ix == 0)]
+                          for ix in range(-N, N + 1)]  # if not (iy == 0 and ix == 0) ...but including the center point does no harm.
     neighbors = np.array(neighbors, dtype=int)
     return neighbors
 
 
 # The edges are nonsense with padding="SAME", so we use "VALID", and chop off the edges of X and Y correspondingly.
-def chop_edges(N: int, X, Y):
+def chop_edges(N: int, X: tf.Tensor, Y: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     return X[N:-N, N:-N], Y[N:-N, N:-N]
 
 
@@ -95,7 +96,7 @@ def chop_edges(N: int, X, Y):
 @tf.function
 def _assemble_padded_2d(*, interior: tf.Tensor,
                         top: tf.Tensor, bottom: tf.Tensor, left: tf.Tensor, right: tf.Tensor,
-                        top_left: float, top_right: float, bottom_left: float, bottom_right: float):
+                        top_left: float, top_right: float, bottom_left: float, bottom_right: float) -> tf.Tensor:
     """Assemble a padded rank-2 tensor from parts.
 
     `interior`: rank-2 tensor, [nrows, ncols]; original tensor to which the padding is to be added
@@ -131,7 +132,7 @@ def _assemble_padded_2d(*, interior: tf.Tensor,
     return padded
 
 @tf.function
-def _assemble_padded_1d(*, interior: tf.Tensor, left: float, right: float):
+def _assemble_padded_1d(*, interior: tf.Tensor, left: float, right: float) -> tf.Tensor:
     """Like `_assemble_padded_2d`, but for 1D tensor.
 
     The return value is populated as follows::
@@ -145,7 +146,7 @@ def _assemble_padded_1d(*, interior: tf.Tensor, left: float, right: float):
 
 
 @tf.function(reduce_retracing=True)
-def pad_constant_2d_one(f):
+def pad_constant_2d_one(f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by one grid unit, by copying the nearest value from the edges.
 
     `f`: data in meshgrid format.
@@ -169,14 +170,14 @@ def pad_constant_2d_one(f):
                                top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
 
 @tf.function(reduce_retracing=True)
-def pad_constant_1d_one(f):
+def pad_constant_1d_one(f: tf.Tensor) -> tf.Tensor:
     """Pad 1D tensor by one grid unit, by copying the nearest value from the edges."""
     left = f[0]
     right = f[-1]
     return _assemble_padded_1d(interior=f, left=left, right=right)
 
 @tf.function(reduce_retracing=True)
-def pad_linear_2d_one(f):
+def pad_linear_2d_one(f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by one grid unit, by linear extrapolation.
 
     `f`: data in meshgrid format.
@@ -212,14 +213,14 @@ def pad_linear_2d_one(f):
                                top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
 
 @tf.function(reduce_retracing=True)
-def pad_linear_1d_one(f):
+def pad_linear_1d_one(f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by one grid unit, by linear extrapolation."""
     left = 2 * f[0] - f[1]
     right = 2 * f[-1] - f[-2]
     return _assemble_padded_1d(interior=f, left=left, right=right)
 
 @tf.function(reduce_retracing=True)
-def pad_quadratic_2d_one(f):
+def pad_quadratic_2d_one(f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by one grid unit, by quadratic extrapolation.
 
     `f`: data in meshgrid format.
@@ -261,14 +262,14 @@ def pad_quadratic_2d_one(f):
                                top_left=tl, top_right=tr, bottom_left=bl, bottom_right=br)
 
 @tf.function(reduce_retracing=True)
-def pad_quadratic_1d_one(f):
+def pad_quadratic_1d_one(f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by one grid unit, by quadratic extrapolation."""
     left = 3 * f[0] - 3 * f[1] + f[2]
     right = 3 * f[-1] - 3 * f[-2] + f[-3]
     return _assemble_padded_1d(interior=f, left=left, right=right)
 
 @tf.function
-def pad_constant_2d(n: int, f):
+def pad_constant_2d(n: int, f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by `n` grid units, by copying the nearest value from the edges.
 
     `n`: how many grid units to pad by.
@@ -279,14 +280,14 @@ def pad_constant_2d(n: int, f):
     return f
 
 @tf.function
-def pad_constant_1d(n: int, f):
+def pad_constant_1d(n: int, f: tf.Tensor) -> tf.Tensor:
     """Pad 1D tensor by `n` grid units, by copying the nearest value from the edges."""
     for _ in range(n):
         f = pad_constant_1d_one(f)
     return f
 
 @tf.function
-def pad_linear_2d(n: int, f):
+def pad_linear_2d(n: int, f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by `n` grid units, by linear extrapolation.
 
     `n`: how many grid units to pad by.
@@ -297,14 +298,14 @@ def pad_linear_2d(n: int, f):
     return f
 
 @tf.function
-def pad_linear_1d(n: int, f):
+def pad_linear_1d(n: int, f: tf.Tensor) -> tf.Tensor:
     """Pad 1D tensor by `n` grid units, by linear extrapolation."""
     for _ in range(n):
         f = pad_linear_1d_one(f)
     return f
 
 @tf.function
-def pad_quadratic_2d(n: int, f):
+def pad_quadratic_2d(n: int, f: tf.Tensor) -> tf.Tensor:
     """Pad 2D tensor by `n` grid units, by quadratic extrapolation.
 
     `n`: how many grid units to pad by.
@@ -315,7 +316,7 @@ def pad_quadratic_2d(n: int, f):
     return f
 
 @tf.function
-def pad_quadratic_1d(n: int, f):
+def pad_quadratic_1d(n: int, f: tf.Tensor) -> tf.Tensor:
     """Pad 1D tensor by `n` grid units, by quadratic extrapolation."""
     for _ in range(n):
         f = pad_quadratic_1d_one(f)
@@ -325,7 +326,7 @@ def pad_quadratic_1d(n: int, f):
 # --------------------------------------------------------------------------------
 # Denoising
 
-def friedrichs_mollifier(x, *, eps=0.001):
+def friedrichs_mollifier(x: np.array, *, eps: float = 0.001) -> np.array:
     """The Friedrichs mollifier function.
 
     This is a non-analytic, symmetric bump centered on the origin, that smoothly
@@ -345,7 +346,11 @@ def friedrichs_mollifier(x, *, eps=0.001):
     return np.where(np.abs(x) < 1 - eps, np.exp(-1 / (1 - x**2)), 0.)
 
 
-def friedrichs_smooth_2d(N: int, f, *, padding: str, preserve_range: bool = False):
+def friedrichs_smooth_2d(N: int,
+                         f: typing.Union[np.array, tf.Tensor],
+                         *,
+                         padding: str,
+                         preserve_range: bool = False) -> np.array:
     """Attempt to denoise function values data on a 2D meshgrid.
 
     The method is a discrete convolution with the Friedrichs mollifier.
@@ -425,7 +430,11 @@ def friedrichs_smooth_2d(N: int, f, *, padding: str, preserve_range: bool = Fals
     return f.numpy()
 
 
-def friedrichs_smooth_1d(N: int, f, *, padding: str, preserve_range: bool = False):
+def friedrichs_smooth_1d(N: int,
+                         f: typing.Union[np.array, tf.Tensor],
+                         *,
+                         padding: str,
+                         preserve_range: bool = False) -> np.array:
     """Like `friedrichs_smooth_2d`, but for 1D `f`."""
     offset_X = np.arange(-N, N + 1)  # neighbor offsets (in grid units)
     kernel = friedrichs_mollifier(offset_X / N)
@@ -517,7 +526,13 @@ def friedrichs_smooth_1d(N: int, f, *, padding: str, preserve_range: bool = Fals
 
 # See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
 coeffs = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
-def differentiate(N, X, Y, Z, *, padding: str):
+def differentiate(N: typing.Optional[int],
+                  X: typing.Union[np.array, tf.Tensor],
+                  Y: typing.Union[np.array, tf.Tensor],
+                  Z: typing.Union[np.array, tf.Tensor],
+                  *,
+                  padding: str,
+                  stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
     """Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
 
     Note the distance matrix `A` (generated automatically) is 5×5 regardless of `N`, but for large `N`,
@@ -652,7 +667,11 @@ def differentiate(N, X, Y, Z, *, padding: str):
     # Then determine the multi-indices for the interior points:
     npoints = tf.reduce_prod(tf.shape(X))
     all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
-    interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+    interior_multi_to_linear = all_multi_to_linear[-min_yoffs:-max_yoffs, -min_xoffs:-max_xoffs]  # take the valid part
 
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
     # linear index, C storage order: i = iy * size_x + ix
@@ -702,7 +721,13 @@ def differentiate(N, X, Y, Z, *, padding: str):
 
 # See `wlsqm_gen.pdf` in the `python-wlsqm` docs for details on the algorithm.
 coeffs2 = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}
-def differentiate2(N, X, Y, Z, *, padding: str):
+def differentiate2(N: typing.Optional[int],
+                   X: typing.Union[np.array, tf.Tensor],
+                   Y: typing.Union[np.array, tf.Tensor],
+                   Z: typing.Union[np.array, tf.Tensor],
+                   *,
+                   padding: str,
+                   stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
     """Like `differentiate`, but fit function values too.
 
     Note the distance matrix `A` (generated automatically) is 6×6 regardless of `N`, but for large `N`,
@@ -766,7 +791,11 @@ def differentiate2(N, X, Y, Z, *, padding: str):
     # Then determine the multi-indices for the interior points:
     npoints = tf.reduce_prod(tf.shape(X))
     all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
-    interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+    interior_multi_to_linear = all_multi_to_linear[-min_yoffs:-max_yoffs, -min_xoffs:-max_xoffs]  # take the valid part
 
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
     # linear index, C storage order: i = iy * size_x + ix
@@ -804,7 +833,8 @@ def main():
     # `N`: neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
     # `σ`: optional (set to 0 to disable): stdev for simulated i.i.d. gaussian noise in data
     # N, σ = 2, 0.0001
-    N, σ = 3, 0.001
+    # N, σ = 3, 0.001
+    N, σ = 3, 0.0
     xx = np.linspace(0, np.pi, 512)
     yy = xx
 
