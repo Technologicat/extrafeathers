@@ -756,7 +756,7 @@ def differentiate2(N: typing.Optional[int],
     def cki(dx, dy):
         dx = dx / xscale
         dy = dy / yscale
-        one = tf.ones_like(dx)
+        one = tf.ones_like(dx)  # for the constant term of the fit
         return np.array([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
 
     iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
@@ -774,6 +774,16 @@ def differentiate2(N: typing.Optional[int],
     # On a uniform grid, c[n1,k,i] = c[n2,k,i] =: c[k,i] for any n1, n2, so this simplifies to:
     #   A[i,j] = ∑k( c[k,i] * c[k,j] )
     #   b[n,i] = ∑k( f[g[n,k]] * c[k,i] )
+    #
+    # Note we now have a constant term in the fit (there's one more value for the index `k`),
+    # and `f[n]` is no longer needed in `b`. We essentially take the `f[g[n,k]]` as given
+    # (we will least-squares over them anyway, so it doesn't matter if they're noisy),
+    # and treat `f[n]` as missing. We then attempt to fit a constant term as an approximation
+    # for `f[n]`. Details in `wlsqm_gen.pdf`.
+    #
+    # (Note that the function value at the center point can actually be used, simply by including
+    #  the center point `[0, 0]` in the stencil. Then it's treated as one of the `f[g[n,k]]`,
+    #  just like the actual neighbors. Only the constant term is nonzero at the center.)
 
     # Assemble `A`:
     c = cki(dx, dy)  # [#k, 6]
