@@ -554,6 +554,7 @@ def differentiate(N: typing.Optional[int],
                  - `N` is ignored,
                  - This custom `stencil` is used instead of automatically constructing a centered stencil
                    based on the value of `N`.
+               The position of the valid part is automatically determined based on the stencil.
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
@@ -763,6 +764,7 @@ def differentiate2(N: typing.Optional[int],
                  - `N` is ignored,
                  - This custom `stencil` is used instead of automatically constructing a centered stencil
                    based on the value of `N`.
+               The position of the valid part is automatically determined based on the stencil.
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
