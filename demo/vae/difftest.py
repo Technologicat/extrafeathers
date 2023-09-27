@@ -747,7 +747,7 @@ def differentiate2(N: typing.Optional[int],
                    stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
     """Like `differentiate`, but fit function values too.
 
-    This can be used for least-squares denoising.
+    This can be used as a local least squares denoiser.
 
     Note the distance matrix `A` (generated automatically) is 6×6 regardless of `N`, but for large `N`,
     assembly takes longer because there are more contributions to each matrix element.
