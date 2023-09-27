@@ -77,6 +77,8 @@ def make_stencil(N: int) -> np.array:
 
     Return value is a rank-2 np-array of shape [n_neighbors, 2].
     """
+    if N is None or N < 1:
+        raise ValueError(f"Must specify N ≥ 1, got {N}")
     neighbors = [[iy, ix] for iy in range(-N, N + 1)
                           for ix in range(-N, N + 1)]  # if not (iy == 0 and ix == 0) ...but including the center point does no harm.
     neighbors = np.array(neighbors, dtype=int)
@@ -603,7 +605,7 @@ def differentiate(N: typing.Optional[int],
 
     # Generic offset distance stencil for all neighbors.
     iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
-    neighbors = make_stencil(N)  # [#k, 2]
+    neighbors = stencil or make_stencil(N)  # [#k, 2]
     # # This is what we want to do, but this crashes (invalid slice) if we hand it a padded `X` (which becomes a `tf.Tensor`):
     # dx = X[iy + neighbors[:, 0], ix + neighbors[:, 1]] - X[iy, ix]  # [#k]
     # dy = Y[iy + neighbors[:, 0], ix + neighbors[:, 1]] - Y[iy, ix]  # [#k]
@@ -758,7 +760,7 @@ def differentiate2(N: typing.Optional[int],
         return np.array([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
 
     iy, ix = N, N  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
-    neighbors = make_stencil(N)  # [#k, 2]
+    neighbors = stencil or make_stencil(N)  # [#k, 2]
     indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
     dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
     dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
