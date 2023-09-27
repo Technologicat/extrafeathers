@@ -580,10 +580,17 @@ def differentiate(N: typing.Optional[int],
     max_abs_xoffs = max(abs(min_xoffs), abs(max_xoffs))
 
     # Derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
-    # Choose xscale so that the magnitudes are near 1. Similarly for y. We use the grid spacing (in raw coordinate space) as the scale.
-    # We need to cast to `float` in case `tf` decides to give us a scalar tensor instead of a pure scalar. (This happens when `X` and `Y` are padded.)
+    #
+    # We choose xscale to make magnitudes near 1. Similarly for y. We base the scaling on the grid spacing in raw coordinate space,
+    # defining the furthest distance in the stencil (along each coordinate axis) in the scaled space as 1.
+    #
+    # We need to cast to `float` in case `tf` decides to give us a scalar tensor instead of a bare scalar. This happens when `X` and `Y` are padded.
     xscale = float(X[0, 1] - X[0, 0]) * max_abs_xoffs
     yscale = float(Y[1, 0] - Y[0, 0]) * max_abs_yoffs
+
+    # Scale the data values to [-1, 1], too.
+    zscale = tf.reduce_max(tf.abs(Z)).numpy()
+    Z = Z / zscale
 
     def cki(dx, dy):
         """Compute the `c[k, i]` coefficients for surrogate fitting.
@@ -620,7 +627,7 @@ def differentiate(N: typing.Optional[int],
             For float input: `c[i]`, rank-1 `np.array` of shape `(5,)`
             For array input with `k` elements: `c[k, i]`, rank-2 `np.array` of shape `(n, 5)`
         """
-        dx = dx / xscale
+        dx = dx / xscale  # LHS: offset in scaled space (where the furthest distance in the stencil is 1)
         dy = dy / yscale
         return np.array([dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2]).T
 
@@ -741,7 +748,7 @@ def differentiate(N: typing.Optional[int],
     # df = tf.reshape(df, (5, ny - 2 * N, nx - 2 * N))
 
     df = tf.reshape(df, (5, *tf.shape(interior_multi_to_linear)))
-    return df
+    return df * zscale
 
 
 # See `wlsqm_gen.pdf` in the `python-wlsqm` docs for details on the algorithm.
@@ -800,6 +807,9 @@ def differentiate2(N: typing.Optional[int],
 
     xscale = float(X[0, 1] - X[0, 0]) * max_abs_xoffs
     yscale = float(Y[1, 0] - Y[0, 0]) * max_abs_yoffs
+
+    zscale = tf.reduce_max(tf.abs(Z)).numpy()
+    Z = Z / zscale
 
     def cki(dx, dy):
         dx = dx / xscale
@@ -880,7 +890,7 @@ def differentiate2(N: typing.Optional[int],
     df = df / scale
 
     df = tf.reshape(df, (6, *tf.shape(interior_multi_to_linear)))
-    return df
+    return df * zscale
 
 
 def hifi_differentiate(N: int,
