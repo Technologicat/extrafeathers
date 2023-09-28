@@ -1112,24 +1112,51 @@ def hifier_differentiate(N: int,
     right = treat_right()
     assert (tf.shape(right).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(right)
 
-    ul_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
-                                    for ix in range(0, N + 1)])
-    ul = doit(N=None, X=X[:(2 * N), :(2 * N)], Y=Y[:(2 * N), :(2 * N)], Z=Z[:(2 * N), :(2 * N)], padding="VALID", stencil=ul_stencil)
+    # The most accurate solution in the corners would be to use a per-pixel customized stencil,
+    # at a cost of N² differentiator dispatches per corner (one for each pixel in the corner region).
+    #
+    # Let's try a cheaper solution, which also allows us to reuse the edge handlers: use both applicable
+    # variants of edge treatment, and average them, at a cost of 2*N dispatches per corner.
+    #
+    # That is, e.g. at the upper left, with N = 2, average the result from these stencils (top edge treatment):
+    #
+    #   row 0  row 1  row 2 ... (to accommodate corner, look only to the right)
+    #     x++    +++    +++
+    #     +++    x++    +++
+    #     +++    +++    x++
+    #            +++    +++
+    #                   +++
+    #
+    # with the result from these (left edge treatment):
+    #
+    #   col 0 col 1  col 2 ... (to accommodate corner, look only down)
+    #     x++  +x++  ++x++
+    #     +++  ++++  +++++
+    #     +++  ++++  +++++
+    #
+    # Feeding in a data region of size [2 * N, 2 * N] then yields a result of size [N, N].
+    #
+    # The quality is worst at the corner pixel, where both stencils coincide, and are only of size [N + 1, N + 1].
+    # There's not much that can be done about that, except use a larger neighborhood and risk numerical instability.
+    # Even the optimal N² method would have this limitation.
+    ul1 = treat_top(ix_start=0, datax_stop=2 * N)
+    ul2 = treat_left(iy_start=0, datay_stop=2 * N)
+    ul = (ul1 + ul2) / 2
     assert (tf.shape(ul).numpy()[1:] == (N, N)).all(), tf.shape(ul)
 
-    ur_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
-                                    for ix in range(-N, 1)])
-    ur = doit(N=None, X=X[:(2 * N), -(2 * N):], Y=Y[:(2 * N), -(2 * N):], Z=Z[:(2 * N), -(2 * N):], padding="VALID", stencil=ur_stencil)
+    ur1 = treat_top(ix_stop=1, datax_start=-2 * N)
+    ur2 = treat_right(iy_start=0, datay_stop=2 * N)
+    ur = (ur1 + ur2) / 2
     assert (tf.shape(ur).numpy()[1:] == (N, N)).all(), tf.shape(ur)
 
-    ll_stencil = intarray([[iy, ix] for iy in range(-N, 1)
-                                    for ix in range(0, N + 1)])
-    ll = doit(N=None, X=X[-(2 * N):, :(2 * N)], Y=Y[-(2 * N):, :(2 * N)], Z=Z[-(2 * N):, :(2 * N)], padding="VALID", stencil=ll_stencil)
+    ll1 = treat_bottom(ix_start=0, datax_stop=2 * N)
+    ll2 = treat_left(iy_stop=1, datay_start=-2 * N)
+    ll = (ll1 + ll2) / 2
     assert (tf.shape(ll).numpy()[1:] == (N, N)).all(), tf.shape(ll)
 
-    lr_stencil = intarray([[iy, ix] for iy in range(-N, 1)
-                                    for ix in range(-N, 1)])
-    lr = doit(N=None, X=X[-(2 * N):, -(2 * N):], Y=Y[-(2 * N):, -(2 * N):], Z=Z[-(2 * N):, -(2 * N):], padding="VALID", stencil=lr_stencil)
+    lr1 = treat_bottom(ix_stop=1, datax_start=-2 * N)
+    lr2 = treat_right(iy_stop=1, datay_start=-2 * N)
+    lr = (lr1 + lr2) / 2
     assert (tf.shape(lr).numpy()[1:] == (N, N)).all(), tf.shape(lr)
 
     # Assemble the output.
