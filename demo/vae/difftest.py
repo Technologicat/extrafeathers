@@ -522,14 +522,15 @@ def friedrichs_smooth_1d(N: int,
 
 
 # --------------------------------------------------------------------------------
-# The WLSQM differentiator, on a meshgrid
+# The WLSQM differentiator, on a meshgrid.
 
 # TODO: implement classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because more neighbors.)
 
 # TODO: Implement another version for arbitrary geometries (data point dependent `A` and `c`). (This version is already fine for meshgrid data.)
 
 # See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
-coeffs = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
+coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
+
 def differentiate(N: typing.Optional[int],
                   X: typing.Union[np.array, tf.Tensor],
                   Y: typing.Union[np.array, tf.Tensor],
@@ -537,7 +538,9 @@ def differentiate(N: typing.Optional[int],
                   *,
                   padding: str,
                   stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
-    """Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
+    """[kernel] Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
+
+    Each data point is associated with a local quadratic model.
 
     Note the distance matrix `A` (generated automatically) is 5×5 regardless of `N`, but for large `N`,
     assembly takes longer because there are more contributions to each matrix element.
@@ -551,8 +554,11 @@ def differentiate(N: typing.Optional[int],
                 `X`, `Y`, and `Z` outside the edges.
 
     `stencil`: Optional: list of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
+               This explicitly specifies which grid points to include to estimate the local model.
+
                When specified:
-                 - Only the `padding="VALID"` mode is available,
+                 - Only the `padding="VALID"` mode is available (if you need edges too, consider
+                   the higher level API `hifi_differentiate` or `hifier_differentiate`),
                  - `N` is ignored,
                  - This custom `stencil` is used instead of automatically constructing a centered stencil
                    based on the value of `N`.
@@ -758,18 +764,25 @@ def differentiate(N: typing.Optional[int],
     return df * zscale
 
 
+# --------------------------------------------------------------------------------
+# Generalized WLSQM (fit also function values), on a meshgrid.
+#
 # See `wlsqm_gen.pdf` in the `python-wlsqm` docs for details on the algorithm.
-coeffs2 = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}
-def differentiate2(N: typing.Optional[int],
-                   X: typing.Union[np.array, tf.Tensor],
-                   Y: typing.Union[np.array, tf.Tensor],
-                   Z: typing.Union[np.array, tf.Tensor],
-                   *,
-                   padding: str,
-                   stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
-    """Like `differentiate`, but fit function values too.
 
-    This can be used as a local least squares denoiser.
+coeffs_full = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}
+
+def fit_quadratic(N: typing.Optional[int],
+                  X: typing.Union[np.array, tf.Tensor],
+                  Y: typing.Union[np.array, tf.Tensor],
+                  Z: typing.Union[np.array, tf.Tensor],
+                  *,
+                  padding: str,
+                  stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
+    """[kernel] Like `differentiate`, but fit function values too.
+
+    Each data point is associated with a local quadratic model.
+
+    As well as estimating derivatives, this can be used as a local least squares denoiser.
 
     Note the distance matrix `A` (generated automatically) is 6×6 regardless of `N`, but for large `N`,
     assembly takes longer because there are more contributions to each matrix element.
@@ -783,8 +796,11 @@ def differentiate2(N: typing.Optional[int],
                 `X`, `Y`, and `Z` outside the edges.
 
     `stencil`: Optional: list of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
+               This explicitly specifies which grid points to include to estimate the local model.
+
                When specified:
-                 - Only the `padding="VALID"` mode is available,
+                 - Only the `padding="VALID"` mode is available (if you need edges too, consider
+                   the higher level API `hifi_differentiate` or `hifier_differentiate`),
                  - `N` is ignored,
                  - This custom `stencil` is used instead of automatically constructing a centered stencil
                    based on the value of `N`.
@@ -909,82 +925,274 @@ def differentiate2(N: typing.Optional[int],
     return df * zscale
 
 
+def fit_linear(N: typing.Optional[int],
+               X: typing.Union[np.array, tf.Tensor],
+               Y: typing.Union[np.array, tf.Tensor],
+               Z: typing.Union[np.array, tf.Tensor],
+               *,
+               padding: str,
+               stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
+    """[kernel] Like `fit_quadratic`, but fit function values and first derivatives only.
+
+    Each data point is associated with a local linear model.
+
+    This can be used as a local least squares denoiser.
+
+    Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
+    f, dx, dy, in that order.
+    """
+    if padding.upper() not in ("VALID", "SAME"):
+        raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if stencil is None and N is None:
+        raise ValueError("Must specify exactly one of `stencil` or `N`; neither was given.")
+    if stencil is not None and N is not None:
+        raise ValueError("Cannot specify both a custom `stencil` and `N`. When using a custom `stencil`, please call with `N=None`.")
+    if stencil is not None and padding.upper() == "SAME":
+        raise ValueError("Cannot use `padding='SAME'` with a custom `stencil`. Please use `padding='VALID'`.")
+    if padding.upper() == "SAME":
+        assert N is not None
+        X = pad_linear_2d(N, X)
+        Y = pad_linear_2d(N, Y)
+        Z = pad_quadratic_2d(N, Z)
+    for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
+        shape = tf.shape(tensor).numpy()
+        if len(shape) != 2:
+            raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
+        if not (shape[0] >= 2 and shape[1] >= 2):
+            raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
+
+    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+    max_abs_yoffs = max(abs(min_yoffs), abs(max_yoffs))
+    max_abs_xoffs = max(abs(min_xoffs), abs(max_xoffs))
+
+    xscale = float(X[0, 1] - X[0, 0]) * max_abs_xoffs
+    yscale = float(Y[1, 0] - Y[0, 0]) * max_abs_yoffs
+
+    zscale = tf.reduce_max(tf.abs(Z)).numpy()
+    Z = Z / zscale
+
+    def cki(dx, dy):
+        dx = dx / xscale
+        dy = dy / yscale
+        one = tf.ones_like(dx)  # for the constant term of the fit
+        return np.array([one, dx, dy]).T
+
+    iy, ix = -min_yoffs, -min_xoffs  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
+    indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
+    dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
+    dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
+
+    # Assemble `A`:
+    c = cki(dx, dy)  # [#k, 3]
+    A = tf.einsum("ki,kj->ij", c, c)  # A[i,j] = ∑k( c[k,i] * c[k,j] )
+
+    # Form the right-hand side for each point.
+    #   b[n,i] = ∑k( f[g[n,k]] * c[k,i] )
+    f = tf.reshape(Z, [-1])
+
+    npoints = tf.reduce_prod(tf.shape(X))
+    all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
+
+    ystart = -min_yoffs
+    ystop = -max_yoffs if max_yoffs else None
+    xstart = -min_xoffs
+    xstop = -max_xoffs if max_xoffs else None
+    interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
+
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
+    # linear index, C storage order: i = iy * size_x + ix
+    offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
+
+    # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
+    n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
+    offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+
+    # Now we can evaluate df, and finally b.
+    fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
+    # bs = tf.einsum("nk,ki->ni", fgnk, c)  # This would be clearer...
+    bs = tf.einsum("nk,ki->in", fgnk, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+
+    # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
+    df = tf.linalg.solve(A, bs)  # [3, n_interior_points]
+
+    # Undo the derivative scaling,  d/dx' → d/dx
+    scale = tf.constant([1.0, xscale, yscale], dtype=df.dtype)
+    scale = tf.expand_dims(scale, axis=-1)  # for broadcasting
+    df = df / scale
+
+    df = tf.reshape(df, (3, *tf.shape(interior_multi_to_linear)))
+    return df * zscale
+
+
+def fit_constant(N: typing.Optional[int],
+                 X: typing.Union[np.array, tf.Tensor],
+                 Y: typing.Union[np.array, tf.Tensor],
+                 Z: typing.Union[np.array, tf.Tensor],
+                 *,
+                 padding: str,
+                 stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
+    """[kernel] Like `fit_quadratic`, but fit function values only.
+
+    Each data point is associated with a local constant model.
+
+    This can be used as a local least squares denoiser.
+
+    Return value is a rank-3 tensor of shape `[1, ny, nx]` (for API consistency with the other kernels).
+    The only channel is the function value.
+    """
+    if padding.upper() not in ("VALID", "SAME"):
+        raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
+    if stencil is None and N is None:
+        raise ValueError("Must specify exactly one of `stencil` or `N`; neither was given.")
+    if stencil is not None and N is not None:
+        raise ValueError("Cannot specify both a custom `stencil` and `N`. When using a custom `stencil`, please call with `N=None`.")
+    if stencil is not None and padding.upper() == "SAME":
+        raise ValueError("Cannot use `padding='SAME'` with a custom `stencil`. Please use `padding='VALID'`.")
+    if padding.upper() == "SAME":
+        assert N is not None
+        X = pad_linear_2d(N, X)
+        Y = pad_linear_2d(N, Y)
+        Z = pad_quadratic_2d(N, Z)
+    for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
+        shape = tf.shape(tensor).numpy()
+        if len(shape) != 2:
+            raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
+        if not (shape[0] >= 2 and shape[1] >= 2):
+            raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
+
+    neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
+    min_yoffs = np.min(neighbors[:, 0])
+    max_yoffs = np.max(neighbors[:, 0])
+    min_xoffs = np.min(neighbors[:, 1])
+    max_xoffs = np.max(neighbors[:, 1])
+
+    zscale = tf.reduce_max(tf.abs(Z)).numpy()
+    Z = Z / zscale
+
+    # TODO: this is stupid, rewrite the whole kernel for the piecewise constant case.
+    def cki(dx, dy):
+        one = tf.ones_like(dx)  # for the constant term of the fit
+        return np.array([one]).T
+
+    iy, ix = -min_yoffs, -min_xoffs  # Any node in the interior is fine, since the local topology and geometry are the same for all of them.
+    indices = tf.constant(list(zip(iy + neighbors[:, 0], ix + neighbors[:, 1])))
+    dx = tf.gather_nd(X, indices) - X[iy, ix]  # [#k]
+    dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
+
+    # Assemble `A`:
+    c = cki(dx, dy)  # [#k, 1]
+    A = tf.einsum("ki,kj->ij", c, c)  # A[i,j] = ∑k( c[k,i] * c[k,j] )
+
+    # Form the right-hand side for each point.
+    #   b[n,i] = ∑k( f[g[n,k]] * c[k,i] )
+    f = tf.reshape(Z, [-1])
+
+    npoints = tf.reduce_prod(tf.shape(X))
+    all_multi_to_linear = tf.reshape(tf.range(npoints), tf.shape(X))  # e.g. [0, 1, 2, 3, 4, 5, ...] -> [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
+
+    ystart = -min_yoffs
+    ystop = -max_yoffs if max_yoffs else None
+    xstart = -min_xoffs
+    xstop = -max_xoffs if max_xoffs else None
+    interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
+
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
+    # linear index, C storage order: i = iy * size_x + ix
+    offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
+
+    # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
+    n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
+    offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+
+    # Now we can evaluate df, and finally b.
+    fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
+    # bs = tf.einsum("nk,ki->ni", fgnk, c)  # This would be clearer...
+    bs = tf.einsum("nk,ki->in", fgnk, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+
+    # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
+    df = tf.linalg.solve(A, bs)  # [1, n_interior_points]
+
+    df = tf.reshape(df, (1, *tf.shape(interior_multi_to_linear)))
+    return df * zscale
+
+
+# --------------------------------------------------------------------------------
+# Differentiation with improved edge handling
+
 def hifi_differentiate(N: int,
                        X: typing.Union[np.array, tf.Tensor],
                        Y: typing.Union[np.array, tf.Tensor],
                        Z: typing.Union[np.array, tf.Tensor],
                        *,
-                       mode: str = "differentiate"):
-    """Like `differentiate` or `differentiate2`, but treat the edges using asymmetric stencils.
+                       kernel: typing.Callable = differentiate):
+    """[high-level] Like `differentiate` or `fit_quadratic`, but treat the edges using asymmetric stencils.
 
     This combines the accuracy advantage of `padding="VALID"` with the range of `padding="SAME"`.
     The results won't be *fully* accurate near the edges, but they do come from the actual data,
     so in general they should be better than a simple quadratic extrapolation (which is what
-    `differentiate` and `differentiate2` use when `padding="SAME"`).
+    `differentiate` and `fit_quadratic` use when `padding="SAME"`).
 
     `N`: Neighborhood size; must be ≥ 2 to make the equation system solvable also near the corners.
-         (There must be at least 6 points in the stencil for `differentiate`, 7 for `differentiate2`,
+         (There must be at least 6 points in the stencil for `differentiate`, 7 for `fit_quadratic`,
           after the central `(2 * N + 1, 2 * N + 1)` stencil is clipped to the data region.)
 
-    `mode`: One of "differentiate" or "differentiate2". Uses the eponymous functions, which see.
-            (If you want to least-squares the function values too, use `mode="differentiate2"`,
-             else use `mode="differentiate"`.)
+    `kernel`: One of the WLSQM differentiation functions, such as `differentiate` or `fit_quadratic`.
     """
     if N < 2:
         raise ValueError(f"`hifi_differentiate` requires N ≥ 2; got {N}.")
-    if mode not in ("differentiate", "differentiate2"):
-        raise ValueError(f"`mode` must be one of 'differentiate' or 'differentiate2', got '{mode}'.")
-    if mode == "differentiate":
-        doit = differentiate
-    else:  # mode == "differentiate2":
-        doit = differentiate2
 
     intarray = lambda x: np.array(x, dtype=int)
     ny, nx = tf.shape(Z).numpy()
 
     interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                           for ix in range(-N, N + 1)])
-    interior = doit(N=None, X=X, Y=Y, Z=Z, padding="VALID", stencil=interior_stencil)
+    interior = kernel(N=None, X=X, Y=Y, Z=Z, padding="VALID", stencil=interior_stencil)
     assert (tf.shape(interior).numpy()[1:] == (ny - 2 * N, nx - 2 * N)).all(), tf.shape(interior)
 
     top_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
                                      for ix in range(-N, N + 1)])
-    top = doit(N=None, X=X[:(2 * N), :], Y=Y[:(2 * N), :], Z=Z[:(2 * N), :], padding="VALID", stencil=top_stencil)
+    top = kernel(N=None, X=X[:(2 * N), :], Y=Y[:(2 * N), :], Z=Z[:(2 * N), :], padding="VALID", stencil=top_stencil)
     assert (tf.shape(top).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(top)
 
     bottom_stencil = intarray([[iy, ix] for iy in range(-N, 1)
                                         for ix in range(-N, N + 1)])
-    bottom = doit(N=None, X=X[-(2 * N):, :], Y=Y[-(2 * N):, :], Z=Z[-(2 * N):, :], padding="VALID", stencil=bottom_stencil)
+    bottom = kernel(N=None, X=X[-(2 * N):, :], Y=Y[-(2 * N):, :], Z=Z[-(2 * N):, :], padding="VALID", stencil=bottom_stencil)
     assert (tf.shape(bottom).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(bottom)
 
     left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                       for ix in range(0, N + 1)])
-    left = doit(N=None, X=X[:, :(2 * N)], Y=Y[:, :(2 * N)], Z=Z[:, :(2 * N)], padding="VALID", stencil=left_stencil)
+    left = kernel(N=None, X=X[:, :(2 * N)], Y=Y[:, :(2 * N)], Z=Z[:, :(2 * N)], padding="VALID", stencil=left_stencil)
     assert (tf.shape(left).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(left)
 
     right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                        for ix in range(-N, 1)])
-    right = doit(N=None, X=X[:, -(2 * N):], Y=Y[:, -(2 * N):], Z=Z[:, -(2 * N):], padding="VALID", stencil=right_stencil)
+    right = kernel(N=None, X=X[:, -(2 * N):], Y=Y[:, -(2 * N):], Z=Z[:, -(2 * N):], padding="VALID", stencil=right_stencil)
     assert (tf.shape(right).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(right)
 
     ul_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
                                     for ix in range(0, N + 1)])
-    ul = doit(N=None, X=X[:(2 * N), :(2 * N)], Y=Y[:(2 * N), :(2 * N)], Z=Z[:(2 * N), :(2 * N)], padding="VALID", stencil=ul_stencil)
+    ul = kernel(N=None, X=X[:(2 * N), :(2 * N)], Y=Y[:(2 * N), :(2 * N)], Z=Z[:(2 * N), :(2 * N)], padding="VALID", stencil=ul_stencil)
     assert (tf.shape(ul).numpy()[1:] == (N, N)).all(), tf.shape(ul)
 
     ur_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
                                     for ix in range(-N, 1)])
-    ur = doit(N=None, X=X[:(2 * N), -(2 * N):], Y=Y[:(2 * N), -(2 * N):], Z=Z[:(2 * N), -(2 * N):], padding="VALID", stencil=ur_stencil)
+    ur = kernel(N=None, X=X[:(2 * N), -(2 * N):], Y=Y[:(2 * N), -(2 * N):], Z=Z[:(2 * N), -(2 * N):], padding="VALID", stencil=ur_stencil)
     assert (tf.shape(ur).numpy()[1:] == (N, N)).all(), tf.shape(ur)
 
     ll_stencil = intarray([[iy, ix] for iy in range(-N, 1)
                                     for ix in range(0, N + 1)])
-    ll = doit(N=None, X=X[-(2 * N):, :(2 * N)], Y=Y[-(2 * N):, :(2 * N)], Z=Z[-(2 * N):, :(2 * N)], padding="VALID", stencil=ll_stencil)
+    ll = kernel(N=None, X=X[-(2 * N):, :(2 * N)], Y=Y[-(2 * N):, :(2 * N)], Z=Z[-(2 * N):, :(2 * N)], padding="VALID", stencil=ll_stencil)
     assert (tf.shape(ll).numpy()[1:] == (N, N)).all(), tf.shape(ll)
 
     lr_stencil = intarray([[iy, ix] for iy in range(-N, 1)
                                     for ix in range(-N, 1)])
-    lr = doit(N=None, X=X[-(2 * N):, -(2 * N):], Y=Y[-(2 * N):, -(2 * N):], Z=Z[-(2 * N):, -(2 * N):], padding="VALID", stencil=lr_stencil)
+    lr = kernel(N=None, X=X[-(2 * N):, -(2 * N):], Y=Y[-(2 * N):, -(2 * N):], Z=Z[-(2 * N):, -(2 * N):], padding="VALID", stencil=lr_stencil)
     assert (tf.shape(lr).numpy()[1:] == (N, N)).all(), tf.shape(lr)
 
     # Assemble the output.
@@ -1007,19 +1215,16 @@ def hifier_differentiate(N: int,
                          Y: typing.Union[np.array, tf.Tensor],
                          Z: typing.Union[np.array, tf.Tensor],
                          *,
-                         mode: str = "differentiate"):
-    """Like `hifi_differentiate`, but with specialized stencils for each row/column near the edge, to use all of the data.
+                         kernel: typing.Callable = differentiate):
+    """[high-level] Like `hifi_differentiate`, but with specialized stencils for each row/column near the edge.
 
-    This is slower, but much more accurate near the edges for noisy data.
+    This is slower, but uses all the data near the edges, for a much more accurate estimate especially
+    when the data is noisy.
+
+    At the corners, we do a simple approximation based on averaging the two applicable edge handlers at each corner.
     """
     if N < 2:
         raise ValueError(f"`hifi_differentiate` requires N ≥ 2; got {N}.")
-    if mode not in ("differentiate", "differentiate2"):
-        raise ValueError(f"`mode` must be one of 'differentiate' or 'differentiate2', got '{mode}'.")
-    if mode == "differentiate":
-        doit = differentiate
-    else:  # mode == "differentiate2":
-        doit = differentiate2
 
     intarray = lambda x: np.array(x, dtype=int)
     ny, nx = tf.shape(Z).numpy()
@@ -1027,7 +1232,7 @@ def hifier_differentiate(N: int,
     # The interior can be handled uniformly, so it costs just one differentiator dispatch (for a large amount of data).
     interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                           for ix in range(-N, N + 1)])
-    interior = doit(N=None, X=X, Y=Y, Z=Z, padding="VALID", stencil=interior_stencil)
+    interior = kernel(N=None, X=X, Y=Y, Z=Z, padding="VALID", stencil=interior_stencil)
     assert (tf.shape(interior).numpy()[1:] == (ny - 2 * N, nx - 2 * N)).all(), tf.shape(interior)
 
     # Treat the edges.
@@ -1049,11 +1254,11 @@ def hifier_differentiate(N: int,
         for row in range(N):
             top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
                                              for ix in range(ix_start, ix_stop)])
-            this_row = doit(N=None,
-                            X=X[:(N + row + 1), datax_start:datax_stop],
-                            Y=Y[:(N + row + 1), datax_start:datax_stop],
-                            Z=Z[:(N + row + 1), datax_start:datax_stop],
-                            padding="VALID", stencil=top_stencil)
+            this_row = kernel(N=None,
+                              X=X[:(N + row + 1), datax_start:datax_stop],
+                              Y=Y[:(N + row + 1), datax_start:datax_stop],
+                              Z=Z[:(N + row + 1), datax_start:datax_stop],
+                              padding="VALID", stencil=top_stencil)
             assert tf.shape(this_row).numpy()[1] == 1, tf.shape(this_row)  # one row
             rows.append(this_row)
         return tf.concat(rows, axis=1)
@@ -1065,11 +1270,11 @@ def hifier_differentiate(N: int,
         for row in range(-N, 0):
             bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
                                                 for ix in range(ix_start, ix_stop)])
-            this_row = doit(N=None,
-                            X=X[-(N - row):, datax_start:datax_stop],
-                            Y=Y[-(N - row):, datax_start:datax_stop],
-                            Z=Z[-(N - row):, datax_start:datax_stop],
-                            padding="VALID", stencil=bottom_stencil)
+            this_row = kernel(N=None,
+                              X=X[-(N - row):, datax_start:datax_stop],
+                              Y=Y[-(N - row):, datax_start:datax_stop],
+                              Z=Z[-(N - row):, datax_start:datax_stop],
+                              padding="VALID", stencil=bottom_stencil)
             assert tf.shape(this_row).numpy()[1] == 1, tf.shape(this_row)  # one row
             rows.append(this_row)
         return tf.concat(rows, axis=1)
@@ -1087,11 +1292,11 @@ def hifier_differentiate(N: int,
         for col in range(N):
             left_stencil = intarray([[iy, ix] for iy in range(iy_start, iy_stop)
                                               for ix in range(-col, N + 1)])
-            this_col = doit(N=None,
-                            X=X[datay_start:datay_stop, :(N + col + 1)],
-                            Y=Y[datay_start:datay_stop, :(N + col + 1)],
-                            Z=Z[datay_start:datay_stop, :(N + col + 1)],
-                            padding="VALID", stencil=left_stencil)
+            this_col = kernel(N=None,
+                              X=X[datay_start:datay_stop, :(N + col + 1)],
+                              Y=Y[datay_start:datay_stop, :(N + col + 1)],
+                              Z=Z[datay_start:datay_stop, :(N + col + 1)],
+                              padding="VALID", stencil=left_stencil)
             assert tf.shape(this_col).numpy()[2] == 1, tf.shape(this_col)  # one column
             cols.append(this_col)
         return tf.concat(cols, axis=2)
@@ -1103,11 +1308,11 @@ def hifier_differentiate(N: int,
         for col in range(-N, 0):
             right_stencil = intarray([[iy, ix] for iy in range(iy_start, iy_stop)
                                                for ix in range(-N, -col)])
-            this_col = doit(N=None,
-                            X=X[datay_start:datay_stop, -(N - col):],
-                            Y=Y[datay_start:datay_stop, -(N - col):],
-                            Z=Z[datay_start:datay_stop, -(N - col):],
-                            padding="VALID", stencil=right_stencil)
+            this_col = kernel(N=None,
+                              X=X[datay_start:datay_stop, -(N - col):],
+                              Y=Y[datay_start:datay_stop, -(N - col):],
+                              Z=Z[datay_start:datay_stop, -(N - col):],
+                              padding="VALID", stencil=right_stencil)
             assert tf.shape(this_col).numpy()[2] == 1, tf.shape(this_col)  # one column
             cols.append(this_col)
         return tf.concat(cols, axis=2)
@@ -1250,14 +1455,14 @@ def main():
     def denoise(N, X, Y, Z):
         # denoise by least squares
         for _ in range(denoise_steps):
-            tmp = hifier_differentiate(N, X, Y, Z, mode="differentiate2")
-            Z = tmp[coeffs2["f"]]
+            tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_linear)
+            Z = tmp[coeffs_full["f"]]
 
-        # denoise by Friedrichs smoothing
-        for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
-            # print(f"    step {_ + 1} of {denoise_steps}...")
-            Z = friedrichs_smooth_2d(N, Z, padding="SAME")
-            # X, Y = chop_edges(N, X, Y)
+        # # denoise by Friedrichs smoothing
+        # for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
+        #     # print(f"    step {_ + 1} of {denoise_steps}...")
+        #     Z = friedrichs_smooth_2d(N, Z, padding="SAME")
+        #     # X, Y = chop_edges(N, X, Y)
 
         return Z
 
@@ -1276,8 +1481,8 @@ def main():
         # matching the true noise level.
         print("Test: estimate noise level...")
         with timer() as tim:
-            tmp = hifier_differentiate(N, X, Y, Z, mode="differentiate2")
-            noise_estimate = Z - tmp[coeffs2["f"], :]
+            tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
+            noise_estimate = Z - tmp[coeffs_full["f"], :]
             del tmp
             estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
             true_noise_RMS = np.mean(noise**2)**0.5  # ground truth
@@ -1302,8 +1507,8 @@ def main():
 
     # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
     print("Smoothed second derivatives:")
-    dzdx = dZ[coeffs["dx"], :]
-    dzdy = dZ[coeffs["dy"], :]
+    dzdx = dZ[coeffs_diffonly["dx"], :]
+    dzdy = dZ[coeffs_diffonly["dy"], :]
     if σ > 0:
         print("    Denoise first derivatives...")
         with timer() as tim:
@@ -1319,10 +1524,10 @@ def main():
         X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
     print(f"        Done in {tim.dt:0.6g}s.")
 
-    d2zdx2 = ddzdx[coeffs["dx"], :]
-    d2zdxdy = ddzdx[coeffs["dy"], :]
-    d2zdydx = ddzdy[coeffs["dx"], :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
-    d2zdy2 = ddzdy[coeffs["dy"], :]
+    d2zdx2 = ddzdx[coeffs_diffonly["dx"], :]
+    d2zdxdy = ddzdx[coeffs_diffonly["dy"], :]
+    d2zdydx = ddzdy[coeffs_diffonly["dx"], :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
+    d2zdy2 = ddzdy[coeffs_diffonly["dy"], :]
     if σ > 0:
         print("    Denoise obtained second derivatives...")
         with timer() as tim:
@@ -1388,9 +1593,9 @@ def main():
         print(f"max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
 
         all_axes = [ax]
-        for idx, key in enumerate(coeffs.keys(), start=2):
+        for idx, key in enumerate(coeffs_diffonly.keys(), start=2):
             ax = fig.add_subplot(2, 3, idx, projection="3d")
-            surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs[key], :, :])  # noqa: F841  # , linewidth=0, antialiased=False
+            surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly[key], :, :])  # noqa: F841  # , linewidth=0, antialiased=False
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             ax.set_zlabel("z")
@@ -1398,7 +1603,7 @@ def main():
             all_axes.append(ax)
 
             ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
-            max_l1_error = np.max(np.abs(dZ[coeffs[key], :, :] - ground_truth))
+            max_l1_error = np.max(np.abs(dZ[coeffs_diffonly[key], :, :] - ground_truth))
             print(f"max absolute l1 error {key} = {max_l1_error:0.3g}")
         fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
         link_3d_subplot_cameras(fig, all_axes)
@@ -1413,11 +1618,11 @@ def main():
             ax.set_aspect("equal")
             ax.set_title(title)
         plot_one(axs[0, 0], X, Y, Z - ground_truth_functions["f"](X, Y), "f")
-        plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
-        plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
-        plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")
-        plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ), "dxdy")
-        plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ), "dy2")
+        plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
+        plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
+        plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")
+        plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ), "dxdy")
+        plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ), "dy2")
         plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (smoothed)")
         plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (smoothed)")
         plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (smoothed)")
