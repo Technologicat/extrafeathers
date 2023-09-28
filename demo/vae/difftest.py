@@ -1420,8 +1420,8 @@ def main():
     # Set up an expression to generate test data
 
     x, y = sy.symbols("x, y")
-    # expr = sy.sin(x) * sy.cos(y)
-    expr = x**2 + y
+    expr = sy.sin(x) * sy.cos(y)
+    # expr = x**2 + y
 
     # --------------------------------------------------------------------------------
     # Compute the test data
