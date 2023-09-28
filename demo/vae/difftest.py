@@ -1388,25 +1388,38 @@ def main():
     # --------------------------------------------------------------------------------
     # Parameters
 
-    # `N`: neighborhood size parameter (how many grid spacings on each axis) for surrogate fitting
+    # `N`: neighborhood size parameter (radius in grid units) for surrogate fitting
     # `σ`: optional (set to 0 to disable): stdev for simulated i.i.d. gaussian noise in data
-    # N, σ = 2, 0.0001
-    # N, σ = 3, 0.001
+
+    # Currently, 8 is the largest numerically stable neighborhood size, and yields the best results for noisy data.
     N, σ = 8, 0.001
+
+    # # 3 seems enough when the data is numerically exact.
     # N, σ = 3, 0.0
-    xx = np.linspace(0, np.pi, 512)
-    yy = xx
+
+    # This demo seems to yield best results (least l1 error) at 256 pixels per axis.
+    #
+    # This is still horribly slow despite GPU acceleration. Performance is currently CPU-bound. Even at 512 resolution,
+    # GPU utilization is under 20% (according to `nvtop`), and there is barely any noticeable difference in the surrogate
+    # fitting speed. At 768 or 1024, cuBLAS errors out (cuBlas call failed status = 14 [Op:MatrixSolve]) on Quadro RTX 3000 mobile
+    # (RTX 2xxx based chip, 6 GB VRAM).
+    #
+    # Currently I don't know why - there should be no difference other than the batch size (the whole image is sent in one batch).
+    # Solving a linear system with 1024 unknowns should hardly take gigabytes of VRAM even at float32.
+    resolution = 256
 
     # If σ > 0, how many times to loop the denoiser.
     # If σ = 0, denoising is skipped, and this setting has no effect.
+    #
+    # For N = 8, σ = 0.001, resolution = 256, it seems 10 steps is the smallest number that yields acceptable results.
     denoise_steps = 10
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
 
     x, y = sy.symbols("x, y")
-    expr = sy.sin(x) * sy.cos(y)
-    # expr = x**2 + y
+    # expr = sy.sin(x) * sy.cos(y)
+    expr = x**2 + y
 
     # --------------------------------------------------------------------------------
     # Compute the test data
@@ -1427,6 +1440,8 @@ def main():
         d2fdxdy = sy.lambdify((x, y), d2fdxdy_expr)
         d2fdy2 = sy.lambdify((x, y), d2fdy2_expr)
 
+        xx = np.linspace(0, np.pi, resolution)
+        yy = xx
         f = sy.lambdify((x, y), expr)
         ground_truth_functions = {"f": f, "dx": dfdx, "dy": dfdy, "dx2": d2fdx2, "dxdy": d2fdxdy, "dy2": d2fdy2}
 
