@@ -537,7 +537,7 @@ def differentiate(N: typing.Optional[int],
                   Z: typing.Union[np.array, tf.Tensor],
                   *,
                   padding: str,
-                  stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
+                  stencil: np.array = None) -> tf.Tensor:
     """[kernel] Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
 
     Each data point is associated with a local quadratic model.
@@ -553,7 +553,7 @@ def differentiate(N: typing.Optional[int],
         "SAME": Preserve data tensor dimensions. Automatically use local extrapolation to estimate
                 `X`, `Y`, and `Z` outside the edges.
 
-    `stencil`: Optional: list of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
+    `stencil`: Optional: rank-2 np.array of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
                This explicitly specifies which grid points to include to estimate the local model.
 
                When specified:
@@ -777,7 +777,7 @@ def fit_quadratic(N: typing.Optional[int],
                   Z: typing.Union[np.array, tf.Tensor],
                   *,
                   padding: str,
-                  stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
+                  stencil: np.array = None) -> tf.Tensor:
     """[kernel] Like `differentiate`, but fit function values too.
 
     Each data point is associated with a local quadratic model.
@@ -795,7 +795,7 @@ def fit_quadratic(N: typing.Optional[int],
         "SAME": Preserve data tensor dimensions. Automatically use local extrapolation to estimate
                 `X`, `Y`, and `Z` outside the edges.
 
-    `stencil`: Optional: list of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
+    `stencil`: Optional: rank-2 np.array of integer offsets `[[Δx0, Δy0], [Δx1, Δy1], ...]`, in grid units.
                This explicitly specifies which grid points to include to estimate the local model.
 
                When specified:
@@ -931,7 +931,7 @@ def fit_linear(N: typing.Optional[int],
                Z: typing.Union[np.array, tf.Tensor],
                *,
                padding: str,
-               stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
+               stencil: np.array = None) -> tf.Tensor:
     """[kernel] Like `fit_quadratic`, but fit function values and first derivatives only.
 
     Each data point is associated with a local linear model.
@@ -1035,7 +1035,7 @@ def fit_constant(N: typing.Optional[int],
                  Z: typing.Union[np.array, tf.Tensor],
                  *,
                  padding: str,
-                 stencil: typing.Optional[typing.List[typing.List[int]]] = None) -> tf.Tensor:
+                 stencil: np.array = None) -> tf.Tensor:
     """[kernel] Like `fit_quadratic`, but fit function values only.
 
     Each data point is associated with a local constant model.
