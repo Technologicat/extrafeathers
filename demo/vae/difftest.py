@@ -581,10 +581,10 @@ def differentiate(N: typing.Optional[int],
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
     for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
-        shape = tf.shape(tensor).numpy()
+        shape = tf.shape(tensor)
         if len(shape) != 2:
             raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
-        if not (shape[0] >= 2 and shape[1] >= 2):
+        if not (int(shape[0]) >= 2 and int(shape[1]) >= 2):
             raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
 
     # Generic offset distance stencil for all neighbors.
@@ -823,11 +823,11 @@ def fit_quadratic(N: typing.Optional[int],
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
     for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
-        shape = tf.shape(tensor).numpy()
+        shape = tf.shape(tensor)
         if len(shape) != 2:
             raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
-        if not (shape[0] >= 2 and shape[1] >= 2):
-            raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
+        if not (int(shape[0]) >= 2 and int(shape[1]) >= 2):
+            raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {repr(shape)}")
 
     neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
     min_yoffs = np.min(neighbors[:, 0])
@@ -955,10 +955,10 @@ def fit_linear(N: typing.Optional[int],
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
     for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
-        shape = tf.shape(tensor).numpy()
+        shape = tf.shape(tensor)
         if len(shape) != 2:
             raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
-        if not (shape[0] >= 2 and shape[1] >= 2):
+        if not (int(shape[0]) >= 2 and int(shape[1]) >= 2):
             raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
 
     neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
@@ -1059,10 +1059,10 @@ def fit_constant(N: typing.Optional[int],
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
     for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
-        shape = tf.shape(tensor).numpy()
+        shape = tf.shape(tensor)
         if len(shape) != 2:
             raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
-        if not (shape[0] >= 2 and shape[1] >= 2):
+        if not (int(shape[0]) >= 2 and int(shape[1]) >= 2):
             raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
 
     neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
