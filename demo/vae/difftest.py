@@ -1506,7 +1506,23 @@ def main():
         X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
     print(f"    Done in {tim.dt:0.6g}s.")
 
-    # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
+    # # Just denoising the second derivatives doesn't improve their quality much.
+    # d2zdx2 = dZ[coeffs_diffonly["dx2"], :]
+    # d2zdxdy = dZ[coeffs_diffonly["dxdy"], :]
+    # d2zdy2 = dZ[coeffs_diffonly["dy2"], :]
+    # X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
+    # if σ > 0:
+    #     print("    Denoise second derivatives...")
+    #     with timer() as tim:
+    #         d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2)
+    #         d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy)
+    #         d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
+    #     print(f"        Done in {tim.dt:0.6g}s.")
+    # d2cross = d2zdxdy
+
+    # To improve second derivative quality for noisy data, we can first compute first derivatives by wlsqm,
+    # and then chain the method, with denoising between differentiations. In this variant, a final denoising
+    # step also helps.
     print("Smoothed second derivatives:")
     dzdx = dZ[coeffs_diffonly["dx"], :]
     dzdy = dZ[coeffs_diffonly["dy"], :]
@@ -1538,6 +1554,8 @@ def main():
             d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
         print(f"        Done in {tim.dt:0.6g}s.")
 
+    d2cross = (d2zdxdy + d2zdydx) / 2.0
+
     # --------------------------------------------------------------------------------
     # Plot the results
 
@@ -1555,7 +1573,6 @@ def main():
         print(f"    max absolute l1 error dx2 (smoothed) = {max_l1_error:0.3g}")
 
         ax2 = fig.add_subplot(1, 3, 2, projection="3d")
-        d2cross = (d2zdxdy + d2zdydx) / 2.0
         surf = ax2.plot_surface(X_for_dZ2, Y_for_dZ2, d2cross)
         ax2.set_xlabel("x")
         ax2.set_ylabel("y")
