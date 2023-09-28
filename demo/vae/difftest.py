@@ -1551,7 +1551,7 @@ def main():
         ax1.set_title("d2f/dx2")
         ground_truth = ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2)
         max_l1_error = np.max(np.abs(ground_truth - d2zdx2))
-        print(f"max absolute l1 error dx2 (smoothed) = {max_l1_error:0.3g}")
+        print(f"    max absolute l1 error dx2 (smoothed) = {max_l1_error:0.3g}")
 
         ax2 = fig.add_subplot(1, 3, 2, projection="3d")
         d2cross = (d2zdxdy + d2zdydx) / 2.0
@@ -1562,7 +1562,7 @@ def main():
         ax2.set_title("d2f/dxdy")
         ground_truth = ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2)
         max_l1_error = np.max(np.abs(ground_truth - d2cross))
-        print(f"max absolute l1 error dxdy (smoothed) = {max_l1_error:0.3g}")
+        print(f"    max absolute l1 error dxdy (smoothed) = {max_l1_error:0.3g}")
 
         ax3 = fig.add_subplot(1, 3, 3, projection="3d")
         surf = ax3.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdy2)
@@ -1572,7 +1572,7 @@ def main():
         ax3.set_title("d2f/dy2")
         ground_truth = ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)
         max_l1_error = np.max(np.abs(ground_truth - d2zdy2))
-        print(f"max absolute l1 error dy2 (smoothed) = {max_l1_error:0.3g}")
+        print(f"    max absolute l1 error dy2 (smoothed) = {max_l1_error:0.3g}")
 
         fig.suptitle(f"Local quadratic surrogate fit, smoothed second derivatives, noise σ = {σ:0.3g}")
         link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
@@ -1590,7 +1590,7 @@ def main():
 
         ground_truth = ground_truth_functions["f"](X, Y)
         max_l1_error = np.max(np.abs(Z - ground_truth))
-        print(f"max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
+        print(f"    max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
 
         all_axes = [ax]
         for idx, key in enumerate(coeffs_diffonly.keys(), start=2):
@@ -1604,7 +1604,7 @@ def main():
 
             ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
             max_l1_error = np.max(np.abs(dZ[coeffs_diffonly[key], :, :] - ground_truth))
-            print(f"max absolute l1 error {key} = {max_l1_error:0.3g}")
+            print(f"    max absolute l1 error {key} = {max_l1_error:0.3g}")
         fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
         link_3d_subplot_cameras(fig, all_axes)
 
