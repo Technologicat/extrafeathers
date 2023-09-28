@@ -1190,7 +1190,7 @@ def main():
     xx = np.linspace(0, np.pi, 512)
     yy = xx
 
-    # If σ > 0, how many times to loop the Friedrichs denoiser.
+    # If σ > 0, how many times to loop the denoiser.
     # If σ = 0, denoising is skipped, and this setting has no effect.
     denoise_steps = 10
 
