@@ -1022,14 +1022,17 @@ def hifier_differentiate(N: int,
     intarray = lambda x: np.array(x, dtype=int)
     ny, nx = tf.shape(Z).numpy()
 
+    # The interior can be handled uniformly, so it costs just one differentiator dispatch (for a large amount of data).
     interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                           for ix in range(-N, N + 1)])
     interior = doit(N=None, X=X, Y=Y, Z=Z, padding="VALID", stencil=interior_stencil)
     assert (tf.shape(interior).numpy()[1:] == (ny - 2 * N, nx - 2 * N)).all(), tf.shape(interior)
 
+    # Treat the edges.
+    #
     # E.g. for N = 2 at the top edge, we can customize the stencil for each row like this:
     #
-    #   row 0  row 1  row 2 ...
+    #   row 0  row 1  row 2 ... (look as much up as we have data available)
     #   ++x++  +++++  +++++
     #   +++++  ++x++  +++++
     #   +++++  +++++  ++x++
@@ -1037,6 +1040,7 @@ def hifier_differentiate(N: int,
     #                 +++++
     #
     # Compare `hifi_differentiate`, which uses the "row 0" type of stencil for all rows near the upper edge.
+    # Our strategy costs N differentiator dispatches per edge.
     #
     def treat_top(ix_start=-N, ix_stop=N + 1, datax_start=0, datax_stop=None):
         rows = []
@@ -1070,6 +1074,12 @@ def hifier_differentiate(N: int,
     bottom = treat_bottom()
     assert (tf.shape(bottom).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(bottom)
 
+    #  col0  col1  col2  ... (look as much to the left as we have data available)
+    #   +++  ++++  +++++
+    #   +++  ++++  +++++
+    #   x++  +x++  ++x++
+    #   +++  ++++  +++++
+    #   +++  ++++  +++++
     def treat_left(iy_start=-N, iy_stop=N + 1, datay_start=0, datay_stop=None):
         cols = []
         for col in range(N):
