@@ -19,6 +19,8 @@ We need only the very basics here. A complete Cython implementation of WLSQM, an
 
 import typing
 
+from unpythonic import timer
+
 import numpy as np
 import sympy as sy
 import tensorflow as tf
@@ -1206,24 +1208,26 @@ def main():
 
     print("Setup...")
 
-    # Differentiate symbolically to obtain ground truths for the jacobian and hessian to benchmark against.
-    dfdx_expr = sy.diff(expr, x, 1)
-    dfdy_expr = sy.diff(expr, y, 1)
-    d2fdx2_expr = sy.diff(expr, x, 2)
-    d2fdxdy_expr = sy.diff(sy.diff(expr, x, 1), y, 1)
-    d2fdy2_expr = sy.diff(expr, y, 2)
+    with timer() as tim:
+        # Differentiate symbolically to obtain ground truths for the jacobian and hessian to benchmark against.
+        dfdx_expr = sy.diff(expr, x, 1)
+        dfdy_expr = sy.diff(expr, y, 1)
+        d2fdx2_expr = sy.diff(expr, x, 2)
+        d2fdxdy_expr = sy.diff(sy.diff(expr, x, 1), y, 1)
+        d2fdy2_expr = sy.diff(expr, y, 2)
 
-    dfdx = sy.lambdify((x, y), dfdx_expr)
-    dfdy = sy.lambdify((x, y), dfdy_expr)
-    d2fdx2 = sy.lambdify((x, y), d2fdx2_expr)
-    d2fdxdy = sy.lambdify((x, y), d2fdxdy_expr)
-    d2fdy2 = sy.lambdify((x, y), d2fdy2_expr)
+        dfdx = sy.lambdify((x, y), dfdx_expr)
+        dfdy = sy.lambdify((x, y), dfdy_expr)
+        d2fdx2 = sy.lambdify((x, y), d2fdx2_expr)
+        d2fdxdy = sy.lambdify((x, y), d2fdxdy_expr)
+        d2fdy2 = sy.lambdify((x, y), d2fdy2_expr)
 
-    f = sy.lambdify((x, y), expr)
-    ground_truth_functions = {"f": f, "dx": dfdx, "dy": dfdy, "dx2": d2fdx2, "dxdy": d2fdxdy, "dy2": d2fdy2}
+        f = sy.lambdify((x, y), expr)
+        ground_truth_functions = {"f": f, "dx": dfdx, "dy": dfdy, "dx2": d2fdx2, "dxdy": d2fdxdy, "dy2": d2fdy2}
 
-    X, Y = np.meshgrid(xx, yy)
-    Z = f(X, Y)
+        X, Y = np.meshgrid(xx, yy)
+        Z = f(X, Y)
+    print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
@@ -1258,35 +1262,43 @@ def main():
         return Z
 
     if σ > 0:
-        # Corrupt the data with synthetic noise...
+        # Corrupt the data with synthetic noise.
         print("Add synthetic noise...")
-        noise = np.random.normal(loc=0.0, scale=σ, size=np.shape(X))
-        Z += noise
+        with timer() as tim:
+            noise = np.random.normal(loc=0.0, scale=σ, size=np.shape(X))
+            Z += noise
+        print(f"    Done in {tim.dt:0.6g}s.")
 
-        # ...and then attempt to remove the noise.
-        print("Denoise function values...")
-
-        # But first, let's estimate the amount of noise.
+        # Estimate the amount of noise.
         # Note we only need the noisy data to compute the estimate. We do this by least-squares fitting the function values.
         #
         # We see the estimate works pretty well - the detected RMS noise level is approximately the stdev of the gaussian synthetic noise,
         # matching the true noise level.
-        tmp = hifier_differentiate(N, X, Y, Z, mode="differentiate2")
-        noise_estimate = Z - tmp[coeffs2["f"], :]
-        del tmp
-        estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
-        true_noise_RMS = np.mean(noise**2)**0.5  # ground truth
+        print("Test: estimate noise level...")
+        with timer() as tim:
+            tmp = hifier_differentiate(N, X, Y, Z, mode="differentiate2")
+            noise_estimate = Z - tmp[coeffs2["f"], :]
+            del tmp
+            estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
+            true_noise_RMS = np.mean(noise**2)**0.5  # ground truth
+        print(f"    Done in {tim.dt:0.6g}s.")
         print(f"    Noise (RMS): estimated {estimated_noise_RMS:0.6g}, true {true_noise_RMS:0.6g}")
 
-        Z = denoise(N, X, Y, Z)
+        # ...and then attempt to remove the noise.
+        print("Denoise function values...")
+        with timer() as tim:
+            Z = denoise(N, X, Y, Z)
+        print(f"    Done in {tim.dt:0.6g}s.")
 
     # --------------------------------------------------------------------------------
     # Compute the derivatives.
 
-    print("Differentiating...")
-    dZ = hifier_differentiate(N, X, Y, Z)
-    # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
-    X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
+    print("Differentiate...")
+    with timer() as tim:
+        dZ = hifier_differentiate(N, X, Y, Z)
+        # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
+        X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
+    print(f"    Done in {tim.dt:0.6g}s.")
 
     # Idea: to improve second derivative quality for noisy data, use only first derivatives from wlsqm, and chain the method, with denoising between differentiations.
     print("Smoothed second derivatives:")
@@ -1294,14 +1306,18 @@ def main():
     dzdy = dZ[coeffs["dy"], :]
     if σ > 0:
         print("    Denoise first derivatives...")
-        dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx)
-        dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy)
+        with timer() as tim:
+            dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx)
+            dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy)
+        print(f"        Done in {tim.dt:0.6g}s.")
 
     print("    Differentiate denoised first derivatives...")
-    ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
-    ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
-    # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
-    X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
+    with timer() as tim:
+        ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
+        ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
+        # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
+        X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
+    print(f"        Done in {tim.dt:0.6g}s.")
 
     d2zdx2 = ddzdx[coeffs["dx"], :]
     d2zdxdy = ddzdx[coeffs["dy"], :]
@@ -1309,101 +1325,104 @@ def main():
     d2zdy2 = ddzdy[coeffs["dy"], :]
     if σ > 0:
         print("    Denoise obtained second derivatives...")
-        d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2)
-        d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy)
-        d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx)
-        d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
+        with timer() as tim:
+            d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2)
+            d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy)
+            d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx)
+            d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
+        print(f"        Done in {tim.dt:0.6g}s.")
 
     # --------------------------------------------------------------------------------
     # Plot the results
 
     print("Plotting.")
+    with timer() as tim:
+        fig = plt.figure(2)
+        ax1 = fig.add_subplot(1, 3, 1, projection="3d")
+        surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
+        ax1.set_xlabel("x")
+        ax1.set_ylabel("y")
+        ax1.set_zlabel("z")
+        ax1.set_title("d2f/dx2")
+        ground_truth = ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2)
+        max_l1_error = np.max(np.abs(ground_truth - d2zdx2))
+        print(f"max absolute l1 error dx2 (smoothed) = {max_l1_error:0.3g}")
 
-    fig = plt.figure(2)
-    ax1 = fig.add_subplot(1, 3, 1, projection="3d")
-    surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
-    ax1.set_xlabel("x")
-    ax1.set_ylabel("y")
-    ax1.set_zlabel("z")
-    ax1.set_title("d2f/dx2")
-    ground_truth = ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2)
-    max_l1_error = np.max(np.abs(ground_truth - d2zdx2))
-    print(f"max absolute l1 error dx2 (smoothed) = {max_l1_error:0.3g}")
+        ax2 = fig.add_subplot(1, 3, 2, projection="3d")
+        d2cross = (d2zdxdy + d2zdydx) / 2.0
+        surf = ax2.plot_surface(X_for_dZ2, Y_for_dZ2, d2cross)
+        ax2.set_xlabel("x")
+        ax2.set_ylabel("y")
+        ax2.set_zlabel("z")
+        ax2.set_title("d2f/dxdy")
+        ground_truth = ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2)
+        max_l1_error = np.max(np.abs(ground_truth - d2cross))
+        print(f"max absolute l1 error dxdy (smoothed) = {max_l1_error:0.3g}")
 
-    ax2 = fig.add_subplot(1, 3, 2, projection="3d")
-    d2cross = (d2zdxdy + d2zdydx) / 2.0
-    surf = ax2.plot_surface(X_for_dZ2, Y_for_dZ2, d2cross)
-    ax2.set_xlabel("x")
-    ax2.set_ylabel("y")
-    ax2.set_zlabel("z")
-    ax2.set_title("d2f/dxdy")
-    ground_truth = ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2)
-    max_l1_error = np.max(np.abs(ground_truth - d2cross))
-    print(f"max absolute l1 error dxdy (smoothed) = {max_l1_error:0.3g}")
+        ax3 = fig.add_subplot(1, 3, 3, projection="3d")
+        surf = ax3.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdy2)
+        ax3.set_xlabel("x")
+        ax3.set_ylabel("y")
+        ax3.set_zlabel("z")
+        ax3.set_title("d2f/dy2")
+        ground_truth = ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)
+        max_l1_error = np.max(np.abs(ground_truth - d2zdy2))
+        print(f"max absolute l1 error dy2 (smoothed) = {max_l1_error:0.3g}")
 
-    ax3 = fig.add_subplot(1, 3, 3, projection="3d")
-    surf = ax3.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdy2)
-    ax3.set_xlabel("x")
-    ax3.set_ylabel("y")
-    ax3.set_zlabel("z")
-    ax3.set_title("d2f/dy2")
-    ground_truth = ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)
-    max_l1_error = np.max(np.abs(ground_truth - d2zdy2))
-    print(f"max absolute l1 error dy2 (smoothed) = {max_l1_error:0.3g}")
+        fig.suptitle(f"Local quadratic surrogate fit, smoothed second derivatives, noise σ = {σ:0.3g}")
+        link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
 
-    fig.suptitle(f"Local quadratic surrogate fit, smoothed second derivatives, noise σ = {σ:0.3g}")
-    link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
-
-    # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
-    # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-    # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
-    fig = plt.figure(1)
-    ax = fig.add_subplot(2, 3, 1, projection="3d")
-    surf = ax.plot_surface(X, Y, Z)  # noqa: F841
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_zlabel("z")
-    ax.set_title("f")
-
-    ground_truth = ground_truth_functions["f"](X, Y)
-    max_l1_error = np.max(np.abs(Z - ground_truth))
-    print(f"max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
-
-    all_axes = [ax]
-    for idx, key in enumerate(coeffs.keys(), start=2):
-        ax = fig.add_subplot(2, 3, idx, projection="3d")
-        surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs[key], :, :])  # noqa: F841  # , linewidth=0, antialiased=False
+        # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
+        # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+        # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
+        fig = plt.figure(1)
+        ax = fig.add_subplot(2, 3, 1, projection="3d")
+        surf = ax.plot_surface(X, Y, Z)  # noqa: F841
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("z")
-        ax.set_title(key)
-        all_axes.append(ax)
+        ax.set_title("f")
 
-        ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
-        max_l1_error = np.max(np.abs(dZ[coeffs[key], :, :] - ground_truth))
-        print(f"max absolute l1 error {key} = {max_l1_error:0.3g}")
-    fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
-    link_3d_subplot_cameras(fig, all_axes)
+        ground_truth = ground_truth_functions["f"](X, Y)
+        max_l1_error = np.max(np.abs(Z - ground_truth))
+        print(f"max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
 
-    # l1 errors
-    fig, axs = plt.subplots(3, 3, figsize=(12, 12))
-    def plot_one(ax, X, Y, Z, title):
-        L, U = np.min(Z), np.max(Z)
-        v = max(abs(L), abs(U))
-        theplot = ax.pcolormesh(X, Y, Z, vmin=-v, vmax=v, cmap="RdBu_r")
-        fig.colorbar(theplot, ax=ax)
-        ax.set_aspect("equal")
-        ax.set_title(title)
-    plot_one(axs[0, 0], X, Y, Z - ground_truth_functions["f"](X, Y), "f")
-    plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
-    plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
-    plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")
-    plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ), "dxdy")
-    plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ), "dy2")
-    plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (smoothed)")
-    plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (smoothed)")
-    plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (smoothed)")
-    fig.suptitle("l1 error (fitted - ground truth)")
+        all_axes = [ax]
+        for idx, key in enumerate(coeffs.keys(), start=2):
+            ax = fig.add_subplot(2, 3, idx, projection="3d")
+            surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs[key], :, :])  # noqa: F841  # , linewidth=0, antialiased=False
+            ax.set_xlabel("x")
+            ax.set_ylabel("y")
+            ax.set_zlabel("z")
+            ax.set_title(key)
+            all_axes.append(ax)
+
+            ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
+            max_l1_error = np.max(np.abs(dZ[coeffs[key], :, :] - ground_truth))
+            print(f"max absolute l1 error {key} = {max_l1_error:0.3g}")
+        fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
+        link_3d_subplot_cameras(fig, all_axes)
+
+        # l1 errors
+        fig, axs = plt.subplots(3, 3, figsize=(12, 12))
+        def plot_one(ax, X, Y, Z, title):
+            L, U = np.min(Z), np.max(Z)
+            v = max(abs(L), abs(U))
+            theplot = ax.pcolormesh(X, Y, Z, vmin=-v, vmax=v, cmap="RdBu_r")
+            fig.colorbar(theplot, ax=ax)
+            ax.set_aspect("equal")
+            ax.set_title(title)
+        plot_one(axs[0, 0], X, Y, Z - ground_truth_functions["f"](X, Y), "f")
+        plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
+        plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
+        plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")
+        plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, dZ[coeffs["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ), "dxdy")
+        plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, dZ[coeffs["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ), "dy2")
+        plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (smoothed)")
+        plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (smoothed)")
+        plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (smoothed)")
+        fig.suptitle("l1 error (fitted - ground truth)")
+    print(f"    Done in {tim.dt:0.6g}s.")
 
 if __name__ == '__main__':
     main()
