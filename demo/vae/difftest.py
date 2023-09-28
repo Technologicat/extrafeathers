@@ -572,6 +572,12 @@ def differentiate(N: typing.Optional[int],
         X = pad_linear_2d(N, X)
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
+    for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
+        shape = tf.shape(tensor).numpy()
+        if len(shape) != 2:
+            raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
+        if not (shape[0] >= 2 and shape[1] >= 2):
+            raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
 
     # Generic offset distance stencil for all neighbors.
     neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
@@ -798,6 +804,12 @@ def differentiate2(N: typing.Optional[int],
         X = pad_linear_2d(N, X)
         Y = pad_linear_2d(N, Y)
         Z = pad_quadratic_2d(N, Z)
+    for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
+        shape = tf.shape(tensor).numpy()
+        if len(shape) != 2:
+            raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
+        if not (shape[0] >= 2 and shape[1] >= 2):
+            raise ValueError(f"Expected `{name}` to be at least of size [2 2]; got {shape}")
 
     neighbors = stencil if stencil is not None else make_stencil(N)  # [#k, 2]
     min_yoffs = np.min(neighbors[:, 0])
