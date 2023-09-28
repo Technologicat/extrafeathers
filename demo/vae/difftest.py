@@ -1455,14 +1455,15 @@ def main():
     def denoise(N, X, Y, Z):
         # denoise by least squares
         for _ in range(denoise_steps):
-            tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_linear)
+            print(f"    Least squares fitting: step {_ + 1} of {denoise_steps}...")
+            tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
             Z = tmp[coeffs_full["f"]]
 
-        # # denoise by Friedrichs smoothing
-        # for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
-        #     # print(f"    step {_ + 1} of {denoise_steps}...")
-        #     Z = friedrichs_smooth_2d(N, Z, padding="SAME")
-        #     # X, Y = chop_edges(N, X, Y)
+        # denoise by Friedrichs smoothing
+        for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
+            print(f"    Friedrichs smoother: step {_ + 1} of {denoise_steps}...")
+            Z = friedrichs_smooth_2d(N, Z, padding="SAME")
+            # X, Y = chop_edges(N, X, Y)
 
         return Z
 
