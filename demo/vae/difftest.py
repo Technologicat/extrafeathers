@@ -555,6 +555,9 @@ def differentiate(N: typing.Optional[int],
                  - This custom `stencil` is used instead of automatically constructing a centered stencil
                    based on the value of `N`.
                The position of the valid part is automatically determined based on the stencil.
+
+    Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
+    dx, dy, dx2, dxdy, dy2, in that order.
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
@@ -778,6 +781,9 @@ def differentiate2(N: typing.Optional[int],
                  - This custom `stencil` is used instead of automatically constructing a centered stencil
                    based on the value of `N`.
                The position of the valid part is automatically determined based on the stencil.
+
+    Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
+    f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     if padding.upper() not in ("VALID", "SAME"):
         raise ValueError(f"Invalid padding '{padding}'; valid choices: 'VALID', 'SAME'")
@@ -900,7 +906,7 @@ def hifi_differentiate(N: int,
     This combines the accuracy advantage of `padding="VALID"` with the range of `padding="SAME"`.
     The results won't be *fully* accurate near the edges, but they do come from the actual data,
     so in general they should be better than a simple quadratic extrapolation (which is what
-    `padding="SAME"` uses).
+    `differentiate` and `differentiate2` use when `padding="SAME"`).
 
     `N`: Neighborhood size; must be ≥ 2 to make the equation system solvable also near the corners.
          (There must be at least 6 points in the stencil for `differentiate`, 7 for `differentiate2`,
