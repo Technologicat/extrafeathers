@@ -1038,47 +1038,68 @@ def hifier_differentiate(N: int,
     #
     # Compare `hifi_differentiate`, which uses the "row 0" type of stencil for all rows near the upper edge.
     #
-    rows = []
-    for row in range(N):
-        top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
-                                         for ix in range(-N, N + 1)])
-        this_row = doit(N=None, X=X[:(N + row + 1), :], Y=Y[:(N + row + 1), :], Z=Z[:(N + row + 1), :], padding="VALID", stencil=top_stencil)
-        assert (tf.shape(this_row).numpy()[1:] == (1, nx - 2 * N)).all(), tf.shape(this_row)
-        rows.append(this_row)
-    top = tf.concat(rows, axis=1)
+    def treat_top(ix_start=-N, ix_stop=N + 1, datax_start=0, datax_stop=None):
+        rows = []
+        for row in range(N):
+            top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                             for ix in range(ix_start, ix_stop)])
+            this_row = doit(N=None,
+                            X=X[:(N + row + 1), datax_start:datax_stop],
+                            Y=Y[:(N + row + 1), datax_start:datax_stop],
+                            Z=Z[:(N + row + 1), datax_start:datax_stop],
+                            padding="VALID", stencil=top_stencil)
+            assert tf.shape(this_row).numpy()[1] == 1, tf.shape(this_row)  # one row
+            rows.append(this_row)
+        return tf.concat(rows, axis=1)
+    top = treat_top()
     assert (tf.shape(top).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(top)
 
-    # bottom
-    rows = []
-    for row in range(-N, 0):
-        bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
-                                            for ix in range(-N, N + 1)])
-        this_row = doit(N=None, X=X[-(N - row):, :], Y=Y[-(N - row):, :], Z=Z[-(N - row):, :], padding="VALID", stencil=bottom_stencil)
-        assert (tf.shape(this_row).numpy()[1:] == (1, nx - 2 * N)).all(), tf.shape(this_row)
-        rows.append(this_row)
-    bottom = tf.concat(rows, axis=1)
+    def treat_bottom(ix_start=-N, ix_stop=N + 1, datax_start=0, datax_stop=None):
+        rows = []
+        for row in range(-N, 0):
+            bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                                for ix in range(ix_start, ix_stop)])
+            this_row = doit(N=None,
+                            X=X[-(N - row):, datax_start:datax_stop],
+                            Y=Y[-(N - row):, datax_start:datax_stop],
+                            Z=Z[-(N - row):, datax_start:datax_stop],
+                            padding="VALID", stencil=bottom_stencil)
+            assert tf.shape(this_row).numpy()[1] == 1, tf.shape(this_row)  # one row
+            rows.append(this_row)
+        return tf.concat(rows, axis=1)
+    bottom = treat_bottom()
     assert (tf.shape(bottom).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(bottom)
 
-    # left
-    cols = []
-    for col in range(N):
-        left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                          for ix in range(-col, N + 1)])
-        this_col = doit(N=None, X=X[:, :(N + col + 1)], Y=Y[:, :(N + col + 1)], Z=Z[:, :(N + col + 1)], padding="VALID", stencil=left_stencil)
-        assert (tf.shape(this_col).numpy()[1:] == (nx - 2 * N, 1)).all(), tf.shape(this_col)
-        cols.append(this_col)
-    left = tf.concat(cols, axis=2)
+    def treat_left(iy_start=-N, iy_stop=N + 1, datay_start=0, datay_stop=None):
+        cols = []
+        for col in range(N):
+            left_stencil = intarray([[iy, ix] for iy in range(iy_start, iy_stop)
+                                              for ix in range(-col, N + 1)])
+            this_col = doit(N=None,
+                            X=X[datay_start:datay_stop, :(N + col + 1)],
+                            Y=Y[datay_start:datay_stop, :(N + col + 1)],
+                            Z=Z[datay_start:datay_stop, :(N + col + 1)],
+                            padding="VALID", stencil=left_stencil)
+            assert tf.shape(this_col).numpy()[2] == 1, tf.shape(this_col)  # one column
+            cols.append(this_col)
+        return tf.concat(cols, axis=2)
+    left = treat_left()
     assert (tf.shape(left).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(left)
 
-    # right
-    cols = []
-    for col in range(-N, 0):
-        right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                           for ix in range(-N, -col)])
-        this_col = doit(N=None, X=X[:, -(N - col):], Y=Y[:, -(N - col):], Z=Z[:, -(N - col):], padding="VALID", stencil=right_stencil)
-        assert (tf.shape(this_col).numpy()[1:] == (nx - 2 * N, 1)).all(), tf.shape(this_col)
-        cols.append(this_col)
-    right = tf.concat(cols, axis=2)
+    def treat_right(iy_start=-N, iy_stop=N + 1, datay_start=0, datay_stop=None):
+        cols = []
+        for col in range(-N, 0):
+            right_stencil = intarray([[iy, ix] for iy in range(iy_start, iy_stop)
+                                               for ix in range(-N, -col)])
+            this_col = doit(N=None,
+                            X=X[datay_start:datay_stop, -(N - col):],
+                            Y=Y[datay_start:datay_stop, -(N - col):],
+                            Z=Z[datay_start:datay_stop, -(N - col):],
+                            padding="VALID", stencil=right_stencil)
+            assert tf.shape(this_col).numpy()[2] == 1, tf.shape(this_col)  # one column
+            cols.append(this_col)
+        return tf.concat(cols, axis=2)
+    right = treat_right()
     assert (tf.shape(right).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(right)
 
     ul_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
