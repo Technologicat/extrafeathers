@@ -1000,6 +1000,122 @@ def hifi_differentiate(N: int,
     return padded
 
 
+def hifier_differentiate(N: int,
+                         X: typing.Union[np.array, tf.Tensor],
+                         Y: typing.Union[np.array, tf.Tensor],
+                         Z: typing.Union[np.array, tf.Tensor],
+                         *,
+                         mode: str = "differentiate"):
+    """Like `hifi_differentiate`, but with specialized stencils for each row/column near the edge, to use all of the data.
+
+    This is slower, but much more accurate near the edges for noisy data.
+    """
+    if N < 2:
+        raise ValueError(f"`hifi_differentiate` requires N ≥ 2; got {N}.")
+    if mode not in ("differentiate", "differentiate2"):
+        raise ValueError(f"`mode` must be one of 'differentiate' or 'differentiate2', got '{mode}'.")
+    if mode == "differentiate":
+        doit = differentiate
+    else:  # mode == "differentiate2":
+        doit = differentiate2
+
+    intarray = lambda x: np.array(x, dtype=int)
+    ny, nx = tf.shape(Z).numpy()
+
+    interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                          for ix in range(-N, N + 1)])
+    interior = doit(N=None, X=X, Y=Y, Z=Z, padding="VALID", stencil=interior_stencil)
+    assert (tf.shape(interior).numpy()[1:] == (ny - 2 * N, nx - 2 * N)).all(), tf.shape(interior)
+
+    # E.g. for N = 2 at the top edge, we can customize the stencil for each row like this:
+    #
+    #   row 0  row 1  row 2 ...
+    #   ++x++  +++++  +++++
+    #   +++++  ++x++  +++++
+    #   +++++  +++++  ++x++
+    #          +++++  +++++
+    #                 +++++
+    #
+    # Compare `hifi_differentiate`, which uses the "row 0" type of stencil for all rows near the upper edge.
+    #
+    rows = []
+    for row in range(N):
+        top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                         for ix in range(-N, N + 1)])
+        this_row = doit(N=None, X=X[:(N + row + 1), :], Y=Y[:(N + row + 1), :], Z=Z[:(N + row + 1), :], padding="VALID", stencil=top_stencil)
+        assert (tf.shape(this_row).numpy()[1:] == (1, nx - 2 * N)).all(), tf.shape(this_row)
+        rows.append(this_row)
+    top = tf.concat(rows, axis=1)
+    assert (tf.shape(top).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(top)
+
+    # bottom
+    rows = []
+    for row in range(-N, 0):
+        bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                            for ix in range(-N, N + 1)])
+        this_row = doit(N=None, X=X[-(N - row):, :], Y=Y[-(N - row):, :], Z=Z[-(N - row):, :], padding="VALID", stencil=bottom_stencil)
+        assert (tf.shape(this_row).numpy()[1:] == (1, nx - 2 * N)).all(), tf.shape(this_row)
+        rows.append(this_row)
+    bottom = tf.concat(rows, axis=1)
+    assert (tf.shape(bottom).numpy()[1:] == (N, nx - 2 * N)).all(), tf.shape(bottom)
+
+    # left
+    cols = []
+    for col in range(N):
+        left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                          for ix in range(-col, N + 1)])
+        this_col = doit(N=None, X=X[:, :(N + col + 1)], Y=Y[:, :(N + col + 1)], Z=Z[:, :(N + col + 1)], padding="VALID", stencil=left_stencil)
+        assert (tf.shape(this_col).numpy()[1:] == (nx - 2 * N, 1)).all(), tf.shape(this_col)
+        cols.append(this_col)
+    left = tf.concat(cols, axis=2)
+    assert (tf.shape(left).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(left)
+
+    # right
+    cols = []
+    for col in range(-N, 0):
+        right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                           for ix in range(-N, -col)])
+        this_col = doit(N=None, X=X[:, -(N - col):], Y=Y[:, -(N - col):], Z=Z[:, -(N - col):], padding="VALID", stencil=right_stencil)
+        assert (tf.shape(this_col).numpy()[1:] == (nx - 2 * N, 1)).all(), tf.shape(this_col)
+        cols.append(this_col)
+    right = tf.concat(cols, axis=2)
+    assert (tf.shape(right).numpy()[1:] == (ny - 2 * N, N)).all(), tf.shape(right)
+
+    ul_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
+                                    for ix in range(0, N + 1)])
+    ul = doit(N=None, X=X[:(2 * N), :(2 * N)], Y=Y[:(2 * N), :(2 * N)], Z=Z[:(2 * N), :(2 * N)], padding="VALID", stencil=ul_stencil)
+    assert (tf.shape(ul).numpy()[1:] == (N, N)).all(), tf.shape(ul)
+
+    ur_stencil = intarray([[iy, ix] for iy in range(0, N + 1)
+                                    for ix in range(-N, 1)])
+    ur = doit(N=None, X=X[:(2 * N), -(2 * N):], Y=Y[:(2 * N), -(2 * N):], Z=Z[:(2 * N), -(2 * N):], padding="VALID", stencil=ur_stencil)
+    assert (tf.shape(ur).numpy()[1:] == (N, N)).all(), tf.shape(ur)
+
+    ll_stencil = intarray([[iy, ix] for iy in range(-N, 1)
+                                    for ix in range(0, N + 1)])
+    ll = doit(N=None, X=X[-(2 * N):, :(2 * N)], Y=Y[-(2 * N):, :(2 * N)], Z=Z[-(2 * N):, :(2 * N)], padding="VALID", stencil=ll_stencil)
+    assert (tf.shape(ll).numpy()[1:] == (N, N)).all(), tf.shape(ll)
+
+    lr_stencil = intarray([[iy, ix] for iy in range(-N, 1)
+                                    for ix in range(-N, 1)])
+    lr = doit(N=None, X=X[-(2 * N):, -(2 * N):], Y=Y[-(2 * N):, -(2 * N):], Z=Z[-(2 * N):, -(2 * N):], padding="VALID", stencil=lr_stencil)
+    assert (tf.shape(lr).numpy()[1:] == (N, N)).all(), tf.shape(lr)
+
+    # Assemble the output.
+    # Data format is [channels, rows, columns].
+
+    # 1) Assemble padded top and bottom edges, with corners.
+    fulltop = tf.concat([ul, top, ur], axis=2)  # e.g. [[5, 10, 10], [5, 10, 236], [5, 10, 10]] -> [5, 10, 256]
+    fullbottom = tf.concat([ll, bottom, lr], axis=2)
+
+    # 2) Assemble middle part, padding left and right.
+    widened = tf.concat([left, interior, right], axis=2)  # e.g. [[5, 236, 10], [5, 236, 236], [5, 236, 10]] -> [5, 236, 256]
+
+    # 3) Assemble the final tensor.
+    padded = tf.concat([fulltop, widened, fullbottom], axis=1)  # e.g. [[5, 10, 256], [5, 236, 256], [5, 10, 256]] -> [5, 256, 256]
+    return padded
+
+
 # --------------------------------------------------------------------------------
 # Usage example
 
@@ -1072,7 +1188,7 @@ def main():
     def denoise(N, X, Y, Z):
         # denoise by least squares
         for _ in range(denoise_steps):
-            tmp = hifi_differentiate(N, X, Y, Z, mode="differentiate2")
+            tmp = hifier_differentiate(N, X, Y, Z, mode="differentiate2")
             Z = tmp[coeffs2["f"]]
 
         # denoise by Friedrichs smoothing
@@ -1097,7 +1213,7 @@ def main():
         #
         # We see the estimate works pretty well - the detected RMS noise level is approximately the stdev of the gaussian synthetic noise,
         # matching the true noise level.
-        tmp = hifi_differentiate(N, X, Y, Z, mode="differentiate2")
+        tmp = hifier_differentiate(N, X, Y, Z, mode="differentiate2")
         noise_estimate = Z - tmp[coeffs2["f"], :]
         del tmp
         estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
@@ -1110,7 +1226,7 @@ def main():
     # Compute the derivatives.
 
     print("Differentiating...")
-    dZ = hifi_differentiate(N, X, Y, Z)
+    dZ = hifier_differentiate(N, X, Y, Z)
     # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
     X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
 
@@ -1124,8 +1240,8 @@ def main():
         dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy)
 
     print("    Differentiate denoised first derivatives...")
-    ddzdx = hifi_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
-    ddzdy = hifi_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
+    ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
+    ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
     # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
     X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
 
