@@ -1399,11 +1399,13 @@ def main():
 
     # This demo seems to yield best results (least l1 error) at 256 pixels per axis.
     #
-    # This is still horribly slow despite GPU acceleration. Performance is currently CPU-bound. Even at 512 resolution,
-    # GPU utilization is under 20% (according to `nvtop`), and there is barely any noticeable difference in the surrogate
-    # fitting speed. At 768 or 1024, cuBLAS errors out (cuBlas call failed status = 14 [Op:MatrixSolve]) on Quadro RTX 3000 mobile
-    # (RTX 2xxx based chip, 6 GB VRAM).
+    # This is still horribly slow despite GPU acceleration. Performance is currently CPU-bound.
+    # Denoising is the performance bottleneck. With numerically exact data, differentiation is acceptably fast.
     #
+    # Even at 512 resolution, GPU utilization is under 20% (according to `nvtop`), and there is barely any noticeable difference
+    # in the surrogate fitting speed. 512 is the largest that works, at least on Quadro RTX 3000 mobile (RTX 2xxx based chip, 6 GB VRAM).
+    #
+    # At 768 or 1024, cuBLAS errors out (cuBlas call failed status = 14 [Op:MatrixSolve]).
     # Currently I don't know why - there should be no difference other than the batch size (the whole image is sent in one batch).
     # Solving a linear system with 1024 unknowns should hardly take gigabytes of VRAM even at float32.
     resolution = 256
