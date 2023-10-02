@@ -892,14 +892,14 @@ def solve(a: tf.Tensor,
     return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
 
 
-# See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
-coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
-
-
 # --------------------------------------------------------------------------------
 # The WLSQM differentiator, on a meshgrid.
 
+# See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
+
 # Basic API. Slower, not as accurate in corners, needs less VRAM.
+
+coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
 
 def differentiate(N: typing.Optional[int],
                   X: typing.Union[np.array, tf.Tensor],
