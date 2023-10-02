@@ -595,8 +595,15 @@ def prepare(N: int,
     As long as `N`, `X` and `Y` remain constant, and the dtype of `Z` remains the same,
     the same preparation can be reused.
     """
-    # TODO: sanity checks
-    #  - image should be at least [2 * N + 1, 2 * N + 1] pixels, to have at least one interior point, so that our division into regions is applicable.
+    if N < 1:
+        raise ValueError(f"Must specify N ≥ 1, got {N}")
+    # The image must be at least [2 * N + 1, 2 * N + 1] pixels, to have at least one pixel in the interior, so that our division into regions is applicable.
+    for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
+        shape = tf.shape(tensor)
+        if len(shape) != 2:
+            raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
+        if not (int(shape[0]) >= 2 * N + 1 and int(shape[1]) >= 2 * N + 1):
+            raise ValueError(f"Expected `{name}` to be at least of size [(2 * N + 1) (2 * N + 1)]; got N = {N} and {shape}")
 
     def intarray(x):
         return np.array(x, dtype=int)  # TODO: `np.int32`?
