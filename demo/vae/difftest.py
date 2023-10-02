@@ -526,7 +526,9 @@ def friedrichs_smooth_1d(N: int,
 # --------------------------------------------------------------------------------
 # The WLSQM differentiator, on a meshgrid.
 
-# TODO: implement classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because more neighbors.)
+# Advanced API and fastest GPU implementation. Needs most VRAM.
+
+# TODO: implement also classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because more neighbors.)
 
 def multi_to_linear(iyix: tf.Tensor, *, shape: tf.Tensor):
     """[DOF mapper] Convert meshgrid multi-index to linear index.
@@ -889,6 +891,12 @@ def solve(a: tf.Tensor,
 
 # See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
 coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
+
+
+# --------------------------------------------------------------------------------
+# The WLSQM differentiator, on a meshgrid.
+
+# Basic API. Slower, not as accurate in corners, needs less VRAM.
 
 def differentiate(N: typing.Optional[int],
                   X: typing.Union[np.array, tf.Tensor],
@@ -1479,6 +1487,8 @@ def fit_constant(N: typing.Optional[int],
 # --------------------------------------------------------------------------------
 # Differentiation with improved edge handling
 
+# Not as good as `prepare`/`solve`, but better than extrapolation in `padding="SAME"`.
+
 def hifi_differentiate(N: int,
                        X: typing.Union[np.array, tf.Tensor],
                        Y: typing.Union[np.array, tf.Tensor],
@@ -1761,7 +1771,7 @@ def main():
     #
     # At 768 or 1024, cuBLAS errors out (cuBlas call failed status = 14 [Op:MatrixSolve]).
     # Currently I don't know why - there should be no difference other than the batch size (the whole image is sent in one batch).
-    # Solving a linear system with 1024 unknowns should hardly take gigabytes of VRAM even at float32.
+    # Solving a 6×6 linear system for 1024 RHSs should hardly take gigabytes of VRAM even at float32.
     #
     # The hifiest algorithm (`prepare`/`solve`) *does* take gigabytes of VRAM, even at 256.
     resolution = 256
@@ -1828,14 +1838,14 @@ def main():
     preps = prepare(N, X, Y, Z)
 
     def denoise(N, X, Y, Z):
-        # denoise by least squares
+        # Applying denoising in a loop allows removing larger amounts of noise.
+        # Effectively, the neighboring patches communicate between iterations.
         for _ in range(denoise_steps):
             print(f"    Least squares fitting: step {_ + 1} of {denoise_steps}...")
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
             tmp = solve(*preps, Z)
             Z = tmp[coeffs_full["f"]]
 
-        # denoise by Friedrichs smoothing
         for _ in range(denoise_steps):  # applying denoise in a loop allows removing relatively large amounts of noise
             print(f"    Friedrichs smoother: step {_ + 1} of {denoise_steps}...")
             Z = friedrichs_smooth_2d(N, Z, padding="SAME")
