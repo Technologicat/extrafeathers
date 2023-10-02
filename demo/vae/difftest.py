@@ -848,7 +848,12 @@ def solve(a: tf.Tensor,
           z: tf.Tensor):
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
-    This function runs completely on the GPU, and is differentiable, so it can be used e.g. inside a neural network loss function.
+    `a`, `c`, `scale`, `neighbors`: Outputs from `prepare`, which see.
+    `z`: function value data in 2D meshgrid format.
+
+    This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
+    e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
+    happens to need the spatial derivatives of `z`, as estimated from image data).
     """
     shape = tf.shape(z)
     z = tf.reshape(z, [-1])
@@ -1762,6 +1767,8 @@ def main():
     # At 768 or 1024, cuBLAS errors out (cuBlas call failed status = 14 [Op:MatrixSolve]).
     # Currently I don't know why - there should be no difference other than the batch size (the whole image is sent in one batch).
     # Solving a linear system with 1024 unknowns should hardly take gigabytes of VRAM even at float32.
+    #
+    # The hifiest algorithm (`prepare`/`solve`) *does* take gigabytes of VRAM, even at 256.
     resolution = 256
 
     # If σ > 0, how many times to loop the denoiser.
