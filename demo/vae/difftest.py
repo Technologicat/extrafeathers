@@ -564,10 +564,17 @@ def prepare(N: int,
             Z: typing.Union[np.array, tf.Tensor]):
     """Prepare for differentiation on a meshgrid.
 
-    This precomputes the surrogate fitting coefficient tensor `c`, and the pixelwise `A` matrices.
+    This is the hifiest algorithm provided in this module.
+
+    This function precomputes the surrogate fitting coefficient tensor `c`, and the pixelwise `A` matrices.
     Some of the preparation is performed on the CPU, the most intensive computations on the GPU.
 
-    `N`: neighborhood size parameter (how many grid spacings on each axis)
+    NOTE: This takes a lot of VRAM. A 6 GB GPU is able to do 256×256, but not much more.
+
+    `N`: Neighborhood size parameter (how many grid spacings on each axis)
+         The edges and corners of the input image are handled by clipping the stencil to the data region
+         (to use as much data for each pixel as exists within distance `N` on each axis).
+
     `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively.
                    The shapes of `X`, `Y` and `Z` must match.
 
@@ -823,6 +830,10 @@ def solve(a: tf.Tensor,
           scale: tf.Tensor,
           neighbors: tf.RaggedTensor,
           z: tf.Tensor):
+    """[kernel] Assemble and solve system that was prepared using `prepare`.
+
+    This function runs completely on the GPU, and is differentiable, so it can be used e.g. inside a neural network loss function.
+    """
     shape = tf.shape(z)
     z = tf.reshape(z, [-1])
 
