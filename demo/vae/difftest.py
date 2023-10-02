@@ -1803,7 +1803,7 @@ def main():
 
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
-    print(f"    Neighborhood radius: {N} grid units")
+    print(f"    Neighborhood radius: {N} grid units (neighborhood size {2 * N + 1}×{2 * N + 1} = {(2 * N + 1)**2} grid points)")
     if σ > 0:
         print(f"    Synthetic noise stdev: {σ:0.6g}")
         print(f"    Denoise steps: {denoise_steps}")
