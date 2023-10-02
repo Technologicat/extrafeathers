@@ -834,7 +834,6 @@ def prepare(N: int,
 
     return A, c, scale, neighbors
 
-# Kernel: assemble and solve system. For online use (e.g. inside a neural network loss function) - this should be as minimal as possible, and differentiable.
 @tf.function
 def solve(a: tf.Tensor,
           c: tf.Tensor,
