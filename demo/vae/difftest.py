@@ -615,7 +615,7 @@ def prepare(N: int,
     # Adapt the uniform [2 * N + 1, 2 * N + 1] stencil for each pixel, by clipping it into the data region.
     # Note that clipping to the data region is only needed near edges and corners.
     #
-    # To save VRAM, we store only unique stencils. Because we work on a meshgrid:
+    # To save some VRAM, we store only unique stencils. Because we work on a meshgrid:
     #  1) We can store each unique stencil as a list of linear index *offsets*, taking advantage of the uniform grid topology,
     #  2) When using such as offset format, only relatively few unique stencils appear.
     #
@@ -645,7 +645,7 @@ def prepare(N: int,
         indirect[for_points] = stencil_id
         return stencil_id
 
-    # interior - one stencil for all pixels; this case handles almost all of the image.
+    # Interior - one stencil for all pixels; this case handles almost all of the image.
     interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
     interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
@@ -653,7 +653,7 @@ def prepare(N: int,
     interior_stencil = multi_to_linear(interior_stencil, shape=shape)  # corresponding linear index offsets
     register_stencil(interior_stencil, interior_idx)
 
-    # top edge - one stencil per row (N of them, so typically 8)
+    # Top edge - one stencil per row (N of them, so typically 8).
     for row in range(N):
         top_multi_to_linear = all_multi_to_linear[row, N:-N]
         top_idx = tf.reshape(top_multi_to_linear, [-1])
@@ -662,7 +662,7 @@ def prepare(N: int,
         top_stencil = multi_to_linear(top_stencil, shape=shape)
         register_stencil(top_stencil, top_idx)  # each row near the top gets its own stencil
 
-    # bottom edge - one stencil per row
+    # Bottom edge - one stencil per row.
     for row in range(-N, 0):
         bottom_multi_to_linear = all_multi_to_linear[row, N:-N]
         bottom_idx = tf.reshape(bottom_multi_to_linear, [-1])
@@ -671,7 +671,7 @@ def prepare(N: int,
         bottom_stencil = multi_to_linear(bottom_stencil, shape=shape)
         register_stencil(bottom_stencil, bottom_idx)
 
-    # left edge - one stencil per column (N of them, so typically 8)
+    # Left edge - one stencil per column (N of them, so typically 8).
     for col in range(N):
         left_multi_to_linear = all_multi_to_linear[N:-N, col]
         left_idx = tf.reshape(left_multi_to_linear, [-1])
@@ -680,7 +680,7 @@ def prepare(N: int,
         left_stencil = multi_to_linear(left_stencil, shape=shape)
         register_stencil(left_stencil, left_idx)
 
-    # right edge - one stencil per column
+    # Right edge - one stencil per column.
     for col in range(-N, 0):
         right_multi_to_linear = all_multi_to_linear[N:-N, col]
         right_idx = tf.reshape(right_multi_to_linear, [-1])
@@ -689,7 +689,7 @@ def prepare(N: int,
         right_stencil = multi_to_linear(right_stencil, shape=shape)
         register_stencil(right_stencil, right_idx)
 
-    # upper left corner - one stencil per pixel (N² of them, so typically 64)
+    # Upper left corner - one stencil per pixel (N² of them, so typically 64).
     for row in range(N):
         for col in range(N):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])  # just one pixel, but for uniform data format, use a rank-1 tensor
@@ -698,7 +698,7 @@ def prepare(N: int,
             this_stencil = multi_to_linear(this_stencil, shape=shape)
             register_stencil(this_stencil, this_idx)
 
-    # upper right corner - one stencil per pixel
+    # Upper right corner - one stencil per pixel.
     for row in range(N):
         for col in range(-N, 0):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -707,7 +707,7 @@ def prepare(N: int,
             this_stencil = multi_to_linear(this_stencil, shape=shape)
             register_stencil(this_stencil, this_idx)
 
-    # lower left corner - one stencil per pixel
+    # Lower left corner - one stencil per pixel.
     for row in range(-N, 0):
         for col in range(N):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -716,7 +716,7 @@ def prepare(N: int,
             this_stencil = multi_to_linear(this_stencil, shape=shape)
             register_stencil(this_stencil, this_idx)
 
-    # lower right corner - one stencil per pixel
+    # Lower right corner - one stencil per pixel.
     for row in range(-N, 0):
         for col in range(-N, 0):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -726,7 +726,7 @@ def prepare(N: int,
             register_stencil(this_stencil, this_idx)
 
     assert len(stencils) == 1 + 4 * N + 4 * N**2  # interior, edges, corners
-    assert not (indirect == -1).any()  # every pixel should now have a stencil associated with it
+    assert not (indirect == -1).any()  # every pixel of the input image should now have a stencil associated with it
 
     # For meshgrid use, we can store stencils as lists of linear index offsets (int32), in a ragged tensor.
     # Ragged, because points near edges or corners have a clipped stencil with fewer neighbors.
@@ -870,18 +870,18 @@ def solve(a: tf.Tensor,
         bi = tf.cast(bi, a.dtype)
         rows.append(bi)
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
-    b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (now we have just one RHS for each matrix)
+    b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
 
     sol = tf.linalg.solve(a, b)  # -> [#n, #rows, 1]
     # print(tf.shape(sol))  # [#n, #rows, 1]
-    # print(tf.math.reduce_max(abs(tf.matmul(a, sol) - b)))  # DEBUG: yes, it's solving the linear equation systems correctly.
-    sol = tf.squeeze(sol, axis=-1)
+    # print(tf.math.reduce_max(abs(tf.matmul(a, sol) - b)))  # DEBUG: yes, the solutions are correct.
+    sol = tf.squeeze(sol, axis=-1)  # -> [#n, #rows]
 
     sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
     sol = zmin + (zmax - zmin) * sol  # return from scaled z to raw z
 
     sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
-    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))
+    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
 
 
 # See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
