@@ -558,7 +558,7 @@ def linear_to_multi(idx: tf.Tensor, *, shape: tf.Tensor):  # TODO: we don't actu
     iy, ix = tf.experimental.numpy.divmod(idx, nx)  # TF 2.13
     return tf.stack([iy, ix], axis=1)  # -> [[iy0, ix0], [iy1, ix1], ...]
 
-def prepare(N: typing.Optional[int],
+def prepare(N: int,
             X: typing.Union[np.array, tf.Tensor],
             Y: typing.Union[np.array, tf.Tensor],
             Z: typing.Union[np.array, tf.Tensor]):
