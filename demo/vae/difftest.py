@@ -816,8 +816,7 @@ def prepare(N: int,
         for j in range(6):
             ci = c[:, :, i]  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
             cj = c[:, :, j]  # -> [#n, #k]
-            cicj = ci * cj  # [#n, #k]
-            Aij = tf.reduce_sum(cicj, axis=1)  # -> [#n]
+            Aij = tf.reduce_sum(ci * cj, axis=1)  # [#n, #k] -> [#n]
             row.append(Aij)
         row = tf.stack(row, axis=1)  # -> [#n, #cols]
         rows.append(row)
@@ -865,8 +864,7 @@ def solve(a: tf.Tensor,
     for i in range(6):
         zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
         ci = c[:, :, i]  # -> [#n, #k]
-        zci = zgnk * ci  # [#n, #k]
-        bi = tf.reduce_sum(zci, axis=1)  # -> [#n]
+        bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
         bi = tf.cast(bi, a.dtype)
         rows.append(bi)
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
