@@ -739,7 +739,7 @@ def prepare(N: int,
     xscale = float(X[0, 1] - X[0, 0]) * N
     yscale = float(Y[1, 0] - Y[0, 0]) * N
 
-    def cnki(dx, dy):
+    def cnki(dx: tf.Tensor, dy: tf.Tensor) -> tf.Tensor:
         """Compute the quadratic surrogate fitting coefficient tensor `c[n, k, i]`.
 
         NOTE: The `c` tensor may take gigabytes of VRAM, depending on input image resolution.
