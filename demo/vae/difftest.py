@@ -842,6 +842,9 @@ def prepare(N: int,
 
     return A, c, scale, neighbors
 
+# As of TF 2.12, the XLA JIT would give us float16 precision for `tf.linalg.solve`.
+# Alas, we can't JIT compile, because `RaggedRange` is not supported by XLA, so assembling `b` fails.
+# @tf.function(jit_compile=True)  # https://www.tensorflow.org/xla/tutorials/jit_compile
 @tf.function
 def solve(a: tf.Tensor,
           c: tf.Tensor,
