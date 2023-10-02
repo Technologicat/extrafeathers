@@ -526,7 +526,333 @@ def friedrichs_smooth_1d(N: int,
 
 # TODO: implement classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because more neighbors.)
 
-# TODO: Implement another version for arbitrary geometries (data point dependent `A` and `c`). (This version is already fine for meshgrid data.)
+def multi_to_linear(iyix: tf.Tensor, *, shape: tf.Tensor):
+    """[DOF mapper] Convert meshgrid multi-index to linear index.
+
+    We assume C storage order (column index changes fastest).
+
+    `iyix`: rank-2 tensor of meshgrid multi-indices, `[[iy0, ix0], [iy1, ix1], ...]`.
+            Index offsets are fine, too.
+    `shape`: rank-1 tensor, containing [ny, nx].
+
+    Returns: rank-1 tensor of linear indices, `[idx0, idx1, ...]`.
+             If input was offsets, returns offsets.
+    """
+    nx = int(shape[1])
+    idx = iyix[:, 0] * nx + iyix[:, 1]
+    return idx
+
+def linear_to_multi(idx: tf.Tensor, *, shape: tf.Tensor):  # TODO: we don't actually need this function?
+    """[DOF mapper] Convert linear index to meshgrid multi-index.
+
+    We assume C storage order (column index changes fastest).
+
+    `idx`: rank-1 tensor of linear indices, `[idx0, idx1, ...]`.
+           Index offsets are fine, too.
+    `shape`: rank-1 tensor, containing [ny, nx].
+
+    Returns: rank-2 tensor of meshgrid multi-indices, `[[iy0, ix0], [iy1, ix1], ...]`.
+             If input was offsets, returns offsets.
+    """
+    nx = int(shape[1])
+    iy, ix = tf.experimental.numpy.divmod(idx, nx)  # TF 2.13
+    return tf.stack([iy, ix], axis=1)  # -> [[iy0, ix0], [iy1, ix1], ...]
+
+def prepare(N: typing.Optional[int],
+            X: typing.Union[np.array, tf.Tensor],
+            Y: typing.Union[np.array, tf.Tensor],
+            Z: typing.Union[np.array, tf.Tensor]):
+    """Prepare for differentiation on a meshgrid.
+
+    This precomputes the surrogate fitting coefficient tensor `c`, and the pixelwise `A` matrices.
+    Some of the preparation is performed on the CPU, the most intensive computations on the GPU.
+
+    `N`: neighborhood size parameter (how many grid spacings on each axis)
+    `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively.
+                   The shapes of `X`, `Y` and `Z` must match.
+
+                   `Z` is only consulted for its shape and dtype.
+
+                   The grid spacing must be uniform.
+
+    The return value is a tuple of tensors, `(A, c, scale, neighbors)`.
+    These tensors can be passed to `solve`, which runs completely on the GPU.
+
+    As long as `N`, `X` and `Y` remain constant, and the dtype of `Z` remains the same,
+    the same preparation can be reused.
+    """
+    # TODO: sanity checks
+    #  - image should be at least [2 * N + 1, 2 * N + 1] pixels, to have at least one interior point, so that our division into regions is applicable.
+
+    def intarray(x):
+        return np.array(x, dtype=int)  # TODO: `np.int32`?
+
+    shape = tf.shape(Z)
+    npoints = tf.reduce_prod(shape)
+    all_multi_to_linear = tf.reshape(tf.range(npoints), shape)  # e.g. [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
+
+    # Adapt the uniform [2 * N + 1, 2 * N + 1] stencil for each pixel, by clipping it into the data region.
+    # Note that clipping to the data region is only needed near edges and corners.
+    #
+    # To save VRAM, we store only unique stencils. Because we work on a meshgrid:
+    #  1) We can store each unique stencil as a list of linear index *offsets*, taking advantage of the uniform grid topology,
+    #  2) When using such as offset format, only relatively few unique stencils appear.
+    #
+    # To handle edges and corners optimally, using as much of the data as possible, each corner needs a different stencil
+    # for each pixel (N² of them), and the remaining part of each row or column (N of them) near an edge needs a different stencil.
+    # So in total, we have 1 + 4 * N + 4 * N² unique stencils (where the 1 is for the interior). Crucially, this is independent
+    # of the input image resolution.
+    #
+    # We create a per-datapoint indirection tensor, mapping datapoint linear index to the index of the appropriate unique stencil.
+    #
+    # For large stencils (e.g. at `N = 8`, (2 * N + 1)² = 289 points), the indirection saves a lot of VRAM, mainly because
+    # we only need to store one copy of the stencil for the interior part, which makes up most of the input image.
+    #
+    # A stencil consists of int32 entries, so *without* indirection, for example for `N = 8`, with naive per-pixel stencils,
+    # the amount of VRAM we would need is 289 * 4 bytes * resolution², which is 303 MB at 512×512, and 1.21 GB at 1024×1024.
+    # *With* indirection, we save the factor of 289, since we need only one int32 per pixel to identify which stencil to use.
+    # Thus 4 bytes * resolution², which is 1.1 MB at 512×512, and 4.2 MB at 1024×1024.
+    #
+    # Of course, we need to store the actual unique stencils, too. But the upper bound for memory use for this is (stencil size) * (n_stencils) * 4 bytes
+    # = (2 * N + 1)² * (1 + 4 * N + 4 * N²) * 4 bytes; actual memory use is less than this due to the clipping to data region. For `N = 8`, this is
+    # 289 * 289 * 4 bytes = 83521 * 4 bytes = 334 kB, so the storage for the unique stencils needs very little memory.
+    stencils = []  # list of lists; we will convert to a ragged tensor at the end
+    indirect = np.zeros([npoints], dtype=int) - 1  # -1 = uninitialized, to catch bugs
+    def register_stencil(stencil, for_points):  # set up indirection
+        stencils.append(stencil)
+        stencil_id = len(stencils) - 1
+        indirect[for_points] = stencil_id
+        return stencil_id
+
+    # interior - one stencil for all pixels; this case handles almost all of the image.
+    interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
+    interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                          for ix in range(-N, N + 1)])  # multi-index offsets
+    interior_stencil = multi_to_linear(interior_stencil, shape=shape)  # corresponding linear index offsets
+    register_stencil(interior_stencil, interior_idx)
+
+    # top edge - one stencil per row (N of them, so typically 8)
+    for row in range(N):
+        top_multi_to_linear = all_multi_to_linear[row, N:-N]
+        top_idx = tf.reshape(top_multi_to_linear, [-1])
+        top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                         for ix in range(-N, N + 1)])
+        top_stencil = multi_to_linear(top_stencil, shape=shape)
+        register_stencil(top_stencil, top_idx)  # each row near the top gets its own stencil
+
+    # bottom edge - one stencil per row
+    for row in range(-N, 0):
+        bottom_multi_to_linear = all_multi_to_linear[row, N:-N]
+        bottom_idx = tf.reshape(bottom_multi_to_linear, [-1])
+        bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                            for ix in range(-N, N + 1)])
+        bottom_stencil = multi_to_linear(bottom_stencil, shape=shape)
+        register_stencil(bottom_stencil, bottom_idx)
+
+    # left edge - one stencil per column (N of them, so typically 8)
+    for col in range(N):
+        left_multi_to_linear = all_multi_to_linear[N:-N, col]
+        left_idx = tf.reshape(left_multi_to_linear, [-1])
+        left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                          for ix in range(-col, N + 1)])
+        left_stencil = multi_to_linear(left_stencil, shape=shape)
+        register_stencil(left_stencil, left_idx)
+
+    # right edge - one stencil per column
+    for col in range(-N, 0):
+        right_multi_to_linear = all_multi_to_linear[N:-N, col]
+        right_idx = tf.reshape(right_multi_to_linear, [-1])
+        right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                           for ix in range(-N, -col)])
+        right_stencil = multi_to_linear(right_stencil, shape=shape)
+        register_stencil(right_stencil, right_idx)
+
+    # upper left corner - one stencil per pixel (N² of them, so typically 64)
+    for row in range(N):
+        for col in range(N):
+            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])  # just one pixel, but for uniform data format, use a rank-1 tensor
+            this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                              for ix in range(-col, N + 1)])
+            this_stencil = multi_to_linear(this_stencil, shape=shape)
+            register_stencil(this_stencil, this_idx)
+
+    # upper right corner - one stencil per pixel
+    for row in range(N):
+        for col in range(-N, 0):
+            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
+            this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                              for ix in range(-N, -col)])
+            this_stencil = multi_to_linear(this_stencil, shape=shape)
+            register_stencil(this_stencil, this_idx)
+
+    # lower left corner - one stencil per pixel
+    for row in range(-N, 0):
+        for col in range(N):
+            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
+            this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                              for ix in range(-col, N + 1)])
+            this_stencil = multi_to_linear(this_stencil, shape=shape)
+            register_stencil(this_stencil, this_idx)
+
+    # lower right corner - one stencil per pixel
+    for row in range(-N, 0):
+        for col in range(-N, 0):
+            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
+            this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                              for ix in range(-N, -col)])
+            this_stencil = multi_to_linear(this_stencil, shape=shape)
+            register_stencil(this_stencil, this_idx)
+
+    assert len(stencils) == 1 + 4 * N + 4 * N**2  # interior, edges, corners
+    assert not (indirect == -1).any()  # every pixel should now have a stencil associated with it
+
+    # For meshgrid use, we can store stencils as lists of linear index offsets (int32), in a ragged tensor.
+    # Ragged, because points near edges or corners have a clipped stencil with fewer neighbors.
+    indirect = tf.constant(indirect, dtype=tf.int32)
+    stencils = tf.ragged.constant(stencils, dtype=tf.int32)
+
+    # Build the distance matrices.
+    #
+    # First apply derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
+    #
+    # We choose xscale to make magnitudes near 1. Similarly for yscale. We base the scaling on the grid spacing in raw coordinate space,
+    # defining the furthest distance in the stencil (along each coordinate axis) in the scaled space as 1.
+    #
+    # TODO: We assume a uniform grid spacing for now. We could relax this assumption, since only the choice of `xscale`/`yscale` depend on it.
+    #
+    # We cast to `float`, so this works also in the case where we get a scalar tensor instead of a bare scalar.
+    xscale = float(X[0, 1] - X[0, 0]) * N
+    yscale = float(Y[1, 0] - Y[0, 0]) * N
+
+    def cnki(dx, dy):
+        """Compute the quadratic surrogate fitting coefficient tensor `c[n, k, i]`.
+
+        NOTE: The `c` tensor may take gigabytes of VRAM, depending on input image resolution.
+
+        Input: rank-2 tensors:
+
+          `dx`: signed `x` distance
+          `dy`: signed `y` distance
+
+        where:
+
+          dx[n, k] = signed x distance from point n to point k
+
+        and similarly for `dy`. The indices are:
+
+          `n`: linear index of data point
+          `k`: linear index (not offset!) of neighbor point
+
+        Returns: rank-3 tensor:
+
+          c[n, k, i]
+
+        where `n` and `k` are as above, and:
+
+          `i`: component of surrogate fit `(f, dx, dy, dx2, dxdy, dy2)`
+        """
+        dx = dx / xscale  # LHS: offset in scaled space
+        dy = dy / yscale
+        one = tf.ones_like(dx)  # for the constant term of the fit
+        return tf.stack([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2], axis=-1)
+
+    # Compute distance of all neighbors (in stencil) for each pixel
+    #
+    X = tf.reshape(X, [-1])
+    Y = tf.reshape(Y, [-1])
+    # TODO: Work smarter: we lose our VRAM savings here. But can we do better than either this (too much memory), or Python-loop over pixels (too slow)?
+    #
+    # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes, potentially gigabytes of data.
+    #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
+    neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, indirect)
+
+    # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
+    dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
+    dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
+
+    # Finally, the surrogate fitting coefficient tensor is:
+    c = cnki(dx, dy)
+
+    # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
+    # absc = tf.abs(c)
+    # print(f"c[n, k, i] ∈ [{tf.reduce_min(absc):0.6g}, {tf.reduce_max(absc):0.6g}]")
+
+    # The surrogate fitting tensor is:
+    #
+    # A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
+    #
+    # The `A` matrices can be preassembled. They must be stored per-pixel, but the size is only 6×6, so at float32,
+    # we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
+    #
+    # `einsum` doesn't support `RaggedTensor`, and neither does `tensordot`. What we want to do:
+    # # A = tf.einsum("nki,nkj->nij", c, c)
+    # # A = tf.tensordot(c, c, axes=[[1], [1]])  # alternative expression
+    # Doing it manually:
+    rows = []
+    for i in range(6):
+        row = []
+        for j in range(6):
+            ci = c[:, :, i]  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+            cj = c[:, :, j]  # -> [#n, #k]
+            cicj = ci * cj  # [#n, #k]
+            Aij = tf.reduce_sum(cicj, axis=1)  # -> [#n]
+            row.append(Aij)
+        row = tf.stack(row, axis=1)  # -> [#n, #cols]
+        rows.append(row)
+    A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
+
+    # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
+    # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
+    # absA = tf.abs(A)
+    # print(f"A[n, i, j] ∈ [{tf.reduce_min(absA):0.6g}, {tf.reduce_max(absA):0.6g}]")
+    # print(A)
+
+    # TODO: DEBUG: sanity check that each `A[n, :, :]` is symmetric.
+
+    # Scaling factors to undo the derivative scaling,  d/dx' → d/dx.  `solve` needs this to postprocess its results.
+    scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=Z.dtype)
+    # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
+
+    return A, c, scale, neighbors
+
+# Kernel: assemble and solve system. For online use (e.g. inside a neural network loss function) - this should be as minimal as possible, and differentiable.
+@tf.function
+def solve(a: tf.Tensor,
+          c: tf.Tensor,
+          scale: tf.Tensor,
+          neighbors: tf.RaggedTensor,
+          z: tf.Tensor):
+    shape = tf.shape(z)
+    z = tf.reshape(z, [-1])
+
+    absz = tf.abs(z)
+    zmin = tf.reduce_min(absz)
+    zmax = tf.reduce_max(absz)
+    z = (z - zmin) / (zmax - zmin)  # -> [0, 1]
+
+    # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
+    rows = []
+    for i in range(6):
+        zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
+        ci = c[:, :, i]  # -> [#n, #k]
+        zci = zgnk * ci  # [#n, #k]
+        bi = tf.reduce_sum(zci, axis=1)  # -> [#n]
+        rows.append(bi)
+    b = tf.stack(rows, axis=1)  # -> [#n, #rows]
+    b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (now we have just one RHS for each matrix)
+
+    sol = tf.linalg.solve(a, b)  # -> [#n, #rows, 1]
+    # print(tf.shape(sol))  # [#n, #rows, 1]
+    # print(tf.math.reduce_max(abs(tf.matmul(a, sol) - b)))  # DEBUG: yes, it's solving the linear equation systems correctly.
+    sol = tf.squeeze(sol, axis=-1)
+
+    sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
+    sol = zmin + (zmax - zmin) * sol  # return from scaled z to raw z
+
+    sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
+    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))
+
 
 # See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
 coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}
@@ -1469,11 +1795,14 @@ def main():
     # --------------------------------------------------------------------------------
     # Simulate noisy input, for testing the denoiser.
 
+    preps = prepare(N, X, Y, Z)
+
     def denoise(N, X, Y, Z):
         # denoise by least squares
         for _ in range(denoise_steps):
             print(f"    Least squares fitting: step {_ + 1} of {denoise_steps}...")
-            tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
+            # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
+            tmp = solve(*preps, Z)
             Z = tmp[coeffs_full["f"]]
 
         # denoise by Friedrichs smoothing
@@ -1518,7 +1847,8 @@ def main():
 
     print("Differentiate...")
     with timer() as tim:
-        dZ = hifier_differentiate(N, X, Y, Z)
+        dZ = solve(*preps, Z)[1:, :]
+        # dZ = hifier_differentiate(N, X, Y, Z)
         # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
         X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
     print(f"    Done in {tim.dt:0.6g}s.")
@@ -1552,8 +1882,10 @@ def main():
 
     print("    Differentiate denoised first derivatives...")
     with timer() as tim:
-        ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
-        ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
+        ddzdx = solve(*preps, dzdx)[1:, :]
+        ddzdy = solve(*preps, dzdy)[1:, :]
+        # ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
+        # ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
         # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
         X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
     print(f"        Done in {tim.dt:0.6g}s.")
