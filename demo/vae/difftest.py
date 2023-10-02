@@ -416,6 +416,7 @@ def friedrichs_smooth_2d(N: int,
 
     f = tf.expand_dims(f, axis=0)  # batch
     f = tf.expand_dims(f, axis=-1)  # channels
+    kernel = tf.cast(kernel, f.dtype)
     kernel = tf.expand_dims(kernel, axis=-1)  # input channels
     kernel = tf.expand_dims(kernel, axis=-1)  # output channels
 
@@ -453,6 +454,7 @@ def friedrichs_smooth_1d(N: int,
 
     f = tf.expand_dims(f, axis=0)  # batch
     f = tf.expand_dims(f, axis=-1)  # channels
+    kernel = tf.cast(kernel, f.dtype)
     kernel = tf.expand_dims(kernel, axis=-1)  # input channels
     kernel = tf.expand_dims(kernel, axis=-1)  # output channels
 
@@ -561,7 +563,9 @@ def linear_to_multi(idx: tf.Tensor, *, shape: tf.Tensor):  # TODO: we don't actu
 def prepare(N: int,
             X: typing.Union[np.array, tf.Tensor],
             Y: typing.Union[np.array, tf.Tensor],
-            Z: typing.Union[np.array, tf.Tensor]):
+            Z: typing.Union[np.array, tf.Tensor],
+            *,
+            dtype: tf.DType = tf.float32):
     """Prepare for differentiation on a meshgrid.
 
     This is the hifiest algorithm provided in this module.
@@ -581,6 +585,9 @@ def prepare(N: int,
                    `Z` is only consulted for its shape and dtype.
 
                    The grid spacing must be uniform.
+
+    `dtype`: The desired TensorFlow data type for the outputs `A`, `c`, and `scale`.
+             The output `neighbors` always has dtype `int32`.
 
     The return value is a tuple of tensors, `(A, c, scale, neighbors)`.
     These tensors can be passed to `solve`, which runs completely on the GPU.
@@ -821,6 +828,10 @@ def prepare(N: int,
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=Z.dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
 
+    A = tf.cast(A, dtype)
+    c = tf.cast(c, dtype)
+    scale = tf.cast(scale, dtype)
+
     return A, c, scale, neighbors
 
 # Kernel: assemble and solve system. For online use (e.g. inside a neural network loss function) - this should be as minimal as possible, and differentiable.
@@ -836,6 +847,7 @@ def solve(a: tf.Tensor,
     """
     shape = tf.shape(z)
     z = tf.reshape(z, [-1])
+    z = tf.cast(z, a.dtype)
 
     absz = tf.abs(z)
     zmin = tf.reduce_min(absz)
@@ -849,6 +861,7 @@ def solve(a: tf.Tensor,
         ci = c[:, :, i]  # -> [#n, #k]
         zci = zgnk * ci  # [#n, #k]
         bi = tf.reduce_sum(zci, axis=1)  # -> [#n]
+        bi = tf.cast(bi, a.dtype)
         rows.append(bi)
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (now we have just one RHS for each matrix)
