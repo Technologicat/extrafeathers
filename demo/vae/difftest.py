@@ -1094,6 +1094,7 @@ def differentiate(N: typing.Optional[int],
     df = tf.gather(f, gnk) - tf.gather(f, n)  # [n_interior_points, #k]
     # bs = tf.einsum("nk,ki->ni", df, c)  # This would be clearer...
     bs = tf.einsum("nk,ki->in", df, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+    # (This ordering is when solving many RHS for the same LHS matrix.)
 
     # # In other words:
     # ny, nx = np.shape(X)
@@ -1269,10 +1270,8 @@ def fit_quadratic(N: typing.Optional[int],
 
     # Now we can evaluate df, and finally b.
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
-    # bs = tf.einsum("nk,ki->ni", fgnk, c)  # This would be clearer...
-    bs = tf.einsum("nk,ki->in", fgnk, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+    bs = tf.einsum("nk,ki->in", fgnk, c)
 
-    # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
     df = tf.linalg.solve(A, bs)  # [6, n_interior_points]
 
     # Undo the derivative scaling,  d/dx' → d/dx
@@ -1373,10 +1372,8 @@ def fit_linear(N: typing.Optional[int],
 
     # Now we can evaluate df, and finally b.
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
-    # bs = tf.einsum("nk,ki->ni", fgnk, c)  # This would be clearer...
-    bs = tf.einsum("nk,ki->in", fgnk, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+    bs = tf.einsum("nk,ki->in", fgnk, c)
 
-    # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
     df = tf.linalg.solve(A, bs)  # [3, n_interior_points]
 
     # Undo the derivative scaling,  d/dx' → d/dx
@@ -1471,10 +1468,8 @@ def fit_constant(N: typing.Optional[int],
 
     # Now we can evaluate df, and finally b.
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
-    # bs = tf.einsum("nk,ki->ni", fgnk, c)  # This would be clearer...
-    bs = tf.einsum("nk,ki->in", fgnk, c)  # ...but this is the ordering `tf.linalg.solve` wants (components on axis 0, batch on axis 1).
+    bs = tf.einsum("nk,ki->in", fgnk, c)
 
-    # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
     df = tf.linalg.solve(A, bs)  # [1, n_interior_points]
 
     df = tf.reshape(df, (1, *tf.shape(interior_multi_to_linear)))
