@@ -412,6 +412,9 @@ def solve(a: tf.Tensor,
     `a`, `c`, `scale`, `neighbors`: Outputs from `prepare`, which see.
     `z`: function value data in 2D meshgrid format.
 
+         For computations, `z` is automatically cast into the same dtype as `a`
+         (which can be set when calling `prepare`; see the `dtype` argument).
+
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
     happens to need the spatial derivatives of `z`, as estimated from image data).
