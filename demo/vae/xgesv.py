@@ -47,7 +47,7 @@ def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
        `p`: rank-2 tensor, [batch, n]; permutation vectors used in partial pivoting.
     """
     shape = tf.shape(a)
-    if len(shape) != 3 or shape[1] != shape[2]:
+    if len(shape) != 3 or int(shape[1]) != int(shape[2]):
         raise ValueError(f"Expected `a` to be a tensor of shape [batch, n, n], got {shape}")
     batch = int(shape[0])
     n = int(shape[1])
@@ -147,14 +147,14 @@ def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
     Returns `x`, a rank-2 tensor [batch, n]; solution for `P A x = P b`.
     """
     shape = tf.shape(lu)
-    if len(shape) != 3 or shape[1] != shape[2]:
+    if len(shape) != 3 or int(shape[1]) != int(shape[2]):
         raise ValueError(f"Expected `a` to be a tensor of shape [batch, n, n], got {shape}")
     batch = int(shape[0])
     n = int(shape[1])
 
     for name, tensor in (("p", p), ("b", b)):
         shape = tf.shape(tensor)
-        if len(shape) != 2 or shape[1] != n:
+        if len(shape) != 2 or int(shape[1]) != n:
             raise ValueError(f"Expected {name} to be a tensor of shape [batch, n], and from `lu`, n = {n}; got {shape}")
 
     x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x", trainable=False)
