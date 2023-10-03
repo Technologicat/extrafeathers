@@ -359,9 +359,48 @@ def prepare(N: int,
 
     return A, c, scale, neighbors
 
-# As of TF 2.12, the XLA JIT would give us float16 precision for `tf.linalg.solve`.
-# Alas, we can't JIT compile, because `RaggedRange` is not supported by XLA, so assembling `b` fails.
+# TODO: Make `solve` work with float16, if possible.
+#
+# Trying to run at float16 precision on TF 2.12 gives the error:
+#
+# tensorflow.python.framework.errors_impl.InvalidArgumentError: No OpKernel was registered to support Op 'MatrixSolve' used by {{node MatrixSolve}} with these attrs: [T=DT_HALF, adjoint=false]
+# Registered devices: [CPU, GPU]
+# Registered kernels:
+#   device='XLA_CPU_JIT'; T in [DT_FLOAT, DT_DOUBLE, DT_HALF]
+#   device='XLA_GPU_JIT'; T in [DT_FLOAT, DT_DOUBLE, DT_HALF]
+#   device='GPU'; T in [DT_COMPLEX128]
+#   device='GPU'; T in [DT_COMPLEX64]
+#   device='GPU'; T in [DT_DOUBLE]
+#   device='GPU'; T in [DT_FLOAT]
+#   device='CPU'; T in [DT_COMPLEX128]
+#   device='CPU'; T in [DT_COMPLEX64]
+#   device='CPU'; T in [DT_DOUBLE]
+#   device='CPU'; T in [DT_FLOAT]
+#
+# 	 [[MatrixSolve]] [Op:__inference_solve_9642]
+#
+# This seems to suggest that as of TF 2.12, the XLA JIT would give us float16 precision for `tf.linalg.solve`.
+# Alas, we can't JIT compile our `solve`, because `RaggedRange` is not supported by XLA, so assembling `b` fails.
 # @tf.function(jit_compile=True)  # https://www.tensorflow.org/xla/tutorials/jit_compile
+#
+# If we split the `tf.linalg.solve` into a separate JIT-compiled wrapper function, we then get the error
+# "Invalid type for triangular solve 10". The only match is `triangular_solve_thunk.cc`, one online copy here:
+#   https://www.androidos.net.cn/android/10.0.0_r6/xref/external/tensorflow/tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.cc
+# which seems to suggest that at least some versions of TF actually only support float32 and above in `tf.linalg.solve`,
+# although the previous error message (upon running without JIT compilation) suggests otherwise. Perhaps it actually means
+# that the *XLA compiler* can try to compile this operation for float16, but this does not guarantee that a kernel exists.
+#
+# A simple linear equation system solver based on the LU decomposition and two triangular solves isn't that complicated
+# (for a short Cython implementation, see https://github.com/Technologicat/pylu ). Perhaps try porting that to TF later.
+#
+# (That is, for general matrices (LAPACK routine DGESV) it is simple. It's the symmetric case, if you want to handle it as symmetric (for best results),
+#  that is a nightmare. It sometimes needs 2×2 pivots, making the algorithm more complex. See Matrix Computations by Golub and van Loan, and the LAPACK
+#  source code for the routine DSYSV.)
+#
+# One possible complication here is that generally, LU needs pivoting for numerical stability. Different instances need to pivot
+# on different rows, so tensorization over matrix instances may become somewhat nontrivial. Might be possible to compute an
+# indirection tensor, though.
+
 @tf.function
 def solve(a: tf.Tensor,
           c: tf.Tensor,
