@@ -104,7 +104,7 @@ def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
 @tf.function
 def decompose_kernel(lu: tf.Variable, p: tf.Variable,
                      wrkf: tf.Variable, wrki: tf.Variable) -> None:
-    """The actual compute kernel. Modifies `lu` in-place."""
+    """The actual compute kernel. Modifies `lu` and `p` in-place."""
     shape = tf.shape(lu)
     batch = int(shape[0])
     n = int(shape[1])
@@ -287,7 +287,7 @@ def decompose_one(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
 
 @tf.function
 def decompose_one_kernel(lu: tf.Variable, p: tf.Variable) -> None:
-    """The actual compute kernel. Modifies `lu` in-place."""
+    """The actual compute kernel. Modifies `lu` and `p` in-place."""
     n = int(tf.shape(lu)[-1])
 
     for k in range(n):
