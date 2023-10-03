@@ -1,5 +1,9 @@
 """A simple partial pivoting (row swap) linear equation system solver.
 
+We separate the solving process into decomposition and triangular solve stages.
+This allows reusing the decomposition when solving a new RHS with the same matrix
+(or in the batched version, a new set of RHSs with the same set of matrices).
+
 This is a TensorFlow port of the basic functionality of:
   https://github.com/Technologicat/pylu/blob/master/pylu/dgesv.pxd
 
@@ -20,8 +24,11 @@ import typing
 import tensorflow as tf
 
 
+# --------------------------------------------------------------------------------
+# Batched versions, for many equation systems.
+
 def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
-    """LU decompose an `n × n` matrix, using partial pivoting (row swaps).
+    """LU decompose a batch of `n × n` matrices, using partial pivoting (row swaps).
 
     Produces matrices `L` and `U` such that `P A = L U`, where `P` is a row-swapping permutation matrix.
 
@@ -77,10 +84,10 @@ def decompose_kernel(lu: tf.Variable, p: tf.Variable,
 
         # Swap elements `k` and `r` of permutation vector `p`
         tmp1 = p[:, k]
-        p[:, k].assign(tf.gather(p, wrki, axis=1))
+        p[:, k].assign(tf.gather(p, wrki, axis=1))  # p[:, k] = p[:, r]
         for m in range(batch):  # TODO: tensorize over batch
-            # p[m, k].assign(p[m, wrki[m]])
-            p[m, wrki[m]].assign(tmp1[m])
+            # p[m, k].assign(p[m, wrki[m]])  # p[m, k] = p[m, r]
+            p[m, wrki[m]].assign(tmp1[m])  # p[m, r] = tmp1[m]  (old p[m, k])
 
         # Physically swap also the corresponding rows of A.
         #
@@ -90,16 +97,17 @@ def decompose_kernel(lu: tf.Variable, p: tf.Variable,
         # (It is still needed for accessing the RHS vector when solving the actual equation system.)
         #
         tmp2 = lu[:, k, :]
-        lu[:, k, :].assign(tf.gather(lu, wrki, axis=1))
+        lu[:, k, :].assign(tf.gather(lu, wrki, axis=1))  # lu[:, k, :] = lu[:, r, :]
         for m in range(batch):  # TODO: tensorize over batch
-            # lu[m, k, :].assign(lu[m, wrki[m], :])
-            lu[m, wrki[m], :].assign(tmp2[m, :])
+            # lu[m, k, :].assign(lu[m, wrki[m], :])  # lu[m, k, :] = lu[m, r, :]
+            lu[m, wrki[m], :].assign(tmp2[m, :])  # lu[m, r, :] = tmp2[m, :]  (old lu[m, k, :])
 
         # # TODO: Fail gracefully if the pivoted lu[k, k] is below some tolerance
         # # TODO: make the tolerance depend on dtype
         # if lu[k, k] <= 1e-6:
         #     return False
 
+        # This actual computation here batches trivially.
         for i in range(k + 1, n):
             lu[:, i, k].assign(lu[:, i, k] / lu[:, k, k])
             for j in range(k + 1, n):
@@ -107,7 +115,7 @@ def decompose_kernel(lu: tf.Variable, p: tf.Variable,
 
 
 def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-    """Solve a linear equation system after the matrix has been LU-decomposed.
+    """Solve a batch of linear equation systems after the matrices have been LU-decomposed.
 
     `lu`: rank-3 tensor, [batch, n, n], C storage order. Packed LU decomposition from `decompose`.
     `p`: rank-2 tensor, [batch, n]. Permutation vector from `decompose`.
@@ -159,7 +167,8 @@ def solve_kernel(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, x: tf.Variable) -> N
 
     # Solve `L y = P b` by forward substitution.
     for i in range(n):
-        x[:, i].assign(tf.gather(b, p[:, i], axis=1))  # formally, `(P b)[i]`
+        x[:, i].assign(tf.gather(b, p[:, i], axis=1))  # b[:, p[i]]
+        # The rest of the computation batches trivially.
         for j in range(i):
             x[:, i].assign(x[:, i] - lu[:, i, j] * x[:, j])
     # Now `x` contains the solution of the first equation, i.e. it is actually `y`.
@@ -173,7 +182,7 @@ def solve_kernel(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, x: tf.Variable) -> N
 
 
 # --------------------------------------------------------------------------------
-# For one equation system.
+# Non-batched versions, for one equation system.
 #
 # These are here mainly because the code is much more readable than the batched version,
 # and more readily comparable to `dgesv.pxd` in PyLU.
