@@ -15,9 +15,11 @@ so it can be run with any supported dtype.
 """
 
 __all__ = ["decompose",  # batched, many independent equation systems
-           "solve",  # batched, many independent equation systems
+           "solve",
+           "unpack",
            "decompose_one",  # one equation system
-           "solve_one"]  # one equation system
+           "solve_one",
+           "unpack_one"]
 
 import typing
 
@@ -26,6 +28,36 @@ import tensorflow as tf
 
 # --------------------------------------------------------------------------------
 # Batched versions, for many independent equation systems.
+
+def unpack(lu: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
+    """[debug] Decode packed format produced by `decompose`.
+
+    lu: rank-3 tensor, [batch, n, n]. Batch of packed LU decompositions from `decompose`.
+
+    Returns a tuple of rank-2 tensors, `(l, u)`.
+    """
+    shape = tf.shape(lu)
+    if len(shape) != 3 or int(shape[1]) != int(shape[2]):
+        raise ValueError(f"Expected `lu` to be a tensor of shape [batch, n, n], got {shape}")
+
+    l = tf.Variable(lu, name="l", trainable=False)  # noqa: E741, TF prefers lowercase identifiers.
+    u = tf.Variable(lu, name="u", trainable=False)
+    unpack_kernel(l, u)
+    return l, u
+
+@tf.function
+def unpack_kernel(l: tf.Tensor, u: tf.Tensor):  # noqa: E741, TF prefers lowercase identifiers.
+    n = int(tf.shape(l)[-1])
+
+    # This computation batches trivially.
+    for i in range(n):
+        l[:, i, i].assign(tf.cast(1.0, l.dtype))
+        for j in range(i + 1, n):
+            l[:, i, j].assign(tf.cast(0.0, l.dtype))
+
+        for j in range(i):
+            u[:, i, j].assign(tf.cast(0.0, u.dtype))
+
 
 def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """LU decompose a batch of `n × n` matrices, using partial pivoting (row swaps).
@@ -190,6 +222,35 @@ def solve_kernel(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, x: tf.Variable) -> N
 #
 # These are here mainly because the code is much more readable than the batched version,
 # and more readily comparable to `dgesv.pxd` in PyLU.
+
+def unpack_one(lu: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
+    """[debug] Decode packed format produced by `decompose_one`.
+
+    lu: rank-2 tensor, [n, n]. Packed LU decomposition from `decompose_one`.
+
+    Returns a tuple of rank-2 tensors, `(l, u)`.
+    """
+    shape = tf.shape(lu)
+    if len(shape) != 2 or int(shape[0]) != int(shape[1]):
+        raise ValueError(f"Expected `lu` to be a tensor of shape [n, n], got {shape}")
+
+    l = tf.Variable(lu, name="l", trainable=False)  # noqa: E741, TF prefers lowercase identifiers.
+    u = tf.Variable(lu, name="u", trainable=False)
+    unpack_one_kernel(l, u)
+    return l, u
+
+@tf.function
+def unpack_one_kernel(l: tf.Tensor, u: tf.Tensor):  # noqa: E741, TF prefers lowercase identifiers.
+    n = int(tf.shape(l)[-1])
+
+    for i in range(n):
+        l[i, i].assign(tf.cast(1.0, l.dtype))
+        for j in range(i + 1, n):
+            l[i, j].assign(tf.cast(0.0, l.dtype))
+
+        for j in range(i):
+            u[i, j].assign(tf.cast(0.0, u.dtype))
+
 
 def decompose_one(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """LU decompose an `n × n` matrix, using partial pivoting (row swaps).
