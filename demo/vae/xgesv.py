@@ -210,7 +210,10 @@ def decompose_one(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
 
        `p`: rank-1 tensor, [n]; permutation vector used in partial pivoting.
     """
-    n = int(tf.shape(a)[-1])
+    shape = tf.shape(a)
+    if len(shape) != 2 or int(shape[0]) != int(shape[1]):
+        raise ValueError(f"Expected `a` to be a tensor of shape [n, n], got {shape}")
+    n = int(shape[0])
 
     # TODO: data placement woes; this doesn't help: with tf.device('GPU:0'):
 
@@ -291,7 +294,15 @@ def solve_one(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
 
     Returns `x`, a rank-1 tensor [n]; solution for `P A x = P b`.
     """
-    n = int(tf.shape(lu)[-1])
+    shape = tf.shape(lu)
+    if len(shape) != 2 or int(shape[0]) != int(shape[1]):
+        raise ValueError(f"Expected `a` to be a tensor of shape [n, n], got {shape}")
+    n = int(shape[0])
+
+    for name, tensor in (("p", p), ("b", b)):
+        shape = tf.shape(tensor)
+        if len(shape) != 1 or int(shape[0]) != n:
+            raise ValueError(f"Expected {name} to be a tensor of shape [n], and from `lu`, n = {n}; got {shape}")
 
     x = tf.Variable(tf.zeros([n], dtype=lu.dtype), name="x", trainable=False)
     solve_one_kernel(lu, p, b, x)
