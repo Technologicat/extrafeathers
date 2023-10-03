@@ -121,7 +121,7 @@ def decompose_kernel(lu: tf.Variable, p: tf.Variable,
 def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
     """Solve a batch of linear equation systems after the matrices have been LU-decomposed.
 
-    `lu`: rank-3 tensor, [batch, n, n], C storage order. Packed LU decomposition from `decompose`.
+    `lu`: rank-3 tensor, [batch, n, n], C storage order. Batch of packed LU decompositions from `decompose`.
     `p`: rank-2 tensor, [batch, n]. Permutation vector from `decompose`.
     `b`: rank-2 tensor, [batch, n]. Right-hand side of `A x = b`.
 
@@ -269,7 +269,7 @@ def decompose_one_kernel(lu: tf.Variable, p: tf.Variable) -> None:
 def solve_one(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
     """Solve a linear equation system after the matrix has been LU-decomposed.
 
-    `lu`: rank-2 tensor, [n, n], C storage order. Packed LU decomposition from `decompose`.
+    `lu`: rank-2 tensor, [n, n], C storage order. Packed LU decomposition from `decompose_one`.
     `p`: rank-1 tensor, [n]. Permutation vector from `decompose`.
     `b`: rank-1 tensor, [n]. Right-hand side of `A x = b`.
 
