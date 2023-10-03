@@ -122,7 +122,7 @@ def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
 
     # TODO: batch support
 
-    x = tf.Variable(tf.zeros([n], name="x", dtype=lu.dtype))
+    x = tf.Variable(tf.zeros([n], dtype=lu.dtype), name="x", trainable=False)
     solve_kernel(lu, p, b, x)
     return x
 
