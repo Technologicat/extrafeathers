@@ -390,16 +390,7 @@ def prepare(N: int,
 # although the previous error message (upon running without JIT compilation) suggests otherwise. Perhaps it actually means
 # that the *XLA compiler* can try to compile this operation for float16, but this does not guarantee that a kernel exists.
 #
-# A simple linear equation system solver based on the LU decomposition and two triangular solves isn't that complicated
-# (for a short Cython implementation, see https://github.com/Technologicat/pylu ). Perhaps try porting that to TF later.
-#
-# (That is, for general matrices (LAPACK routine DGESV) it is simple. It's the symmetric case, if you want to handle it as symmetric (for best results),
-#  that is a nightmare. It sometimes needs 2×2 pivots, making the algorithm more complex. See Matrix Computations by Golub and van Loan, and the LAPACK
-#  source code for the routine DSYSV.)
-#
-# One possible complication here is that generally, LU needs pivoting for numerical stability. Different instances need to pivot
-# on different rows, so tensorization over matrix instances may become somewhat nontrivial. Might be possible to compute an
-# indirection tensor, though.
+# Fortunately, a simple linear equation system solver based on the LU decomposition and two triangular solves isn't that complicated. See `xgesv.py`. Next up is to try that on this...
 
 @tf.function
 def solve(a: tf.Tensor,
