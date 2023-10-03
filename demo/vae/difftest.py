@@ -163,7 +163,7 @@ def main():
     #     print("Decomposition residual L U - P A")
     #     P = tf.linalg.LinearOperatorPermutation(p, dtype=LU.dtype, name="P")
     #     # print(tf.tensordot(L, U, axes=[[1], [0]]))  # L U
-    #     print(tf.matmul(L, U) - P.matmul(A))
+    #     print(tf.linalg.matmul(L, U) - P.matmul(A))
     #     print("Equation system residual A x - b")
     #     print(tf.linalg.matvec(A, x) - b)
     # test_single()
@@ -182,7 +182,7 @@ def main():
     #     print(x)
     #     print("Decomposition residual L U - P A")
     #     P = tf.linalg.LinearOperatorPermutation(p, dtype=LU.dtype, name="P")
-    #     print(tf.matmul(L, U) - P.matmul(A))
+    #     print(tf.linalg.matmul(L, U) - P.matmul(A))
     #     print("Equation system residual A x - b")
     #     print(tf.linalg.matvec(A, x) - b)
     # test_batched()
