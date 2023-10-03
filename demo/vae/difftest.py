@@ -136,35 +136,56 @@ def chop_edges(N: int, X: tf.Tensor, Y: tf.Tensor) -> typing.Tuple[tf.Tensor, tf
 def main():
     # # xgesv.py debugging/testing
     # # tf.debugging.set_log_device_placement(True)
-    # from .xgesv import decompose, solve as linsolve, decompose_one, solve_one as linsolve_one
+    # from .xgesv import (decompose, solve as linsolve, unpack,
+    #                     decompose_one, solve_one as linsolve_one, unpack_one)
+    #
     # A = tf.constant([[4, 1, 0, 0, 2],
     #                  [3, 3, -1, -1, 0],
     #                  [0, 0, 1, 1, 1],
     #                  [-2, 1, -2, 3, 7],
     #                  [0, 0, 2, 2, 1]], dtype=tf.float16)
     # b = tf.constant([19, 6, 8, 31, 11], dtype=tf.float16)
-    # A = tf.expand_dims(A, axis=0)
-    # b = tf.expand_dims(b, axis=0)
     # print("-" * 80)
     # print("Inputs")
     # print(A)
     # print(b)
-    # print("-" * 80)
-    # print("Batched test")
-    # LU, p = decompose(A)
-    # x = linsolve(LU, p, b)
-    # print(LU)
-    # print(p)
-    # print(x)
-    # print(tf.tensordot(A, x, axes=[[2], [1]])[0, :, 0] - b[0, :])
-    # print("-" * 80)
-    # print("Single test")
-    # LU2, p2 = decompose_one(A[0, :, :])
-    # x2 = linsolve_one(LU2, p2, b[0, :])
-    # print(LU2)
-    # print(p2)
-    # print(x2)
-    # print(tf.tensordot(A, x2, axes=[[2], [0]])[0, :] - b[0, :])
+    #
+    # def test_single():
+    #     print("-" * 80)
+    #     print("Single test")
+    #     LU, p = decompose_one(A)
+    #     x = linsolve_one(LU, p, b)
+    #     L, U = unpack_one(LU)
+    #     print(L)
+    #     print(U)
+    #     print(p)
+    #     print(x)
+    #     print("Decomposition residual L U - P A")
+    #     P = tf.linalg.LinearOperatorPermutation(p, dtype=LU.dtype, name="P")
+    #     # print(tf.tensordot(L, U, axes=[[1], [0]]))  # L U
+    #     print(tf.matmul(L, U) - P.matmul(A))
+    #     print("Equation system residual A x - b")
+    #     print(tf.linalg.matvec(A, x) - b)
+    # test_single()
+    #
+    # A = tf.expand_dims(A, axis=0)
+    # b = tf.expand_dims(b, axis=0)
+    # def test_batched():
+    #     print("-" * 80)
+    #     print("Batched test")
+    #     LU, p = decompose(A)
+    #     x = linsolve(LU, p, b)
+    #     L, U = unpack(LU)
+    #     print(L)
+    #     print(U)
+    #     print(p)
+    #     print(x)
+    #     print("Decomposition residual L U - P A")
+    #     P = tf.linalg.LinearOperatorPermutation(p, dtype=LU.dtype, name="P")
+    #     print(tf.matmul(L, U) - P.matmul(A))
+    #     print("Equation system residual A x - b")
+    #     print(tf.linalg.matvec(A, x) - b)
+    # test_batched()
 
     # --------------------------------------------------------------------------------
     # Parameters
