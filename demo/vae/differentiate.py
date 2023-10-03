@@ -325,9 +325,8 @@ def prepare(N: int,
     # The `A` matrices can be preassembled. They must be stored per-pixel, but the size is only 6×6, so at float32,
     # we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
     #
-    # `einsum` doesn't support `RaggedTensor`, and neither does `tensordot`. What we want to do:
+    # `einsum` doesn't support `RaggedTensor`. What we want to do:
     # # A = tf.einsum("nki,nkj->nij", c, c)
-    # # A = tf.tensordot(c, c, axes=[[1], [1]])  # alternative expression
     # Doing it manually:
     rows = []
     for i in range(6):
