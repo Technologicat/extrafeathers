@@ -163,9 +163,7 @@ def main():
 
     # If σ > 0, how many times to loop the denoiser.
     # If σ = 0, denoising is skipped, and this setting has no effect.
-    #
-    # For N = 8, σ = 0.001, resolution = 256, it seems 10 steps is the smallest number that yields acceptable results.
-    denoise_steps = 10
+    denoise_steps = 8
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
@@ -222,20 +220,15 @@ def main():
 
     preps = prepare(N, X, Y, Z)
 
-    def denoise(N, X, Y, Z):
+    def denoise(N, X, Y, Z, *, indent=4):
         # Applying denoising in a loop allows removing larger amounts of noise.
         # Effectively, the neighboring patches communicate between iterations.
         for _ in range(denoise_steps):
-            print(f"    Least squares denoising: step {_ + 1} of {denoise_steps}...")
+            print(f"{indent * ' '}Denoising: step {_ + 1} of {denoise_steps}...")
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
-            tmp = solve(*preps, Z)
+            tmp = solve(*preps, Z)  # lsq
             Z = tmp[coeffs_full["f"]]
-
-        print("    Friedrichs smoothing...")
-        for _ in range(2 * denoise_steps):
-            Z = smooth_2d(N, Z, padding="SAME")
-            # X, Y = chop_edges(N, X, Y)
-
+            Z = smooth_2d(N, Z, padding="SAME")  # Friedrichs (eliminates high-frequency noise, but unstable extrapolation at edges/corners)
         return Z
 
     if σ > 0:
@@ -287,9 +280,9 @@ def main():
     # if σ > 0:
     #     print("    Denoise second derivatives...")
     #     with timer() as tim:
-    #         d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2)
-    #         d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy)
-    #         d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
+    #         d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2, indent=8)
+    #         d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy, indent=8)
+    #         d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2, indent=8)
     #     print(f"        Done in {tim.dt:0.6g}s.")
     # d2cross = d2zdxdy
 
@@ -302,8 +295,10 @@ def main():
     if σ > 0:
         print("    Denoise first derivatives...")
         with timer() as tim:
-            dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx)
-            dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy)
+            print("        dx...")
+            dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx, indent=8)
+            print("        dy...")
+            dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy, indent=8)
         print(f"        Done in {tim.dt:0.6g}s.")
 
     print("    Differentiate denoised first derivatives...")
@@ -323,10 +318,14 @@ def main():
     if σ > 0:
         print("    Denoise obtained second derivatives...")
         with timer() as tim:
-            d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2)
-            d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy)
-            d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx)
-            d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2)
+            print("        dx2...")
+            d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2, indent=8)
+            print("        dxdy...")
+            d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy, indent=8)
+            print("        dydx...")
+            d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx, indent=8)
+            print("        dy2...")
+            d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2, indent=8)
         print(f"        Done in {tim.dt:0.6g}s.")
 
     d2cross = (d2zdxdy + d2zdydx) / 2.0
