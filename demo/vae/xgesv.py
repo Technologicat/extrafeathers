@@ -25,20 +25,24 @@ import tensorflow as tf
 
 
 # --------------------------------------------------------------------------------
-# Batched versions, for many equation systems.
+# Batched versions, for many independent equation systems.
 
 def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """LU decompose a batch of `n × n` matrices, using partial pivoting (row swaps).
 
-    Produces matrices `L` and `U` such that `P A = L U`, where `P` is a row-swapping permutation matrix.
+    Produces matrices `L` and `U`, and a row-swapping permutation matrix `P`, such that::
+
+      P A = L U
+
+    The permutation matrix `P` is actually encoded as a permutation vector `p`.
 
     `A`: rank-3 tensor, [batch, n, n], C storage order. A batch of square matrices to be LU decomposed.
 
-    Returns: `(LU, p)`, where
-       `LU`: rank-3 tensor, [batch, n, n]; the `L` and `U` matrices.
+    Returns: `(lu, p)`, where
+       `lu`: rank-3 tensor, [batch, n, n]; the `L` and `U` matrices.
 
              The storage format is packed so that the diagonal elements of `L` are implicitly 1 (not stored).
-             The diagonal of `LU` stores the diagonal elements of `U`.
+             The diagonal of `lu` stores the diagonal elements of `U`.
 
        `p`: rank-2 tensor, [batch, n]; permutation vectors used in partial pivoting.
     """
@@ -50,7 +54,7 @@ def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
 
     # TODO: fix data placement woes with `jit_compile=True`; this doesn't help: with tf.device('GPU:0'):
 
-    lu = tf.Variable(a, name="lu", trainable=False)  # copy `a` into a variable `LU`, which we will decompose in-place
+    lu = tf.Variable(a, name="lu", trainable=False)  # copy `a` into a variable `lu`, which we will decompose in-place
     p = tf.range(n)
     p = tf.expand_dims(p, axis=0)  # [1, n]
     p = tf.tile(p, [batch, 1])  # [batch, n]
@@ -190,15 +194,19 @@ def solve_kernel(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, x: tf.Variable) -> N
 def decompose_one(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """LU decompose an `n × n` matrix, using partial pivoting (row swaps).
 
-    Produces matrices `L` and `U` such that `P A = L U`, where `P` is a row-swapping permutation matrix.
+    Produces matrices `L` and `U`, and a row-swapping permutation matrix `P`, such that::
+
+      P A = L U
+
+    The permutation matrix `P` is actually encoded as a permutation vector `p`.
 
     `A`: rank-2 tensor, [n, n], C storage order. A square matrix to be LU decomposed.
 
-    Returns: `(LU, p)`, where
-       `LU`: rank-2 tensor, [n, n]; the `L` and `U` matrices.
+    Returns: `(lu, p)`, where
+       `lu`: rank-2 tensor, [n, n]; the `L` and `U` matrices.
 
              The storage format is packed so that the diagonal elements of `L` are implicitly 1 (not stored).
-             The diagonal of `LU` stores the diagonal elements of `U`.
+             The diagonal of `lu` stores the diagonal elements of `U`.
 
        `p`: rank-1 tensor, [n]; permutation vector used in partial pivoting.
     """
@@ -206,7 +214,7 @@ def decompose_one(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
 
     # TODO: data placement woes; this doesn't help: with tf.device('GPU:0'):
 
-    lu = tf.Variable(a, name="lu", trainable=False)  # copy `a` into a variable `LU`, which we will decompose in-place
+    lu = tf.Variable(a, name="lu", trainable=False)  # copy `a` into a variable `lu`, which we will decompose in-place
     p = tf.Variable(tf.range(n), name="p", trainable=False)
     decompose_one_kernel(lu, p)
 
