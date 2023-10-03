@@ -157,7 +157,7 @@ def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         if len(shape) != 2 or int(shape[1]) != n:
             raise ValueError(f"Expected {name} to be a tensor of shape [batch, n], and from `lu`, n = {n}; got {shape}")
 
-    x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x", trainable=False)
+    x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x")
     solve_kernel(lu, p, b, x)
     return x
 
@@ -304,7 +304,7 @@ def solve_one(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         if len(shape) != 1 or int(shape[0]) != n:
             raise ValueError(f"Expected {name} to be a tensor of shape [n], and from `lu`, n = {n}; got {shape}")
 
-    x = tf.Variable(tf.zeros([n], dtype=lu.dtype), name="x", trainable=False)
+    x = tf.Variable(tf.zeros([n], dtype=lu.dtype), name="x")
     solve_one_kernel(lu, p, b, x)
     return x
 
