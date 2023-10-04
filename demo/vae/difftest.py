@@ -297,7 +297,7 @@ def main():
         #
         # We see the estimate works pretty well - the detected RMS noise level is approximately the stdev of the gaussian synthetic noise,
         # matching the true noise level.
-        print("Test: estimate noise level...")
+        print("[For information] Estimate noise level...")
         with timer() as tim:
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
             tmp = solve(*preps, Z)
