@@ -281,7 +281,7 @@ def main():
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
             tmp = solve(*preps, Z)  # lsq
             Z = tmp[coeffs_full["f"]]
-            Z = smooth_2d(N, Z, padding="SAME")  # Friedrichs (eliminates high-frequency noise, but unstable extrapolation at edges/corners)
+            # Z = smooth_2d(N, Z, padding="SAME")  # Friedrichs (eliminates high-frequency noise, but unstable extrapolation at edges/corners)
         return Z
 
     if σ > 0:
