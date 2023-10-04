@@ -391,6 +391,7 @@ def main():
 
     print("Plotting.")
     with timer() as tim:
+        # Smoothed second derivatives
         fig = plt.figure(2)
         ax1 = fig.add_subplot(1, 3, 1, projection="3d")
         surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
@@ -425,6 +426,7 @@ def main():
         fig.suptitle(f"Local quadratic surrogate fit, smoothed second derivatives, noise σ = {σ:0.3g}")
         link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
 
+        # Function and the raw first and second derivatives
         # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
         # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
