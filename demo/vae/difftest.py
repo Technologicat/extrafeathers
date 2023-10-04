@@ -308,80 +308,83 @@ def main():
         print(f"    Done in {tim.dt:0.6g}s.")
         print(f"    Noise (RMS): estimated {estimated_noise_RMS:0.6g}, true {true_noise_RMS:0.6g}")
 
-        # ...and then attempt to remove the noise.
-        print("Denoise function values...")
-        with timer() as tim:
-            Z = denoise(N, X, Y, Z)
-        print(f"    Done in {tim.dt:0.6g}s.")
-
     # --------------------------------------------------------------------------------
     # Compute the derivatives.
 
-    print("Differentiate...")
-    with timer() as tim:
-        dZ = solve(*preps, Z)[1:, :]
-        # dZ = hifier_differentiate(N, X, Y, Z)
-        # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
-        X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
-    print(f"    Done in {tim.dt:0.6g}s.")
+    with timer() as tim_total:
+        # Attempt to remove the noise.
+        if σ > 0:
+            print("Denoise function values...")
+            with timer() as tim:
+                Z = denoise(N, X, Y, Z)
+            print(f"    Done in {tim.dt:0.6g}s.")
 
-    # # Just denoising the second derivatives doesn't improve their quality much.
-    # d2zdx2 = dZ[coeffs_diffonly["dx2"], :]
-    # d2zdxdy = dZ[coeffs_diffonly["dxdy"], :]
-    # d2zdy2 = dZ[coeffs_diffonly["dy2"], :]
-    # X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
-    # if σ > 0:
-    #     print("    Denoise second derivatives...")
-    #     with timer() as tim:
-    #         d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2, indent=8)
-    #         d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy, indent=8)
-    #         d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2, indent=8)
-    #     print(f"        Done in {tim.dt:0.6g}s.")
-    # d2cross = d2zdxdy
-
-    # To improve second derivative quality for noisy data, we can first compute first derivatives by wlsqm,
-    # and then chain the method, with denoising between differentiations. In this variant, a final denoising
-    # step also helps.
-    print("Smoothed second derivatives:")
-    dzdx = dZ[coeffs_diffonly["dx"], :]
-    dzdy = dZ[coeffs_diffonly["dy"], :]
-    if σ > 0:
-        print("    Denoise first derivatives...")
+        print("Differentiate...")
         with timer() as tim:
-            print("        dx...")
-            dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx, indent=8)
-            print("        dy...")
-            dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy, indent=8)
+            dZ = solve(*preps, Z)[1:, :]
+            # dZ = hifier_differentiate(N, X, Y, Z)
+            # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
+            X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
+        print(f"    Done in {tim.dt:0.6g}s.")
+
+        # # Just denoising the second derivatives doesn't improve their quality much.
+        # d2zdx2 = dZ[coeffs_diffonly["dx2"], :]
+        # d2zdxdy = dZ[coeffs_diffonly["dxdy"], :]
+        # d2zdy2 = dZ[coeffs_diffonly["dy2"], :]
+        # X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
+        # if σ > 0:
+        #     print("    Denoise second derivatives...")
+        #     with timer() as tim:
+        #         d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2, indent=8)
+        #         d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy, indent=8)
+        #         d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2, indent=8)
+        #     print(f"        Done in {tim.dt:0.6g}s.")
+        # d2cross = d2zdxdy
+
+        # To improve second derivative quality for noisy data, we can first compute first derivatives by wlsqm,
+        # and then chain the method, with denoising between differentiations. In this variant, a final denoising
+        # step also helps.
+        print("Smoothed second derivatives:")
+        dzdx = dZ[coeffs_diffonly["dx"], :]
+        dzdy = dZ[coeffs_diffonly["dy"], :]
+        if σ > 0:
+            print("    Denoise first derivatives...")
+            with timer() as tim:
+                print("        dx...")
+                dzdx = denoise(N, X_for_dZ, Y_for_dZ, dzdx, indent=8)
+                print("        dy...")
+                dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy, indent=8)
+            print(f"        Done in {tim.dt:0.6g}s.")
+
+        print("    Differentiate denoised first derivatives...")
+        with timer() as tim:
+            ddzdx = solve(*preps, dzdx)[1:, :]
+            ddzdy = solve(*preps, dzdy)[1:, :]
+            # ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
+            # ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
+            # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
+            X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
         print(f"        Done in {tim.dt:0.6g}s.")
 
-    print("    Differentiate denoised first derivatives...")
-    with timer() as tim:
-        ddzdx = solve(*preps, dzdx)[1:, :]
-        ddzdy = solve(*preps, dzdy)[1:, :]
-        # ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
-        # ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
-        # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
-        X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
-    print(f"        Done in {tim.dt:0.6g}s.")
+        d2zdx2 = ddzdx[coeffs_diffonly["dx"], :]
+        d2zdxdy = ddzdx[coeffs_diffonly["dy"], :]
+        d2zdydx = ddzdy[coeffs_diffonly["dx"], :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
+        d2zdy2 = ddzdy[coeffs_diffonly["dy"], :]
+        if σ > 0:
+            print("    Denoise obtained second derivatives...")
+            with timer() as tim:
+                print("        dx2...")
+                d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2, indent=8)
+                print("        dxdy...")
+                d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy, indent=8)
+                print("        dydx...")
+                d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx, indent=8)
+                print("        dy2...")
+                d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2, indent=8)
+            print(f"        Done in {tim.dt:0.6g}s.")
 
-    d2zdx2 = ddzdx[coeffs_diffonly["dx"], :]
-    d2zdxdy = ddzdx[coeffs_diffonly["dy"], :]
-    d2zdydx = ddzdy[coeffs_diffonly["dx"], :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
-    d2zdy2 = ddzdy[coeffs_diffonly["dy"], :]
-    if σ > 0:
-        print("    Denoise obtained second derivatives...")
-        with timer() as tim:
-            print("        dx2...")
-            d2zdx2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdx2, indent=8)
-            print("        dxdy...")
-            d2zdxdy = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdxdy, indent=8)
-            print("        dydx...")
-            d2zdydx = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdydx, indent=8)
-            print("        dy2...")
-            d2zdy2 = denoise(N, X_for_dZ2, Y_for_dZ2, d2zdy2, indent=8)
-        print(f"        Done in {tim.dt:0.6g}s.")
-
-    d2cross = (d2zdxdy + d2zdydx) / 2.0
+        d2cross = (d2zdxdy + d2zdydx) / 2.0
+    print(f"    Differentiation and denoising done in {tim_total.dt:0.6g}s total.")
 
     # --------------------------------------------------------------------------------
     # Plot the results
