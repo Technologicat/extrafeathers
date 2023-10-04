@@ -472,10 +472,8 @@ def solve(a: tf.Tensor,
     z = tf.reshape(z, [-1])
     z = tf.cast(z, a.dtype)
 
-    absz = tf.abs(z)
-    zmin = tf.reduce_min(absz)
-    zmax = tf.reduce_max(absz)
-    z = (z - zmin) / (zmax - zmin)  # -> [0, 1]
+    zmax = tf.reduce_max(tf.abs(z))
+    z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
@@ -494,7 +492,7 @@ def solve(a: tf.Tensor,
     sol = tf.squeeze(sol, axis=-1)  # -> [#n, #rows]
 
     sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
-    sol = zmin + (zmax - zmin) * sol  # return from scaled z to raw z
+    sol = zmax * sol  # return from scaled z to raw z
 
     sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
     return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
@@ -548,10 +546,8 @@ def solve_lu_kernel(lu: tf.Tensor,
     z = tf.reshape(z, [-1])
     z = tf.cast(z, lu.dtype)
 
-    absz = tf.abs(z)
-    zmin = tf.reduce_min(absz)
-    zmax = tf.reduce_max(absz)
-    z = (z - zmin) / (zmax - zmin)  # -> [0, 1]
+    zmax = tf.reduce_max(tf.abs(z))
+    z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
@@ -569,7 +565,7 @@ def solve_lu_kernel(lu: tf.Tensor,
     sol = x
 
     sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
-    sol = zmin + (zmax - zmin) * sol  # return from scaled z to raw z
+    sol = zmax * sol  # return from scaled z to raw z
 
     sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
     return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
