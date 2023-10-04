@@ -29,7 +29,7 @@ import tensorflow as tf
 # --------------------------------------------------------------------------------
 # Batched versions, for many independent equation systems.
 
-def unpack(lu: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
+def unpack(lu: tf.Tensor, *, validate_args: bool = True) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """[debug] Decode packed format produced by `decompose`.
 
     lu: rank-3 tensor, [batch, n, n]. Batch of packed LU decompositions from `decompose`.
@@ -37,7 +37,7 @@ def unpack(lu: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     Returns a tuple of rank-2 tensors, `(l, u)`.
     """
     shape = tf.shape(lu)
-    if len(shape) != 3 or int(shape[1]) != int(shape[2]):
+    if validate_args and (len(shape) != 3 or int(shape[1]) != int(shape[2])):
         raise ValueError(f"Expected `lu` to be a tensor of shape [batch, n, n], got {shape}")
 
     l = tf.Variable(lu, name="l", trainable=False)  # noqa: E741, TF prefers lowercase identifiers.
@@ -59,7 +59,7 @@ def unpack_kernel(l: tf.Tensor, u: tf.Tensor):  # noqa: E741, TF prefers lowerca
             u[:, i, j].assign(tf.cast(0.0, u.dtype))
 
 
-def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
+def decompose(a: tf.Tensor, validate_args: bool = True) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """LU decompose a batch of `n × n` matrices, using partial pivoting (row swaps).
 
     Produces matrices `L` and `U`, and a row-swapping permutation matrix `P`, such that::
@@ -79,7 +79,7 @@ def decompose(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
        `p`: rank-2 tensor, [batch, n]; permutation vectors used in partial pivoting.
     """
     shape = tf.shape(a)
-    if len(shape) != 3 or int(shape[1]) != int(shape[2]):
+    if validate_args and (len(shape) != 3 or int(shape[1]) != int(shape[2])):
         raise ValueError(f"Expected `a` to be a tensor of shape [batch, n, n], got {shape}")
     batch = int(shape[0])
     n = int(shape[1])
@@ -150,7 +150,7 @@ def decompose_kernel(lu: tf.Variable, p: tf.Variable,
                 lu[:, i, j].assign(lu[:, i, j] - lu[:, i, k] * lu[:, k, j])
 
 
-def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
+def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, *, validate_args: bool = False) -> tf.Tensor:
     """Solve a batch of linear equation systems after the matrices have been LU-decomposed.
 
     `lu`: rank-3 tensor, [batch, n, n], C storage order. Batch of packed LU decompositions from `decompose`.
@@ -179,15 +179,16 @@ def solve(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
     Returns `x`, a rank-2 tensor [batch, n]; solution for `P A x = P b`.
     """
     shape = tf.shape(lu)
-    if len(shape) != 3 or int(shape[1]) != int(shape[2]):
+    if validate_args and (len(shape) != 3 or int(shape[1]) != int(shape[2])):
         raise ValueError(f"Expected `a` to be a tensor of shape [batch, n, n], got {shape}")
     batch = int(shape[0])
     n = int(shape[1])
 
-    for name, tensor in (("p", p), ("b", b)):
-        shape = tf.shape(tensor)
-        if len(shape) != 2 or int(shape[1]) != n:
-            raise ValueError(f"Expected {name} to be a tensor of shape [batch, n], and from `lu`, n = {n}; got {shape}")
+    if validate_args:
+        for name, tensor in (("p", p), ("b", b)):
+            shape = tf.shape(tensor)
+            if len(shape) != 2 or int(shape[1]) != n:
+                raise ValueError(f"Expected {name} to be a tensor of shape [batch, n], and from `lu`, n = {n}; got {shape}")
 
     x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x")
     solve_kernel(lu, p, b, x)
@@ -223,7 +224,7 @@ def solve_kernel(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, x: tf.Variable) -> N
 # These are here mainly because the code is much more readable than the batched version,
 # and more readily comparable to `dgesv.pxd` in PyLU.
 
-def unpack_one(lu: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
+def unpack_one(lu: tf.Tensor, validate_args: bool = True) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """[debug] Decode packed format produced by `decompose_one`.
 
     lu: rank-2 tensor, [n, n]. Packed LU decomposition from `decompose_one`.
@@ -231,7 +232,7 @@ def unpack_one(lu: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     Returns a tuple of rank-2 tensors, `(l, u)`.
     """
     shape = tf.shape(lu)
-    if len(shape) != 2 or int(shape[0]) != int(shape[1]):
+    if validate_args and (len(shape) != 2 or int(shape[0]) != int(shape[1])):
         raise ValueError(f"Expected `lu` to be a tensor of shape [n, n], got {shape}")
 
     l = tf.Variable(lu, name="l", trainable=False)  # noqa: E741, TF prefers lowercase identifiers.
@@ -252,7 +253,7 @@ def unpack_one_kernel(l: tf.Tensor, u: tf.Tensor):  # noqa: E741, TF prefers low
             u[i, j].assign(tf.cast(0.0, u.dtype))
 
 
-def decompose_one(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
+def decompose_one(a: tf.Tensor, validate_args: bool = True) -> typing.Tuple[tf.Tensor, tf.Tensor]:
     """LU decompose an `n × n` matrix, using partial pivoting (row swaps).
 
     Produces matrices `L` and `U`, and a row-swapping permutation matrix `P`, such that::
@@ -272,7 +273,7 @@ def decompose_one(a: tf.Tensor) -> typing.Tuple[tf.Tensor, tf.Tensor]:
        `p`: rank-1 tensor, [n]; permutation vector used in partial pivoting.
     """
     shape = tf.shape(a)
-    if len(shape) != 2 or int(shape[0]) != int(shape[1]):
+    if validate_args and (len(shape) != 2 or int(shape[0]) != int(shape[1])):
         raise ValueError(f"Expected `a` to be a tensor of shape [n, n], got {shape}")
     n = int(shape[0])
 
@@ -327,7 +328,7 @@ def decompose_one_kernel(lu: tf.Variable, p: tf.Variable) -> None:
                 lu[i, j].assign(lu[i, j] - lu[i, k] * lu[k, j])
 
 
-def solve_one(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
+def solve_one(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, *, validate_args: bool = False) -> tf.Tensor:
     """Solve a linear equation system after the matrix has been LU-decomposed.
 
     `lu`: rank-2 tensor, [n, n], C storage order. Packed LU decomposition from `decompose_one`.
@@ -356,14 +357,15 @@ def solve_one(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
     Returns `x`, a rank-1 tensor [n]; solution for `P A x = P b`.
     """
     shape = tf.shape(lu)
-    if len(shape) != 2 or int(shape[0]) != int(shape[1]):
+    if validate_args and (len(shape) != 2 or int(shape[0]) != int(shape[1])):
         raise ValueError(f"Expected `a` to be a tensor of shape [n, n], got {shape}")
     n = int(shape[0])
 
-    for name, tensor in (("p", p), ("b", b)):
-        shape = tf.shape(tensor)
-        if len(shape) != 1 or int(shape[0]) != n:
-            raise ValueError(f"Expected {name} to be a tensor of shape [n], and from `lu`, n = {n}; got {shape}")
+    if validate_args:
+        for name, tensor in (("p", p), ("b", b)):
+            shape = tf.shape(tensor)
+            if len(shape) != 1 or int(shape[0]) != n:
+                raise ValueError(f"Expected {name} to be a tensor of shape [n], and from `lu`, n = {n}; got {shape}")
 
     x = tf.Variable(tf.zeros([n], dtype=lu.dtype), name="x")
     solve_one_kernel(lu, p, b, x)
