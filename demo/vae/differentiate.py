@@ -19,7 +19,7 @@ We need only the very basics here. A complete Cython implementation of WLSQM, an
     https://github.com/Technologicat/python-wlsqm
 """
 
-__all__ = ["prepare", "solve",  # The hifiest algorithm, accurate, fast, uses a lot of VRAM. Recommended if you have the VRAM.
+__all__ = ["prepare", "solve", "solve_lu",  # The hifiest algorithm, accurate, fast, uses a lot of VRAM. Recommended if you have the VRAM.
            "hifier_differentiate",  # Second best algorithm, not as accurate near corners, slower, uses less VRAM. Recommended for low-VRAM setups.
            "hifi_differentiate",   # Third best algorithm, a variant of the second.
            "differentiate",  # kernel for `hifi*`, can also be used separately for interior-only (fast), or with low-quality extrapolation at edges
@@ -36,6 +36,7 @@ import numpy as np
 import tensorflow as tf
 
 from .padding import pad_quadratic_2d, pad_linear_2d
+from .xgesv import solve_kernel as lusolve
 
 coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}  # for interpreting output of `differentiate`
 coeffs_full = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}  # for interpreting output of all other algorithms
@@ -45,6 +46,7 @@ coeffs_full = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}  # for i
 # Advanced API. Fastest GPU implementation. Best results. Needs most VRAM.
 #
 # Recommended if you have the VRAM.
+# You most likely want just `prepare` and `solve`.
 
 def multi_to_linear(iyix: tf.Tensor, *, shape: tf.Tensor):
     """[DOF mapper] Convert meshgrid multi-index to linear index.
@@ -84,7 +86,8 @@ def prepare(N: int,
             Y: typing.Union[np.array, tf.Tensor],
             Z: typing.Union[np.array, tf.Tensor],
             *,
-            dtype: tf.DType = tf.float32):
+            dtype: tf.DType = tf.float32,
+            format: str = "A"):
     """Prepare for differentiation on a meshgrid.
 
     This is the hifiest algorithm provided in this module.
@@ -108,8 +111,15 @@ def prepare(N: int,
     `dtype`: The desired TensorFlow data type for the outputs `A`, `c`, and `scale`.
              The output `neighbors` always has dtype `int32`.
 
-    The return value is a tuple of tensors, `(A, c, scale, neighbors)`.
-    These tensors can be passed to `solve`, which runs completely on the GPU.
+    `format`: One of "A" or "LUp":
+        "A": Format expected by `solve`. Recommended.
+             The return value is a tuple of tensors, `(A, c, scale, neighbors)`.
+
+        "LUp": Format expected by `solve_lu` (which can run also at float16).
+             The return value is a tuple of tensors, `(LU, p, c, scale, neighbors)`.
+
+    These returned tensors can be passed to `solve` or `solve_lu` (depending on `format`);
+    these solvers run completely on the GPU.
 
     As long as `N`, `X` and `Y` remain constant, and the dtype of `Z` remains the same,
     the same preparation can be reused.
@@ -123,6 +133,8 @@ def prepare(N: int,
             raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
         if not (int(shape[0]) >= 2 * N + 1 and int(shape[1]) >= 2 * N + 1):
             raise ValueError(f"Expected `{name}` to be at least of size [(2 * N + 1) (2 * N + 1)]; got N = {N} and {shape}")
+    if format not in ("A", "LUp"):
+        raise ValueError(f"Unknown format '{format}'; known: 'A', 'LUp'.")
 
     def intarray(x):
         return np.array(x, dtype=int)  # TODO: `np.int32`?
@@ -352,15 +364,20 @@ def prepare(N: int,
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=Z.dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
 
-    A = tf.cast(A, dtype)
     c = tf.cast(c, dtype)
     scale = tf.cast(scale, dtype)
+    if format == "A":
+        A = tf.cast(A, dtype)
+    else:  # format == "LUp":
+        LU, p = tf.linalg.lu(A)
+        LU = tf.cast(LU, dtype)
 
-    return A, c, scale, neighbors
+    if format == "A":
+        return A, c, scale, neighbors
+    return LU, p, c, scale, neighbors
 
-# TODO: Make `solve` work with float16, if possible.
-#
-# Trying to run at float16 precision on TF 2.12 gives the error:
+
+# Trying to run `solve` at float16 precision on TF 2.12 gives the error:
 #
 # tensorflow.python.framework.errors_impl.InvalidArgumentError: No OpKernel was registered to support Op 'MatrixSolve' used by {{node MatrixSolve}} with these attrs: [T=DT_HALF, adjoint=false]
 # Registered devices: [CPU, GPU]
@@ -385,11 +402,18 @@ def prepare(N: int,
 # If we split the `tf.linalg.solve` into a separate JIT-compiled wrapper function, we then get the error
 # "Invalid type for triangular solve 10". The only match is `triangular_solve_thunk.cc`, one online copy here:
 #   https://www.androidos.net.cn/android/10.0.0_r6/xref/external/tensorflow/tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.cc
-# which seems to suggest that at least some versions of TF actually only support float32 and above in `tf.linalg.solve`,
-# although the previous error message (upon running without JIT compilation) suggests otherwise. Perhaps it actually means
-# that the *XLA compiler* can try to compile this operation for float16, but this does not guarantee that a kernel exists.
 #
-# Fortunately, a simple linear equation system solver based on the LU decomposition and two triangular solves isn't that complicated. See `xgesv.py`. Next up is to try that on this...
+# which seems to suggest that at least some versions of TF actually only support float32 and above in
+# `tf.linalg.solve`, although the previous error message (upon running without JIT compilation) suggests
+# otherwise. Perhaps it actually means that the *XLA compiler* can try to compile this operation for float16,
+# but this does not guarantee that a kernel exists.
+#
+# Fortunately, a simple linear equation system solver based on the LU decomposition and two triangular solves
+# isn't that complicated. See `xgesv.py`. This gives us a solver that can run also at float16, see `solve_lu`.
+#
+# However, upon testing this, it turned out that float32 isn't the speed bottleneck here, and the accuracy
+# of float16 isn't really enough for this use case. If you want to see for yourself, the experiment is
+# preserved as `solve_lu`.
 
 @tf.function
 def solve(a: tf.Tensor,
@@ -399,7 +423,9 @@ def solve(a: tf.Tensor,
           z: tf.Tensor):
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
-    `a`, `c`, `scale`, `neighbors`: Outputs from `prepare`, which see.
+    This uses `tf.linalg.solve`, and is the recommended algorithm.
+
+    `a`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="A"`, which see.
     `z`: function value data in 2D meshgrid format.
 
          For computations, `z` is automatically cast into the same dtype as `a`
@@ -408,6 +434,9 @@ def solve(a: tf.Tensor,
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
     happens to need the spatial derivatives of `z`, as estimated from image data).
+
+    Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
+    f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
     z = tf.reshape(z, [-1])
@@ -433,6 +462,81 @@ def solve(a: tf.Tensor,
     # print(tf.shape(sol))  # [#n, #rows, 1]
     # print(tf.math.reduce_max(abs(tf.matmul(a, sol) - b)))  # DEBUG: yes, the solutions are correct.
     sol = tf.squeeze(sol, axis=-1)  # -> [#n, #rows]
+
+    sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
+    sol = zmin + (zmax - zmin) * sol  # return from scaled z to raw z
+
+    sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
+    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
+
+def solve_lu(lu: tf.Tensor,
+             p: tf.Tensor,
+             c: tf.Tensor,
+             scale: tf.Tensor,
+             neighbors: tf.RaggedTensor,
+             z: tf.Tensor):
+    """[kernel] Assemble and solve system that was prepared using `prepare`.
+
+    This uses a custom LU solver, which can run also at float16.
+
+    `lu`, `p`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="LUp"`, which see.
+    `z`: function value data in 2D meshgrid format.
+
+         For computations, `z` is automatically cast into the same dtype as `lu`
+         (which can be set when calling `prepare`; see the `dtype` argument).
+
+    This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
+    e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
+    happens to need the spatial derivatives of `z`, as estimated from image data).
+
+    Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
+    f, dx, dy, dx2, dxdy, dy2, in that order.
+    """
+    shape = tf.shape(lu)
+    batch = int(shape[0])
+    n = int(shape[1])
+    x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x")  # cannot be allocated inside @tf.function
+    return solve_lu_kernel(lu, p, c, scale, neighbors, z, x)
+
+@tf.function
+def solve_lu_kernel(lu: tf.Tensor,
+                    p: tf.Tensor,
+                    c: tf.Tensor,
+                    scale: tf.Tensor,
+                    neighbors: tf.RaggedTensor,
+                    z: tf.Tensor,
+                    x: tf.Variable):
+    """The actual computational kernel for `solve_lu`.
+
+    `lu`, `p`, `c`, `scale`, `neighbors`, `z`: passed through from API wrapper `solve_lu`.
+    `x`: work space variable, [batch, n]. Will be written to.
+
+    Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
+    f, dx, dy, dx2, dxdy, dy2, in that order.
+    """
+    shape = tf.shape(z)
+    z = tf.reshape(z, [-1])
+    z = tf.cast(z, lu.dtype)
+
+    absz = tf.abs(z)
+    zmin = tf.reduce_min(absz)
+    zmax = tf.reduce_max(absz)
+    z = (z - zmin) / (zmax - zmin)  # -> [0, 1]
+
+    # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
+    rows = []
+    for i in range(6):
+        zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
+        ci = c[:, :, i]  # -> [#n, #k]
+        bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
+        bi = tf.cast(bi, lu.dtype)
+        rows.append(bi)
+    b = tf.stack(rows, axis=1)  # -> [#n, #rows]
+
+    # We must call the kernel directly, because we are inside @tf.function;
+    # the API wrapper would try to allocate its own `x`, which we can't do here.
+    lusolve(lu, p, b, x)  # our custom kernel, writes solution into `x`
+    sol = x
 
     sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
     sol = zmin + (zmax - zmin) * sol  # return from scaled z to raw z
