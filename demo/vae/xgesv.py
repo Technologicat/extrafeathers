@@ -1,17 +1,31 @@
-"""A simple partial pivoting (row swap) linear equation system solver.
+"""A simple partial pivoting (row swap) linear equation system solver based on LU decomposition.
 
-We separate the solving process into decomposition and triangular solve stages.
+Usually, `tf.linalg.solve`, or `tf.linalg.lu` and `tf.linalg.lu_solve`, are preferable,
+but as of TF 2.12, `tf.linalg.solve` and `tf.linalg.lu_solve` do not have a kernel for float16.
+Of course float16 doesn't have much accuracy, but in some use cases it can be useful to explore
+whether it would be enough, to obtain a possible speedup.
+
+The recommended way is:
+
+  1) Ignore the decomposition routines here and use the much faster `tf.linalg.lu`
+     (its outputs `LU` and `p` are compatible with this module).
+  2) `tf.cast` your `LU` to the desired dtype.
+  3) If the dtype is not supported by the TF kernels, use the `solve` routine from here.
+
+As usual, we separate the solving process into decomposition and triangular solve stages.
 This allows reusing the decomposition when solving a new RHS with the same matrix
 (or in the batched version, a new set of RHSs with the same set of matrices).
+
+(And as you already know, as a bonus, the LU decomposition gives you the eigenvalues - they are
+on the diagonal of the packed LU.)
 
 This is a TensorFlow port of the basic functionality of:
   https://github.com/Technologicat/pylu/blob/master/pylu/dgesv.pxd
 
-The point is to allow any dtype in some simple use cases; as of TF 2.12,
-`tf.linalg.solve` does not have a kernel for float16.
-
-This solver, instead, is based on high-level TensorFlow operations,
-so it can be run with any supported dtype.
+This solver is based on high-level TensorFlow operations, so it can run with any supported dtype.
+Note this also means it's somewhat slower than the C++ kernels in TF - so this can be used for
+testing whether float16 accuracy would be enough for your use case, but the performance is likely
+slower than the TF kernel on float32.
 """
 
 __all__ = ["decompose",  # batched, many independent equation systems
