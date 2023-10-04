@@ -219,7 +219,7 @@ def solve_kernel(lu: tf.Tensor, p: tf.Tensor, b: tf.Tensor, x: tf.Variable) -> N
     # TODO: The permutation operator should be created in `decompose` instead.
     P = tf.linalg.LinearOperatorPermutation(p, dtype=lu.dtype, name="P")
     bmat = tf.expand_dims(b, axis=-1)
-    x.assign(tf.squeeze(P.matmul(bmat), axis=-1))  # x[:] = b[p]
+    x.assign(tf.squeeze(P.matmul(bmat), axis=-1))  # x[:] = b[p], or formally, x := P b
 
     # Solve `L y = P b` by forward substitution.
     for i in range(n):
