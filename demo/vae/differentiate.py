@@ -86,6 +86,7 @@ def prepare(N: int,
             Y: typing.Union[np.array, tf.Tensor],
             Z: typing.Union[np.array, tf.Tensor],
             *,
+            p: typing.Union[float, str] = 2.0,
             dtype: tf.DType = tf.float32,
             format: str = "A"):
     """Prepare for differentiation on a meshgrid.
@@ -107,6 +108,15 @@ def prepare(N: int,
                    `Z` is only consulted for its shape and dtype.
 
                    The grid spacing must be uniform.
+
+    `p`: The p for p-norm that is used for deciding whether a grid point in the local [-N, N]²
+         box belongs to the stencil.
+
+         Either a float >= 1.0, or the string "inf" (p-infinity norm, keep the whole box).
+
+         Particularly useful is the default `p=2.0`, i.e. Euclidean distance, yielding round neighborhoods.
+         This is the most isotropic possible, avoiding directional artifacts when the surrogate fitter is
+         used for denoising noisy function data.
 
     `dtype`: The desired TensorFlow data type for the outputs `A`, `c`, and `scale`.
              The output `neighbors` always has dtype `int32`.
@@ -133,11 +143,22 @@ def prepare(N: int,
             raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
         if not (int(shape[0]) >= 2 * N + 1 and int(shape[1]) >= 2 * N + 1):
             raise ValueError(f"Expected `{name}` to be at least of size [(2 * N + 1) (2 * N + 1)]; got N = {N} and {shape}")
+    if not ((isinstance(p, float) and p >= 1.0) or (isinstance(p, str) and p == "inf")):
+        raise ValueError(f"Expected `p` to be either a float >= 1 or the string 'inf'; got {p}")
     if format not in ("A", "LUp"):
         raise ValueError(f"Unknown format '{format}'; known: 'A', 'LUp'.")
 
     def intarray(x):
         return np.array(x, dtype=int)  # TODO: `np.int32`?
+
+    if p == "inf":
+        # We know that |iy| ≤ N, |ix| ≤ N in the whole box, so we could skip the check,
+        # but it's a better contract if the function that is supposed to do checking actually checks.
+        def belongs_to_neighborhood(iy, ix):  # infinity norm
+            return max(abs(iy), abs(ix)) <= N
+    else:  # isinstance(p, float) and p >= 1.0:
+        def belongs_to_neighborhood(iy, ix):  # p-norm, general case
+            return (iy**p + ix**p)**(1 / p) <= N
 
     shape = tf.shape(Z)
     npoints = tf.reduce_prod(shape)
@@ -180,7 +201,8 @@ def prepare(N: int,
     interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
     interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
     interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                          for ix in range(-N, N + 1)])  # multi-index offsets
+                                          for ix in range(-N, N + 1)
+                                          if belongs_to_neighborhood(iy, ix)])  # multi-index offsets
     interior_stencil = multi_to_linear(interior_stencil, shape=shape)  # corresponding linear index offsets
     register_stencil(interior_stencil, interior_idx)
 
@@ -189,7 +211,8 @@ def prepare(N: int,
         top_multi_to_linear = all_multi_to_linear[row, N:-N]
         top_idx = tf.reshape(top_multi_to_linear, [-1])
         top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
-                                         for ix in range(-N, N + 1)])
+                                         for ix in range(-N, N + 1)
+                                         if belongs_to_neighborhood(iy, ix)])
         top_stencil = multi_to_linear(top_stencil, shape=shape)
         register_stencil(top_stencil, top_idx)  # each row near the top gets its own stencil
 
@@ -198,7 +221,8 @@ def prepare(N: int,
         bottom_multi_to_linear = all_multi_to_linear[row, N:-N]
         bottom_idx = tf.reshape(bottom_multi_to_linear, [-1])
         bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
-                                            for ix in range(-N, N + 1)])
+                                            for ix in range(-N, N + 1)
+                                            if belongs_to_neighborhood(iy, ix)])
         bottom_stencil = multi_to_linear(bottom_stencil, shape=shape)
         register_stencil(bottom_stencil, bottom_idx)
 
@@ -207,7 +231,8 @@ def prepare(N: int,
         left_multi_to_linear = all_multi_to_linear[N:-N, col]
         left_idx = tf.reshape(left_multi_to_linear, [-1])
         left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                          for ix in range(-col, N + 1)])
+                                          for ix in range(-col, N + 1)
+                                          if belongs_to_neighborhood(iy, ix)])
         left_stencil = multi_to_linear(left_stencil, shape=shape)
         register_stencil(left_stencil, left_idx)
 
@@ -216,7 +241,8 @@ def prepare(N: int,
         right_multi_to_linear = all_multi_to_linear[N:-N, col]
         right_idx = tf.reshape(right_multi_to_linear, [-1])
         right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                           for ix in range(-N, -col)])
+                                           for ix in range(-N, -col)
+                                           if belongs_to_neighborhood(iy, ix)])
         right_stencil = multi_to_linear(right_stencil, shape=shape)
         register_stencil(right_stencil, right_idx)
 
@@ -225,7 +251,8 @@ def prepare(N: int,
         for col in range(N):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])  # just one pixel, but for uniform data format, use a rank-1 tensor
             this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
-                                              for ix in range(-col, N + 1)])
+                                              for ix in range(-col, N + 1)
+                                              if belongs_to_neighborhood(iy, ix)])
             this_stencil = multi_to_linear(this_stencil, shape=shape)
             register_stencil(this_stencil, this_idx)
 
@@ -234,7 +261,8 @@ def prepare(N: int,
         for col in range(-N, 0):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
             this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
-                                              for ix in range(-N, -col)])
+                                              for ix in range(-N, -col)
+                                              if belongs_to_neighborhood(iy, ix)])
             this_stencil = multi_to_linear(this_stencil, shape=shape)
             register_stencil(this_stencil, this_idx)
 
@@ -243,7 +271,8 @@ def prepare(N: int,
         for col in range(N):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
             this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
-                                              for ix in range(-col, N + 1)])
+                                              for ix in range(-col, N + 1)
+                                              if belongs_to_neighborhood(iy, ix)])
             this_stencil = multi_to_linear(this_stencil, shape=shape)
             register_stencil(this_stencil, this_idx)
 
@@ -252,7 +281,8 @@ def prepare(N: int,
         for col in range(-N, 0):
             this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
             this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
-                                              for ix in range(-N, -col)])
+                                              for ix in range(-N, -col)
+                                              if belongs_to_neighborhood(iy, ix)])
             this_stencil = multi_to_linear(this_stencil, shape=shape)
             register_stencil(this_stencil, this_idx)
 
