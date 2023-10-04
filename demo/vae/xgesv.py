@@ -122,9 +122,9 @@ def decompose_kernel(lu: tf.Variable, p: tf.Variable,
 
         # Swap elements `k` and `r` of permutation vector `p`
         tmp1 = p[:, k]
-        p[:, k].assign(tf.gather(p, wrki, axis=1))  # p[:, k] = p[:, r]
+        # p[:, k].assign(tf.gather(p, wrki, axis=1))  # p[:, k] = p[:, r]  # allocates batch² for some reason?
         for m in range(batch):  # TODO: tensorize over batch
-            # p[m, k].assign(p[m, wrki[m]])  # p[m, k] = p[m, r]
+            p[m, k].assign(p[m, wrki[m]])  # p[m, k] = p[m, r]
             p[m, wrki[m]].assign(tmp1[m])  # p[m, r] = tmp1[m]  (old p[m, k])
 
         # Physically swap also the corresponding rows of A.
@@ -135,9 +135,9 @@ def decompose_kernel(lu: tf.Variable, p: tf.Variable,
         # (It is still needed for accessing the RHS vector when solving the actual equation system.)
         #
         tmp2 = lu[:, k, :]
-        lu[:, k, :].assign(tf.gather(lu, wrki, axis=1))  # lu[:, k, :] = lu[:, r, :]
+        # lu[:, k, :].assign(tf.gather(lu, wrki, axis=1))  # lu[:, k, :] = lu[:, r, :]
         for m in range(batch):  # TODO: tensorize over batch
-            # lu[m, k, :].assign(lu[m, wrki[m], :])  # lu[m, k, :] = lu[m, r, :]
+            lu[m, k, :].assign(lu[m, wrki[m], :])  # lu[m, k, :] = lu[m, r, :]
             lu[m, wrki[m], :].assign(tmp2[m, :])  # lu[m, r, :] = tmp2[m, :]  (old lu[m, k, :])
 
         # # TODO: Fail gracefully if the pivoted lu[k, k] is below some tolerance
