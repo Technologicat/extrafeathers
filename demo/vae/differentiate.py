@@ -90,7 +90,7 @@ def prepare(N: int,
             format: str = "A"):
     """Prepare for differentiation on a meshgrid.
 
-    This is the hifiest algorithm provided in this module.
+    This is the hifiest algorithm provided in this module. For what to do after `prepare`, see `solve`.
 
     This function precomputes the surrogate fitting coefficient tensor `c`, and the pixelwise `A` matrices.
     Some of the preparation is performed on the CPU, the most intensive computations on the GPU.
