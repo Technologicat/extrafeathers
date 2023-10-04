@@ -286,7 +286,7 @@ def main():
     # --------------------------------------------------------------------------------
     # Simulate noisy input, for testing the denoiser.
 
-    preps = prepare(N, X, Y, Z)
+    preps = prepare(N, X, Y, Z)  # Z is only needed here for shape and dtype.
 
     def denoise(N, X, Y, Z, *, indent=4):
         # Applying denoising in a loop allows removing larger amounts of noise.
