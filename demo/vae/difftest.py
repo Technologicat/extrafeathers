@@ -219,10 +219,10 @@ def main():
     # When using Friedrichs smoothing, 8 is the largest numerically stable neighborhood size
     # (due to extrapolation at the edges).
     #
-    # When smoothing only with least-squares, only VRAM is the limit. At 6 GB, N = 11 is the limit.
+    # When smoothing only with least-squares, only VRAM is the limit.
     #
-    # In any case, note the surrogate modeling assumption: a quadratic polynomial should be able to
-    # reasonably describe the function locally in each neighborhood.
+    # In any case, note the surrogate modeling assumption: a quadratic polynomial should be
+    # able to reasonably describe the function locally in each neighborhood.
     #
     # Pixel count (i.e. stencil size) as a function of neighborhood size parameter `N`:
     #
