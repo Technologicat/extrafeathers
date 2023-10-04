@@ -190,33 +190,48 @@ def main():
     # --------------------------------------------------------------------------------
     # Parameters
 
-    # `N`: neighborhood size parameter (radius in grid units) for surrogate fitting
-    # `σ`: optional (set to 0 to disable): stdev for simulated i.i.d. gaussian noise in data
-
-    # Currently, 8 is the largest numerically stable neighborhood size, and yields the best results for noisy data.
-    N, σ = 8, 0.001
-
-    # # 3 seems enough when the data is numerically exact.
-    # N, σ = 3, 0.0
-
-    # This demo seems to yield best results (least l1 error) at 256 pixels per axis.
+    # Input image resolution (in pixels per axis; the image is square).
+    #
+    # This demo seems to yield best results (least l1 error) at 256.
     #
     # This is still horribly slow despite GPU acceleration. Performance is currently CPU-bound.
     # Denoising is the performance bottleneck. With numerically exact data, differentiation is acceptably fast.
     #
-    # Even at 512 resolution, GPU utilization is under 20% (according to `nvtop`), and there is barely any noticeable difference
-    # in the surrogate fitting speed. 512 is the largest that works, at least on Quadro RTX 3000 mobile (RTX 2xxx based chip, 6 GB VRAM).
+    # Even at 512 resolution, GPU utilization is under 20% (according to `nvtop`), and there is barely any
+    # noticeable difference in the surrogate fitting speed. 512 is the largest that works, at least on
+    # Quadro RTX 3000 mobile (RTX 2xxx based chip, 6 GB VRAM).
     #
     # At 768 or 1024, cuBLAS errors out (cuBlas call failed status = 14 [Op:MatrixSolve]).
-    # Currently I don't know why - there should be no difference other than the batch size (the whole image is sent in one batch).
-    # Solving a 6×6 linear system for 1024 RHSs should hardly take gigabytes of VRAM even at float32.
+    # Currently I don't know why - there should be no difference other than the batch size (the whole image
+    # is sent in one batch). Solving a 6×6 linear system for 1024 RHSs should hardly take gigabytes of VRAM
+    # even at float32.
     #
     # The hifiest algorithm (`prepare`/`solve`) *does* take gigabytes of VRAM, even at 256.
     resolution = 256
 
-    # If σ > 0, how many times to loop the denoiser.
+    # `N`: Neighborhood size parameter for surrogate fitting. The data used for fitting the local
+    #      surrogate model for each pixel consists of a box of [2 * N + 1, 2 * N + 1] pixels,
+    #      centered on the pixel being fitted. For pixels near edges and corners, the box is
+    #      clipped to the data region.
+    # `σ`: Optional, set to 0 to disable: stdev for per-pixel synthetic noise (i.i.d. gaussian).
+
+    # When using Friedrichs smoothing, 8 is the largest numerically stable neighborhood size
+    # (due to extrapolation at the edges). N = 8 yields a box of 17² = 289 pixels for fitting
+    # each local model.
+    #
+    # When smoothing only with least-squares, only VRAM is the limit. At 6 GB, N = 11 is the limit.
+    # N = 11 yields a box of 23² = 529 pixels for fitting each local model.
+    #
+    # In any case, note the surrogate modeling assumption: a quadratic polynomial should be able to
+    # reasonably describe the function locally in each [2 * N + 1, 2 * N + 1] box.
+    N, σ = 11, 0.001
+
+    # # 3 seems enough when the data is numerically exact. N = 3 yields a box of 7² = 49 pixels.
+    # N, σ = 3, 0.0
+
+    # If σ > 0, how many times to loop the denoiser. Larger neighborhood sizes need less denoising.
     # If σ = 0, denoising is skipped, and this setting has no effect.
-    denoise_steps = 8
+    denoise_steps = 2
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
