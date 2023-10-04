@@ -442,7 +442,7 @@ def main():
             print(f"        Done in {tim.dt:0.6g}s.")
 
         d2cross = (d2zdxdy + d2zdydx) / 2.0
-    print(f"    Total wall time {tim_total.dt:0.6g}s.")
+    print(f"Total wall time for differentiation {tim_total.dt:0.6g}s.")
 
     # --------------------------------------------------------------------------------
     # Plot the results
