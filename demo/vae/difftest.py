@@ -28,7 +28,6 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from .differentiate import prepare, solve, coeffs_full, coeffs_diffonly
-from .smoothing import smooth_2d
 
 # TODO: implement also classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because many more neighbors.)
 
