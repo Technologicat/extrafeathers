@@ -76,6 +76,8 @@ def decompose(a: tf.Tensor, validate_args: bool = True) -> typing.Tuple[tf.Tenso
              The storage format is packed so that the diagonal elements of `L` are implicitly 1 (not stored).
              The diagonal of `lu` stores the diagonal elements of `U`.
 
+             That is, `lu = L + U - eye`.
+
        `p`: rank-2 tensor, [batch, n]; permutation vectors used in partial pivoting.
     """
     shape = tf.shape(a)
@@ -269,6 +271,8 @@ def decompose_one(a: tf.Tensor, validate_args: bool = True) -> typing.Tuple[tf.T
 
              The storage format is packed so that the diagonal elements of `L` are implicitly 1 (not stored).
              The diagonal of `lu` stores the diagonal elements of `U`.
+
+             That is, `lu = L + U - eye`.
 
        `p`: rank-1 tensor, [n]; permutation vector used in partial pivoting.
     """
