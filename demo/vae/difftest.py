@@ -211,25 +211,56 @@ def main():
     # `N`: Neighborhood size parameter for surrogate fitting. The data used for fitting the local
     #      surrogate model for each pixel consists of a box of [2 * N + 1, 2 * N + 1] pixels,
     #      centered on the pixel being fitted. For pixels near edges and corners, the box is
-    #      clipped to the data region.
+    #      clipped to the data region. Furthermore, if the p-norm setting is other than "inf",
+    #      the box is filtered to keep only points that are within a p-norm distance of `N`
+    #      from the center.
     # `σ`: Optional, set to 0 to disable: stdev for per-pixel synthetic noise (i.i.d. gaussian).
 
     # When using Friedrichs smoothing, 8 is the largest numerically stable neighborhood size
-    # (due to extrapolation at the edges). N = 8 yields a box of 17² = 289 pixels for fitting
-    # each local model.
+    # (due to extrapolation at the edges).
     #
     # When smoothing only with least-squares, only VRAM is the limit. At 6 GB, N = 11 is the limit.
-    # N = 11 yields a box of 23² = 529 pixels for fitting each local model.
     #
     # In any case, note the surrogate modeling assumption: a quadratic polynomial should be able to
-    # reasonably describe the function locally in each [2 * N + 1, 2 * N + 1] box.
-    N, σ = 11, 0.001
+    # reasonably describe the function locally in each neighborhood.
+    #
+    # Pixel count (i.e. stencil size) as a function of neighborhood size parameter `N`:
+    #
+    #    N   box (p="inf")  Euclidean (p=2.0)
+    # ---------------------------------------
+    #    1    3² =  9         -
+    #    2    5² =  25       13
+    #    3    7² =  49       29
+    #    4    9² =  81       49
+    #    5   11² = 121       81
+    #    6   13² = 169      113
+    #    7   15² = 225      149
+    #    8   17² = 289      197
+    #    9   19² = 361      253
+    #   10   21² = 441      317
+    #   11   23² = 529      377
+    #   12   25² = 625      441
+    #   13   27² = 729      529
+    #
+    # At 256 resolution and 6 GB VRAM, about 530 points seems to be near the memory limit.
+    # Euclidean neighborhoods with N = 13 seem the best choice.
+    #
+    # Note the count is always odd, because every other pixel has a symmetric pair,
+    # but the center point doesn't.
+    #
+    # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
+    # algorithm needs at least 7 to make the matrix invertible.
+    #
+    N, σ = 13, 0.001
 
-    # # 3 seems enough when the data is numerically exact. N = 3 yields a box of 7² = 49 pixels.
-    # N, σ = 3, 0.0
+    # # 2 seems enough for good results when the data is numerically exact.
+    # N, σ = 2, 0.0
 
     # If σ > 0, how many times to loop the denoiser. Larger neighborhood sizes need less denoising.
     # If σ = 0, denoising is skipped, and this setting has no effect.
+    #
+    # To add synthetic noise, but skip denoising (to see how the results deteriorate),
+    # set σ > 0 and `denoise_steps = 0`.
     denoise_steps = 2
 
     # --------------------------------------------------------------------------------
@@ -269,7 +300,11 @@ def main():
 
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
-    print(f"    Neighborhood radius: {N} grid units (neighborhood size {2 * N + 1}×{2 * N + 1} = {(2 * N + 1)**2} grid points)")
+    # n_neighborhood_points = (2 * N + 1)**2  # box
+    n_neighborhood_points = len([[iy, ix] for iy in range(-N, N + 1)
+                                          for ix in range(-N, N + 1)
+                                          if (iy**2 + ix**2) <= N**2])  # circle
+    print(f"    Neighborhood radius: {N} grid units ({n_neighborhood_points} grid points)")
     if σ > 0:
         print(f"    Synthetic noise stdev: {σ:0.6g}")
         print(f"    Denoise steps: {denoise_steps}")
@@ -327,14 +362,16 @@ def main():
 
     with timer() as tim_total:
         # Attempt to remove the noise.
-        if σ > 0:
-            print("Denoise function values...")
+        if σ > 0 and denoise_steps > 0:
+            print("Denoise input data...")
             with timer() as tim:
+                print("    f...")
                 Z = denoise(N, X, Y, Z)
             print(f"    Done in {tim.dt:0.6g}s.")
 
-        print("Differentiate...")
+        print("Differentiate input data...")
         with timer() as tim:
+            print("    f...")
             dZ = solve(*preps, Z)[1:, :]
             # dZ = hifier_differentiate(N, X, Y, Z)
             # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
@@ -358,10 +395,15 @@ def main():
         # To improve second derivative quality for noisy data, we can first compute first derivatives by wlsqm,
         # and then chain the method, with denoising between differentiations. In this variant, a final denoising
         # step also helps.
-        print("Smoothed second derivatives:")
+        #
+        # Even without noise, this seems to slightly reduce the maximum l1 fitting error. This is probably
+        # because by doing this, we obtain a linear surrogate model for the second derivatives (because we
+        # refit a quadratic surrogate model to the first derivatives) - so the model has the same level of
+        # capability as the original surrogate has for the first derivatives.
+        print("Refit second derivatives:")
         dzdx = dZ[coeffs_diffonly["dx"], :]
         dzdy = dZ[coeffs_diffonly["dy"], :]
-        if σ > 0:
+        if σ > 0 and denoise_steps > 0:
             print("    Denoise first derivatives...")
             with timer() as tim:
                 print("        dx...")
@@ -370,9 +412,11 @@ def main():
                 dzdy = denoise(N, X_for_dZ, Y_for_dZ, dzdy, indent=8)
             print(f"        Done in {tim.dt:0.6g}s.")
 
-        print("    Differentiate denoised first derivatives...")
+        print("    Differentiate first derivatives...")
         with timer() as tim:
+            print("        dx...")
             ddzdx = solve(*preps, dzdx)[1:, :]
+            print("        dy...")
             ddzdy = solve(*preps, dzdy)[1:, :]
             # ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
             # ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
@@ -384,7 +428,7 @@ def main():
         d2zdxdy = ddzdx[coeffs_diffonly["dy"], :]
         d2zdydx = ddzdy[coeffs_diffonly["dx"], :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
         d2zdy2 = ddzdy[coeffs_diffonly["dy"], :]
-        if σ > 0:
+        if σ > 0 and denoise_steps > 0:
             print("    Denoise obtained second derivatives...")
             with timer() as tim:
                 print("        dx2...")
@@ -398,14 +442,14 @@ def main():
             print(f"        Done in {tim.dt:0.6g}s.")
 
         d2cross = (d2zdxdy + d2zdydx) / 2.0
-    print(f"    Differentiation and denoising done in {tim_total.dt:0.6g}s total.")
+    print(f"    Total wall time {tim_total.dt:0.6g}s.")
 
     # --------------------------------------------------------------------------------
     # Plot the results
 
     print("Plotting.")
     with timer() as tim:
-        # Smoothed second derivatives
+        # Refitted second derivatives
         fig = plt.figure(2)
         ax1 = fig.add_subplot(1, 3, 1, projection="3d")
         surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
@@ -415,7 +459,7 @@ def main():
         ax1.set_title("d2f/dx2")
         ground_truth = ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2)
         max_l1_error = np.max(np.abs(ground_truth - d2zdx2))
-        print(f"    max absolute l1 error dx2 (smoothed) = {max_l1_error:0.3g}")
+        print(f"    max absolute l1 error dx2 (refitted) = {max_l1_error:0.3g}")
 
         ax2 = fig.add_subplot(1, 3, 2, projection="3d")
         surf = ax2.plot_surface(X_for_dZ2, Y_for_dZ2, d2cross)
@@ -425,7 +469,7 @@ def main():
         ax2.set_title("d2f/dxdy")
         ground_truth = ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2)
         max_l1_error = np.max(np.abs(ground_truth - d2cross))
-        print(f"    max absolute l1 error dxdy (smoothed) = {max_l1_error:0.3g}")
+        print(f"    max absolute l1 error dxdy (refitted) = {max_l1_error:0.3g}")
 
         ax3 = fig.add_subplot(1, 3, 3, projection="3d")
         surf = ax3.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdy2)
@@ -435,9 +479,9 @@ def main():
         ax3.set_title("d2f/dy2")
         ground_truth = ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)
         max_l1_error = np.max(np.abs(ground_truth - d2zdy2))
-        print(f"    max absolute l1 error dy2 (smoothed) = {max_l1_error:0.3g}")
+        print(f"    max absolute l1 error dy2 (refitted) = {max_l1_error:0.3g}")
 
-        fig.suptitle(f"Local quadratic surrogate fit, smoothed second derivatives, noise σ = {σ:0.3g}")
+        fig.suptitle(f"Local quadratic surrogate fit, refitted second derivatives, noise σ = {σ:0.3g}")
         link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
 
         # Function and the raw first and second derivatives
@@ -469,7 +513,8 @@ def main():
             ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
             max_l1_error = np.max(np.abs(dZ[coeffs_diffonly[key], :, :] - ground_truth))
             print(f"    max absolute l1 error {key} = {max_l1_error:0.3g}")
-        fig.suptitle(f"Local quadratic surrogate fit, noise σ = {σ:0.3g}")
+        title_start = "Denoised local" if (σ > 0 and denoise_steps > 0) else "Local"
+        fig.suptitle(f"{title_start} quadratic surrogate fit, noise σ = {σ:0.3g}")
         link_3d_subplot_cameras(fig, all_axes)
 
         # l1 errors
@@ -487,9 +532,9 @@ def main():
         plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")
         plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ), "dxdy")
         plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ), "dy2")
-        plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (smoothed)")
-        plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (smoothed)")
-        plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (smoothed)")
+        plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (refitted)")
+        plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (refitted)")
+        plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (refitted)")
         fig.suptitle("l1 error (fitted - ground truth)")
     print(f"    Done in {tim.dt:0.6g}s.")
 
