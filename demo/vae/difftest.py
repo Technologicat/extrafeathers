@@ -455,7 +455,7 @@ def main():
         # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
         # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
-        fig = plt.figure(1)
+        fig = plt.figure(1, figsize=(12, 12))
 
         # Function itself (after denoising, if any)
         ax = fig.add_subplot(3, 3, 1, projection="3d")
