@@ -245,6 +245,7 @@ def main():
     #
     # At 256 resolution and 6 GB VRAM, about 530 points seems to be near the memory limit.
     # Euclidean neighborhoods with N = 13 seem the best choice.
+    # When a 4k external display is connected, the limit is smaller. At least 421 still works (N=11.5, p=2.0).
     #
     # Note the count is always odd, because every other pixel has a symmetric pair,
     # but the center point doesn't.
@@ -252,7 +253,7 @@ def main():
     # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
     # algorithm needs at least 7 to make the matrix invertible.
     #
-    N, σ = 10.9, 0.001
+    N, σ = 11.5, 0.001
     N_int = math.ceil(N)
 
     # # 2 seems enough for good results when the data is numerically exact.
