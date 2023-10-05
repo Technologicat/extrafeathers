@@ -452,72 +452,72 @@ def main():
 
     print("Plotting.")
     with timer() as tim:
-        # Refitted second derivatives
-        fig = plt.figure(2)
-        ax1 = fig.add_subplot(1, 3, 1, projection="3d")
-        surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
-        ax1.set_xlabel("x")
-        ax1.set_ylabel("y")
-        ax1.set_zlabel("z")
-        ax1.set_title("d2f/dx2")
-        ground_truth = ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2)
-        max_l1_error = np.max(np.abs(ground_truth - d2zdx2))
-        print(f"    max absolute l1 error dx2 (refitted) = {max_l1_error:0.3g}")
-
-        ax2 = fig.add_subplot(1, 3, 2, projection="3d")
-        surf = ax2.plot_surface(X_for_dZ2, Y_for_dZ2, d2cross)
-        ax2.set_xlabel("x")
-        ax2.set_ylabel("y")
-        ax2.set_zlabel("z")
-        ax2.set_title("d2f/dxdy")
-        ground_truth = ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2)
-        max_l1_error = np.max(np.abs(ground_truth - d2cross))
-        print(f"    max absolute l1 error dxdy (refitted) = {max_l1_error:0.3g}")
-
-        ax3 = fig.add_subplot(1, 3, 3, projection="3d")
-        surf = ax3.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdy2)
-        ax3.set_xlabel("x")
-        ax3.set_ylabel("y")
-        ax3.set_zlabel("z")
-        ax3.set_title("d2f/dy2")
-        ground_truth = ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)
-        max_l1_error = np.max(np.abs(ground_truth - d2zdy2))
-        print(f"    max absolute l1 error dy2 (refitted) = {max_l1_error:0.3g}")
-
-        fig.suptitle(f"Local quadratic surrogate fit, refitted second derivatives, noise σ = {σ:0.3g}")
-        link_3d_subplot_cameras(fig, [ax1, ax2, ax3])
-
-        # Function and the raw first and second derivatives
         # https://matplotlib.org/stable/gallery/mplot3d/surface3d.html
         # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
         fig = plt.figure(1)
-        ax = fig.add_subplot(2, 3, 1, projection="3d")
+
+        # Function itself (after denoising, if any)
+        ax = fig.add_subplot(3, 3, 1, projection="3d")
         surf = ax.plot_surface(X, Y, Z)  # noqa: F841
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("z")
         ax.set_title("f")
-
         ground_truth = ground_truth_functions["f"](X, Y)
         max_l1_error = np.max(np.abs(Z - ground_truth))
         print(f"    max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
 
+        # Raw first and second derivatives
         all_axes = [ax]
         for idx, key in enumerate(coeffs_diffonly.keys(), start=2):
-            ax = fig.add_subplot(2, 3, idx, projection="3d")
-            surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly[key], :, :])  # noqa: F841  # , linewidth=0, antialiased=False
+            ax = fig.add_subplot(3, 3, idx, projection="3d")
+            surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly[key], :, :])  # noqa: F841: yeah, `surf` is not used.
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             ax.set_zlabel("z")
             ax.set_title(key)
             all_axes.append(ax)
-
             ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
             max_l1_error = np.max(np.abs(dZ[coeffs_diffonly[key], :, :] - ground_truth))
             print(f"    max absolute l1 error {key} = {max_l1_error:0.3g}")
         title_start = "Denoised local" if (σ > 0 and denoise_steps > 0) else "Local"
         fig.suptitle(f"{title_start} quadratic surrogate fit, noise σ = {σ:0.3g}")
+
+        # Refitted second derivatives
+        ax1 = fig.add_subplot(3, 3, 7, projection="3d")
+        surf = ax1.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdx2)
+        ax1.set_xlabel("x")
+        ax1.set_ylabel("y")
+        ax1.set_zlabel("z")
+        ax1.set_title("d2f/dx2 (refitted)")
+        all_axes.append(ax1)
+        ground_truth = ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2)
+        max_l1_error = np.max(np.abs(ground_truth - d2zdx2))
+        print(f"    max absolute l1 error dx2 (refitted) = {max_l1_error:0.3g}")
+
+        ax2 = fig.add_subplot(3, 3, 8, projection="3d")
+        surf = ax2.plot_surface(X_for_dZ2, Y_for_dZ2, d2cross)
+        ax2.set_xlabel("x")
+        ax2.set_ylabel("y")
+        ax2.set_zlabel("z")
+        ax2.set_title("d2f/dxdy (refitted)")
+        all_axes.append(ax2)
+        ground_truth = ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2)
+        max_l1_error = np.max(np.abs(ground_truth - d2cross))
+        print(f"    max absolute l1 error dxdy (refitted) = {max_l1_error:0.3g}")
+
+        ax3 = fig.add_subplot(3, 3, 9, projection="3d")
+        surf = ax3.plot_surface(X_for_dZ2, Y_for_dZ2, d2zdy2)  # noqa: F841: yeah, `surf` is not used.
+        ax3.set_xlabel("x")
+        ax3.set_ylabel("y")
+        ax3.set_zlabel("z")
+        ax3.set_title("d2f/dy2 (refitted)")
+        all_axes.append(ax3)
+        ground_truth = ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)
+        max_l1_error = np.max(np.abs(ground_truth - d2zdy2))
+        print(f"    max absolute l1 error dy2 (refitted) = {max_l1_error:0.3g}")
+
         link_3d_subplot_cameras(fig, all_axes)
 
         # l1 errors
