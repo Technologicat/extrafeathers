@@ -251,10 +251,14 @@ def main():
     # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
     # algorithm needs at least 7 to make the matrix invertible.
     #
-    N, σ = 13, 0.001
+    N, σ = 11, 0.001
 
     # # 2 seems enough for good results when the data is numerically exact.
     # N, σ = 2, 0.0
+
+    # p for p-norm, for determining neighborhood shape (see `prepare`).
+    # Either float >= 1.0, or the string "inf" (to use the whole box).
+    p = 2.0
 
     # If σ > 0, how many times to loop the denoiser. Larger neighborhood sizes need less denoising.
     # If σ = 0, denoising is skipped, and this setting has no effect.
@@ -296,15 +300,13 @@ def main():
 
         X, Y = np.meshgrid(xx, yy)
         Z = f(X, Y)
+
+        preps, stencil = prepare(N, X, Y, Z, p=p)  # Z is only needed here for shape and dtype.
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
-    # n_neighborhood_points = (2 * N + 1)**2  # box
-    n_neighborhood_points = len([[iy, ix] for iy in range(-N, N + 1)
-                                          for ix in range(-N, N + 1)
-                                          if (iy**2 + ix**2) <= N**2])  # circle
-    print(f"    Neighborhood radius: {N} grid units ({n_neighborhood_points} grid points)")
+    print(f"    Neighborhood radius: {N} grid units (p-norm p = {p}; stencil size {len(stencil)} grid points)")
     if σ > 0:
         print(f"    Synthetic noise stdev: {σ:0.6g}")
         print(f"    Denoise steps: {denoise_steps}")
@@ -319,8 +321,6 @@ def main():
 
     # --------------------------------------------------------------------------------
     # Simulate noisy input, for testing the denoiser.
-
-    preps = prepare(N, X, Y, Z)  # Z is only needed here for shape and dtype.
 
     def denoise(N, X, Y, Z, *, indent=4):
         # Applying denoising in a loop allows removing larger amounts of noise.
@@ -527,6 +527,8 @@ def main():
             ax.set_aspect("equal")
             ax.set_title(title)
         plot_one(axs[0, 0], X, Y, Z - ground_truth_functions["f"](X, Y), "f")
+        idxs = np.array([[resolution - 3 * N, 3 * N]]) + stencil
+        axs[0, 0].scatter(X[idxs[:, 0], idxs[:, 1]], Y[idxs[:, 0], idxs[:, 1]], s=1.0**2, c="#00000020", marker="o")
         plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
         plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
         plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")

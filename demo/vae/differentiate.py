@@ -20,6 +20,7 @@ We need only the very basics here. A complete Cython implementation of WLSQM, an
 """
 
 __all__ = ["prepare", "solve", "solve_lu",  # The hifiest algorithm, accurate, fast, uses a lot of VRAM. Recommended if you have the VRAM.
+           "multi_to_linear", "linear_to_multi",  # Conversion between meshgrid multi-index and linear index.
            "hifier_differentiate",  # Second best algorithm, not as accurate near corners, slower, uses less VRAM. Recommended for low-VRAM setups.
            "hifi_differentiate",   # Third best algorithm, a variant of the second.
            "differentiate",  # kernel for `hifi*`, can also be used separately for interior-only (fast), or with low-quality extrapolation at edges
@@ -64,18 +65,18 @@ def multi_to_linear(iyix: tf.Tensor, *, shape: tf.Tensor):
     idx = iyix[:, 0] * nx + iyix[:, 1]
     return idx
 
-# Provide this for completeness. We don't actually use this function.
 def linear_to_multi(idx: tf.Tensor, *, shape: tf.Tensor):
     """[DOF mapper] Convert linear index to meshgrid multi-index.
 
     We assume C storage order (column index changes fastest).
 
+    Signed index offsets cannot be recovered uniquely (e.g. for 256×256, should +511 be
+    (+1, +255), or (+2, -1)?), so this only works for indices, not index offsets.
+
     `idx`: rank-1 tensor of linear indices, `[idx0, idx1, ...]`.
-           Index offsets are fine, too.
     `shape`: rank-1 tensor, containing [ny, nx].
 
     Returns: rank-2 tensor of meshgrid multi-indices, `[[iy0, ix0], [iy1, ix1], ...]`.
-             If input was offsets, returns offsets.
     """
     nx = int(shape[1])
     iy, ix = tf.experimental.numpy.divmod(idx, nx)  # TF 2.13
@@ -123,16 +124,26 @@ def prepare(N: int,
 
     `format`: One of "A" or "LUp":
         "A": Format expected by `solve`. Recommended.
-             The return value is a tuple of tensors, `(A, c, scale, neighbors)`.
+             The returned `tensors` (see below) are `(A, c, scale, neighbors)`.
 
         "LUp": Format expected by `solve_lu` (which can run also at float16).
-             The return value is a tuple of tensors, `(LU, p, c, scale, neighbors)`.
+             The returned `tensors` (see below) are `(LU, p, c, scale, neighbors)`.
 
     These returned tensors can be passed to `solve` or `solve_lu` (depending on `format`);
     these solvers run completely on the GPU.
 
     As long as `N`, `X` and `Y` remain constant, and the dtype of `Z` remains the same,
     the same preparation can be reused.
+
+    The complete return value is `(tensors, stencil)`, where:
+      - `tensors` is as explained under the parameter `format`,
+      - `stencil` is a rank-2 np-array `[[iy0, ix0], [iy1, ix1], ...]`, containing the multi-index offsets (int)
+         of grid points belonging to the stencil in the interior part of the image. This is intended
+         mainly for information (e.g. `len(stencil)` gives the number of neighbors used), and for plotting
+         an example stencil onto a meshgrid plot. Choose a grid point `[i, j]`, and then::
+
+             idxs = np.array([i, j]) + stencil
+             plt.scatter(X[idxs[:, 0], idxs[:, 1]], Y[idxs[:, 0], idxs[:, 1]], c="k", marker="o")
     """
     if N < 1:
         raise ValueError(f"Must specify N ≥ 1, got {N}")
@@ -203,6 +214,7 @@ def prepare(N: int,
     interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                           for ix in range(-N, N + 1)
                                           if belongs_to_neighborhood(iy, ix)])  # multi-index offsets
+    orig_interior_stencil = interior_stencil  # for returning to caller
     interior_stencil = multi_to_linear(interior_stencil, shape=shape)  # corresponding linear index offsets
     register_stencil(interior_stencil, interior_idx)
 
@@ -403,8 +415,8 @@ def prepare(N: int,
         LU = tf.cast(LU, dtype)
 
     if format == "A":
-        return A, c, scale, neighbors
-    return LU, p, c, scale, neighbors
+        return (A, c, scale, neighbors), orig_interior_stencil
+    return (LU, p, c, scale, neighbors), orig_interior_stencil
 
 
 # Trying to run `solve` at float16 precision on TF 2.12 gives the error:
