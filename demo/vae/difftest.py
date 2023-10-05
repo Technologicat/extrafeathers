@@ -522,24 +522,47 @@ def main():
 
         # l1 errors
         fig, axs = plt.subplots(3, 3, figsize=(12, 12))
-        def plot_one(ax, X, Y, Z, title):
-            L, U = np.min(Z), np.max(Z)
-            v = max(abs(L), abs(U))
+        def determine_value_range(Zs):
+            """Produce a matching, symmetric value range for a colorbar, given several fields Z."""
+            vs = []
+            for Z in Zs:
+                L, U = np.min(Z), np.max(Z)
+                v = max(abs(L), abs(U))
+                vs.append(v)
+            return max(vs)
+        def plot_one(ax, X, Y, Z, *, title, refZs=None):
+            if refZs is None:
+                refZs = [Z]
+            v = determine_value_range(refZs)
             theplot = ax.pcolormesh(X, Y, Z, vmin=-v, vmax=v, cmap="RdBu_r")
             fig.colorbar(theplot, ax=ax)
             ax.set_aspect("equal")
             ax.set_title(title)
-        plot_one(axs[0, 0], X, Y, Z - ground_truth_functions["f"](X, Y), "f")
+        errors = {"f": Z - ground_truth_functions["f"](X, Y),
+                  "dx": dZ[coeffs_diffonly["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ),
+                  "dy": dZ[coeffs_diffonly["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ),
+                  "dx2_raw": dZ[coeffs_diffonly["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ),
+                  "dxdy_raw": dZ[coeffs_diffonly["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ),
+                  "dy2_raw": dZ[coeffs_diffonly["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ),
+                  "dx2_refit": d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2),
+                  "dxdy_refit": d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2),
+                  "dy2_refit": d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)}
+        plot_one(axs[0, 0], X, Y, errors["f"], title="f")
+        # Visualize the stencil size and shape.
+        # The visualization center point [-3 N, 3 N] is arbitrary, as long as the whole stencil fits.
         idxs = np.array([[resolution - 3 * N_int, 3 * N_int]]) + stencil
         axs[0, 0].scatter(X[idxs[:, 0], idxs[:, 1]], Y[idxs[:, 0], idxs[:, 1]], s=1.0**2, c="#00000020", marker="o")
-        plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
-        plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
-        plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ), "dx2")
-        plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ), "dxdy")
-        plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ), "dy2")
-        plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2), "dx2 (refitted)")
-        plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2), "dxdy (refitted)")
-        plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2), "dy2 (refitted)")
+        refZs_1st = [errors["dx"], errors["dy"]]
+        refZs_2nd = [errors["dx2_raw"], errors["dxdy_raw"], errors["dy2_raw"],
+                     errors["dx2_refit"], errors["dxdy_refit"], errors["dy2_refit"]]
+        plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, errors["dx"], refZs=refZs_1st, title="dx")
+        plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, errors["dy"], refZs=refZs_1st, title="dy")
+        plot_one(axs[1, 0], X_for_dZ, Y_for_dZ, errors["dx2_raw"], refZs=refZs_2nd, title="dx2")
+        plot_one(axs[1, 1], X_for_dZ, Y_for_dZ, errors["dxdy_raw"], refZs=refZs_2nd, title="dxdy")
+        plot_one(axs[1, 2], X_for_dZ, Y_for_dZ, errors["dy2_raw"], refZs=refZs_2nd, title="dy2")
+        plot_one(axs[2, 0], X_for_dZ2, Y_for_dZ2, errors["dx2_refit"], refZs=refZs_2nd, title="dx2 (refitted)")
+        plot_one(axs[2, 1], X_for_dZ2, Y_for_dZ2, errors["dxdy_refit"], refZs=refZs_2nd, title="dxdy (refitted)")
+        plot_one(axs[2, 2], X_for_dZ2, Y_for_dZ2, errors["dy2_refit"], refZs=refZs_2nd, title="dy2 (refitted)")
         fig.suptitle("l1 error (fitted - ground truth)")
     print(f"    Done in {tim.dt:0.6g}s.")
 
