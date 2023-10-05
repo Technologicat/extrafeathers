@@ -30,6 +30,7 @@ __all__ = ["prepare", "solve", "solve_lu",  # The hifiest algorithm, accurate, f
            "coeffs_diffonly",  # for interpreting output of `differentiate`
            "coeffs_full"]  # for interpreting output of all other algorithms
 
+import math
 import typing
 
 import numpy as np
@@ -82,7 +83,7 @@ def linear_to_multi(idx: tf.Tensor, *, shape: tf.Tensor):
     iy, ix = tf.experimental.numpy.divmod(idx, nx)  # TF 2.13
     return tf.stack([iy, ix], axis=1)  # -> [[iy0, ix0], [iy1, ix1], ...]
 
-def prepare(N: int,
+def prepare(N: float,
             X: typing.Union[np.array, tf.Tensor],
             Y: typing.Union[np.array, tf.Tensor],
             Z: typing.Union[np.array, tf.Tensor],
@@ -99,9 +100,15 @@ def prepare(N: int,
 
     NOTE: This takes a lot of VRAM. A 6 GB GPU is able to do 256×256, but not much more.
 
-    `N`: Neighborhood size parameter (how many grid spacings on each axis)
+    `N`: Neighborhood size parameter (in grid spacings).
+
          The edges and corners of the input image are handled by clipping the stencil to the data region
          (to use as much data for each pixel as exists within distance `N` on each axis).
+
+         Non-integer values can be useful with float values of `p` (see below). This affects the shape
+         of the outer edge of the neighborhood. (E.g., with `p = 2.0`, integer `N` has a 1-pixel protrusion
+         along the cardinal directions, although otherwise the stencil is a good approximation of a round shape.
+         Using e.g. `N=10.9` instead of `N=11` can avoid this.)
 
     `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively.
                    The shapes of `X`, `Y` and `Z` must match.
@@ -162,14 +169,18 @@ def prepare(N: int,
     def intarray(x):
         return np.array(x, dtype=int)  # TODO: `np.int32`?
 
+    # Allow fractional radius, but build box for the next integer size.
+    radius = N
+    N = math.ceil(N)
+
     if p == "inf":
         # We know that |iy| ≤ N, |ix| ≤ N in the whole box, so we could skip the check,
         # but it's a better contract if the function that is supposed to do checking actually checks.
         def belongs_to_neighborhood(iy, ix):  # infinity norm
-            return max(abs(iy), abs(ix)) <= N
+            return max(abs(iy), abs(ix)) <= radius
     else:  # isinstance(p, float) and p >= 1.0:
         def belongs_to_neighborhood(iy, ix):  # p-norm, general case
-            return (iy**p + ix**p)**(1 / p) <= N
+            return (iy**p + ix**p)**(1 / p) <= radius
 
     shape = tf.shape(Z)
     npoints = tf.reduce_prod(shape)

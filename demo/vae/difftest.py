@@ -17,6 +17,7 @@ We need only the very basics here. A complete Cython implementation of WLSQM, an
     https://github.com/Technologicat/python-wlsqm
 """
 
+import math
 import typing
 
 from unpythonic import timer
@@ -251,7 +252,8 @@ def main():
     # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
     # algorithm needs at least 7 to make the matrix invertible.
     #
-    N, σ = 11, 0.001
+    N, σ = 10.9, 0.001
+    N_int = math.ceil(N)
 
     # # 2 seems enough for good results when the data is numerically exact.
     # N, σ = 2, 0.0
@@ -527,7 +529,7 @@ def main():
             ax.set_aspect("equal")
             ax.set_title(title)
         plot_one(axs[0, 0], X, Y, Z - ground_truth_functions["f"](X, Y), "f")
-        idxs = np.array([[resolution - 3 * N, 3 * N]]) + stencil
+        idxs = np.array([[resolution - 3 * N_int, 3 * N_int]]) + stencil
         axs[0, 0].scatter(X[idxs[:, 0], idxs[:, 1]], Y[idxs[:, 0], idxs[:, 1]], s=1.0**2, c="#00000020", marker="o")
         plot_one(axs[0, 1], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ), "dx")
         plot_one(axs[0, 2], X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ), "dy")
