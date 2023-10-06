@@ -498,19 +498,21 @@ def prepare(N: float,
     # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
     # absA = tf.abs(A)
     # print(f"A[n, i, j] ∈ [{tf.reduce_min(absA):0.6g}, {tf.reduce_max(absA):0.6g}]")
-    # print(A)
 
     # TODO: DEBUG: sanity check that each `A[n, :, :]` is symmetric.
 
     # Scaling factors to undo the derivative scaling,  d/dx' → d/dx.  `solve` needs this to postprocess its results.
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
+    if print_memory_statistics:
+        print(f"scale: {sizeof_tensor(scale)}, {scale.dtype}")
 
-    if format == "A":
-        A = tf.cast(A, dtype)
-    else:  # format == "LUp":
-        LU, p = tf.linalg.lu(A)
+    if format == "LUp":
+        LU, p = tf.linalg.lu(tf.cast(A, tf.float32))
         LU = tf.cast(LU, dtype)
+        if print_memory_statistics:
+            print(f"LU: {sizeof_tensor(LU)}, {LU.dtype}")
+            print(f"p: {sizeof_tensor(p)}, {p.dtype}")
 
     del dx
     del dy
