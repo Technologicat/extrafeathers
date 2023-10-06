@@ -451,7 +451,7 @@ def prepare(N: float,
     #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
     neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, indirect)
     if print_memory_statistics:
-        print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")
+        print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large.
 
     # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
     dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
@@ -463,7 +463,7 @@ def prepare(N: float,
     # Finally, the surrogate fitting coefficient tensor is:
     c = cnki(dx, dy)
     if print_memory_statistics:
-        print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # spoiler: this tensor is huge
+        print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge.
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
