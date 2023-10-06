@@ -28,7 +28,7 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 
-from .differentiate import prepare, solve_lu as solve, coeffs_full, coeffs_diffonly
+from .differentiate import prepare, solve_lu as solve, coeffs_full
 
 # TODO: implement also classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because many more neighbors.)
 
@@ -354,7 +354,7 @@ def main():
         with timer() as tim:
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
             tmp = solve(*preps, Z)
-            noise_estimate = Z - tmp[coeffs_full["f"], :]
+            noise_estimate = Z - tmp[coeffs_full["f"]]
             del tmp
             estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
             true_noise_RMS = np.mean(noise**2)**0.5  # ground truth
@@ -376,16 +376,16 @@ def main():
         print("Differentiate input data...")
         with timer() as tim:
             print("    f...")
-            dZ = solve(*preps, Z)[1:, :]
+            dZ = solve(*preps, Z)
             # dZ = hifier_differentiate(N, X, Y, Z)
             # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
             X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
         print(f"    Done in {tim.dt:0.6g}s.")
 
         # # Just denoising the second derivatives doesn't improve their quality much.
-        # d2zdx2 = dZ[coeffs_diffonly["dx2"], :]
-        # d2zdxdy = dZ[coeffs_diffonly["dxdy"], :]
-        # d2zdy2 = dZ[coeffs_diffonly["dy2"], :]
+        # d2zdx2 = dZ[coeffs_full["dx2"]]
+        # d2zdxdy = dZ[coeffs_full["dxdy"]]
+        # d2zdy2 = dZ[coeffs_full["dy2"]]
         # X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
         # if σ > 0:
         #     print("    Denoise second derivatives...")
@@ -405,8 +405,8 @@ def main():
         # refit a quadratic surrogate model to the first derivatives) - so the model has the same level of
         # capability as the original surrogate has for the first derivatives.
         print("Refit second derivatives:")
-        dzdx = dZ[coeffs_diffonly["dx"], :]
-        dzdy = dZ[coeffs_diffonly["dy"], :]
+        dzdx = dZ[coeffs_full["dx"]]
+        dzdy = dZ[coeffs_full["dy"]]
         if σ > 0 and denoise_steps > 0:
             print("    Denoise first derivatives...")
             with timer() as tim:
@@ -419,19 +419,19 @@ def main():
         print("    Differentiate first derivatives...")
         with timer() as tim:
             print("        dx...")
-            ddzdx = solve(*preps, dzdx)[1:, :]
+            ddzdx = solve(*preps, dzdx)
             print("        dy...")
-            ddzdy = solve(*preps, dzdy)[1:, :]
+            ddzdy = solve(*preps, dzdy)
             # ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
             # ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
             # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
             X_for_dZ2, Y_for_dZ2 = X_for_dZ, Y_for_dZ
         print(f"        Done in {tim.dt:0.6g}s.")
 
-        d2zdx2 = ddzdx[coeffs_diffonly["dx"], :]
-        d2zdxdy = ddzdx[coeffs_diffonly["dy"], :]
-        d2zdydx = ddzdy[coeffs_diffonly["dx"], :]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
-        d2zdy2 = ddzdy[coeffs_diffonly["dy"], :]
+        d2zdx2 = ddzdx[coeffs_full["dx"]]
+        d2zdxdy = ddzdx[coeffs_full["dy"]]
+        d2zdydx = ddzdy[coeffs_full["dx"]]  # with exact input in C2, ∂²f/∂x∂y = ∂²f/∂y∂x; we can use this to improve our approximation of ∂²f/∂x∂y
+        d2zdy2 = ddzdy[coeffs_full["dy"]]
         if σ > 0 and denoise_steps > 0:
             print("    Denoise obtained second derivatives...")
             with timer() as tim:
@@ -459,28 +459,30 @@ def main():
         fig = plt.figure(1, figsize=(12, 12))
 
         # Function itself (after denoising, if any)
+        #  Z: original data, with denoising applied
+        #  dZ[coeffs_full["f"]]: lsq fitted data (from the first differentiation, even when `denoising_steps=0`)
         ax = fig.add_subplot(3, 3, 1, projection="3d")
-        surf = ax.plot_surface(X, Y, Z)  # noqa: F841
+        surf = ax.plot_surface(X, Y, dZ[coeffs_full["f"]])  # noqa: F841
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("z")
         ax.set_title("f")
         ground_truth = ground_truth_functions["f"](X, Y)
-        max_l1_error = np.max(np.abs(Z - ground_truth))
+        max_l1_error = np.max(np.abs(dZ[coeffs_full["f"]] - ground_truth))
         print(f"    max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
 
         # Raw first and second derivatives
         all_axes = [ax]
-        for idx, key in enumerate(coeffs_diffonly.keys(), start=2):
+        for idx, key in enumerate(coeffs_full.keys(), start=2):
             ax = fig.add_subplot(3, 3, idx, projection="3d")
-            surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs_diffonly[key], :, :])  # noqa: F841: yeah, `surf` is not used.
+            surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs_full[key]])  # noqa: F841: yeah, `surf` is not used.
             ax.set_xlabel("x")
             ax.set_ylabel("y")
             ax.set_zlabel("z")
             ax.set_title(key)
             all_axes.append(ax)
             ground_truth = ground_truth_functions[key](X_for_dZ, Y_for_dZ)
-            max_l1_error = np.max(np.abs(dZ[coeffs_diffonly[key], :, :] - ground_truth))
+            max_l1_error = np.max(np.abs(dZ[coeffs_full[key]] - ground_truth))
             print(f"    max absolute l1 error {key} = {max_l1_error:0.3g}")
         title_start = "Denoised local" if (σ > 0 and denoise_steps > 0) else "Local"
         fig.suptitle(f"{title_start} quadratic surrogate fit, noise σ = {σ:0.3g}")
@@ -539,12 +541,12 @@ def main():
             fig.colorbar(theplot, ax=ax)
             ax.set_aspect("equal")
             ax.set_title(title)
-        errors = {"f": Z - ground_truth_functions["f"](X, Y),
-                  "dx": dZ[coeffs_diffonly["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ),
-                  "dy": dZ[coeffs_diffonly["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ),
-                  "dx2_raw": dZ[coeffs_diffonly["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ),
-                  "dxdy_raw": dZ[coeffs_diffonly["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ),
-                  "dy2_raw": dZ[coeffs_diffonly["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ),
+        errors = {"f": dZ[coeffs_full["f"]] - ground_truth_functions["f"](X, Y),
+                  "dx": dZ[coeffs_full["dx"]] - ground_truth_functions["dx"](X_for_dZ, Y_for_dZ),
+                  "dy": dZ[coeffs_full["dy"]] - ground_truth_functions["dy"](X_for_dZ, Y_for_dZ),
+                  "dx2_raw": dZ[coeffs_full["dx2"]] - ground_truth_functions["dx2"](X_for_dZ, Y_for_dZ),
+                  "dxdy_raw": dZ[coeffs_full["dxdy"]] - ground_truth_functions["dxdy"](X_for_dZ, Y_for_dZ),
+                  "dy2_raw": dZ[coeffs_full["dy2"]] - ground_truth_functions["dy2"](X_for_dZ, Y_for_dZ),
                   "dx2_refit": d2zdx2 - ground_truth_functions["dx2"](X_for_dZ2, Y_for_dZ2),
                   "dxdy_refit": d2cross - ground_truth_functions["dxdy"](X_for_dZ2, Y_for_dZ2),
                   "dy2_refit": d2zdy2 - ground_truth_functions["dy2"](X_for_dZ2, Y_for_dZ2)}
