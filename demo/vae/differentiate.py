@@ -574,8 +574,7 @@ def solve(a: tf.Tensor,
     `a`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="A"`, which see.
     `z`: function value data in 2D meshgrid format.
 
-         For computations, `z` is automatically cast into the same dtype as `a`
-         (which can be set when calling `prepare`; see the `dtype` argument).
+         For computations, `z` is automatically cast into the proper dtype.
 
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
@@ -626,8 +625,7 @@ def solve_lu(lu: tf.Tensor,
     `lu`, `p`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="LUp"`, which see.
     `z`: function value data in 2D meshgrid format.
 
-         For computations, `z` is automatically cast into the same dtype as `lu`
-         (which can be set when calling `prepare`; see the `dtype` argument).
+         For computations, `z` is automatically cast into the proper dtype.
 
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
@@ -675,8 +673,7 @@ def solve_lu_custom(lu: tf.Tensor,
     `lu`, `p`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="LUp"`, which see.
     `z`: function value data in 2D meshgrid format.
 
-         For computations, `z` is automatically cast into the same dtype as `lu`
-         (which can be set when calling `prepare`; see the `dtype` argument).
+         For computations, `z` is automatically cast into the proper dtype.
 
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
