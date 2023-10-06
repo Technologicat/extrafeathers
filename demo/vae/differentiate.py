@@ -415,8 +415,15 @@ def prepare(N: float,
           `i`: component of surrogate fit `(f, dx, dy, dx2, dxdy, dy2)`
         """
         if low_vram:
+            # To save even more VRAM (another 50%, for a total of 75%), cast the scaled `dx` and `dy` to half precision (float16),
+            # which is the dtype we store `c` in when operating in low VRAM mode.
+            #
             # Although this ordering of the operations takes more VRAM than the other possibility (cast first, then scale),
-            # this ordering gives us the best possible accuracy in the float16 representation.
+            # this ordering gives us the best possible accuracy for `dx` and `dy` in the float16 representation.
+            #
+            # Even better (for optimal accuracy of the second-order terms) would be to compute `c` first in float32,
+            # then cast the final result to float16, but that takes even more VRAM. The 6× VRAM cost, compared
+            # to the current approach, is exactly what we are trying to avoid here.
             dx = tf.cast(dx / xscale, tf.float16)  # LHS: offset in scaled space
             dy = tf.cast(dy / yscale, tf.float16)
         else:
@@ -427,10 +434,10 @@ def prepare(N: float,
 
     # Compute distance of all neighbors (in stencil) for each pixel.
     #
-    # Usually, our compute dtype is float32, so it makes no sense to keep coordinates in float64, which is the Python/NumPy default.
-    # So cast to float32 to save VRAM. (Do it first before other operations.)
+    # Our compute dtype is float32, so it makes no sense to keep coordinates in float64, which is the Python/NumPy default.
+    # So cast them to float32 to save VRAM. (Do it first before other operations.)
     #
-    # This leads to significant VRAM savings when computing the coefficient tensor `c`.
+    # This already leads to significant VRAM savings (50%) when computing the coefficient tensor `c`.
     #
     X = tf.cast(X, dtype)
     Y = tf.cast(Y, dtype)
@@ -440,7 +447,7 @@ def prepare(N: float,
     if print_memory_statistics:
         print(f"X: {sizeof_tensor(X)}, {X.dtype}")
         print(f"Y: {sizeof_tensor(Y)}, {Y.dtype}")
-    # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes, potentially gigabytes of data.
+    # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes.
     #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
     neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, indirect)
     if print_memory_statistics:
