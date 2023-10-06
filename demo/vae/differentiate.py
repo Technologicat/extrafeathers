@@ -19,7 +19,8 @@ We need only the very basics here. A complete Cython implementation of WLSQM, an
     https://github.com/Technologicat/python-wlsqm
 """
 
-__all__ = ["prepare", "solve", "solve_lu",  # The hifiest algorithm, accurate, fast, uses a lot of VRAM. Recommended if you have the VRAM.
+__all__ = ["prepare", "solve",  # The hifiest algorithm, accurate, fast, uses a lot of VRAM. Recommended if you have the VRAM.
+           "solve_lu", "solve_lu_custom",  # alternative solve step
            "multi_to_linear", "linear_to_multi",  # Conversion between meshgrid multi-index and linear index.
            "hifier_differentiate",  # Second best algorithm, not as accurate near corners, slower, uses less VRAM. Recommended for low-VRAM setups.
            "hifi_differentiate",   # Third best algorithm, a variant of the second.
@@ -520,6 +521,7 @@ def solve(a: tf.Tensor,
     sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
     return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
 
+@tf.function
 def solve_lu(lu: tf.Tensor,
              p: tf.Tensor,
              c: tf.Tensor,
@@ -528,7 +530,57 @@ def solve_lu(lu: tf.Tensor,
              z: tf.Tensor):
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
-    This uses a custom LU solver, which can run also at float16.
+    This uses a TensorFlow's LU solver kernel.
+
+    `lu`, `p`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="LUp"`, which see.
+    `z`: function value data in 2D meshgrid format.
+
+         For computations, `z` is automatically cast into the same dtype as `lu`
+         (which can be set when calling `prepare`; see the `dtype` argument).
+
+    This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
+    e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
+    happens to need the spatial derivatives of `z`, as estimated from image data).
+
+    Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
+    f, dx, dy, dx2, dxdy, dy2, in that order.
+    """
+    shape = tf.shape(z)
+    z = tf.reshape(z, [-1])
+    z = tf.cast(z, lu.dtype)
+
+    zmax = tf.reduce_max(tf.abs(z))
+    z = z / zmax  # -> [-1, 1]
+
+    # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
+    rows = []
+    for i in range(6):
+        zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
+        ci = c[:, :, i]  # -> [#n, #k]
+        bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
+        bi = tf.cast(bi, lu.dtype)
+        rows.append(bi)
+    b = tf.stack(rows, axis=1)  # -> [#n, #rows]
+    b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
+
+    sol = tf.linalg.lu_solve(lu, p, b)  # [#n, #rows, 1]
+    sol = tf.squeeze(sol, axis=-1)  # -> [#n, #rows]
+
+    sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
+    sol = zmax * sol  # return from scaled z to raw z
+
+    sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
+    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
+
+def solve_lu_custom(lu: tf.Tensor,
+                    p: tf.Tensor,
+                    c: tf.Tensor,
+                    scale: tf.Tensor,
+                    neighbors: tf.RaggedTensor,
+                    z: tf.Tensor):
+    """[kernel] Assemble and solve system that was prepared using `prepare`.
+
+    This uses a custom LU solver kernel, which can run also at float16.
 
     `lu`, `p`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="LUp"`, which see.
     `z`: function value data in 2D meshgrid format.
