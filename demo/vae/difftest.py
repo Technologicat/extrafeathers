@@ -305,7 +305,7 @@ def main():
         Z = f(X, Y)
 
         # `prepare` only takes shape and dtype from `Z`.
-        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", print_memory_statistics=True)
+        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", low_vram=True, print_memory_statistics=True)
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")

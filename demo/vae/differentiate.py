@@ -31,6 +31,7 @@ __all__ = ["prepare", "solve",  # The hifiest algorithm, accurate, fast, uses a 
            "coeffs_diffonly",  # for interpreting output of `differentiate`
            "coeffs_full"]  # for interpreting output of all other algorithms
 
+import gc
 import math
 import typing
 
@@ -45,7 +46,7 @@ coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}  # for inter
 coeffs_full = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}  # for interpreting output of all other algorithms
 
 
-# TODO: move `tf_sizeof` to a utility module
+# TODO: move `sizeof_tensor` to a utility module
 dtype_to_bytes = {tf.float16: 2,  # TODO: better way?
                   tf.float32: 4,
                   tf.float64: 8,
@@ -53,11 +54,15 @@ dtype_to_bytes = {tf.float16: 2,  # TODO: better way?
                   tf.int16: 2,
                   tf.int32: 4,
                   tf.int64: 8}
-def tf_sizeof(x: tf.Tensor, *, to_human: bool = True) -> int:
+def sizeof_tensor(x: tf.Tensor, *, to_human: bool = True) -> int:
     """Get the size of `tf.Tensor` or `tf.RaggedTensor`, in bytes.
 
     This is the memory required for storing the actual data values.
     If you need to measure the Python object overhead, use `sys.getsizeof(x)`.
+
+    `to_human`: If `True`, return results as a string in 10-based SI units
+                (bytes, kB, MB, GB, TB).
+                If `False`, return the raw int value in bytes.
     """
     if isinstance(x, tf.RaggedTensor):
         # https://www.tensorflow.org/api_docs/python/tf/experimental/DynamicRaggedShape
@@ -126,6 +131,7 @@ def prepare(N: float,
             p: typing.Union[float, str] = 2.0,
             dtype: tf.DType = tf.float32,
             format: str = "A",
+            low_vram: bool = False,
             print_memory_statistics: bool = False):
     """Prepare for differentiation on a meshgrid.
 
@@ -174,6 +180,10 @@ def prepare(N: float,
 
         The returned tensors can be passed to `solve` or `solve_lu` (depending on `format`);
         these solvers run completely on the GPU.
+
+    `low_vram`: If `True`, store the coefficient tensor `c` in half precision (float16).
+                This makes `A` slightly less precise, but not much, while it halves the VRAM
+                requirements for the largest tensor in the preparation process.
 
     `print_memory_statistics`: If `True`, print on stdout how much memory (usually VRAM) the
                                various tensors used during the preparation process use.
@@ -361,8 +371,8 @@ def prepare(N: float,
     stencils = tf.ragged.constant(stencils, dtype=tf.int32)
 
     if print_memory_statistics:
-        print(f"indirect: {tf_sizeof(indirect)}")
-        print(f"stencils: {tf_sizeof(stencils)}")
+        print(f"indirect: {sizeof_tensor(indirect)}")
+        print(f"stencils: {sizeof_tensor(stencils)}")
 
     # Build the distance matrices.
     #
@@ -404,8 +414,14 @@ def prepare(N: float,
 
           `i`: component of surrogate fit `(f, dx, dy, dx2, dxdy, dy2)`
         """
-        dx = dx / xscale  # LHS: offset in scaled space
-        dy = dy / yscale
+        if low_vram:
+            # Although this ordering of the operations takes more VRAM than the other possibility (cast first, then scale),
+            # this ordering gives us the best possible accuracy in the float16 representation.
+            dx = tf.cast(dx / xscale, tf.float16)  # LHS: offset in scaled space
+            dy = tf.cast(dy / yscale, tf.float16)
+        else:
+            dx = dx / xscale  # LHS: offset in scaled space
+            dy = dy / yscale
         one = tf.ones_like(dx)  # for the constant term of the fit
         return tf.stack([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2], axis=-1)
 
@@ -422,27 +438,25 @@ def prepare(N: float,
     X = tf.reshape(X, [-1])
     Y = tf.reshape(Y, [-1])
     if print_memory_statistics:
-        print(f"X: {tf_sizeof(X)}")
-        print(f"Y: {tf_sizeof(Y)}")
-    # TODO: Work smarter: we lose our VRAM savings here. But can we do better than either this (too much memory), or Python-loop over pixels (too slow)?
-    #
+        print(f"X: {sizeof_tensor(X)}")
+        print(f"Y: {sizeof_tensor(Y)}")
     # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes, potentially gigabytes of data.
     #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
     neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, indirect)
     if print_memory_statistics:
-        print(f"neighbors: {tf_sizeof(neighbors)}")
+        print(f"neighbors: {sizeof_tensor(neighbors)}")
 
     # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
     dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
     if print_memory_statistics:
-        print(f"dx: {tf_sizeof(dx)}")
-        print(f"dy: {tf_sizeof(dy)}")
+        print(f"dx: {sizeof_tensor(dx)}")
+        print(f"dy: {sizeof_tensor(dy)}")
 
     # Finally, the surrogate fitting coefficient tensor is:
     c = cnki(dx, dy)
     if print_memory_statistics:
-        print(f"c: {tf_sizeof(c)}")  # spoiler: this tensor is huge
+        print(f"c: {sizeof_tensor(c)}")  # spoiler: this tensor is huge
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
@@ -462,15 +476,19 @@ def prepare(N: float,
     for i in range(6):
         row = []
         for j in range(6):
-            ci = c[:, :, i]  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-            cj = c[:, :, j]  # -> [#n, #k]
+            if low_vram:
+                ci = tf.cast(c[:, :, i], dtype)  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+                cj = tf.cast(c[:, :, j], dtype)  # -> [#n, #k]
+            else:
+                ci = c[:, :, i]  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+                cj = c[:, :, j]  # -> [#n, #k]
             Aij = tf.reduce_sum(ci * cj, axis=1)  # [#n, #k] -> [#n]
             row.append(Aij)
         row = tf.stack(row, axis=1)  # -> [#n, #cols]
         rows.append(row)
     A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
     if print_memory_statistics:
-        print(f"A: {tf_sizeof(A)}")
+        print(f"A: {sizeof_tensor(A)}")
 
     # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
     # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
@@ -484,13 +502,14 @@ def prepare(N: float,
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=Z.dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
 
-    c = tf.cast(c, dtype)
     scale = tf.cast(scale, dtype)
     if format == "A":
         A = tf.cast(A, dtype)
     else:  # format == "LUp":
         LU, p = tf.linalg.lu(A)
         LU = tf.cast(LU, dtype)
+
+    gc.collect()  # attempt to clean up dangling tensors
 
     if format == "A":
         return (A, c, scale, neighbors), orig_interior_stencil
@@ -559,19 +578,18 @@ def solve(a: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.reshape(z, [-1])
     z = tf.cast(z, a.dtype)
+    z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z))
     z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
+    zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
     for i in range(6):
-        zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
-        ci = c[:, :, i]  # -> [#n, #k]
+        ci = tf.cast(c[:, :, i], a.dtype)  # -> [#n, #k]
         bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        bi = tf.cast(bi, a.dtype)
         rows.append(bi)
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
@@ -612,19 +630,18 @@ def solve_lu(lu: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.reshape(z, [-1])
     z = tf.cast(z, lu.dtype)
+    z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z))
     z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
+    zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
     for i in range(6):
-        zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
-        ci = c[:, :, i]  # -> [#n, #k]
+        ci = tf.cast(c[:, :, i], lu.dtype)  # -> [#n, #k]
         bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        bi = tf.cast(bi, lu.dtype)
         rows.append(bi)
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
@@ -665,17 +682,17 @@ def solve_lu_custom(lu: tf.Tensor,
     batch = int(shape[0])
     n = int(shape[1])
     x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x")  # cannot be allocated inside @tf.function
-    return solve_lu_kernel(lu, p, c, scale, neighbors, z, x)
+    return solve_lu_custom_kernel(lu, p, c, scale, neighbors, z, x)
 
 @tf.function
-def solve_lu_kernel(lu: tf.Tensor,
-                    p: tf.Tensor,
-                    c: tf.Tensor,
-                    scale: tf.Tensor,
-                    neighbors: tf.RaggedTensor,
-                    z: tf.Tensor,
-                    x: tf.Variable):
-    """The actual computational kernel for `solve_lu`.
+def solve_lu_custom_kernel(lu: tf.Tensor,
+                           p: tf.Tensor,
+                           c: tf.Tensor,
+                           scale: tf.Tensor,
+                           neighbors: tf.RaggedTensor,
+                           z: tf.Tensor,
+                           x: tf.Variable):
+    """The actual computational kernel for `solve_lu_custom`.
 
     `lu`, `p`, `c`, `scale`, `neighbors`, `z`: passed through from API wrapper `solve_lu`.
     `x`: work space variable, [batch, n]. Will be written to.
@@ -684,19 +701,18 @@ def solve_lu_kernel(lu: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.reshape(z, [-1])
     z = tf.cast(z, lu.dtype)
+    z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z))
     z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
+    zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
     for i in range(6):
-        zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
-        ci = c[:, :, i]  # -> [#n, #k]
+        ci = tf.cast(c[:, :, i], lu.dtype)  # -> [#n, #k]
         bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        bi = tf.cast(bi, lu.dtype)
         rows.append(bi)
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
 
