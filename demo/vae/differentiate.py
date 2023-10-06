@@ -483,14 +483,11 @@ def prepare(N: float,
     for i in range(6):
         row = []
         for j in range(6):
-            if low_vram:
-                ci = tf.cast(c[:, :, i], dtype)  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-                cj = tf.cast(c[:, :, j], dtype)  # -> [#n, #k]
-            else:
-                ci = c[:, :, i]  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-                cj = c[:, :, j]  # -> [#n, #k]
+            # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
+            ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+            cj = tf.cast(c[:, :, j], tf.float32)  # -> [#n, #k]
             Aij = tf.reduce_sum(ci * cj, axis=1)  # [#n, #k] -> [#n]
-            row.append(Aij)
+            row.append(tf.cast(Aij, dtype))
         row = tf.stack(row, axis=1)  # -> [#n, #cols]
         rows.append(row)
     A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
@@ -587,7 +584,7 @@ def solve(a: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.cast(z, a.dtype)
+    z = tf.cast(z, tf.float32)
     z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z))
@@ -597,9 +594,9 @@ def solve(a: tf.Tensor,
     rows = []
     zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
     for i in range(6):
-        ci = tf.cast(c[:, :, i], a.dtype)  # -> [#n, #k]
+        ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k]
         bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        rows.append(bi)
+        rows.append(tf.cast(bi, a.dtype))
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
 
@@ -639,7 +636,7 @@ def solve_lu(lu: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.cast(z, lu.dtype)
+    z = tf.cast(z, tf.float32)
     z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z))
@@ -649,9 +646,9 @@ def solve_lu(lu: tf.Tensor,
     rows = []
     zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
     for i in range(6):
-        ci = tf.cast(c[:, :, i], lu.dtype)  # -> [#n, #k]
+        ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k]
         bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        rows.append(bi)
+        rows.append(tf.cast(bi, lu.dtype))
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
 
@@ -710,7 +707,7 @@ def solve_lu_custom_kernel(lu: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.cast(z, lu.dtype)
+    z = tf.cast(z, tf.float32)
     z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z))
@@ -720,9 +717,9 @@ def solve_lu_custom_kernel(lu: tf.Tensor,
     rows = []
     zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
     for i in range(6):
-        ci = tf.cast(c[:, :, i], lu.dtype)  # -> [#n, #k]
+        ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k]
         bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        rows.append(bi)
+        rows.append(tf.cast(bi, lu.dtype))
     b = tf.stack(rows, axis=1)  # -> [#n, #rows]
 
     # We must call the kernel directly, because we are inside @tf.function;
