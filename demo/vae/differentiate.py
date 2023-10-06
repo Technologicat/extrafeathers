@@ -588,20 +588,20 @@ def solve(a: tf.Tensor,
     z = tf.cast(z, tf.float32)
     z = tf.reshape(z, [-1])
 
-    zmax = tf.reduce_max(tf.abs(z))
+    zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
-    zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
+    zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
     for i in range(6):
-        ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k]
-        bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        rows.append(tf.cast(bi, a.dtype))
-    b = tf.stack(rows, axis=1)  # -> [#n, #rows]
+        ci = tf.cast(c[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
+        bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
+        rows.append(tf.cast(bi, a.dtype, name="cast_to_dtype"))
+    b = tf.stack(rows, axis=1, name="stack_b")  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
 
-    sol = tf.linalg.solve(a, b)  # -> [#n, #rows, 1]
+    sol = tf.linalg.solve(a, b, name="solve_system")  # -> [#n, #rows, 1]
     # print(tf.shape(sol))  # [#n, #rows, 1]
     # print(tf.math.reduce_max(abs(tf.matmul(a, sol) - b)))  # DEBUG: yes, the solutions are correct.
     sol = tf.squeeze(sol, axis=-1)  # -> [#n, #rows]
@@ -640,20 +640,20 @@ def solve_lu(lu: tf.Tensor,
     z = tf.cast(z, tf.float32)
     z = tf.reshape(z, [-1])
 
-    zmax = tf.reduce_max(tf.abs(z))
+    zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
-    zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
+    zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
     for i in range(6):
-        ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k]
-        bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        rows.append(tf.cast(bi, lu.dtype))
-    b = tf.stack(rows, axis=1)  # -> [#n, #rows]
+        ci = tf.cast(c[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
+        bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
+        rows.append(tf.cast(bi, lu.dtype, name="cast_to_dtype"))
+    b = tf.stack(rows, axis=1, name="stack_b")  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
 
-    sol = tf.linalg.lu_solve(lu, p, b)  # [#n, #rows, 1]
+    sol = tf.linalg.lu_solve(lu, p, b, name="solve_system_lu")  # [#n, #rows, 1]
     sol = tf.squeeze(sol, axis=-1)  # -> [#n, #rows]
 
     sol = sol / scale  # return derivatives from scaled x, y (as set up by `prepare`) to raw x, y
@@ -711,17 +711,17 @@ def solve_lu_custom_kernel(lu: tf.Tensor,
     z = tf.cast(z, tf.float32)
     z = tf.reshape(z, [-1])
 
-    zmax = tf.reduce_max(tf.abs(z))
+    zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     rows = []
-    zgnk = tf.gather(z, neighbors)  # -> [#n, #k], ragged in k
+    zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
     for i in range(6):
-        ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k]
-        bi = tf.reduce_sum(zgnk * ci, axis=1)  # [#n, #k] -> [#n]
-        rows.append(tf.cast(bi, lu.dtype))
-    b = tf.stack(rows, axis=1)  # -> [#n, #rows]
+        ci = tf.cast(c[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
+        bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
+        rows.append(tf.cast(bi, lu.dtype, name="cast_to_dtype"))
+    b = tf.stack(rows, axis=1, name="stack_b")  # -> [#n, #rows]
 
     # We must call the kernel directly, because we are inside @tf.function;
     # the API wrapper would try to allocate its own `x`, which we can't do here.
