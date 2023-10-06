@@ -371,8 +371,8 @@ def prepare(N: float,
     stencils = tf.ragged.constant(stencils, dtype=tf.int32)
 
     if print_memory_statistics:
-        print(f"indirect: {sizeof_tensor(indirect)}")
-        print(f"stencils: {sizeof_tensor(stencils)}")
+        print(f"indirect: {sizeof_tensor(indirect)}, {indirect.dtype}")
+        print(f"stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
 
     # Build the distance matrices.
     #
@@ -438,25 +438,25 @@ def prepare(N: float,
     X = tf.reshape(X, [-1])
     Y = tf.reshape(Y, [-1])
     if print_memory_statistics:
-        print(f"X: {sizeof_tensor(X)}")
-        print(f"Y: {sizeof_tensor(Y)}")
+        print(f"X: {sizeof_tensor(X)}, {X.dtype}")
+        print(f"Y: {sizeof_tensor(Y)}, {Y.dtype}")
     # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes, potentially gigabytes of data.
     #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
     neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, indirect)
     if print_memory_statistics:
-        print(f"neighbors: {sizeof_tensor(neighbors)}")
+        print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")
 
     # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
     dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
     if print_memory_statistics:
-        print(f"dx: {sizeof_tensor(dx)}")
-        print(f"dy: {sizeof_tensor(dy)}")
+        print(f"dx: {sizeof_tensor(dx)}, {dx.dtype}")
+        print(f"dy: {sizeof_tensor(dy)}, {dy.dtype}")
 
     # Finally, the surrogate fitting coefficient tensor is:
     c = cnki(dx, dy)
     if print_memory_statistics:
-        print(f"c: {sizeof_tensor(c)}")  # spoiler: this tensor is huge
+        print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # spoiler: this tensor is huge
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
@@ -488,7 +488,7 @@ def prepare(N: float,
         rows.append(row)
     A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
     if print_memory_statistics:
-        print(f"A: {sizeof_tensor(A)}")
+        print(f"A: {sizeof_tensor(A)}, {A.dtype}")
 
     # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
     # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
