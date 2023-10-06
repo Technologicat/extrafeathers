@@ -509,6 +509,8 @@ def prepare(N: float,
         LU, p = tf.linalg.lu(A)
         LU = tf.cast(LU, dtype)
 
+    del dx
+    del dy
     gc.collect()  # attempt to clean up dangling tensors
 
     if format == "A":
