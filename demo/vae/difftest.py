@@ -28,7 +28,7 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 
-from .differentiate import prepare, solve, coeffs_full, coeffs_diffonly
+from .differentiate import prepare, solve_lu as solve, coeffs_full, coeffs_diffonly
 
 # TODO: implement also classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because many more neighbors.)
 
@@ -253,7 +253,7 @@ def main():
     # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
     # algorithm needs at least 7 to make the matrix invertible.
     #
-    N, σ = 11.5, 0.001
+    N, σ = 10.5, 0.001
     N_int = math.ceil(N)
 
     # # 2 seems enough for good results when the data is numerically exact.
@@ -304,7 +304,7 @@ def main():
         X, Y = np.meshgrid(xx, yy)
         Z = f(X, Y)
 
-        preps, stencil = prepare(N, X, Y, Z, p=p)  # Z is only needed here for shape and dtype.
+        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp")  # Z is only needed here for shape and dtype.
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")
