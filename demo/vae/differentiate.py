@@ -503,10 +503,9 @@ def prepare(N: float,
     # TODO: DEBUG: sanity check that each `A[n, :, :]` is symmetric.
 
     # Scaling factors to undo the derivative scaling,  d/dx' → d/dx.  `solve` needs this to postprocess its results.
-    scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=Z.dtype)
+    scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
 
-    scale = tf.cast(scale, dtype)
     if format == "A":
         A = tf.cast(A, dtype)
     else:  # format == "LUp":
