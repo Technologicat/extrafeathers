@@ -304,7 +304,8 @@ def main():
         X, Y = np.meshgrid(xx, yy)
         Z = f(X, Y)
 
-        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp")  # Z is only needed here for shape and dtype.
+        # `prepare` only takes shape and dtype from `Z`.
+        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", print_memory_statistics=True)
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")

@@ -45,6 +45,40 @@ coeffs_diffonly = {"dx": 0, "dy": 1, "dx2": 2, "dxdy": 3, "dy2": 4}  # for inter
 coeffs_full = {"f": 0, "dx": 1, "dy": 2, "dx2": 3, "dxdy": 4, "dy2": 5}  # for interpreting output of all other algorithms
 
 
+# TODO: move `tf_sizeof` to a utility module
+dtype_to_bytes = {tf.float16: 2,  # TODO: better way?
+                  tf.float32: 4,
+                  tf.float64: 8,
+                  tf.int8: 1,
+                  tf.int16: 2,
+                  tf.int32: 4,
+                  tf.int64: 8}
+def tf_sizeof(x: tf.Tensor, *, to_human: bool = True) -> int:
+    """Get the size of `tf.Tensor` or `tf.RaggedTensor`, in bytes.
+
+    This is the memory required for storing the actual data values.
+    If you need to measure the Python object overhead, use `sys.getsizeof(x)`.
+    """
+    if isinstance(x, tf.RaggedTensor):
+        # https://www.tensorflow.org/api_docs/python/tf/experimental/DynamicRaggedShape
+        storage_shape = tf.shape(x).inner_shape
+    else:
+        storage_shape = tf.shape(x)
+    nel = int(tf.reduce_prod(storage_shape))
+    size = nel * dtype_to_bytes[x.dtype]
+    if not to_human:
+        return size
+    if size // int(1e12) > 0:  # future-proof mildly
+        return f"{size / 1e12:0.3g} TB"
+    if size // int(1e9) > 0:
+        return f"{size / 1e9:0.3g} GB"
+    if size // int(1e6) > 0:
+        return f"{size / 1e6:0.3g} MB"
+    if size // int(1e3) > 0:
+        return f"{size / 1e3:0.3g} kB"
+    return f"{size} bytes"
+
+
 # --------------------------------------------------------------------------------
 # Advanced API. Fastest GPU implementation. Best results. Needs most VRAM.
 #
@@ -91,7 +125,8 @@ def prepare(N: float,
             *,
             p: typing.Union[float, str] = 2.0,
             dtype: tf.DType = tf.float32,
-            format: str = "A"):
+            format: str = "A",
+            print_memory_statistics: bool = False):
     """Prepare for differentiation on a meshgrid.
 
     This is the hifiest algorithm provided in this module. For what to do after `prepare`, see `solve`.
@@ -137,8 +172,15 @@ def prepare(N: float,
         "LUp": Format expected by `solve_lu` (which can run also at float16).
              The returned `tensors` (see below) are `(LU, p, c, scale, neighbors)`.
 
-    These returned tensors can be passed to `solve` or `solve_lu` (depending on `format`);
-    these solvers run completely on the GPU.
+        The returned tensors can be passed to `solve` or `solve_lu` (depending on `format`);
+        these solvers run completely on the GPU.
+
+    `print_memory_statistics`: If `True`, print on stdout how much memory (usually VRAM) the
+                               various tensors used during the preparation process use.
+
+                               This of course only succeeds if there is enough memory to
+                               actually allocate those tensors. The idea is to help give
+                               a rough intuition of the scaling behavior.
 
     As long as `N`, `X` and `Y` remain constant, and the dtype of `Z` remains the same,
     the same preparation can be reused.
@@ -318,6 +360,10 @@ def prepare(N: float,
     indirect = tf.constant(indirect, dtype=tf.int32)
     stencils = tf.ragged.constant(stencils, dtype=tf.int32)
 
+    if print_memory_statistics:
+        print(f"indirect: {tf_sizeof(indirect)}")
+        print(f"stencils: {tf_sizeof(stencils)}")
+
     # Build the distance matrices.
     #
     # First apply derivative scaling for numerical stability: x' := x / xscale  ⇒  d/dx → (1 / xscale) d/dx'.
@@ -363,22 +409,40 @@ def prepare(N: float,
         one = tf.ones_like(dx)  # for the constant term of the fit
         return tf.stack([one, dx, dy, 0.5 * dx**2, dx * dy, 0.5 * dy**2], axis=-1)
 
-    # Compute distance of all neighbors (in stencil) for each pixel
+    # Compute distance of all neighbors (in stencil) for each pixel.
     #
+    # Usually, our compute dtype is float32, so it makes no sense to keep coordinates in float64, which is the Python/NumPy default.
+    # So cast to float32 to save VRAM. (Do it first before other operations.)
+    #
+    # This leads to significant VRAM savings when computing the coefficient tensor `c`.
+    #
+    X = tf.cast(X, dtype)
+    Y = tf.cast(Y, dtype)
+    # We'll be using linear indexing.
     X = tf.reshape(X, [-1])
     Y = tf.reshape(Y, [-1])
+    if print_memory_statistics:
+        print(f"X: {tf_sizeof(X)}")
+        print(f"Y: {tf_sizeof(Y)}")
     # TODO: Work smarter: we lose our VRAM savings here. But can we do better than either this (too much memory), or Python-loop over pixels (too slow)?
     #
     # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes, potentially gigabytes of data.
     #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
     neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, indirect)
+    if print_memory_statistics:
+        print(f"neighbors: {tf_sizeof(neighbors)}")
 
     # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
     dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
+    if print_memory_statistics:
+        print(f"dx: {tf_sizeof(dx)}")
+        print(f"dy: {tf_sizeof(dy)}")
 
     # Finally, the surrogate fitting coefficient tensor is:
     c = cnki(dx, dy)
+    if print_memory_statistics:
+        print(f"c: {tf_sizeof(c)}")  # spoiler: this tensor is huge
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
@@ -405,6 +469,8 @@ def prepare(N: float,
         row = tf.stack(row, axis=1)  # -> [#n, #cols]
         rows.append(row)
     A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
+    if print_memory_statistics:
+        print(f"A: {tf_sizeof(A)}")
 
     # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
     # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
