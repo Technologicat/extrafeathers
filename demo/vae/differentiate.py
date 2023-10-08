@@ -480,6 +480,9 @@ def prepare(N: float,
     # Note also that we can already assemble reasonable sizes (N=13, p=2.0) with 6 GB.
     #
     c = cnki(dx, dy)
+    del dx
+    del dy
+    gc.collect()  # attempt to clean up dangling tensors
     if print_memory_statistics:
         print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge.
 
@@ -532,10 +535,6 @@ def prepare(N: float,
         if print_memory_statistics:
             print(f"LU: {sizeof_tensor(LU)}, {LU.dtype}")
             print(f"p: {sizeof_tensor(p)}, {p.dtype}")
-
-    del dx
-    del dy
-    gc.collect()  # attempt to clean up dangling tensors
 
     if format == "A":
         return (A, c, scale, neighbors), orig_interior_stencil
