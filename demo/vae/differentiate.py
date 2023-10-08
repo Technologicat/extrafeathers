@@ -235,6 +235,9 @@ def prepare(N: float,
         def belongs_to_neighborhood(iy, ix):  # p-norm, general case
             return (iy**p + ix**p)**(1 / p) <= radius
 
+    # --------------------------------------------------------------------------------
+    # Topology-specific stencil assembly
+
     shape = tf.shape(Z)
     npoints = tf.reduce_prod(shape)
     all_multi_to_linear = tf.reshape(tf.range(npoints), shape)  # e.g. [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
@@ -386,6 +389,9 @@ def prepare(N: float,
     # We cast to `float`, so this works also in the case where we get a scalar tensor instead of a bare scalar.
     xscale = float(X[0, 1] - X[0, 0]) * N
     yscale = float(Y[1, 0] - Y[0, 0]) * N
+
+    # --------------------------------------------------------------------------------
+    # General, topology-agnostic assembly
 
     def cnki(dx: tf.Tensor, dy: tf.Tensor) -> tf.Tensor:
         """Compute the quadratic surrogate fitting coefficient tensor `c[n, k, i]`.
