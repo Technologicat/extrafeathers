@@ -555,11 +555,12 @@ def prepare(N: float,
     # So by indirecting when assembling the equations later, we would strictly need to store only one `c[n, :, :]` per stencil,
     # not per pixel as we do currently.
     #
-    # However, I'm tempted to keep this part as-is, because the current approach is general. It would work also with arbitrary topologies,
+    # I'm tempted to keep this part as-is, because the current approach is general. It would work also with arbitrary topologies,
     # where every "pixel" (really a mesh node; or a point of a generic, topology-free point cloud) has a unique stencil.
     #
-    # Note also that we can already assemble reasonable sizes (N=13, p=2.0) with 6 GB.
+    # Note also that we can already assemble reasonable sizes (at 256×256, N=13.5, p=2.0) with 6 GB, and even more in low VRAM mode (N=20.5, p=2.0).
     #
+    # TODO: But changing to the meshgrid-specific approach could save 1GB or more of VRAM.
     c = cnki(dx, dy)
     del dx
     del dy
