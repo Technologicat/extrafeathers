@@ -460,6 +460,7 @@ def prepare(N: float,
         print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large.
 
     # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
+    # TODO: Low VRAM mode: This is the straw that breaks the camel's back for very large neighborhoods (N = 20.5).
     dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
     if print_memory_statistics:
@@ -503,6 +504,7 @@ def prepare(N: float,
             # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
             ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
             cj = tf.cast(c[:, :, j], tf.float32)  # -> [#n, #k]
+            # TODO: Low VRAM: here is another straw that breaks the camel's back (N=17.5). We should batch the assembly of `A`, like we already do for `b`.
             Aij = tf.reduce_sum(ci * cj, axis=1)  # [#n, #k] -> [#n]
             row.append(tf.cast(Aij, dtype))
         row = tf.stack(row, axis=1)  # -> [#n, #cols]
