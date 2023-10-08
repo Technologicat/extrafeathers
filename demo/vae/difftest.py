@@ -253,7 +253,7 @@ def main():
     # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
     # algorithm needs at least 7 to make the matrix invertible.
     #
-    N, σ = 16.5, 0.001
+    N, σ = 17.5, 0.001
     N_int = math.ceil(N)
 
     # # 2 seems enough for good results when the data is numerically exact.
