@@ -466,7 +466,18 @@ def prepare(N: float,
         print(f"dx: {sizeof_tensor(dx)}, {dx.dtype}")
         print(f"dy: {sizeof_tensor(dy)}, {dy.dtype}")
 
-    # Finally, the surrogate fitting coefficient tensor is:
+    # Finally, the surrogate fitting coefficient tensor is the following `c`.
+    #
+    # Currently, `c` takes a lot of VRAM, even at float16. It would be possible to save VRAM by a similar indirection strategy
+    # as is already used for stencils. Specifically, in a uniform meshgrid, each unique stencil corresponds to a unique `c[n, :, :]`.
+    # So by indirecting when assembling the equations later, we would strictly need to store only one `c[n, :, :]` per stencil,
+    # not per pixel as we do currently.
+    #
+    # However, I'm tempted to keep this part as-is, because the current approach is general. It would work also with arbitrary topologies,
+    # where every "pixel" (really a mesh node; or a point of a generic, topology-free point cloud) has a unique stencil.
+    #
+    # Note also that we can already assemble reasonable sizes (N=13, p=2.0) with 6 GB.
+    #
     c = cnki(dx, dy)
     if print_memory_statistics:
         print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge.
