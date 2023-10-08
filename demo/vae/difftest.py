@@ -458,22 +458,13 @@ def main():
         # https://matplotlib.org/stable/gallery/mplot3d/subplot3d.html
         fig = plt.figure(1, figsize=(12, 12))
 
-        # Function itself (after denoising, if any)
+        # NOTE:
         #  Z: original data, with denoising applied
         #  dZ[coeffs_full["f"]]: lsq fitted data (from the first differentiation, even when `denoising_steps=0`)
-        ax = fig.add_subplot(3, 3, 1, projection="3d")
-        surf = ax.plot_surface(X, Y, dZ[coeffs_full["f"]])  # noqa: F841
-        ax.set_xlabel("x")
-        ax.set_ylabel("y")
-        ax.set_zlabel("z")
-        ax.set_title("f")
-        ground_truth = ground_truth_functions["f"](X, Y)
-        max_l1_error = np.max(np.abs(dZ[coeffs_full["f"]] - ground_truth))
-        print(f"    max absolute l1 error f = {max_l1_error:0.3g} (from denoising)")
 
-        # Raw first and second derivatives
-        all_axes = [ax]
-        for idx, key in enumerate(coeffs_full.keys(), start=2):
+        # Function itself, and the raw first and second derivatives.
+        all_axes = []
+        for idx, key in enumerate(coeffs_full.keys(), start=1):
             ax = fig.add_subplot(3, 3, idx, projection="3d")
             surf = ax.plot_surface(X_for_dZ, Y_for_dZ, dZ[coeffs_full[key]])  # noqa: F841: yeah, `surf` is not used.
             ax.set_xlabel("x")
