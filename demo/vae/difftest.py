@@ -253,6 +253,11 @@ def main():
     # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
     # algorithm needs at least 7 to make the matrix invertible.
     #
+    # At 256 resolution, the `TF_GPU_ALLOCATOR=cuda_malloc_async` environment variable may allow a 6 GB card
+    # to use up to `N = 18.5` (with `p = 2.0`, stencil size 1085), using over 1k neighbors per pixel.
+    #
+    # Without the async allocator, `N = 17.5` (stencil size 973) seems the largest possible.
+    #
     N, σ = 17.5, 0.001
     N_int = math.ceil(N)
 
