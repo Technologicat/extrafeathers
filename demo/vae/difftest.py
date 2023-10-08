@@ -28,7 +28,7 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 
-from .differentiate import prepare, solve_lu as solve, coeffs_full
+from .differentiate import prepare, solve_lu, coeffs_full
 
 # TODO: implement also classical central differencing, and compare results. Which method is more accurate on a meshgrid? (Likely wlsqm, because many more neighbors.)
 
@@ -254,11 +254,12 @@ def main():
     # algorithm needs at least 7 to make the matrix invertible.
     #
     # At 256 resolution, the `TF_GPU_ALLOCATOR=cuda_malloc_async` environment variable may allow a 6 GB card
-    # to use up to `N = 18.5` (with `p = 2.0`, stencil size 1085), using over 1k neighbors per pixel.
+    # to use up to `N = 18.5` (with `p = 2.0`, stencil size 1085, and `n_batches = 4`), using over 1k neighbors
+    # per pixel to estimate the derivatives.
     #
     # Without the async allocator, `N = 17.5` (stencil size 973) seems the largest possible.
-    #
-    N, σ = 17.5, 0.001
+    # With `n_batches = 8`, it seems possible to use `N = 19.5` (1201), or even `N = 20.5` (1313).
+    N, σ = 20.5, 0.001
     N_int = math.ceil(N)
 
     # # 2 seems enough for good results when the data is numerically exact.
@@ -274,6 +275,9 @@ def main():
     # To add synthetic noise, but skip denoising (to see how the results deteriorate),
     # set σ > 0 and `denoise_steps = 0`.
     denoise_steps = 1
+
+    # Number of assembly batches for low VRAM mode of `prepare` and `solve`.
+    n_batches = 8
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
@@ -310,7 +314,7 @@ def main():
         Z = f(X, Y)
 
         # `prepare` only takes shape and dtype from `Z`.
-        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", print_memory_statistics=True)
+        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", low_vram=True, low_vram_batches=n_batches, print_memory_statistics=True)
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")
@@ -331,13 +335,16 @@ def main():
     # --------------------------------------------------------------------------------
     # Simulate noisy input, for testing the denoiser.
 
+    def solve(Z):
+        return solve_lu(*preps, Z, low_vram=True, low_vram_batches=n_batches)
+
     def denoise(N, X, Y, Z, *, indent=4):
         # Applying denoising in a loop allows removing larger amounts of noise.
         # Effectively, the neighboring patches communicate between iterations.
         for _ in range(denoise_steps):
             print(f"{indent * ' '}Denoising: step {_ + 1} of {denoise_steps}...")
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
-            tmp = solve(*preps, Z)  # lsq
+            tmp = solve(Z)  # lsq
             Z = tmp[coeffs_full["f"]]
             # Z = smooth_2d(N, Z, padding="SAME")  # Friedrichs (eliminates high-frequency noise, but unstable extrapolation at edges/corners)
         return Z
@@ -358,7 +365,7 @@ def main():
         print("[For information] Estimate noise level...")
         with timer() as tim:
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
-            tmp = solve(*preps, Z)
+            tmp = solve(Z)
             noise_estimate = Z - tmp[coeffs_full["f"]]
             del tmp
             estimated_noise_RMS = np.mean(noise_estimate**2)**0.5
@@ -381,7 +388,7 @@ def main():
         print("Differentiate input data...")
         with timer() as tim:
             print("    f...")
-            dZ = solve(*preps, Z)
+            dZ = solve(Z)
             # dZ = hifier_differentiate(N, X, Y, Z)
             # X_for_dZ, Y_for_dZ = chop_edges(N, X, Y)  # Each `differentiate` in `padding="VALID"` mode loses `N` grid points at the edges, on each axis.
             X_for_dZ, Y_for_dZ = X, Y  # In `padding="SAME"` mode, the dimensions are preserved, but the result may not be accurate near the edges.
@@ -424,9 +431,9 @@ def main():
         print("    Differentiate first derivatives...")
         with timer() as tim:
             print("        dx...")
-            ddzdx = solve(*preps, dzdx)
+            ddzdx = solve(dzdx)
             print("        dy...")
-            ddzdy = solve(*preps, dzdy)
+            ddzdy = solve(dzdy)
             # ddzdx = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdx)  # jacobian and hessian of dzdx
             # ddzdy = hifier_differentiate(N, X_for_dZ, Y_for_dZ, dzdy)  # jacobian and hessian of dzdy
             # X_for_dZ2, Y_for_dZ2 = chop_edges(N, X_for_dZ, Y_for_dZ)
