@@ -542,7 +542,6 @@ def prepare(N: float,
         print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large.
 
     # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
-    # TODO: Low VRAM mode: This is the straw that breaks the camel's back for very large neighborhoods (N = 20.5).
     dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
     if print_memory_statistics:
