@@ -678,9 +678,10 @@ def _assemble_b(c: tf.Tensor,
         batches[-1][-1] = None  # Set the final `stop` value to include all remaining tensor elements in the final batch.
         rows_by_batch = []
         for start, stop in batches:
-            rows = []
             zgnk_split = tf.gather(z, neighbors[start:stop], name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
+            rows = []
             for i in range(6):
+                # We upcast after slicing to save VRAM.
                 ci_split = tf.cast(c[start:stop, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k]
                 bi_split = tf.reduce_sum(zgnk_split * ci_split, axis=1, name="assemble_bi")  # [#split, #k] -> [#split]
                 rows.append(tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
