@@ -634,7 +634,9 @@ def solve_lu(lu: tf.Tensor,
              c: tf.Tensor,
              scale: tf.Tensor,
              neighbors: tf.RaggedTensor,
-             z: tf.Tensor):
+             z: tf.Tensor,
+             low_vram: bool = True,
+             low_vram_batches: int = 4):
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
     This uses a TensorFlow's LU solver kernel.
@@ -643,6 +645,17 @@ def solve_lu(lu: tf.Tensor,
     `z`: function value data in 2D meshgrid format.
 
          For computations, `z` is automatically cast into the proper dtype.
+
+    `low_vram`: If `True`, attempt to save VRAM by splitting the load vector assembly process
+                into batches over the meshgrid points.
+
+                This will slow down the computation (especially at first run when TF compiles the graph),
+                but allows using larger neighborhood sizes with the same VRAM.
+
+    `low_vram_batches`: If `low_vram=True`, this is the number of batches for assembling the load vector.
+                        Increase this to trade off speed for lower VRAM usage.
+
+                        If `low_vram=False`, this parameter is ignored.
 
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
@@ -659,12 +672,41 @@ def solve_lu(lu: tf.Tensor,
     z = z / zmax  # -> [-1, 1]
 
     # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
-    rows = []
-    zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
-    for i in range(6):
-        ci = tf.cast(c[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
-        bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
-        rows.append(tf.cast(bi, lu.dtype, name="cast_to_dtype"))
+    # TODO: refactor `b` assembly to its own function; add low VRAM mode to `solve`, `solve_lu_custom`.
+    if not low_vram:
+        # The `RaggedSplitsToSegmentIds`, used internally by TF inside the `reduce_sum` costs a lot of VRAM, since it indexes using `int64`,
+        # and we're handling a lot of tensor elements here. E.g. at 256×256, #n = 65536, and with  N=13, p=2.0, #k ~ 500, we have about 30M points;
+        # so with an int64 for each, we're talking ~300 MB just for the indexing. When the chosen settings are already pushing against the VRAM limit,
+        # this is the straw that breaks the camel's back.
+        #
+        # When enough VRAM is available, this is the simplest way to do the assembly:
+        rows = []
+        zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
+        for i in range(6):
+            ci = tf.cast(c[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
+            bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
+            rows.append(tf.cast(bi, lu.dtype, name="cast_to_dtype"))
+    else:
+        # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
+        npoints = int(tf.shape(z)[0])  # NOTE: reshaped, linearly indexed `z`
+        batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
+        batches[-1][-1] = None  # Set the final `stop` value to include all remaining tensor elements in the final batch.
+        rows_by_batch = []
+        for start, stop in batches:
+            rows = []
+            zgnk_split = tf.gather(z, neighbors[start:stop], name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
+            for i in range(6):
+                ci_split = tf.cast(c[start:stop, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k]
+                bi_split = tf.reduce_sum(zgnk_split * ci_split, axis=1, name="assemble_bi")  # [#split, #k] -> [#split]
+                rows.append(tf.cast(bi_split, lu.dtype, name="cast_to_dtype"))
+            rows_by_batch.append(rows)
+        # Unsplit:
+        #   [[batch0_row0, batch0_row1, ..., batch0_row5], [batch1_row0, batch1_row1, ..., batch1_row5], ...] -> [row0, row1, ..., row5]
+        # `b` itself doesn't take much VRAM (less than 2 MB in the above scenario), so we don't have to worry about VRAM usage here.
+        rows = []
+        for rs in zip(*rows_by_batch):
+            rows.append(tf.concat(rs, axis=0))  # [#split] -> [#n]
+
     b = tf.stack(rows, axis=1, name="stack_b")  # -> [#n, #rows]
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
 
