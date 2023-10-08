@@ -268,7 +268,7 @@ def main():
     #
     # To add synthetic noise, but skip denoising (to see how the results deteriorate),
     # set σ > 0 and `denoise_steps = 0`.
-    denoise_steps = 2
+    denoise_steps = 1
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
