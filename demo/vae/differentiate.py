@@ -123,6 +123,78 @@ def linear_to_multi(idx: tf.Tensor, *, shape: tf.Tensor):
     iy, ix = tf.experimental.numpy.divmod(idx, nx)  # TF 2.13
     return tf.stack([iy, ix], axis=1)  # -> [[iy0, ix0], [iy1, ix1], ...]
 
+
+def _assemble_a(c: tf.Tensor,
+                dtype: tf.DType,
+                low_vram: bool,
+                low_vram_batches: int) -> tf.Tensor:
+    """[internal helper] Assemble the system matrix.
+
+    For the parameters, see `prepare`.
+
+    Returns a `tf.Tensor` of shape [npoints, 6, 6].
+    """
+    if not low_vram:
+        # `einsum` doesn't support `RaggedTensor`. What we want to do:
+        # # A = tf.einsum("nki,nkj->nij", c, c)
+        # So we do it manually.
+        # When enough VRAM is available, this is the simplest way to do the assembly:
+        rows = []
+        for i in range(6):
+            row = []
+            for j in range(6):
+                # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
+                ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+                cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#n, #k]
+                Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#n, #k] -> [#n]
+                row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+            row = tf.stack(row, axis=1)  # -> [#n, #cols]
+            rows.append(row)
+    else:
+        # In low VRAM mode, we assemble `A` in batches, splitting over the meshgrid points.
+        # This is another straw that breaks the camel's back at N = 17.5 (with 6 GB VRAM).
+
+        # It significantly increases performance to split just this part off into a `tf.function`.
+        # Converting all of `_assemble_a` into a `tf.function` slows down instead (or runs out of VRAM).
+        #
+        # To avoid triggering retracing, we wrap the Python `int` scalars `i` and `j` into TF tensors.
+        # This runs slightly faster, even though we must then construct `tf.constant` tensors to send in scalars.
+        @tf.function
+        def _assemble_aij_batched(c_split: tf.Tensor,
+                                  i: tf.Tensor,
+                                  j: tf.Tensor) -> tf.Tensor:
+            # We upcast after slicing to save VRAM.
+            ci = tf.cast(c_split[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#split, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+            cj = tf.cast(c_split[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#split, #k]
+            Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#split, #k] -> [#split]
+            return Aij
+
+        npoints = int(tf.shape(c)[0])
+        batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
+        batches[-1][-1] = None  # Set the final `stop` value to include all remaining tensor elements in the final batch.
+        rows_by_batch = []
+        for start, stop in batches:
+            c_split = c[start:stop, :, :]  # [#n, #k, #cols] -> [#split, #k, #cols], where #k is ragged
+            rows = []
+            for i in range(6):
+                row = []
+                for j in range(6):
+                    Aij = _assemble_aij_batched(c_split,
+                                                tf.constant(i, dtype=tf.int64),
+                                                tf.constant(j, dtype=tf.int64))  # [#split]
+                    row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+                row = tf.stack(row, axis=1)  # -> [#split, #cols]
+                rows.append(row)
+            rows_by_batch.append(rows)
+        # Unsplit:
+        #   [[batch0_row0, batch0_row1, ..., batch0_row5], [batch1_row0, batch1_row1, ..., batch1_row5], ...] -> [row0, row1, ..., row5]
+        # `A` itself doesn't take much VRAM (less than 10 MB typically), so we don't have to worry about VRAM usage here.
+        rows = []
+        for rs in zip(*rows_by_batch):
+            rows.append(tf.concat(rs, axis=0))  # [#split, #cols] -> [#n, #cols]
+    A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
+    return A
+
 def prepare(N: float,
             X: typing.Union[np.array, tf.Tensor],
             Y: typing.Union[np.array, tf.Tensor],
@@ -131,7 +203,8 @@ def prepare(N: float,
             p: typing.Union[float, str] = 2.0,
             dtype: tf.DType = tf.float32,
             format: str = "A",
-            low_vram: bool = False,
+            low_vram: bool = True,
+            low_vram_batches: int = 4,
             print_memory_statistics: bool = False):
     """Prepare for differentiation on a meshgrid.
 
@@ -181,9 +254,18 @@ def prepare(N: float,
         The returned tensors can be passed to `solve` or `solve_lu` (depending on `format`);
         these solvers run completely on the GPU.
 
-    `low_vram`: If `True`, store the coefficient tensor `c` in half precision (float16).
-                This makes `A` slightly less precise, but not much, while it halves the VRAM
-                requirements for the largest tensor in the preparation process.
+    `low_vram`: If `True`, perform the following:
+
+                  - Store the coefficient tensor `c` in half precision (float16).
+                    This makes `A` slightly less precise, but not much, while it halves the VRAM
+                    requirements for the largest tensor in the preparation process.
+
+                  - Assemble `A` in batches (over meshgrid points). See the `low_vram_batches` parameter.
+
+    `low_vram_batches`: If `low_vram=True`, this is the number of batches for assembling the system matrix.
+                        Increase this to trade off speed for lower VRAM usage.
+
+                        If `low_vram=False`, this parameter is ignored.
 
     `print_memory_statistics`: If `True`, print on stdout how much memory (usually VRAM) the
                                various tensors used during the preparation process use.
@@ -496,23 +578,7 @@ def prepare(N: float,
     #
     # The `A` matrices can be preassembled. They must be stored per-pixel, but the size is only 6×6, so at float32,
     # we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
-    #
-    # `einsum` doesn't support `RaggedTensor`. What we want to do:
-    # # A = tf.einsum("nki,nkj->nij", c, c)
-    # Doing it manually:
-    rows = []
-    for i in range(6):
-        row = []
-        for j in range(6):
-            # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
-            ci = tf.cast(c[:, :, i], tf.float32)  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-            cj = tf.cast(c[:, :, j], tf.float32)  # -> [#n, #k]
-            # TODO: Low VRAM: here is another straw that breaks the camel's back (N=17.5). We should batch the assembly of `A`, like we already do for `b`.
-            Aij = tf.reduce_sum(ci * cj, axis=1)  # [#n, #k] -> [#n]
-            row.append(tf.cast(Aij, dtype))
-        row = tf.stack(row, axis=1)  # -> [#n, #cols]
-        rows.append(row)
-    A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
+    A = _assemble_a(c, dtype, low_vram, low_vram_batches)
     if print_memory_statistics:
         print(f"A: {sizeof_tensor(A)}, {A.dtype}")
 
