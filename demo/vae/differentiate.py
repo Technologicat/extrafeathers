@@ -137,7 +137,7 @@ def _assemble_a(c: tf.Tensor,
     Returns a `tf.Tensor` of shape [npoints, 6, 6].
     """
     # On a *uniform* meshgrid, it is enough to do the assembly for each stencil once.
-    # Here `c` is of shape [#stencils, #k, 6], where #k is ragged.
+    # Here the `c` that comes in has shape [#stencils, #k, 6], where #k is ragged.
     rows = []
     for i in range(6):
         ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#stencils, #k], where #k is ragged (number of neighbors in stencil)
@@ -173,7 +173,7 @@ def _assemble_a(c: tf.Tensor,
     return LU, perm
 
     # # For documentation: assembly algorithm for general topologies.
-    # # Here `c` is of shape [#n, #k, 6], where #k is ragged.
+    # # Here the `c` that comes in has shape [#n, #k, 6], where #k is ragged.
     # if not low_vram:
     #     # `einsum` doesn't support `RaggedTensor`. What we want to do:
     #     # # A = tf.einsum("nki,nkj->nij", c, c)
