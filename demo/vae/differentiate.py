@@ -638,8 +638,8 @@ def prepare(N: float,
     #
     # A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
     #
-    # The `A` matrices can be preassembled. They must be stored per-pixel, but the size is only 6×6, so at float32,
-    # we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
+    # The `A` matrices can be preassembled. They must be stored per-pixel (for easy use with linear system solver), but the size is only 6×6,
+    # so at float32, we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
     assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batches)
     if format == "A":
         A = assembled
