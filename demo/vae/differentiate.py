@@ -131,6 +131,10 @@ def _assemble_a(c: tf.Tensor,
                 low_vram_batches: int) -> tf.Tensor:
     """[internal helper] Assemble the system matrix.
 
+    The formula is::
+
+      A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
+
     For the parameters, see `prepare`.
 
     Returns a `tf.Tensor` of shape [npoints, 6, 6].
@@ -633,10 +637,6 @@ def prepare(N: float,
     if print_memory_statistics:
         print(f"scale: {sizeof_tensor(scale)}, {scale.dtype}")
 
-    # The surrogate fitting tensor is:
-    #
-    # A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
-    #
     # The `A` matrices can be preassembled. They must be stored per-pixel (for easy use with linear system solver), but the size is only 6×6,
     # so at float32, we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
     assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batches)
@@ -701,11 +701,14 @@ def _assemble_b(c: tf.Tensor,
                 low_vram_batches: int) -> tf.Tensor:
     """[internal helper] Assemble the load vector.
 
+    The formula is::
+
+      b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
+
     For the parameters, see `solve`.
 
     Returns a `tf.Tensor` of shape [npoints, 6].
     """
-    # b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
     if not low_vram:
         # The `RaggedSplitsToSegmentIds`, used internally by TF inside the `reduce_sum` costs a lot of VRAM, since it indexes using `int64`,
         # and we're handling a lot of tensor elements here. E.g. at 256×256, #n = 65536, and with N=13, p=2.0, #k ~ 500, we have about 30M points;
