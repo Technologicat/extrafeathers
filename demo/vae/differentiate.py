@@ -125,7 +125,9 @@ def linear_to_multi(idx: tf.Tensor, *, shape: tf.Tensor):
 
 
 def _assemble_a(c: tf.Tensor,
+                point_to_stencil: tf.Tensor,
                 dtype: tf.DType,
+                format: str,
                 low_vram: bool,
                 low_vram_batches: int) -> tf.Tensor:
     """[internal helper] Assemble the system matrix.
@@ -134,66 +136,104 @@ def _assemble_a(c: tf.Tensor,
 
     Returns a `tf.Tensor` of shape [npoints, 6, 6].
     """
-    if not low_vram:
-        # `einsum` doesn't support `RaggedTensor`. What we want to do:
-        # # A = tf.einsum("nki,nkj->nij", c, c)
-        # So we do it manually.
-        # When enough VRAM is available, this is the simplest way to do the assembly:
-        rows = []
-        for i in range(6):
-            row = []
-            for j in range(6):
-                # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
-                ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-                cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#n, #k]
-                Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#n, #k] -> [#n]
-                row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
-            row = tf.stack(row, axis=1)  # -> [#n, #cols]
-            rows.append(row)
-    else:
-        # In low VRAM mode, we assemble `A` in batches, splitting over the meshgrid points.
-        # This is another straw that breaks the camel's back at N = 17.5 (with 6 GB VRAM).
+    # On a *uniform* meshgrid, it is enough to do the assembly for each stencil once.
+    # Here `c` is of shape [#stencils, #k, 6], where #k is ragged.
+    rows = []
+    for i in range(6):
+        ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#stencils, #k], where #k is ragged (number of neighbors in stencil)
+        row = []
+        for j in range(6):
+            # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
+            cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#stencils, #k]
+            Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#stencils, #k] -> [#stencils]
+            row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+        row = tf.stack(row, axis=1)  # -> [#stencils, #cols]
+        rows.append(row)
+    A = tf.stack(rows, axis=1)  # [[#stencils, #cols], [#stencils, #cols], ...] -> [#stencils, #rows, #cols]
 
-        # It significantly increases performance to split just this part off into a `tf.function`.
-        # Converting all of `_assemble_a` into a `tf.function` slows down instead (or runs out of VRAM).
-        #
-        # To avoid triggering retracing, we wrap the Python `int` scalars `i` and `j` into TF tensors.
-        # This runs slightly faster, even though we must then construct `tf.constant` tensors to send in scalars.
-        @tf.function
-        def _assemble_aij_batched(c_split: tf.Tensor,
-                                  i: tf.Tensor,
-                                  j: tf.Tensor) -> tf.Tensor:
-            # We upcast after slicing to save VRAM.
-            ci = tf.cast(c_split[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#split, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-            cj = tf.cast(c_split[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#split, #k]
-            Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#split, #k] -> [#split]
-            return Aij
+    # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
+    # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
+    # absA = tf.abs(A)
+    # print(f"A[n, i, j] ∈ [{tf.reduce_min(absA):0.6g}, {tf.reduce_max(absA):0.6g}]")
 
-        npoints = int(tf.shape(c)[0])
-        batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
-        batches[-1][-1] = None  # Set the final `stop` value to include all remaining tensor elements in the final batch.
-        rows_by_batch = []
-        for start, stop in batches:
-            c_split = c[start:stop, :, :]  # [#n, #k, #cols] -> [#split, #k, #cols], where #k is ragged
-            rows = []
-            for i in range(6):
-                row = []
-                for j in range(6):
-                    Aij = _assemble_aij_batched(c_split,
-                                                tf.constant(i, dtype=tf.int64),
-                                                tf.constant(j, dtype=tf.int64))  # [#split]
-                    row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
-                row = tf.stack(row, axis=1)  # -> [#split, #cols]
-                rows.append(row)
-            rows_by_batch.append(rows)
-        # Unsplit:
-        #   [[batch0_row0, batch0_row1, ..., batch0_row5], [batch1_row0, batch1_row1, ..., batch1_row5], ...] -> [row0, row1, ..., row5]
-        # `A` itself doesn't take much VRAM (less than 10 MB typically), so we don't have to worry about VRAM usage here.
-        rows = []
-        for rs in zip(*rows_by_batch):
-            rows.append(tf.concat(rs, axis=0))  # [#split, #cols] -> [#n, #cols]
-    A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
-    return A
+    # TODO: DEBUG: sanity check that each `A[n, :, :]` is symmetric.
+
+    if format == "A":
+        # Replicate so that each data point gets its own copy.
+        # `A` doesn't take much VRAM, and it's easy to send this format to the linear system solver.
+        A = tf.gather(A, point_to_stencil, axis=0)  # [#n, #rows, #cols]
+        return A
+    # format == "LUp":
+    # Compute the LU decompositions before replicating.
+    LU, perm = tf.linalg.lu(tf.cast(A, tf.float32))
+    LU = tf.cast(LU, dtype)
+    # Replicate.
+    LU = tf.gather(LU, point_to_stencil, axis=0)
+    perm = tf.gather(perm, point_to_stencil, axis=0)
+    return LU, perm
+
+    # # For documentation: assembly algorithm for general topologies.
+    # # Here `c` is of shape [#n, #k, 6], where #k is ragged.
+    # if not low_vram:
+    #     # `einsum` doesn't support `RaggedTensor`. What we want to do:
+    #     # # A = tf.einsum("nki,nkj->nij", c, c)
+    #     # So we do it manually.
+    #     # When enough VRAM is available, this is the simplest way to do the assembly:
+    #     rows = []
+    #     for i in range(6):
+    #         ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+    #         row = []
+    #         for j in range(6):
+    #             # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
+    #             cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#n, #k]
+    #             Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#n, #k] -> [#n]
+    #             row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+    #         row = tf.stack(row, axis=1)  # -> [#n, #cols]
+    #         rows.append(row)
+    # else:
+    #     # In low VRAM mode, we assemble `A` in batches, splitting over the meshgrid points.
+    #     # This is another straw that breaks the camel's back at N = 17.5 (with 6 GB VRAM).
+    #
+    #     # It significantly increases performance to split just this part off into a `tf.function`.
+    #     # Converting all of `_assemble_a` into a `tf.function` slows down instead (or runs out of VRAM).
+    #     #
+    #     # To avoid triggering retracing, we wrap the Python `int` scalars `i` and `j` into TF tensors.
+    #     # This runs slightly faster, even though we must then construct `tf.constant` tensors to send in scalars.
+    #     @tf.function
+    #     def _assemble_aij_batched(c_split: tf.Tensor,
+    #                               i: tf.Tensor,
+    #                               j: tf.Tensor) -> tf.Tensor:
+    #         # We upcast after slicing to save VRAM.
+    #         ci = tf.cast(c_split[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#split, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+    #         cj = tf.cast(c_split[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#split, #k]
+    #         Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#split, #k] -> [#split]
+    #         return Aij
+    #
+    #     npoints = int(tf.shape(c)[0])
+    #     batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
+    #     batches[-1][-1] = None  # Set the final `stop` value to include all remaining tensor elements in the final batch.
+    #     rows_by_batch = []
+    #     for start, stop in batches:
+    #         c_split = c[start:stop, :, :]  # [#n, #k, #cols] -> [#split, #k, #cols], where #k is ragged
+    #         rows = []
+    #         for i in range(6):
+    #             row = []
+    #             for j in range(6):
+    #                 Aij = _assemble_aij_batched(c_split,
+    #                                             tf.constant(i, dtype=tf.int64),
+    #                                             tf.constant(j, dtype=tf.int64))  # [#split]
+    #                 row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+    #             row = tf.stack(row, axis=1)  # -> [#split, #cols]
+    #             rows.append(row)
+    #         rows_by_batch.append(rows)
+    #     # Unsplit:
+    #     #   [[batch0_row0, batch0_row1, ..., batch0_row5], [batch1_row0, batch1_row1, ..., batch1_row5], ...] -> [row0, row1, ..., row5]
+    #     # `A` itself doesn't take much VRAM (less than 10 MB typically), so we don't have to worry about VRAM usage here.
+    #     rows = []
+    #     for rs in zip(*rows_by_batch):
+    #         rows.append(tf.concat(rs, axis=0))  # [#split, #cols] -> [#n, #cols]
+    # A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
+    # return A
 
 def prepare(N: float,
             X: typing.Union[np.array, tf.Tensor],
@@ -470,7 +510,8 @@ def prepare(N: float,
     # We choose xscale to make magnitudes near 1. Similarly for yscale. We base the scaling on the grid spacing in raw coordinate space,
     # defining the furthest distance in the stencil (along each coordinate axis) in the scaled space as 1.
     #
-    # TODO: We assume a uniform grid spacing for now. We could relax this assumption, since only the choice of `xscale`/`yscale` depend on it.
+    # We assume a uniform grid spacing. The choice of `xscale`/`yscale` depends on it, but below, we also do some specializations to a
+    # uniform meshgrid that allow us to save gigabytes of VRAM compared to the general case.
     #
     # We cast to `float`, so this works also in the case where we get a scalar tensor instead of a bare scalar.
     xscale = float(X[0, 1] - X[0, 0]) * N
@@ -479,10 +520,9 @@ def prepare(N: float,
     # --------------------------------------------------------------------------------
     # General, topology-agnostic assembly
 
+    # Note this routine works just as well for `c` specialized to the uniform meshgrid, and that's how we're using it here - see below.
     def cnki(dx: tf.Tensor, dy: tf.Tensor) -> tf.Tensor:
         """Compute the quadratic surrogate fitting coefficient tensor `c[n, k, i]`.
-
-        NOTE: The `c` tensor may take gigabytes of VRAM, depending on input image resolution.
 
         Input: rank-2 tensors:
 
@@ -547,57 +587,46 @@ def prepare(N: float,
     #
     # We really do need this even on a meshgrid, because we need to look up actual neighbor data values when assembling the load vector `b` later.
     # Placing all the indices in a (ragged) tensor is an easy way to parallelize the lookup.
+    #
+    # TODO: At the cost of some compute, we could still batch this at assembly time, like we do for lookups of `c`.
     neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, point_to_stencil)
     if print_memory_statistics:
-        print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large.
+        print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
 
-    # `dx[n, k]`: signed x distance of neighbor `k` (local index) from data point `n` (global index). Similarly for `dy[n, k]`.
-    dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
-    dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
+    # # For general topologies:
+    # #   `dx[n, k]`: signed x distance of neighbor `k` (local index) from data point `n` (global index). Similarly for `dy[n, k]`.
+    # dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
+    # dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
+    #
+    # Specifically on a meshgrid, we can do this instead, and save a couple hundred MB of VRAM:
+    #   `dx[stencil_id, k]`: signed x distance of neighbor `k` (local index) in stencil `stencil_id`. Similarly for `dy[stencil_id, k]`.
+    ps = tf.squeeze(tf.gather(stencil_to_points, [0], axis=1), axis=-1)  # for each stencil, the global index of the first point that uses that stencil
+    ps_neighbors = tf.expand_dims(ps, axis=-1) + stencils  # neighbor global indices for each stencil
+    dx = tf.gather(X, ps_neighbors) - tf.expand_dims(tf.gather(X, ps), axis=-1)
+    dy = tf.gather(Y, ps_neighbors) - tf.expand_dims(tf.gather(Y, ps), axis=-1)
+
     if print_memory_statistics:
         print(f"dx: {sizeof_tensor(dx)}, {dx.dtype}")
         print(f"dy: {sizeof_tensor(dy)}, {dy.dtype}")
 
     # Finally, the surrogate fitting coefficient tensor is the following `c`.
     #
-    # Currently, `c` takes a lot of VRAM, even at float16. It would be possible to save VRAM by a similar indirection strategy
-    # as is already used for stencils. Specifically, in a uniform meshgrid, each unique stencil corresponds to a unique `c[n, :, :]`.
-    # So by indirecting when assembling the equations later, we would strictly need to store only one `c[n, :, :]` per stencil,
-    # not per pixel as we do currently.
+    # For general topologies, `c` takes a lot of VRAM, even at float16 - easily 1 GB at 256×256, N=20.5, p=2.0.
     #
-    # I'm tempted to keep this part as-is, because the current approach is general. It would work also with arbitrary topologies,
-    # where every "pixel" (really a mesh node; or a point of a generic, topology-free point cloud) has a unique stencil.
+    # Specifically on a *uniform* meshgrid, it is enough to store `c[stencil_id, k, i]`, as it only depends on the distances `dx` and `dy`.
+    # This can save a gigabyte of VRAM.
     #
-    # Note also that we can already assemble reasonable sizes (at 256×256, N=13.5, p=2.0) with 6 GB, and even more in low VRAM mode (N=20.5, p=2.0).
-    #
-    # TODO: But changing to the meshgrid-specific approach could save 1GB or more of VRAM.
+    # Note, however, that we will then have to indirect from data point global index `n` to `stencil_id` when assembling the equations.
     c = cnki(dx, dy)
     del dx
     del dy
     gc.collect()  # attempt to clean up dangling tensors
     if print_memory_statistics:
-        print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge.
+        print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge (1 GB) in general case, small (~20 MB) in the uniform meshgrid case.
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
     # print(f"c[n, k, i] ∈ [{tf.reduce_min(absc):0.6g}, {tf.reduce_max(absc):0.6g}]")
-
-    # The surrogate fitting tensor is:
-    #
-    # A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
-    #
-    # The `A` matrices can be preassembled. They must be stored per-pixel, but the size is only 6×6, so at float32,
-    # we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
-    A = _assemble_a(c, dtype, low_vram, low_vram_batches)
-    if print_memory_statistics:
-        print(f"A: {sizeof_tensor(A)}, {A.dtype}")
-
-    # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
-    # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
-    # absA = tf.abs(A)
-    # print(f"A[n, i, j] ∈ [{tf.reduce_min(absA):0.6g}, {tf.reduce_max(absA):0.6g}]")
-
-    # TODO: DEBUG: sanity check that each `A[n, :, :]` is symmetric.
 
     # Scaling factors to undo the derivative scaling,  d/dx' → d/dx.  `solve` needs this to postprocess its results.
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
@@ -605,16 +634,25 @@ def prepare(N: float,
     if print_memory_statistics:
         print(f"scale: {sizeof_tensor(scale)}, {scale.dtype}")
 
-    if format == "LUp":
-        LU, p = tf.linalg.lu(tf.cast(A, tf.float32))
-        LU = tf.cast(LU, dtype)
-        if print_memory_statistics:
-            print(f"LU: {sizeof_tensor(LU)}, {LU.dtype}")
-            print(f"p: {sizeof_tensor(p)}, {p.dtype}")
-
+    # The surrogate fitting tensor is:
+    #
+    # A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
+    #
+    # The `A` matrices can be preassembled. They must be stored per-pixel, but the size is only 6×6, so at float32,
+    # we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
+    assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batches)
     if format == "A":
-        return (A, c, scale, neighbors), orig_interior_stencil
-    return (LU, p, c, scale, neighbors), orig_interior_stencil
+        A = assembled
+        if print_memory_statistics:
+            print(f"A: {sizeof_tensor(A)}, {A.dtype}")
+        return (A, c, scale, point_to_stencil, neighbors), orig_interior_stencil
+
+    # format == "LUp":
+    LU, perm = assembled
+    if print_memory_statistics:
+        print(f"LU: {sizeof_tensor(LU)}, {LU.dtype}")
+        print(f"perm: {sizeof_tensor(perm)}, {perm.dtype}")
+    return (LU, perm, c, scale, point_to_stencil, neighbors), orig_interior_stencil
 
 
 # Trying to run `solve` at float16 precision on TF 2.12 gives the error:
@@ -657,6 +695,7 @@ def prepare(N: float,
 
 @tf.function
 def _assemble_b(c: tf.Tensor,
+                point_to_stencil: tf.Tensor,
                 neighbors: tf.RaggedTensor,
                 z: tf.Tensor,
                 low_vram: bool,
@@ -677,8 +716,9 @@ def _assemble_b(c: tf.Tensor,
         # When enough VRAM is available, this is the simplest way to do the assembly:
         rows = []
         zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
+        c_expanded = tf.gather(c, point_to_stencil, axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#n, #k, #rows]; this can take GBs of VRAM!
         for i in range(6):
-            ci = tf.cast(c[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
+            ci = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
             bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
             rows.append(tf.cast(bi, z.dtype, name="cast_to_dtype"))
     else:
@@ -689,10 +729,11 @@ def _assemble_b(c: tf.Tensor,
         rows_by_batch = []
         for start, stop in batches:
             zgnk_split = tf.gather(z, neighbors[start:stop], name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
+            c_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
             rows = []
             for i in range(6):
                 # We upcast after slicing to save VRAM.
-                ci_split = tf.cast(c[start:stop, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k]
+                ci_split = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k]
                 bi_split = tf.reduce_sum(zgnk_split * ci_split, axis=1, name="assemble_bi")  # [#split, #k] -> [#split]
                 rows.append(tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
             rows_by_batch.append(rows)
@@ -710,6 +751,7 @@ def _assemble_b(c: tf.Tensor,
 def solve(a: tf.Tensor,
           c: tf.Tensor,
           scale: tf.Tensor,
+          point_to_stencil: tf.Tensor,
           neighbors: tf.RaggedTensor,
           z: tf.Tensor,
           low_vram: bool = True,
@@ -748,7 +790,7 @@ def solve(a: tf.Tensor,
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
-    b = _assemble_b(c, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
+    b = _assemble_b(c, point_to_stencil, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
 
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
     sol = tf.linalg.solve(a, b, name="solve_system")  # -> [#n, #rows, 1]
@@ -767,6 +809,7 @@ def solve_lu(lu: tf.Tensor,
              p: tf.Tensor,
              c: tf.Tensor,
              scale: tf.Tensor,
+             point_to_stencil: tf.Tensor,
              neighbors: tf.RaggedTensor,
              z: tf.Tensor,
              low_vram: bool = True,
@@ -805,7 +848,7 @@ def solve_lu(lu: tf.Tensor,
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
-    b = _assemble_b(c, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
+    b = _assemble_b(c, point_to_stencil, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
 
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
     sol = tf.linalg.lu_solve(lu, p, b, name="solve_system_lu")  # [#n, #rows, 1]
@@ -821,6 +864,7 @@ def solve_lu_custom(lu: tf.Tensor,
                     p: tf.Tensor,
                     c: tf.Tensor,
                     scale: tf.Tensor,
+                    point_to_stencil: tf.Tensor,
                     neighbors: tf.RaggedTensor,
                     z: tf.Tensor,
                     low_vram: bool = True,
@@ -856,13 +900,14 @@ def solve_lu_custom(lu: tf.Tensor,
     batch = int(shape[0])
     n = int(shape[1])
     x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x")  # cannot be allocated inside @tf.function
-    return _solve_lu_custom_kernel(lu, p, c, scale, neighbors, z, low_vram, low_vram_batches, x)
+    return _solve_lu_custom_kernel(lu, p, c, scale, point_to_stencil, neighbors, z, low_vram, low_vram_batches, x)
 
 @tf.function
 def _solve_lu_custom_kernel(lu: tf.Tensor,
                             p: tf.Tensor,
                             c: tf.Tensor,
                             scale: tf.Tensor,
+                            point_to_stencil: tf.Tensor,
                             neighbors: tf.RaggedTensor,
                             z: tf.Tensor,
                             low_vram: bool,
@@ -883,7 +928,7 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
-    b = _assemble_b(c, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
+    b = _assemble_b(c, point_to_stencil, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
 
     # We must call the kernel directly, because we are inside @tf.function;
     # the API wrapper would try to allocate its own `x`, which we can't do here.
@@ -898,7 +943,9 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
 
 
 # --------------------------------------------------------------------------------
-# Basic API. Slower, not as accurate in corners, needs less VRAM.
+# Basic API. Slower, not as accurate in corners.
+#
+# Everything below this point is DEPRECATED, and preserved for documentation only.
 #
 # See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
 

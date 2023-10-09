@@ -257,9 +257,27 @@ def main():
     # to use up to `N = 18.5` (with `p = 2.0`, stencil size 1085, and `n_batches = 4`), using over 1k neighbors
     # per pixel to estimate the derivatives.
     #
-    # Without the async allocator, `N = 17.5` (stencil size 973) seems the largest possible.
-    # With `n_batches = 8`, it seems possible to use `N = 19.5` (1201), or even `N = 20.5` (1313).
-    N, σ = 20.5, 0.001
+    # Without the async allocator, on a 6 GB card, `N = 17.5` seems the largest possible (`p = 2.0`, `resolution = 256`).
+    # With `n_batches = 8`, it seems possible to use `N = 19.5`, or even `N = 20.5`.
+    #
+    # And now with the optimizations for a uniform meshgrid, it seems possible to use up to `N = 24.5`,
+    # and sometimes up to `N = 25.5` (depending on VRAM load from the OS and other applications).
+    #
+    #    N   Euclidean (p=2.0)
+    # ------------------------
+    # 17.5    973
+    # ----------- 1k neighbors
+    # 18.5   1085
+    # 19.5   1201
+    # 20.5   1313
+    # 21.5   1457
+    # 22.5   1597
+    # 23.5   1741
+    # 24.5   1885
+    # ----------- 2k neighbors
+    # 25.5   2053
+    N, σ = 24.5, 0.001
+    # N, σ = 2.5, 0.0
     N_int = math.ceil(N)
 
     # # 2 seems enough for good results when the data is numerically exact.
@@ -274,7 +292,11 @@ def main():
     #
     # To add synthetic noise, but skip denoising (to see how the results deteriorate),
     # set σ > 0 and `denoise_steps = 0`.
-    denoise_steps = 1
+    #
+    # If the actual `f` is smooth enough, and if enough VRAM is available, then to eliminate high-frequency noise,
+    # it's usually a better deal to just increase `N` (to average out the noise in a larger area during fitting),
+    # rather than to enable denoising.
+    denoise_steps = 0
 
     # Number of assembly batches for low VRAM mode of `prepare` and `solve`.
     n_batches = 8
