@@ -253,17 +253,16 @@ def main():
     # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
     # algorithm needs at least 7 to make the matrix invertible.
     #
-    # At 256 resolution, the `TF_GPU_ALLOCATOR=cuda_malloc_async` environment variable may allow a 6 GB card
-    # to use up to `N = 18.5` (with `p = 2.0`, stencil size 1085, and `n_batches = 4`), using over 1k neighbors
-    # per pixel to estimate the derivatives.
+    # At 256 resolution, the `TF_GPU_ALLOCATOR=cuda_malloc_async` environment variable may allow a 6 GB card to use
+    # up to `N = 18.5` (with `p = 2.0`, stencil size 1085; using `batch_size = 16384`), using over 1k neighbors per pixel.
     #
     # Without the async allocator, on a 6 GB card, `N = 17.5` seems the largest possible (`p = 2.0`, `resolution = 256`).
-    # With `n_batches = 8`, it seems possible to use `N = 19.5`, or even `N = 20.5`.
+    # With `batch_size = 8192`, it seems possible to use `N = 19.5`, or even `N = 20.5`.
     #
     # And now with the optimizations for a uniform meshgrid, it seems possible to use up to `N = 24.5`,
     # and sometimes up to `N = 25.5` (depending on VRAM load from the OS and other applications).
     #
-    # After the latest optimization, computing `neighbors` on the fly, we can go up to `N = 26.5`.
+    # After the latest optimization, computing `neighbors` on the fly, we can go up to `N = 26.5` (at `batch_size = 8192`)
     #
     #    N   Euclidean (p=2.0)
     # ------------------------
@@ -301,8 +300,8 @@ def main():
     # rather than to enable denoising.
     denoise_steps = 0
 
-    # Number of assembly batches for low VRAM mode of `prepare` and `solve`.
-    n_batches = 8
+    # Batch size (data points) for system matrix and load vector assembly for low VRAM mode of `prepare` and `solve`.
+    batch_size = 8192
 
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
@@ -339,11 +338,12 @@ def main():
         Z = f(X, Y)
 
         # `prepare` only takes shape and dtype from `Z`.
-        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", low_vram=True, low_vram_batches=n_batches, print_memory_statistics=True)
+        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", low_vram=True, low_vram_batch_size=batch_size, print_memory_statistics=True)
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
+    print(f"    Low VRAM batch size: {batch_size} data points per batch (⇒ {math.ceil(np.prod(np.shape(Z)) / batch_size)} batches)")
     print(f"    Neighborhood radius: {N} grid units (p-norm p = {p}; stencil size {len(stencil)} grid points)")
     if σ > 0:
         print(f"    Synthetic noise stdev: {σ:0.6g}")
@@ -361,7 +361,7 @@ def main():
     # Simulate noisy input, for testing the denoiser.
 
     def solve(Z):
-        return solve_lu(*preps, Z, low_vram=True, low_vram_batches=n_batches)
+        return solve_lu(*preps, Z, low_vram=True, low_vram_batch_size=batch_size)
 
     def denoise(N, X, Y, Z, *, indent=4):
         # Applying denoising in a loop allows removing larger amounts of noise.

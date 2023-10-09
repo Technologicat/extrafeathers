@@ -128,7 +128,7 @@ def _assemble_a(c: tf.Tensor,
                 dtype: tf.DType,
                 format: str,
                 low_vram: bool,
-                low_vram_batches: int) -> tf.Tensor:
+                low_vram_batch_size: int) -> tf.Tensor:
     """[internal helper] Assemble the system matrix.
 
     The formula is::
@@ -212,8 +212,9 @@ def _assemble_a(c: tf.Tensor,
     #         Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#split, #k] -> [#split]
     #         return Aij
     #
-    #     npoints = int(tf.shape(c)[0])
-    #     batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
+    #     npoints = int(tf.shape(c)[0])  # not inside a @tf.function, so this is ok.
+    #     n_batches = math.ceil(npoints / low_vram_batch_size)
+    #     batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
     #     batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
     #     rows_by_batch = []
     #     for start, stop in batches:
@@ -247,7 +248,7 @@ def prepare(N: float,
             dtype: tf.DType = tf.float32,
             format: str = "A",
             low_vram: bool = True,
-            low_vram_batches: int = 4,
+            low_vram_batch_size: int = 8192,
             print_memory_statistics: bool = False):
     """Prepare for differentiation on a meshgrid.
 
@@ -303,12 +304,12 @@ def prepare(N: float,
                     This makes `A` slightly less precise, but not much, while it halves the VRAM
                     requirements for the largest tensor in the preparation process.
 
-                  - Assemble `A` in batches (over meshgrid points). See the `low_vram_batches` parameter.
+                  - Assemble `A` in batches (over meshgrid points). See the `low_vram_batch_size` parameter.
 
-    `low_vram_batches`: If `low_vram=True`, this is the number of batches for assembling the system matrix.
-                        Increase this to trade off speed for lower VRAM usage.
+    `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the system matrix.
+                           Decrease this to trade off speed for lower VRAM usage.
 
-                        If `low_vram=False`, this parameter is ignored.
+                           If `low_vram=False`, this parameter is ignored.
 
     `print_memory_statistics`: If `True`, print on stdout how much memory (usually VRAM) the
                                various tensors used during the preparation process use.
@@ -364,7 +365,7 @@ def prepare(N: float,
     # Topology-specific stencil assembly
 
     shape = tf.shape(Z)
-    npoints = tf.reduce_prod(shape)
+    npoints = tf.reduce_prod(shape)  # not inside a @tf.function, so this is ok.
     all_multi_to_linear = tf.reshape(tf.range(npoints), shape)  # e.g. [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
 
     # Adapt the uniform [2 * N + 1, 2 * N + 1] stencil for each pixel, by clipping it into the data region.
@@ -644,7 +645,7 @@ def prepare(N: float,
 
     # The `A` matrices can be preassembled. They must be stored per-pixel (for easy use with linear system solver), but the size is only 6×6,
     # so at float32, we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
-    assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batches)
+    assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batch_size)
     if format == "A":
         A = assembled
         if print_memory_statistics:
@@ -704,7 +705,7 @@ def _assemble_b(c: tf.Tensor,
                 neighbors: typing.Optional[tf.RaggedTensor],
                 z: tf.Tensor,
                 low_vram: bool,
-                low_vram_batches: int) -> tf.Tensor:
+                low_vram_batch_size: int) -> tf.Tensor:
     """[internal helper] Assemble the load vector.
 
     The formula is::
@@ -715,7 +716,7 @@ def _assemble_b(c: tf.Tensor,
 
     Returns a `tf.Tensor` of shape [npoints, 6].
     """
-    npoints = int(tf.shape(z)[0])  # NOTE: reshaped, linearly indexed `z`
+    npoints = int(tf.get_static_value(tf.shape(z), partial=True)[0])  # NOTE: Reshaped, linearly indexed `z`. Inside a @tf.function, so must take static value.
     if neighbors is not None:  # `neighbors` is precomputed.
         if not low_vram:
             # The `RaggedSplitsToSegmentIds`, used internally by TF inside the `reduce_sum` costs a lot of VRAM, since it indexes using `int64`,
@@ -733,7 +734,8 @@ def _assemble_b(c: tf.Tensor,
                 rows.append(tf.cast(bi, z.dtype, name="cast_to_dtype"))
         else:
             # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
-            batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
+            n_batches = math.ceil(npoints / low_vram_batch_size)
+            batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
             batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
             rows_by_batch = []
             for start, stop in batches:
@@ -774,7 +776,8 @@ def _assemble_b(c: tf.Tensor,
                 return zgnk_split
 
             # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
-            batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
+            n_batches = math.ceil(npoints / low_vram_batch_size)
+            batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
             batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
             rows_by_batch = []
             for start, stop in batches:
@@ -806,7 +809,7 @@ def solve(a: tf.Tensor,
           neighbors: typing.Optional[tf.RaggedTensor],
           z: tf.Tensor,
           low_vram: bool = True,
-          low_vram_batches: int = 4) -> tf.Tensor:
+          low_vram_batch_size: int = 8192) -> tf.Tensor:
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
     This uses `tf.linalg.solve`, and is the recommended algorithm.
@@ -822,10 +825,10 @@ def solve(a: tf.Tensor,
                 This will slow down the computation (especially at first run when TF compiles the graph),
                 but allows using larger neighborhood sizes with the same VRAM.
 
-    `low_vram_batches`: If `low_vram=True`, this is the number of batches for assembling the load vector.
-                        Increase this to trade off speed for lower VRAM usage.
+    `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the load vector.
+                           Decrease this to trade off speed for lower VRAM usage.
 
-                        If `low_vram=False`, this parameter is ignored.
+                           If `low_vram=False`, this parameter is ignored.
 
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
@@ -841,7 +844,7 @@ def solve(a: tf.Tensor,
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
-    b = _assemble_b(c, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
+    b = _assemble_b(c, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batch_size)  # -> [#n, #rows]
 
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
     sol = tf.linalg.solve(a, b, name="solve_system")  # -> [#n, #rows, 1]
@@ -865,7 +868,7 @@ def solve_lu(lu: tf.Tensor,
              neighbors: typing.Optional[tf.RaggedTensor],
              z: tf.Tensor,
              low_vram: bool = True,
-             low_vram_batches: int = 4) -> tf.Tensor:
+             low_vram_batch_size: int = 8192) -> tf.Tensor:
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
     This uses a TensorFlow's LU solver kernel.
@@ -881,10 +884,10 @@ def solve_lu(lu: tf.Tensor,
                 This will slow down the computation (especially at first run when TF compiles the graph),
                 but allows using larger neighborhood sizes with the same VRAM.
 
-    `low_vram_batches`: If `low_vram=True`, this is the number of batches for assembling the load vector.
-                        Increase this to trade off speed for lower VRAM usage.
+    `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the load vector.
+                           Decrease this to trade off speed for lower VRAM usage.
 
-                        If `low_vram=False`, this parameter is ignored.
+                           If `low_vram=False`, this parameter is ignored.
 
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
@@ -900,7 +903,7 @@ def solve_lu(lu: tf.Tensor,
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
-    b = _assemble_b(c, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
+    b = _assemble_b(c, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batch_size)  # -> [#n, #rows]
 
     b = tf.expand_dims(b, axis=-1)  # -> [#n, #rows, 1]  (in this variant of the algorithm, we have just one RHS for each LHS matrix)
     sol = tf.linalg.lu_solve(lu, p, b, name="solve_system_lu")  # [#n, #rows, 1]
@@ -921,7 +924,7 @@ def solve_lu_custom(lu: tf.Tensor,
                     neighbors: typing.Optional[tf.RaggedTensor],
                     z: tf.Tensor,
                     low_vram: bool = True,
-                    low_vram_batches: int = 4) -> tf.Tensor:
+                    low_vram_batch_size: int = 8192) -> tf.Tensor:
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
     This uses a custom LU solver kernel, which can run also at float16.
@@ -937,10 +940,10 @@ def solve_lu_custom(lu: tf.Tensor,
                 This will slow down the computation (especially at first run when TF compiles the graph),
                 but allows using larger neighborhood sizes with the same VRAM.
 
-    `low_vram_batches`: If `low_vram=True`, this is the number of batches for assembling the load vector.
-                        Increase this to trade off speed for lower VRAM usage.
+    `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the load vector.
+                           Decrease this to trade off speed for lower VRAM usage.
 
-                        If `low_vram=False`, this parameter is ignored.
+                           If `low_vram=False`, this parameter is ignored.
 
     This function runs completely on the GPU, and is differentiable w.r.t. `z`, so it can be used
     e.g. inside a loss function for a neural network that predicts `z` (if such a loss function
@@ -953,7 +956,7 @@ def solve_lu_custom(lu: tf.Tensor,
     batch = int(shape[0])
     n = int(shape[1])
     x = tf.Variable(tf.zeros([batch, n], dtype=lu.dtype), name="x")  # cannot be allocated inside @tf.function
-    return _solve_lu_custom_kernel(lu, p, c, scale, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batches, x)
+    return _solve_lu_custom_kernel(lu, p, c, scale, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batch_size, x)
 
 @tf.function
 def _solve_lu_custom_kernel(lu: tf.Tensor,
@@ -965,7 +968,7 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
                             neighbors: typing.Optional[tf.RaggedTensor],
                             z: tf.Tensor,
                             low_vram: bool,
-                            low_vram_batches: int,
+                            low_vram_batch_size: int,
                             x: tf.Variable) -> tf.Tensor:
     """[internal helper] The actual computational kernel for `solve_lu_custom`.
 
@@ -982,7 +985,7 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
     z = z / zmax  # -> [-1, 1]
 
-    b = _assemble_b(c, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batches)  # -> [#n, #rows]
+    b = _assemble_b(c, point_to_stencil, stencils, neighbors, z, low_vram, low_vram_batch_size)  # -> [#n, #rows]
 
     # We must call the kernel directly, because we are inside @tf.function;
     # the API wrapper would try to allocate its own `x`, which we can't do here.
@@ -996,10 +999,12 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
     return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
 
 
+# ----------------------------------------------------------------------------------------
+# !!! Everything below this point is DEPRECATED, and preserved for documentation only. !!!
+# ----------------------------------------------------------------------------------------
+
 # --------------------------------------------------------------------------------
 # Basic API. Slower, not as accurate in corners.
-#
-# Everything below this point is DEPRECATED, and preserved for documentation only.
 #
 # See `wlsqm.pdf` in the `python-wlsqm` docs for details on the algorithm.
 
