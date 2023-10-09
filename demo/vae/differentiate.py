@@ -211,7 +211,7 @@ def _assemble_a(c: tf.Tensor,
     #
     #     npoints = int(tf.shape(c)[0])
     #     batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
-    #     batches[-1][-1] = None  # Set the final `stop` value to include all remaining tensor elements in the final batch.
+    #     batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
     #     rows_by_batch = []
     #     for start, stop in batches:
     #         c_split = c[start:stop, :, :]  # [#n, #k, #cols] -> [#split, #k, #cols], where #k is ragged
@@ -725,7 +725,7 @@ def _assemble_b(c: tf.Tensor,
         # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
         npoints = int(tf.shape(z)[0])  # NOTE: reshaped, linearly indexed `z`
         batches = [[j * npoints // low_vram_batches, (j + 1) * npoints // low_vram_batches] for j in range(low_vram_batches)]
-        batches[-1][-1] = None  # Set the final `stop` value to include all remaining tensor elements in the final batch.
+        batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
         rows_by_batch = []
         for start, stop in batches:
             zgnk_split = tf.gather(z, neighbors[start:stop], name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
