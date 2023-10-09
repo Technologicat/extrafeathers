@@ -691,7 +691,7 @@ def prepare(N: float,
 #
 # However, upon testing this, it turned out that float32 isn't the speed bottleneck here, and the accuracy
 # of float16 isn't really enough for this use case. If you want to see for yourself, the experiment is
-# preserved as `solve_lu`.
+# preserved as `solve_lu_custom`.
 
 @tf.function
 def _assemble_b(c: tf.Tensor,
