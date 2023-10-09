@@ -539,14 +539,19 @@ def prepare(N: float,
     if print_memory_statistics:
         print(f"X: {sizeof_tensor(X)}, {X.dtype}")
         print(f"Y: {sizeof_tensor(Y)}, {Y.dtype}")
-    # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each data point; resolution² * (2 * N + 1)² * 4 bytes.
-    #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
-    #              `neighbors[n, k]` is the global index of neighbor `k` (local index) of data point `n` (global index).
+
+    # Linear indices (not offsets!) of neighbors (in stencil) for each data point; resolution² * (2 * N + 1)² * 4 bytes.
+    # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
+    #
+    # `neighbors[n, k]` is the global index of neighbor `k` (local index) of data point `n` (global index).
+    #
+    # We really do need this even on a meshgrid, because we need to look up actual neighbor data values when assembling the load vector `b` later.
+    # Placing all the indices in a (ragged) tensor is an easy way to parallelize the lookup.
     neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, point_to_stencil)
     if print_memory_statistics:
         print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large.
 
-    # `dx[n, k]`: signed x distance of neighbor `k` from data point `n`. Similarly for `dy[n, k]`.
+    # `dx[n, k]`: signed x distance of neighbor `k` (local index) from data point `n` (global index). Similarly for `dy[n, k]`.
     dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
     if print_memory_statistics:
