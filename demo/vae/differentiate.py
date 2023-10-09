@@ -350,11 +350,13 @@ def prepare(N: float,
     # = (2 * N + 1)² * (1 + 4 * N + 4 * N²) * 4 bytes; actual memory use is less than this due to the clipping to data region. For `N = 8`, this is
     # 289 * 289 * 4 bytes = 83521 * 4 bytes = 334 kB, so the storage for the unique stencils needs very little memory.
     stencils = []  # list of lists; we will convert to a ragged tensor at the end
-    indirect = np.zeros([npoints], dtype=int) - 1  # -1 = uninitialized, to catch bugs
-    def register_stencil(stencil, for_points):  # set up indirection
+    point_to_stencil = np.zeros([npoints], dtype=int) - 1  # -1 = uninitialized, to catch bugs
+    stencil_to_points = []
+    def register_stencil(stencil: np.array, for_points: tf.Tensor) -> int:  # set up indirection
         stencils.append(stencil)
         stencil_id = len(stencils) - 1
-        indirect[for_points] = stencil_id
+        point_to_stencil[for_points] = stencil_id
+        stencil_to_points.append(list(for_points.numpy()))
         return stencil_id
 
     # Interior - one stencil for all pixels; this case handles almost all of the image.
@@ -448,15 +450,17 @@ def prepare(N: float,
             register_stencil(this_stencil, this_idx)
 
     assert len(stencils) == 1 + 4 * N + 4 * N**2  # interior, edges, corners
-    assert not (indirect == -1).any()  # every pixel of the input image should now have a stencil associated with it
+    assert not (point_to_stencil == -1).any()  # every pixel of the input image should now have a stencil associated with it
 
     # For meshgrid use, we can store stencils as lists of linear index offsets (int32), in a ragged tensor.
     # Ragged, because points near edges or corners have a clipped stencil with fewer neighbors.
-    indirect = tf.constant(indirect, dtype=tf.int32)
+    point_to_stencil = tf.constant(point_to_stencil, dtype=tf.int32)
+    stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)
     stencils = tf.ragged.constant(stencils, dtype=tf.int32)
 
     if print_memory_statistics:
-        print(f"indirect: {sizeof_tensor(indirect)}, {indirect.dtype}")
+        print(f"point_to_stencil: {sizeof_tensor(point_to_stencil)}, {point_to_stencil.dtype}")
+        print(f"stencil_to_points: {sizeof_tensor(stencil_to_points)}, {stencil_to_points.dtype}")
         print(f"stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
 
     # Build the distance matrices.
@@ -535,9 +539,10 @@ def prepare(N: float,
     if print_memory_statistics:
         print(f"X: {sizeof_tensor(X)}, {X.dtype}")
         print(f"Y: {sizeof_tensor(Y)}, {Y.dtype}")
-    # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes.
+    # `neighbors`: linear indices (not offsets!) of neighbors (in stencil) for each data point; resolution² * (2 * N + 1)² * 4 bytes.
     #              The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
-    neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, indirect)
+    #              `neighbors[n, k]` is the global index of neighbor `k` (local index) of data point `n` (global index).
+    neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, point_to_stencil)
     if print_memory_statistics:
         print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large.
 
