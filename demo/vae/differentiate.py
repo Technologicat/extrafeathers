@@ -593,7 +593,7 @@ def prepare(N: float,
     if print_memory_statistics:
         print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
 
-    # # For general topologies:
+    # # For general topologies we need `neighbors`, and can use it as follows:
     # #   `dx[n, k]`: signed x distance of neighbor `k` (local index) from data point `n` (global index). Similarly for `dy[n, k]`.
     # dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     # dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
@@ -602,7 +602,7 @@ def prepare(N: float,
     #   `dx[stencil_id, k]`: signed x distance of neighbor `k` (local index) in stencil `stencil_id`. Similarly for `dy[stencil_id, k]`.
     ps = tf.squeeze(tf.gather(stencil_to_points, [0], axis=1), axis=-1)  # for each stencil, the global index of the first point that uses that stencil
     ps_neighbors = tf.expand_dims(ps, axis=-1) + stencils  # neighbor global indices for each stencil
-    dx = tf.gather(X, ps_neighbors) - tf.expand_dims(tf.gather(X, ps), axis=-1)
+    dx = tf.gather(X, ps_neighbors) - tf.expand_dims(tf.gather(X, ps), axis=-1)  # signed x distances in each stencil
     dy = tf.gather(Y, ps_neighbors) - tf.expand_dims(tf.gather(Y, ps), axis=-1)
 
     if print_memory_statistics:
