@@ -356,7 +356,7 @@ def prepare(N: float,
         stencils.append(stencil)
         stencil_id = len(stencils) - 1
         point_to_stencil[for_points] = stencil_id
-        stencil_to_points.append(list(for_points.numpy()))
+        stencil_to_points.append(list(for_points.numpy()))  # stencil id -> list of points
         return stencil_id
 
     # Interior - one stencil for all pixels; this case handles almost all of the image.
