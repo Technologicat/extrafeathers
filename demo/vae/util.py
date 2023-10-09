@@ -132,7 +132,7 @@ def batched(batch_size: int) -> typing.Callable:
     def batcher(f: typing.Callable) -> typing.Callable:  # batcher, batcher, mushroom
         @wraps(f)
         def evaluate_batched(*args, **kwargs):
-            batched_args = [tf.data.Dataset.from_tensor_slices(tensor).batch(batch_size) for tensor in args]  # [T0, T1, ...] -> [batches(c0), batches(c1), ...]
+            batched_args = [tf.data.Dataset.from_tensor_slices(tensor).batch(batch_size) for tensor in args]  # [T0, T1, ...] -> [batches(T0), batches(T1), ...]
             batches_in = [[batch for batch in batches] for batches in batched_args]  # -> [[b0_T0, b1_T0, ...], [b0_T1, b1_T1, ...], ...]
             batches_in = list(zip(*batches_in))  # -> [[b0_T0, b0_T1, ...], [b1_T0, b1_T1, ...], ...]
             batches_out = [f(*xs, **kwargs) for xs in batches_in]
