@@ -263,6 +263,8 @@ def main():
     # And now with the optimizations for a uniform meshgrid, it seems possible to use up to `N = 24.5`,
     # and sometimes up to `N = 25.5` (depending on VRAM load from the OS and other applications).
     #
+    # After the latest optimization, computing `neighbors` on the fly, we can go up to `N = 26.5`.
+    #
     #    N   Euclidean (p=2.0)
     # ------------------------
     # 17.5    973
@@ -276,7 +278,8 @@ def main():
     # 24.5   1885
     # ----------- 2k neighbors
     # 25.5   2053
-    N, σ = 24.5, 0.001
+    # 26.5   2217
+    N, σ = 26.5, 0.001
     # N, σ = 2.5, 0.0
     N_int = math.ceil(N)
 
