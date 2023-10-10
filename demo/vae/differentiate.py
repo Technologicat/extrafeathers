@@ -748,6 +748,7 @@ def _assemble_b(c: tf.Tensor,
         return bi
 
     if not low_vram:  # `neighbors` is precomputed. No batching.
+        assert neighbors is not None
         # The `RaggedSplitsToSegmentIds`, used internally by TF inside the `reduce_sum` costs a lot of VRAM, since it indexes using `int64`,
         # and we're handling a lot of tensor elements here. E.g. at 256×256, #n = 65536, and with N=13, p=2.0, #k ~ 500, we have about 30M points;
         # so with an int64 for each, we're talking ~300 MB just for the indexing. When the chosen settings are already pushing against the VRAM limit,
@@ -764,6 +765,7 @@ def _assemble_b(c: tf.Tensor,
         rows = rows.stack()  # -> [#rows, #n]
         b = tf.transpose(rows, [1, 0])  # -> [#n, #rows]
     else:  # `neighbors is None`, to be computed on-the-fly. Batched assembly.
+        assert neighbors is None
         # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
         # TODO: Batch this properly, no Python loop, so we can get a smaller execution graph - maybe use `tf.Dataset`?
         n_batches = math.ceil(npoints / low_vram_batch_size)
