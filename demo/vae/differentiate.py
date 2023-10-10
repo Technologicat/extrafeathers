@@ -765,6 +765,7 @@ def _assemble_b(c: tf.Tensor,
         b = tf.transpose(rows, [1, 0])  # -> [#n, #rows]
     else:  # `neighbors is None`, to be computed on-the-fly. Batched assembly.
         # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
+        # TODO: Batch this properly, no Python loop, so we can get a smaller execution graph - maybe use `tf.Dataset`?
         n_batches = math.ceil(npoints / low_vram_batch_size)
         batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
         batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
