@@ -34,6 +34,8 @@ __all__ = ["prepare", "solve",  # The hifiest algorithm, accurate, fast, uses a 
 import math
 import typing
 
+from unpythonic import timer
+
 import numpy as np
 
 import tensorflow as tf
@@ -260,7 +262,8 @@ def prepare(N: float,
             format: str = "A",
             low_vram: bool = True,
             low_vram_batch_size: int = 8192,
-            print_memory_statistics: bool = False):
+            print_statistics: bool = False,
+            indent: str = ""):
     """Prepare for differentiation on a meshgrid.
 
     This is the hifiest algorithm provided in this module. For what to do after `prepare`, see `solve`.
@@ -322,12 +325,18 @@ def prepare(N: float,
 
                            If `low_vram=False`, this parameter is ignored.
 
-    `print_memory_statistics`: If `True`, print on stdout how much memory (usually VRAM) the
-                               various tensors used during the preparation process use.
+    `print_statistics`: If `True`, print on stdout how much memory (usually VRAM) the
+                        various tensors used during the preparation process use.
 
-                               This of course only succeeds if there is enough memory to
-                               actually allocate those tensors. The idea is to help give
-                               a rough intuition of the scaling behavior.
+                        This of course only succeeds if there is enough memory to
+                        actually allocate those tensors. The idea is to help give
+                        a rough intuition of the scaling behavior.
+
+                        This option also prints wall time taken for various stages
+                        of preparation.
+
+    `indent`: If `print_statistics=True`, prefix string for messages, usually some number of spaces.
+              If `print_statistics=True`, this parameter is ignored.
 
     As long as `N`, `X` and `Y` remain constant, and the dtype of `Z` remains the same,
     the same preparation can be reused.
@@ -375,148 +384,158 @@ def prepare(N: float,
     # --------------------------------------------------------------------------------
     # Topology-specific stencil assembly
 
-    shape = tf.shape(Z)
-    npoints = tf.reduce_prod(shape)  # not inside a @tf.function, so this is ok.
-    all_multi_to_linear = tf.reshape(tf.range(npoints), shape)  # e.g. [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
+    with timer() as tim:
+        if print_statistics:
+            print(f"{indent}Stencil assembly...")
+        shape = tf.shape(Z)
+        npoints = tf.reduce_prod(shape)  # not inside a @tf.function, so this is ok.
+        all_multi_to_linear = tf.reshape(tf.range(npoints), shape)  # e.g. [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
 
-    # Adapt the uniform [2 * N + 1, 2 * N + 1] stencil for each pixel, by clipping it into the data region.
-    # Note that clipping to the data region is only needed near edges and corners.
-    #
-    # To save some VRAM, we store only unique stencils. Because we work on a meshgrid:
-    #  1) We can store each unique stencil as a list of linear index *offsets*, taking advantage of the uniform grid topology,
-    #  2) When using such as offset format, only relatively few unique stencils appear.
-    #
-    # To handle edges and corners optimally, using as much of the data as possible, each corner needs a different stencil
-    # for each pixel (N² of them), and the remaining part of each row or column (N of them) near an edge needs a different stencil.
-    # So in total, we have 1 + 4 * N + 4 * N² unique stencils (where the 1 is for the interior). Crucially, this is independent
-    # of the input image resolution.
-    #
-    # We create a per-datapoint indirection tensor, mapping datapoint linear index to the index of the appropriate unique stencil.
-    #
-    # For large stencils (e.g. at `N = 8`, (2 * N + 1)² = 289 points), the indirection saves a lot of VRAM, mainly because
-    # we only need to store one copy of the stencil for the interior part, which makes up most of the input image.
-    #
-    # A stencil consists of int32 entries, so *without* indirection, for example for `N = 8`, with naive per-pixel stencils,
-    # the amount of VRAM we would need is 289 * 4 bytes * resolution², which is 303 MB at 512×512, and 1.21 GB at 1024×1024.
-    # *With* indirection, we save the factor of 289, since we need only one int32 per pixel to identify which stencil to use.
-    # Thus 4 bytes * resolution², which is 1.1 MB at 512×512, and 4.2 MB at 1024×1024.
-    #
-    # Of course, we need to store the actual unique stencils, too. But the upper bound for memory use for this is (stencil size) * (n_stencils) * 4 bytes
-    # = (2 * N + 1)² * (1 + 4 * N + 4 * N²) * 4 bytes; actual memory use is less than this due to the clipping to data region. For `N = 8`, this is
-    # 289 * 289 * 4 bytes = 83521 * 4 bytes = 334 kB, so the storage for the unique stencils needs very little memory.
-    stencils = []  # list of lists; we will convert to a ragged tensor at the end
-    point_to_stencil = np.zeros([npoints], dtype=int) - 1  # -1 = uninitialized, to catch bugs
-    stencil_to_points = []
-    def register_stencil(stencil: np.array, for_points: tf.Tensor) -> int:  # set up indirection
-        stencils.append(stencil)
-        stencil_id = len(stencils) - 1
-        point_to_stencil[for_points] = stencil_id
-        stencil_to_points.append(list(for_points.numpy()))  # stencil id -> list of points
-        return stencil_id
+        # Adapt the uniform [2 * N + 1, 2 * N + 1] stencil for each pixel, by clipping it into the data region.
+        # Note that clipping to the data region is only needed near edges and corners.
+        #
+        # To save some VRAM, we store only unique stencils. Because we work on a meshgrid:
+        #  1) We can store each unique stencil as a list of linear index *offsets*, taking advantage of the uniform grid topology,
+        #  2) When using such as offset format, only relatively few unique stencils appear.
+        #
+        # To handle edges and corners optimally, using as much of the data as possible, each corner needs a different stencil
+        # for each pixel (N² of them), and the remaining part of each row or column (N of them) near an edge needs a different stencil.
+        # So in total, we have 1 + 4 * N + 4 * N² unique stencils (where the 1 is for the interior). Crucially, this is independent
+        # of the input image resolution.
+        #
+        # We create a per-datapoint indirection tensor, mapping datapoint linear index to the index of the appropriate unique stencil.
+        #
+        # For large stencils (e.g. at `N = 8`, (2 * N + 1)² = 289 points), the indirection saves a lot of VRAM, mainly because
+        # we only need to store one copy of the stencil for the interior part, which makes up most of the input image.
+        #
+        # A stencil consists of int32 entries, so *without* indirection, for example for `N = 8`, with naive per-pixel stencils,
+        # the amount of VRAM we would need is 289 * 4 bytes * resolution², which is 303 MB at 512×512, and 1.21 GB at 1024×1024.
+        # *With* indirection, we save the factor of 289, since we need only one int32 per pixel to identify which stencil to use.
+        # Thus 4 bytes * resolution², which is 1.1 MB at 512×512, and 4.2 MB at 1024×1024.
+        #
+        # Of course, we need to store the actual unique stencils, too. But the upper bound for memory use for this is (stencil size) * (n_stencils) * 4 bytes
+        # = (2 * N + 1)² * (1 + 4 * N + 4 * N²) * 4 bytes; actual memory use is less than this due to the clipping to data region. For `N = 8`, this is
+        # 289 * 289 * 4 bytes = 83521 * 4 bytes = 334 kB, so the storage for the unique stencils needs very little memory.
+        stencils = []  # list of lists; we will convert to a ragged tensor at the end
+        point_to_stencil = np.zeros([npoints], dtype=int) - 1  # -1 = uninitialized, to catch bugs
+        stencil_to_points = []
+        def register_stencil(stencil: np.array, for_points: tf.Tensor) -> int:  # set up indirection
+            stencils.append(stencil)
+            stencil_id = len(stencils) - 1
+            point_to_stencil[for_points] = stencil_id
+            stencil_to_points.append(list(for_points.numpy()))  # stencil id -> list of points
+            return stencil_id
 
-    # Interior - one stencil for all pixels; this case handles almost all of the image.
-    interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
-    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
-    interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                          for ix in range(-N, N + 1)
-                                          if belongs_to_neighborhood(iy, ix)])  # multi-index offsets
-    orig_interior_stencil = interior_stencil  # for returning to caller
-    interior_stencil = multi_to_linear(interior_stencil, shape=shape)  # corresponding linear index offsets
-    register_stencil(interior_stencil, interior_idx)
+        # Interior - one stencil for all pixels; this case handles almost all of the image.
+        interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
+        interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
+        interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                              for ix in range(-N, N + 1)
+                                              if belongs_to_neighborhood(iy, ix)])  # multi-index offsets
+        orig_interior_stencil = interior_stencil  # for returning to caller
+        interior_stencil = multi_to_linear(interior_stencil, shape=shape)  # corresponding linear index offsets
+        register_stencil(interior_stencil, interior_idx)
 
-    # Top edge - one stencil per row (N of them, so typically 8).
-    for row in range(N):
-        top_multi_to_linear = all_multi_to_linear[row, N:-N]
-        top_idx = tf.reshape(top_multi_to_linear, [-1])
-        top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
-                                         for ix in range(-N, N + 1)
-                                         if belongs_to_neighborhood(iy, ix)])
-        top_stencil = multi_to_linear(top_stencil, shape=shape)
-        register_stencil(top_stencil, top_idx)  # each row near the top gets its own stencil
+        # Top edge - one stencil per row (N of them, so typically 8).
+        for row in range(N):
+            top_multi_to_linear = all_multi_to_linear[row, N:-N]
+            top_idx = tf.reshape(top_multi_to_linear, [-1])
+            top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                             for ix in range(-N, N + 1)
+                                             if belongs_to_neighborhood(iy, ix)])
+            top_stencil = multi_to_linear(top_stencil, shape=shape)
+            register_stencil(top_stencil, top_idx)  # each row near the top gets its own stencil
 
-    # Bottom edge - one stencil per row.
-    for row in range(-N, 0):
-        bottom_multi_to_linear = all_multi_to_linear[row, N:-N]
-        bottom_idx = tf.reshape(bottom_multi_to_linear, [-1])
-        bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
-                                            for ix in range(-N, N + 1)
-                                            if belongs_to_neighborhood(iy, ix)])
-        bottom_stencil = multi_to_linear(bottom_stencil, shape=shape)
-        register_stencil(bottom_stencil, bottom_idx)
+        # Bottom edge - one stencil per row.
+        for row in range(-N, 0):
+            bottom_multi_to_linear = all_multi_to_linear[row, N:-N]
+            bottom_idx = tf.reshape(bottom_multi_to_linear, [-1])
+            bottom_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                                for ix in range(-N, N + 1)
+                                                if belongs_to_neighborhood(iy, ix)])
+            bottom_stencil = multi_to_linear(bottom_stencil, shape=shape)
+            register_stencil(bottom_stencil, bottom_idx)
 
-    # Left edge - one stencil per column (N of them, so typically 8).
-    for col in range(N):
-        left_multi_to_linear = all_multi_to_linear[N:-N, col]
-        left_idx = tf.reshape(left_multi_to_linear, [-1])
-        left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                          for ix in range(-col, N + 1)
-                                          if belongs_to_neighborhood(iy, ix)])
-        left_stencil = multi_to_linear(left_stencil, shape=shape)
-        register_stencil(left_stencil, left_idx)
-
-    # Right edge - one stencil per column.
-    for col in range(-N, 0):
-        right_multi_to_linear = all_multi_to_linear[N:-N, col]
-        right_idx = tf.reshape(right_multi_to_linear, [-1])
-        right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
-                                           for ix in range(-N, -col)
-                                           if belongs_to_neighborhood(iy, ix)])
-        right_stencil = multi_to_linear(right_stencil, shape=shape)
-        register_stencil(right_stencil, right_idx)
-
-    # Upper left corner - one stencil per pixel (N² of them, so typically 64).
-    for row in range(N):
+        # Left edge - one stencil per column (N of them, so typically 8).
         for col in range(N):
-            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])  # just one pixel, but for uniform data format, use a rank-1 tensor
-            this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+            left_multi_to_linear = all_multi_to_linear[N:-N, col]
+            left_idx = tf.reshape(left_multi_to_linear, [-1])
+            left_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                               for ix in range(-col, N + 1)
                                               if belongs_to_neighborhood(iy, ix)])
-            this_stencil = multi_to_linear(this_stencil, shape=shape)
-            register_stencil(this_stencil, this_idx)
+            left_stencil = multi_to_linear(left_stencil, shape=shape)
+            register_stencil(left_stencil, left_idx)
 
-    # Upper right corner - one stencil per pixel.
-    for row in range(N):
+        # Right edge - one stencil per column.
         for col in range(-N, 0):
-            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
-            this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
-                                              for ix in range(-N, -col)
-                                              if belongs_to_neighborhood(iy, ix)])
-            this_stencil = multi_to_linear(this_stencil, shape=shape)
-            register_stencil(this_stencil, this_idx)
+            right_multi_to_linear = all_multi_to_linear[N:-N, col]
+            right_idx = tf.reshape(right_multi_to_linear, [-1])
+            right_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
+                                               for ix in range(-N, -col)
+                                               if belongs_to_neighborhood(iy, ix)])
+            right_stencil = multi_to_linear(right_stencil, shape=shape)
+            register_stencil(right_stencil, right_idx)
 
-    # Lower left corner - one stencil per pixel.
-    for row in range(-N, 0):
-        for col in range(N):
-            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
-            this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
-                                              for ix in range(-col, N + 1)
-                                              if belongs_to_neighborhood(iy, ix)])
-            this_stencil = multi_to_linear(this_stencil, shape=shape)
-            register_stencil(this_stencil, this_idx)
+        # Upper left corner - one stencil per pixel (N² of them, so typically 64).
+        for row in range(N):
+            for col in range(N):
+                this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])  # just one pixel, but for uniform data format, use a rank-1 tensor
+                this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                                  for ix in range(-col, N + 1)
+                                                  if belongs_to_neighborhood(iy, ix)])
+                this_stencil = multi_to_linear(this_stencil, shape=shape)
+                register_stencil(this_stencil, this_idx)
 
-    # Lower right corner - one stencil per pixel.
-    for row in range(-N, 0):
-        for col in range(-N, 0):
-            this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
-            this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
-                                              for ix in range(-N, -col)
-                                              if belongs_to_neighborhood(iy, ix)])
-            this_stencil = multi_to_linear(this_stencil, shape=shape)
-            register_stencil(this_stencil, this_idx)
+        # Upper right corner - one stencil per pixel.
+        for row in range(N):
+            for col in range(-N, 0):
+                this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
+                this_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
+                                                  for ix in range(-N, -col)
+                                                  if belongs_to_neighborhood(iy, ix)])
+                this_stencil = multi_to_linear(this_stencil, shape=shape)
+                register_stencil(this_stencil, this_idx)
 
-    assert len(stencils) == 1 + 4 * N + 4 * N**2  # interior, edges, corners
-    assert not (point_to_stencil == -1).any()  # every pixel of the input image should now have a stencil associated with it
+        # Lower left corner - one stencil per pixel.
+        for row in range(-N, 0):
+            for col in range(N):
+                this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
+                this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                                  for ix in range(-col, N + 1)
+                                                  if belongs_to_neighborhood(iy, ix)])
+                this_stencil = multi_to_linear(this_stencil, shape=shape)
+                register_stencil(this_stencil, this_idx)
+
+        # Lower right corner - one stencil per pixel.
+        for row in range(-N, 0):
+            for col in range(-N, 0):
+                this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
+                this_stencil = intarray([[iy, ix] for iy in range(-N, -row)
+                                                  for ix in range(-N, -col)
+                                                  if belongs_to_neighborhood(iy, ix)])
+                this_stencil = multi_to_linear(this_stencil, shape=shape)
+                register_stencil(this_stencil, this_idx)
+
+        assert len(stencils) == 1 + 4 * N + 4 * N**2  # interior, edges, corners
+        assert not (point_to_stencil == -1).any()  # every pixel of the input image should now have a stencil associated with it
+    if print_statistics:
+        print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
     # For meshgrid use, we can store stencils as lists of linear index offsets (int32), in a ragged tensor.
     # Ragged, because points near edges or corners have a clipped stencil with fewer neighbors.
-    point_to_stencil = tf.constant(point_to_stencil, dtype=tf.int32)
-    stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)
-    stencils = tf.ragged.constant(stencils, dtype=tf.int32)
+    with timer() as tim:
+        if print_statistics:
+            print(f"{indent}Convert stencils to tf format...")
+        point_to_stencil = tf.constant(point_to_stencil, dtype=tf.int32)
+        stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)
+        stencils = tf.ragged.constant(stencils, dtype=tf.int32)
+    if print_statistics:
+        print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
-    if print_memory_statistics:
-        print(f"point_to_stencil: {sizeof_tensor(point_to_stencil)}, {point_to_stencil.dtype}")
-        print(f"stencil_to_points: {sizeof_tensor(stencil_to_points)}, {stencil_to_points.dtype}")
-        print(f"stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
+    if print_statistics:
+        print(f"{indent}point_to_stencil: {sizeof_tensor(point_to_stencil)}, {point_to_stencil.dtype}")
+        print(f"{indent}stencil_to_points: {sizeof_tensor(stencil_to_points)}, {stencil_to_points.dtype}")
+        print(f"{indent}stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
 
     # Build the distance matrices.
     #
@@ -591,9 +610,9 @@ def prepare(N: float,
     # We'll be using linear indexing.
     X = tf.reshape(X, [-1])
     Y = tf.reshape(Y, [-1])
-    if print_memory_statistics:
-        print(f"X: {sizeof_tensor(X)}, {X.dtype}")
-        print(f"Y: {sizeof_tensor(Y)}, {Y.dtype}")
+    if print_statistics:
+        print(f"{indent}X: {sizeof_tensor(X)}, {X.dtype}")
+        print(f"{indent}Y: {sizeof_tensor(Y)}, {Y.dtype}")
 
     # Linear indices (not offsets!) of neighbors (in stencil) for each data point; resolution² * (2 * N + 1)² * 4 bytes.
     # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
@@ -608,8 +627,8 @@ def prepare(N: float,
     # but if VRAM is low, then it's better to save the memory, and recompute per batch.
     if not low_vram:
         neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, point_to_stencil)
-        if print_memory_statistics:
-            print(f"neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
+        if print_statistics:
+            print(f"{indent}neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
     else:
         neighbors = None
 
@@ -625,9 +644,9 @@ def prepare(N: float,
     dx = tf.gather(X, ps_neighbors) - tf.expand_dims(tf.gather(X, ps), axis=-1)  # signed x distances in each stencil
     dy = tf.gather(Y, ps_neighbors) - tf.expand_dims(tf.gather(Y, ps), axis=-1)
 
-    if print_memory_statistics:
-        print(f"dx: {sizeof_tensor(dx)}, {dx.dtype}")
-        print(f"dy: {sizeof_tensor(dy)}, {dy.dtype}")
+    if print_statistics:
+        print(f"{indent}dx: {sizeof_tensor(dx)}, {dx.dtype}")
+        print(f"{indent}dy: {sizeof_tensor(dy)}, {dy.dtype}")
 
     # Finally, the surrogate fitting coefficient tensor is the following `c`.
     #
@@ -641,8 +660,8 @@ def prepare(N: float,
     # del dx
     # del dy
     # gc.collect()  # Attempt to clean up dangling tensors. Only important in general topologies where `c` takes a lot of VRAM.
-    if print_memory_statistics:
-        print(f"c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge (1 GB) in general case, small (~20 MB) in the uniform meshgrid case.
+    if print_statistics:
+        print(f"{indent}c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge (1 GB) in general case, small (~20 MB) in the uniform meshgrid case.
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
@@ -651,23 +670,28 @@ def prepare(N: float,
     # Scaling factors to undo the derivative scaling,  d/dx' → d/dx.  `solve` needs this to postprocess its results.
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
-    if print_memory_statistics:
-        print(f"scale: {sizeof_tensor(scale)}, {scale.dtype}")
+    if print_statistics:
+        print(f"{indent}scale: {sizeof_tensor(scale)}, {scale.dtype}")
 
     # The `A` matrices can be preassembled. They must be stored per-pixel (for easy use with linear system solver), but the size is only 6×6,
     # so at float32, we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
-    assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batch_size)
-    if format == "A":
-        A = assembled
-        if print_memory_statistics:
-            print(f"A: {sizeof_tensor(A)}, {A.dtype}")
-        return (A, c, scale, point_to_stencil, stencils, neighbors), orig_interior_stencil
+    with timer() as tim:
+        if print_statistics:
+            print(f"{indent}System matrix assembly...")
+        assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batch_size)
+        if format == "A":
+            A = assembled
+            if print_statistics:
+                print(f"A: {sizeof_tensor(A)}, {A.dtype}")
+        else:  # format == "LUp":
+            LU, perm = assembled
+            if print_statistics:
+                print(f"LU: {sizeof_tensor(LU)}, {LU.dtype}")
+                print(f"perm: {sizeof_tensor(perm)}, {perm.dtype}")
+    print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
-    # format == "LUp":
-    LU, perm = assembled
-    if print_memory_statistics:
-        print(f"LU: {sizeof_tensor(LU)}, {LU.dtype}")
-        print(f"perm: {sizeof_tensor(perm)}, {perm.dtype}")
+    if format == "A":
+        return (A, c, scale, point_to_stencil, stencils, neighbors), orig_interior_stencil
     return (LU, perm, c, scale, point_to_stencil, stencils, neighbors), orig_interior_stencil
 
 

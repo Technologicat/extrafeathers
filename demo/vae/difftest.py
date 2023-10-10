@@ -341,7 +341,10 @@ def main():
         Z = tf.cast(Z, dtype=tf.float32)
 
         # `prepare` only takes shape and dtype from `Z`.
-        preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", low_vram=True, low_vram_batch_size=batch_size, print_memory_statistics=True)
+        preps, stencil = prepare(N, X, Y, Z, p=p,
+                                 format="LUp",
+                                 low_vram=True, low_vram_batch_size=batch_size,
+                                 print_statistics=True, indent=" " * 4)
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")
@@ -363,7 +366,12 @@ def main():
     # --------------------------------------------------------------------------------
     # Simulate noisy input, for testing the denoiser.
 
+    solve_called = False
     def solve(Z):
+        nonlocal solve_called
+        if not solve_called:
+            print("    NOTE: First call to `solve`; this will trace the solver graph, which may take a while.")
+            solve_called = True
         return solve_lu(*preps, Z, low_vram=True, low_vram_batch_size=batch_size)
 
     def denoise(N, X, Y, Z, *, indent=4):
