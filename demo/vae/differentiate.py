@@ -139,16 +139,27 @@ def _assemble_a(c: tf.Tensor,
 
     Returns a `tf.Tensor` of shape [npoints, 6, 6].
     """
+    @tf.function
+    def _assemble_aij(c: tf.Tensor,
+                      i: tf.Tensor,
+                      j: tf.Tensor) -> tf.Tensor:
+        # We upcast after slicing to save VRAM.
+        # We always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
+        ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+        cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#n, #k]
+        Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#n, #k] -> [#n]
+        return Aij
+
     # On a *uniform* meshgrid, it is enough to do the assembly for each stencil once.
     # Here the `c` that comes in has shape [#stencils, #k, 6], where #k is ragged.
+    #
+    # Even for large neighborhood sizes `N`, the number of unique stencils is
+    # a couple thousand at most; hence we don't need to save VRAM here.
     rows = []
     for i in range(6):
-        ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#stencils, #k], where #k is ragged (number of neighbors in stencil)
         row = []
         for j in range(6):
-            # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
-            cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#stencils, #k]
-            Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#stencils, #k] -> [#stencils]
+            Aij = _assemble_aij(c, tf.constant(i, dtype=tf.int64), tf.constant(j, dtype=tf.int64))
             row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
         row = tf.stack(row, axis=1)  # -> [#stencils, #cols]
         rows.append(row)
@@ -698,6 +709,8 @@ def prepare(N: float,
 # of float16 isn't really enough for this use case. If you want to see for yourself, the experiment is
 # preserved as `solve_lu_custom`.
 
+# NOTE: When debugging, be sure to disable the `@tf.function` also for the `solve` (or `solve_lu`, ...) routine that you're using.
+#       Otherwise, we will already be in graph mode when `_assemble_b` is called.
 @tf.function
 def _assemble_b(c: tf.Tensor,
                 point_to_stencil: tf.Tensor,
@@ -716,88 +729,58 @@ def _assemble_b(c: tf.Tensor,
 
     Returns a `tf.Tensor` of shape [npoints, 6].
     """
-    npoints = int(tf.get_static_value(tf.shape(z), partial=True)[0])  # NOTE: Reshaped, linearly indexed `z`. Inside a @tf.function, so must take static value.
-    if neighbors is not None:  # `neighbors` is precomputed.
-        if not low_vram:
-            # The `RaggedSplitsToSegmentIds`, used internally by TF inside the `reduce_sum` costs a lot of VRAM, since it indexes using `int64`,
-            # and we're handling a lot of tensor elements here. E.g. at 256×256, #n = 65536, and with N=13, p=2.0, #k ~ 500, we have about 30M points;
-            # so with an int64 for each, we're talking ~300 MB just for the indexing. When the chosen settings are already pushing against the VRAM limit,
-            # this is the straw that breaks the camel's back.
-            #
-            # When enough VRAM is available, this is the simplest way to do the assembly:
-            rows = []
-            zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
-            c_expanded = tf.gather(c, point_to_stencil, axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#n, #k, #rows]; this can take GBs of VRAM!
+    # Ensure numeric value even for symbolic tensor input - we may be called from inside a `@tf.function`.
+    npoints = int(tf.get_static_value(tf.shape(z), partial=True)[0])  # NOTE: Reshaped, linearly indexed `z`.
+
+    # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
+    def _get_zgnk(start, stop):
+        # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
+        neighbors_split = tf.expand_dims(tf.range(start, stop), axis=-1) + tf.gather(stencils, point_to_stencil[start:stop])  # [#split, #k], ragged in k
+        zgnk_split = tf.gather(z, neighbors_split, name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
+        return zgnk_split
+
+    def _assemble_bi(i: tf.Tensor,
+                     c_expanded: tf.Tensor,
+                     zgnk: tf.Tensor) -> tf.Tensor:
+        # We upcast after slicing to save VRAM.
+        ci = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k] (batched) or [#n, #k] (not batched)
+        bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#split, #k] -> [#split] (batched) or [#n, #k] -> [#n] (not batched)
+        return bi
+
+    if not low_vram:  # `neighbors` is precomputed. No batching.
+        # The `RaggedSplitsToSegmentIds`, used internally by TF inside the `reduce_sum` costs a lot of VRAM, since it indexes using `int64`,
+        # and we're handling a lot of tensor elements here. E.g. at 256×256, #n = 65536, and with N=13, p=2.0, #k ~ 500, we have about 30M points;
+        # so with an int64 for each, we're talking ~300 MB just for the indexing. When the chosen settings are already pushing against the VRAM limit,
+        # this is the straw that breaks the camel's back.
+        #
+        # When enough VRAM is available, this is the simplest way to do the assembly.
+        # https://www.tensorflow.org/guide/function#accumulating_values_in_a_loop
+        rows = tf.TensorArray(z.dtype, size=6)
+        zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
+        c_expanded = tf.gather(c, point_to_stencil, axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#n, #k, #rows]; this can take GBs of VRAM!
+        for i in range(6):
+            bi = _assemble_bi(tf.constant(i, dtype=tf.int64), c_expanded, zgnk)  # -> [#n]
+            rows = rows.write(i, tf.cast(bi, z.dtype, name="cast_to_dtype"))
+        rows = rows.stack()  # -> [#rows, #n]
+        b = tf.transpose(rows, [1, 0])  # -> [#n, #rows]
+    else:  # `neighbors is None`, to be computed on-the-fly. Batched assembly.
+        # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
+        n_batches = math.ceil(npoints / low_vram_batch_size)
+        batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
+        batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
+        rows_by_batch = tf.TensorArray(z.dtype, size=n_batches)
+        for batch_index, (start, stop) in enumerate(batches):
+            zgnk_split = _get_zgnk(start, stop)
+            c_split_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
+            rows = tf.TensorArray(z.dtype, size=6)
             for i in range(6):
-                ci = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
-                bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
-                rows.append(tf.cast(bi, z.dtype, name="cast_to_dtype"))
-        else:
-            # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
-            n_batches = math.ceil(npoints / low_vram_batch_size)
-            batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
-            batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
-            rows_by_batch = []
-            for start, stop in batches:
-                zgnk_split = tf.gather(z, neighbors[start:stop], name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
-                c_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
-                rows = []
-                for i in range(6):
-                    # We upcast after slicing to save VRAM.
-                    ci_split = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k]
-                    bi_split = tf.reduce_sum(zgnk_split * ci_split, axis=1, name="assemble_bi")  # [#split, #k] -> [#split]
-                    rows.append(tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
-                rows_by_batch.append(rows)
-            # Unsplit:
-            #   [[batch0_row0, batch0_row1, ..., batch0_row5], [batch1_row0, batch1_row1, ..., batch1_row5], ...] -> [row0, row1, ..., row5]
-            # `b` itself doesn't take much VRAM (less than 2 MB in the above scenario), so we don't have to worry about VRAM usage here.
-            rows = []
-            for rs in zip(*rows_by_batch):
-                rows.append(tf.concat(rs, axis=0))  # [#split] -> [#n]
-
-    else:  # `neighbors is None`, to be computed on-the-fly.
-        if not low_vram:
-            rows = []
-            # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
-            neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, point_to_stencil)  # [#n, #k], ragged in k
-            zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
-            c_expanded = tf.gather(c, point_to_stencil, axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#n, #k, #rows]; this can take GBs of VRAM!
-            for i in range(6):
-                ci = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#n, #k]
-                bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#n, #k] -> [#n]
-                rows.append(tf.cast(bi, z.dtype, name="cast_to_dtype"))
-        else:
-            # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
-            @tf.function
-            def get_zgnk(start, stop):
-                # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
-                neighbors_split = tf.expand_dims(tf.range(start, stop), axis=-1) + tf.gather(stencils, point_to_stencil[start:stop])  # [#split, #k], ragged in k
-                zgnk_split = tf.gather(z, neighbors_split, name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
-                return zgnk_split
-
-            # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
-            n_batches = math.ceil(npoints / low_vram_batch_size)
-            batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
-            batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
-            rows_by_batch = []
-            for start, stop in batches:
-                zgnk_split = get_zgnk(start, stop)
-                c_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
-                rows = []
-                for i in range(6):
-                    # We upcast after slicing to save VRAM.
-                    ci_split = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k]
-                    bi_split = tf.reduce_sum(zgnk_split * ci_split, axis=1, name="assemble_bi")  # [#split, #k] -> [#split]
-                    rows.append(tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
-                rows_by_batch.append(rows)
-            # Unsplit:
-            #   [[batch0_row0, batch0_row1, ..., batch0_row5], [batch1_row0, batch1_row1, ..., batch1_row5], ...] -> [row0, row1, ..., row5]
-            # `b` itself doesn't take much VRAM (less than 2 MB in the above scenario), so we don't have to worry about VRAM usage here.
-            rows = []
-            for rs in zip(*rows_by_batch):
-                rows.append(tf.concat(rs, axis=0))  # [#split] -> [#n]
-
-    b = tf.stack(rows, axis=1, name="stack_b")  # -> [#n, #rows]
+                bi_split = _assemble_bi(tf.constant(i, dtype=tf.int64), c_split_expanded, zgnk_split)  # -> [#split]
+                rows = rows.write(i, tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
+            rows = rows.stack()  # [#rows, #split]
+            rows_by_batch = rows_by_batch.write(batch_index, rows)
+        rows_by_batch = rows_by_batch.stack()  # [#batches, #rows, #split]
+        rows_by_batch = tf.transpose(rows_by_batch, [0, 2, 1])  # -> [#batches, #split, #rows]
+        b = tf.reshape(rows_by_batch, shape=[n_batches * low_vram_batch_size, 6])  # unsplit -> [#n, #rows]
     return b
 
 @tf.function
