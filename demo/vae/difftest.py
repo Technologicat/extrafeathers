@@ -336,6 +336,9 @@ def main():
 
         X, Y = np.meshgrid(xx, yy)
         Z = f(X, Y)
+        # We will use `float32` for GPU computation anyway, so typecasting here saves
+        # an expensive extra `@tf.function` tracing for the initial `float64` data.
+        Z = tf.cast(Z, dtype=tf.float32)
 
         # `prepare` only takes shape and dtype from `Z`.
         preps, stencil = prepare(N, X, Y, Z, p=p, format="LUp", low_vram=True, low_vram_batch_size=batch_size, print_memory_statistics=True)
