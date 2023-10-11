@@ -318,7 +318,7 @@ def main():
     #  thus emulating the effects of a larger `N`.)
     denoise_steps = 0
 
-    # Batch size (data points) for system matrix and load vector assembly for low VRAM mode of `prepare` and `solve`.
+    # Batch size (pixels) for system matrix and load vector assembly of `prepare` and `solve`.
     batch_size = 8192
 
     # --------------------------------------------------------------------------------
@@ -367,7 +367,7 @@ def main():
 
     print(f"    Function: {expr}")
     print(f"    Data tensor size: {np.shape(Z)}")
-    print(f"    Low VRAM batch size: {batch_size} data points per batch (⇒ {math.ceil(np.prod(np.shape(Z)) / batch_size)} batches)")
+    print(f"    Batch size: {batch_size} pixels per batch (⇒ {math.ceil(np.prod(np.shape(Z)) / batch_size)} batches)")
     print(f"    Neighborhood radius: {N} grid units (p-norm p = {p}; stencil size {len(stencil)} grid points)")
     if σ > 0:
         print(f"    Synthetic noise stdev: {σ:0.6g}")

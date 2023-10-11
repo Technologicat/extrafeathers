@@ -207,7 +207,7 @@ def _assemble_a(c: tf.Tensor,
     # TODO: DEBUG: sanity check that each `A[n, :, :]` is symmetric.
 
     if format == "A":
-        # Replicate so that each data point gets its own copy.
+        # Replicate so that each pixel gets its own copy.
         # `A` doesn't take much VRAM, and it's easy to send this format to the linear system solver.
         A = tf.gather(A, point_to_stencil, axis=0)  # [#n, #rows, #cols]
         return A
@@ -298,12 +298,14 @@ def prepare(N: float,
             indent: str = ""):
     """Prepare for differentiation on a meshgrid.
 
+    Each pixel is associated with a local quadratic model (in an overlapping patch of pixels).
+
     This is the hifiest algorithm provided in this module. For what to do after `prepare`, see `solve`.
 
     This function precomputes the surrogate fitting coefficient tensor `c`, and the pixelwise `A` matrices.
     Some of the preparation is performed on the CPU, the most intensive computations on the GPU.
 
-    NOTE: This takes a lot of VRAM. A 6 GB GPU is able to do 256×256, but not much more.
+    NOTE: For large `N` and/or large input image resolution, this can take a lot of VRAM.
 
     `N`: Neighborhood size parameter (in grid spacings).
 
@@ -313,7 +315,7 @@ def prepare(N: float,
          Non-integer values can be useful with float values of `p` (see below). This affects the shape
          of the outer edge of the neighborhood. (E.g., with `p = 2.0`, integer `N` has a 1-pixel protrusion
          along the cardinal directions, although otherwise the stencil is a good approximation of a round shape.
-         Using e.g. `N=10.9` instead of `N=11` can avoid this.)
+         Using e.g. `N=11.5` instead of `N=11` can avoid this.)
 
     `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively.
                    The shapes of `X`, `Y` and `Z` must match.
@@ -435,7 +437,7 @@ def prepare(N: float,
         # So in total, we have 1 + 4 * N + 4 * N² unique stencils (where the 1 is for the interior). Crucially, this is independent
         # of the input image resolution.
         #
-        # We create a per-datapoint indirection tensor, mapping datapoint linear index to the index of the appropriate unique stencil.
+        # We create a per-pixel indirection tensor, mapping pixel linear index to the index of the appropriate unique stencil.
         #
         # For large stencils (e.g. at `N = 8`, (2 * N + 1)² = 289 points), the indirection saves a lot of VRAM, mainly because
         # we only need to store one copy of the stencil for the interior part, which makes up most of the input image.
@@ -490,7 +492,7 @@ def prepare(N: float,
         if print_statistics:
             print(f"{indent}    Interior (1 stencil)...")
         interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
-        interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
+        interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior pixel (C storage order)
         # We build just this one stencil manually.
         # interior_stencil = _build_stencil(ystart=tf.constant(-N), ystop=tf.constant(N + 1), xstart=tf.constant(-N), xstop=tf.constant(N + 1))
         interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
@@ -670,8 +672,8 @@ def prepare(N: float,
 
         and similarly for `dy`. The indices are:
 
-          `n`: linear index of data point
-          `k`: linear index (not offset!) of neighbor point
+          `n`: linear index of pixel
+          `k`: linear index (not offset!) of neighbor pixel
 
         Returns: rank-3 tensor:
 
@@ -720,10 +722,10 @@ def prepare(N: float,
             print(f"{indent}        Y: {sizeof_tensor(Y)}, {Y.dtype}")
     print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
-    # Linear indices (not offsets!) of neighbors (in stencil) for each data point; resolution² * (2 * N + 1)² * 4 bytes.
-    # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
+    # Linear indices (not offsets!) of neighbors (in stencil) for each pixel; resolution² * (2 * N + 1)² * 4 bytes.
+    # The first term is the base linear index of each pixel; the second is the linear index offset of each of its neighbors.
     #
-    # `neighbors[n, k]` is the global index of neighbor `k` (local index) of data point `n` (global index).
+    # `neighbors[n, k]` is the global index of neighbor `k` (local index) of pixel `n` (global index).
     #
     # We really do need this even on a meshgrid, because we need to look up actual neighbor data values when assembling the load vector `b` later.
     # Placing all the indices in a (ragged) tensor is an easy way to parallelize the lookup.
@@ -744,7 +746,7 @@ def prepare(N: float,
         neighbors = None
 
     # # For general topologies we need `neighbors`, and can use it as follows:
-    # #   `dx[n, k]`: signed x distance of neighbor `k` (local index) from data point `n` (global index). Similarly for `dy[n, k]`.
+    # #   `dx[n, k]`: signed x distance of neighbor `k` (local index) from pixel `n` (global index). Similarly for `dy[n, k]`.
     # dx = tf.gather(X, neighbors) - tf.expand_dims(X, axis=-1)  # `expand_dims` explicitly, to broadcast on the correct axis
     # dy = tf.gather(Y, neighbors) - tf.expand_dims(Y, axis=-1)
     #
@@ -770,7 +772,7 @@ def prepare(N: float,
     # Specifically on a *uniform* meshgrid, it is enough to store `c[stencil_id, k, i]`, as it only depends on the distances `dx` and `dy`.
     # This can save a gigabyte of VRAM.
     #
-    # Note, however, that we will then have to indirect from data point global index `n` to `stencil_id` when assembling the equations.
+    # Note, however, that we will then have to indirect from pixel global index `n` to `stencil_id` when assembling the equations.
     with timer() as tim:
         if print_statistics:
             print(f"{indent}Assemble coefficient tensor...")
@@ -881,7 +883,7 @@ def _assemble_b(c: tf.Tensor,
     # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
     @tf.function  # we're already inside a `@tf.function`, so this is just to document intent.
     def _get_zgnk(start: tf.Tensor, stop: tf.Tensor) -> tf.Tensor:  # `start` and `stop` are wrapped scalars
-        # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
+        # The first term is the base linear index of each pixel; the second is the linear index offset of each of its neighbors.
         neighbors_split = tf.expand_dims(tf.range(start, stop), axis=-1) + tf.gather(stencils, point_to_stencil[start:stop])  # [#split, #k], ragged in k
         zgnk_split = tf.gather(z, neighbors_split, name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
         return zgnk_split
@@ -955,6 +957,8 @@ def solve(a: tf.Tensor,
           low_vram_batch_size: int = 8192) -> tf.Tensor:
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
+    Each pixel is associated with a local quadratic model (in an overlapping patch of pixels).
+
     This uses `tf.linalg.solve`, and is the recommended algorithm.
 
     `a`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="A"`, which see.
@@ -1014,6 +1018,8 @@ def solve_lu(lu: tf.Tensor,
              low_vram_batch_size: int = 8192) -> tf.Tensor:
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
+    Each pixel is associated with a local quadratic model (in an overlapping patch of pixels).
+
     This uses a TensorFlow's LU solver kernel.
 
     `lu`, `p`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="LUp"`, which see.
@@ -1070,7 +1076,10 @@ def solve_lu_custom(lu: tf.Tensor,
                     low_vram_batch_size: int = 8192) -> tf.Tensor:
     """[kernel] Assemble and solve system that was prepared using `prepare`.
 
-    This uses a custom LU solver kernel, which can run also at float16.
+    Each pixel is associated with a local quadratic model (in an overlapping patch of pixels).
+
+    This uses a custom LU solver kernel, which can run also at float16 (although generally,
+    that is not very useful; this problem tends to need float32 for acceptable accuracy).
 
     `lu`, `p`, `c`, `scale`, `neighbors`: Outputs from `prepare` with `format="LUp"`, which see.
     `z`: function value data in 2D meshgrid format.
@@ -1176,7 +1185,7 @@ def differentiate(N: typing.Optional[int],
                   stencil: np.array = None) -> tf.Tensor:
     """[kernel] Fit a 2nd order surrogate polynomial to data values on a meshgrid, to estimate derivatives.
 
-    Each data point is associated with a local quadratic model.
+    Each pixel is associated with a local quadratic model (in an overlapping patch of pixels).
 
     Note the distance matrix `A` (generated automatically) is 5×5 regardless of `N`, but for large `N`,
     assembly takes longer because there are more contributions to each matrix element.
@@ -1254,7 +1263,7 @@ def differentiate(N: typing.Optional[int],
                    =: f(xi, yi) + ∂f/∂x c[k,0] + ∂f/∂y c[k,1] + ∂²f/∂x² c[k,2] + ∂²f/∂x∂y c[k,3] + ∂²f/∂y² c[k,4]
 
         where the c[k,i] are known geometric factors. Given a neighborhood around a given center point (xi, yi)
-        with 6 or more data points (xk, yk, fk), we can write a linear equation system that yields approximate
+        with 6 or more pixels (xk, yk, fk), we can write a linear equation system that yields approximate
         derivatives of the quadratic surrogate at the center point (xi, yi).
 
         Because we are solving for 5 coefficients, we must use at least 6 neighbors to make the fitting problem
@@ -1273,8 +1282,8 @@ def differentiate(N: typing.Optional[int],
         error into the coefficients.
 
         `dx`, `dy`: offset distance in raw coordinate space. Either:
-            - `float`, for a single pair of data points
-            - rank-1 `np.array`, for a batch of data point pairs
+            - `float`, for a single pair of pixels
+            - rank-1 `np.array`, for a batch of pixel pairs
 
         Return value:
             For float input: `c[i]`, rank-1 `np.array` of shape `(5,)`
@@ -1297,7 +1306,7 @@ def differentiate(N: typing.Optional[int],
     dy = tf.gather_nd(Y, indices) - Y[iy, ix]  # [#k]
 
     # Tensor viewpoint. Define the indices as follows:
-    #   `n`: datapoint in batch,
+    #   `n`: pixel in batch,
     #   `k`: neighbor,
     #   `i`: row of MLS equation system "A x = b"
     #   `j`: column of MLS equation system "A x = b"
@@ -1307,13 +1316,13 @@ def differentiate(N: typing.Optional[int],
     #   A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
     #   b[n,i] = ∑k( (f[g[n,k]] - f[n]) * c[n,k,i] )
     #
-    # where `g[n,k]` is the (global) data point index, of neighbor `k` of data point `n`.
+    # where `g[n,k]` is the (global) pixel index, of neighbor `k` of pixel `n`.
     #
     # On a uniform grid, c[n1,k,i] = c[n2,k,i] =: c[k,i] for any n1, n2, so this simplifies to:
     #   A[i,j] = ∑k( c[k,i] * c[k,j] )
     #   b[n,i] = ∑k( (f[g[n,k]] - f[n]) * c[k,i] )
     #
-    # In practice we still have to chop the edges, which modifies the data point indexing slightly.
+    # In practice we still have to chop the edges, which modifies the pixel indexing slightly.
     # Since we use a single stencil, we can form the equations for the interior part only, whereas
     # for the neighbor data values we need to use the full original data.
 
@@ -1333,7 +1342,7 @@ def differentiate(N: typing.Optional[int],
     #             A[j, n] += c[j] * c[n]
     # A = tf.constant(A)
 
-    # Form the right-hand side for each point. This is the only part that depends on the data values f.
+    # Form the right-hand side for each pixel. This is the only part that depends on the data values f.
     #
     # As per the above summary, we need to compute:
     #   b[n,i] = ∑k( (f[g[n,k]] - f[n]) * c[k,i] )
@@ -1358,14 +1367,14 @@ def differentiate(N: typing.Optional[int],
     xstop = -max_xoffs if max_xoffs else None
     interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
 
-    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior pixel
     # linear index, C storage order: i = iy * size_x + ix
     offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
 
     # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
     n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
     offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
-    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior pixel
 
     # Now we can evaluate df, and finally b.
     df = tf.gather(f, gnk) - tf.gather(f, n)  # [n_interior_points, #k]
@@ -1389,7 +1398,7 @@ def differentiate(N: typing.Optional[int],
     #         bs.append(b)
     # bs = tf.stack(bs, axis=1)
 
-    # The solution of the linear systems (one per data point) yields the jacobian and hessian of the surrogate.
+    # The solution of the linear systems (one per pixel) yields the jacobian and hessian of the surrogate.
     df = tf.linalg.solve(A, bs)  # [5, n_interior_points]
 
     # Undo the derivative scaling,  d/dx' → d/dx
@@ -1415,7 +1424,7 @@ def fit_quadratic(N: typing.Optional[int],
                   stencil: np.array = None) -> tf.Tensor:
     """[kernel] Like `differentiate`, but fit function values too.
 
-    Each data point is associated with a local quadratic model.
+    Each pixel is associated with a local quadratic model (in an overlapping patch of pixels).
 
     As well as estimating derivatives, this can be used as a local least squares denoiser.
 
@@ -1493,7 +1502,7 @@ def fit_quadratic(N: typing.Optional[int],
     #   A[n,i,j] = ∑k( c[n,k,i] * c[n,k,j] )
     #   b[n,i] = ∑k( f[g[n,k]] * c[n,k,i] )
     #
-    # where `g[n,k]` is the (global) data point index, of neighbor `k` of data point `n`.
+    # where `g[n,k]` is the (global) pixel index, of neighbor `k` of pixel `n`.
     #
     # On a uniform grid, c[n1,k,i] = c[n2,k,i] =: c[k,i] for any n1, n2, so this simplifies to:
     #   A[i,j] = ∑k( c[k,i] * c[k,j] )
@@ -1513,7 +1522,7 @@ def fit_quadratic(N: typing.Optional[int],
     c = cki(dx, dy)  # [#k, 6]
     A = tf.einsum("ki,kj->ij", c, c)  # A[i,j] = ∑k( c[k,i] * c[k,j] )
 
-    # Form the right-hand side for each point. This is the only part that depends on the data values f.
+    # Form the right-hand side for each pixel. This is the only part that depends on the data values f.
     #
     # As per the above summary, we need to compute:
     #   b[n,i] = ∑k( f[g[n,k]] * c[k,i] )
@@ -1534,14 +1543,14 @@ def fit_quadratic(N: typing.Optional[int],
     xstop = -max_xoffs if max_xoffs else None
     interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
 
-    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior pixel
     # linear index, C storage order: i = iy * size_x + ix
     offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
 
     # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
     n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
     offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
-    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior pixel
 
     # Now we can evaluate df, and finally b.
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
@@ -1567,7 +1576,7 @@ def fit_linear(N: typing.Optional[int],
                stencil: np.array = None) -> tf.Tensor:
     """[kernel] Like `fit_quadratic`, but fit function values and first derivatives only.
 
-    Each data point is associated with a local linear model.
+    Each pixel is associated with a local linear model (in an overlapping patch of pixels).
 
     This can be used as a local least squares denoiser.
 
@@ -1636,14 +1645,14 @@ def fit_linear(N: typing.Optional[int],
     xstop = -max_xoffs if max_xoffs else None
     interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
 
-    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior pixel
     # linear index, C storage order: i = iy * size_x + ix
     offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
 
     # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
     n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
     offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
-    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior pixel
 
     # Now we can evaluate df, and finally b.
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
@@ -1669,7 +1678,7 @@ def fit_constant(N: typing.Optional[int],
                  stencil: np.array = None) -> tf.Tensor:
     """[kernel] Like `fit_quadratic`, but fit function values only.
 
-    Each data point is associated with a local constant model.
+    Each pixel is associated with a local constant model (in an overlapping patch of pixels).
 
     This can be used as a local least squares denoiser.
 
@@ -1732,14 +1741,14 @@ def fit_constant(N: typing.Optional[int],
     xstop = -max_xoffs if max_xoffs else None
     interior_multi_to_linear = all_multi_to_linear[ystart:ystop, xstart:xstop]  # take the valid part
 
-    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point
+    interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior pixel
     # linear index, C storage order: i = iy * size_x + ix
     offset_idx = neighbors[:, 0] * tf.shape(X)[1] + neighbors[:, 1]  # [#k], linear index *offset* for each neighbor in the neighborhood
 
     # Compute index sets for df. Use broadcasting to create an "outer sum" [n,1] + [1,k] -> [n,k].
     n = tf.expand_dims(interior_idx, axis=1)  # [n_interior_points, 1]
     offset_idx = tf.expand_dims(offset_idx, axis=0)  # [1, #k]
-    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior data point
+    gnk = n + offset_idx  # [n_interior_points, #k], linear index of each neighbor of each interior pixel
 
     # Now we can evaluate df, and finally b.
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
