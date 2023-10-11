@@ -247,7 +247,7 @@ def main():
     #
     #    N   Euclidean (p=2.0)
     # ------------------------
-    #  1.5      9 (but not invertible in practice)
+    #  1.5      9 (not invertible; 3×3 box, not enough unique dx and dy values to detect dx2, dy2)
     #  2.5     21
     #  3.5     37
     #  4.5     69
