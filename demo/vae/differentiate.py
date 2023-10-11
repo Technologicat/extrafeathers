@@ -183,8 +183,9 @@ def _assemble_a(c: tf.Tensor,
 
     # We can still go a bit faster (for large stencil sizes) by accelerating the loops.
     # For small stencil sizes, this costs some compile time, but not much.
-    @tf.function
-    def _compiled_assemble():
+    # TODO: On a 6 GB card, runs out of VRAM in `reduce_sum` at `N=30.5, p=2.0` (256×256); without compiling this part, runs fine at `N=40.5`, still moderately fast.
+    # @tf.function
+    def _assemble():
         rows = tf.TensorArray(dtype, size=6)
         for i in tf.range(6):
             row = tf.TensorArray(dtype, size=6)
@@ -196,7 +197,7 @@ def _assemble_a(c: tf.Tensor,
         rows = rows.stack()  # -> [#rows, #cols, #stencils]
         A = tf.transpose(rows, [2, 0, 1])  # -> [#stencils, #rows, #cols]
         return A
-    A = _compiled_assemble()
+    A = _assemble()
 
     # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
     # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
