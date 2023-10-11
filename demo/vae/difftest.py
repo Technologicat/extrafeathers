@@ -243,12 +243,28 @@ def main():
     #
     # In practice, with `p=2.0`, it is better to use a half-integer `N`, to avoid
     # one pixel sticking out from the otherwise smooth circle in each cardinal direction.
-    # Here are some pixel counts as a function of `N`:
+    # Here are pixel counts as a function of half-integer `N`, up to 40.5:
     #
     #    N   Euclidean (p=2.0)
     # ------------------------
+    #  1.5      9 (but not invertible in practice)
+    #  2.5     21
+    #  3.5     37
+    #  4.5     69
+    #  5.5     97
+    #  6.5    137
+    #  7.5    177
+    #  8.5    225
+    #  9.5    293
+    # 10.5    349
+    # 11.5    421
+    # 12.5    489
+    # 13.5    577
+    # 14.5    665
+    # 15.5    749
+    # 16.5    861
     # 17.5    973
-    # ----------- 1k neighbors
+    # ----------- 1k neighbors (1024)
     # 18.5   1085
     # 19.5   1201
     # 20.5   1313
@@ -256,11 +272,28 @@ def main():
     # 22.5   1597
     # 23.5   1741
     # 24.5   1885
-    # ----------- 2k neighbors
+    # ----------- 2k neighbors (2048)
     # 25.5   2053
     # 26.5   2217
+    # 27.5   2377
+    # 28.5   2561
+    # 29.5   2733
+    # 30.5   2933
+    # ----------- 3k neighbors (3072)
+    # 31.5   3125
+    # 32.5   3313
+    # 33.5   3521
+    # 34.5   3745
+    # 35.5   3969
+    # ----------- 4k neighbors (4096)
+    # 36.5   4197
+    # 37.5   4421
+    # 38.5   4669
+    # 39.5   4905
+    # ----------- 5k neighbors (5120)
+    # 40.5   5169
     #
-    N, σ = 26.5, 0.001
+    N, σ = 40.5, 0.001
     # N, σ = 2.5, 0.0
     N_int = math.ceil(N)
 
