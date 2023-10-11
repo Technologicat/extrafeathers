@@ -417,7 +417,7 @@ def prepare(N: float,
 
     with timer() as tim:
         if print_statistics:
-            print(f"{indent}Stencil assembly...")
+            print(f"{indent}Stencil assembly (N = {radius:0.3g}, p = {p:0.3g})...")
         shape = tf.shape(Z)
         npoints = tf.reduce_prod(shape)  # not inside a @tf.function, so this is ok.
         all_multi_to_linear = tf.reshape(tf.range(npoints), shape)  # e.g. [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
@@ -459,19 +459,21 @@ def prepare(N: float,
 
         # Interior - one stencil for all pixels; this case handles almost all of the image.
         if print_statistics:
-            print(f"{indent}    interior...")
+            print(f"{indent}    Interior (1 stencil)...")
         interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
         interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
         interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                               for ix in range(-N, N + 1)
                                               if belongs_to_neighborhood(iy, ix)])  # multi-index offsets
         orig_interior_stencil = interior_stencil  # for returning to caller
+        if print_statistics:
+            print(f"{indent}        {len(orig_interior_stencil)} points")
         interior_stencil = multi_to_linear(interior_stencil, shape=shape)  # corresponding linear index offsets
         register_stencil(interior_stencil, interior_idx)
 
         # Top edge - one stencil per row (N of them, so typically 8).
         if print_statistics:
-            print(f"{indent}    top edge...")
+            print(f"{indent}    Top edge ({N} stencils)...")
         for row in range(N):
             top_multi_to_linear = all_multi_to_linear[row, N:-N]
             top_idx = tf.reshape(top_multi_to_linear, [-1])
@@ -483,7 +485,7 @@ def prepare(N: float,
 
         # Bottom edge - one stencil per row.
         if print_statistics:
-            print(f"{indent}    bottom edge...")
+            print(f"{indent}    Bottom edge ({N} stencils)...")
         for row in range(-N, 0):
             bottom_multi_to_linear = all_multi_to_linear[row, N:-N]
             bottom_idx = tf.reshape(bottom_multi_to_linear, [-1])
@@ -495,7 +497,7 @@ def prepare(N: float,
 
         # Left edge - one stencil per column (N of them, so typically 8).
         if print_statistics:
-            print(f"{indent}    left edge...")
+            print(f"{indent}    Left edge ({N} stencils)...")
         for col in range(N):
             left_multi_to_linear = all_multi_to_linear[N:-N, col]
             left_idx = tf.reshape(left_multi_to_linear, [-1])
@@ -507,7 +509,7 @@ def prepare(N: float,
 
         # Right edge - one stencil per column.
         if print_statistics:
-            print(f"{indent}    right edge...")
+            print(f"{indent}    Right edge ({N} stencils)...")
         for col in range(-N, 0):
             right_multi_to_linear = all_multi_to_linear[N:-N, col]
             right_idx = tf.reshape(right_multi_to_linear, [-1])
@@ -519,7 +521,7 @@ def prepare(N: float,
 
         # Upper left corner - one stencil per pixel (N² of them, so typically 64).
         if print_statistics:
-            print(f"{indent}    upper left corner...")
+            print(f"{indent}    Upper left corner ({N * N} stencils)...")
         for row in range(N):
             for col in range(N):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])  # just one pixel, but for uniform data format, use a rank-1 tensor
@@ -531,7 +533,7 @@ def prepare(N: float,
 
         # Upper right corner - one stencil per pixel.
         if print_statistics:
-            print(f"{indent}    upper right corner...")
+            print(f"{indent}    Upper right corner ({N * N} stencils)...")
         for row in range(N):
             for col in range(-N, 0):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -543,7 +545,7 @@ def prepare(N: float,
 
         # Lower left corner - one stencil per pixel.
         if print_statistics:
-            print(f"{indent}    lower left corner...")
+            print(f"{indent}    Lower left corner ({N * N} stencils)...")
         for row in range(-N, 0):
             for col in range(N):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -555,7 +557,7 @@ def prepare(N: float,
 
         # Lower right corner - one stencil per pixel.
         if print_statistics:
-            print(f"{indent}    lower right corner...")
+            print(f"{indent}    Lower right corner ({N * N} stencils)...")
         for row in range(-N, 0):
             for col in range(-N, 0):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -568,6 +570,7 @@ def prepare(N: float,
         assert len(stencils) == 1 + 4 * N + 4 * N**2  # interior, edges, corners
         assert not (point_to_stencil == -1).any()  # every pixel of the input image should now have a stencil associated with it
     if print_statistics:
+        print(f"{indent}    Assembled {len(stencils)} stencils in total.")
         print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
     # For meshgrid use, we can store stencils as lists of linear index offsets (int32), in a ragged tensor.
