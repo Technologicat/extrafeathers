@@ -585,7 +585,6 @@ def prepare(N: float,
         stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)
         # `row_splits_dtype=tf.int32` makes accesses 20% slower, better to use `int64`.
         stencils = tf.ragged.stack(stencils).with_row_splits_dtype(tf.int64)
-        print(stencils.dtype, stencils.row_splits.dtype)
     if print_statistics:
         print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
