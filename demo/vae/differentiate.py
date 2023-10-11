@@ -397,7 +397,7 @@ def prepare(N: float,
         raise ValueError(f"Unknown format '{format}'; known: 'A', 'LUp'.")
 
     def intarray(x):
-        return np.array(x, dtype=int)  # TODO: `np.int32`?
+        return np.array(x, dtype=np.int32)
 
     # Allow fractional radius, but build box for the next integer size.
     radius = N
@@ -579,8 +579,13 @@ def prepare(N: float,
         if print_statistics:
             print(f"{indent}Convert stencils to tf format...")
         point_to_stencil = tf.constant(point_to_stencil, dtype=tf.int32)
-        stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)  # `row_splits_dtype=tf.int32` makes this 20% slower, better to use `int64`
-        stencils = tf.ragged.constant(stencils, dtype=tf.int32)
+        # Speed: in general, when possible, prefer `tf.ragged.stack` with a list of NumPy arrays, instead of using `tf.ragged.constant`; the first is much faster.
+        #  https://github.com/tensorflow/tensorflow/issues/47853
+        # But for some reason, it is faster to create `stencil_to_points` from a list of lists.
+        stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)
+        # `row_splits_dtype=tf.int32` makes accesses 20% slower, better to use `int64`.
+        stencils = tf.ragged.stack(stencils).with_row_splits_dtype(tf.int64)
+        print(stencils.dtype, stencils.row_splits.dtype)
     if print_statistics:
         print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
