@@ -458,6 +458,8 @@ def prepare(N: float,
             return stencil_id
 
         # Interior - one stencil for all pixels; this case handles almost all of the image.
+        if print_statistics:
+            print(f"{indent}    interior...")
         interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
         interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
         interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
@@ -468,6 +470,8 @@ def prepare(N: float,
         register_stencil(interior_stencil, interior_idx)
 
         # Top edge - one stencil per row (N of them, so typically 8).
+        if print_statistics:
+            print(f"{indent}    top edge...")
         for row in range(N):
             top_multi_to_linear = all_multi_to_linear[row, N:-N]
             top_idx = tf.reshape(top_multi_to_linear, [-1])
@@ -478,6 +482,8 @@ def prepare(N: float,
             register_stencil(top_stencil, top_idx)  # each row near the top gets its own stencil
 
         # Bottom edge - one stencil per row.
+        if print_statistics:
+            print(f"{indent}    bottom edge...")
         for row in range(-N, 0):
             bottom_multi_to_linear = all_multi_to_linear[row, N:-N]
             bottom_idx = tf.reshape(bottom_multi_to_linear, [-1])
@@ -488,6 +494,8 @@ def prepare(N: float,
             register_stencil(bottom_stencil, bottom_idx)
 
         # Left edge - one stencil per column (N of them, so typically 8).
+        if print_statistics:
+            print(f"{indent}    left edge...")
         for col in range(N):
             left_multi_to_linear = all_multi_to_linear[N:-N, col]
             left_idx = tf.reshape(left_multi_to_linear, [-1])
@@ -498,6 +506,8 @@ def prepare(N: float,
             register_stencil(left_stencil, left_idx)
 
         # Right edge - one stencil per column.
+        if print_statistics:
+            print(f"{indent}    right edge...")
         for col in range(-N, 0):
             right_multi_to_linear = all_multi_to_linear[N:-N, col]
             right_idx = tf.reshape(right_multi_to_linear, [-1])
@@ -508,6 +518,8 @@ def prepare(N: float,
             register_stencil(right_stencil, right_idx)
 
         # Upper left corner - one stencil per pixel (N² of them, so typically 64).
+        if print_statistics:
+            print(f"{indent}    upper left corner...")
         for row in range(N):
             for col in range(N):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])  # just one pixel, but for uniform data format, use a rank-1 tensor
@@ -518,6 +530,8 @@ def prepare(N: float,
                 register_stencil(this_stencil, this_idx)
 
         # Upper right corner - one stencil per pixel.
+        if print_statistics:
+            print(f"{indent}    upper right corner...")
         for row in range(N):
             for col in range(-N, 0):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -528,6 +542,8 @@ def prepare(N: float,
                 register_stencil(this_stencil, this_idx)
 
         # Lower left corner - one stencil per pixel.
+        if print_statistics:
+            print(f"{indent}    lower left corner...")
         for row in range(-N, 0):
             for col in range(N):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -538,6 +554,8 @@ def prepare(N: float,
                 register_stencil(this_stencil, this_idx)
 
         # Lower right corner - one stencil per pixel.
+        if print_statistics:
+            print(f"{indent}    lower right corner...")
         for row in range(-N, 0):
             for col in range(-N, 0):
                 this_idx = tf.constant([all_multi_to_linear[row, col].numpy()])
@@ -564,9 +582,10 @@ def prepare(N: float,
         print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
     if print_statistics:
-        print(f"{indent}point_to_stencil: {sizeof_tensor(point_to_stencil)}, {point_to_stencil.dtype}")
-        print(f"{indent}stencil_to_points: {sizeof_tensor(stencil_to_points)}, {stencil_to_points.dtype}")
-        print(f"{indent}stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
+        print(f"{indent}Memory usage:")
+        print(f"{indent}    point_to_stencil: {sizeof_tensor(point_to_stencil)}, {point_to_stencil.dtype}")
+        print(f"{indent}    stencil_to_points: {sizeof_tensor(stencil_to_points)}, {stencil_to_points.dtype}")
+        print(f"{indent}    stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
 
     # Build the distance matrices.
     #
@@ -642,8 +661,8 @@ def prepare(N: float,
     X = tf.reshape(X, [-1])
     Y = tf.reshape(Y, [-1])
     if print_statistics:
-        print(f"{indent}X: {sizeof_tensor(X)}, {X.dtype}")
-        print(f"{indent}Y: {sizeof_tensor(Y)}, {Y.dtype}")
+        print(f"{indent}    X: {sizeof_tensor(X)}, {X.dtype}")
+        print(f"{indent}    Y: {sizeof_tensor(Y)}, {Y.dtype}")
 
     # Linear indices (not offsets!) of neighbors (in stencil) for each data point; resolution² * (2 * N + 1)² * 4 bytes.
     # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
@@ -659,7 +678,7 @@ def prepare(N: float,
     if not low_vram:
         neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, point_to_stencil)
         if print_statistics:
-            print(f"{indent}neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
+            print(f"{indent}    neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
     else:
         neighbors = None
 
@@ -676,8 +695,8 @@ def prepare(N: float,
     dy = tf.gather(Y, ps_neighbors) - tf.expand_dims(tf.gather(Y, ps), axis=-1)
 
     if print_statistics:
-        print(f"{indent}dx: {sizeof_tensor(dx)}, {dx.dtype}")
-        print(f"{indent}dy: {sizeof_tensor(dy)}, {dy.dtype}")
+        print(f"{indent}    dx: {sizeof_tensor(dx)}, {dx.dtype}")
+        print(f"{indent}    dy: {sizeof_tensor(dy)}, {dy.dtype}")
 
     # Finally, the surrogate fitting coefficient tensor is the following `c`.
     #
@@ -692,7 +711,7 @@ def prepare(N: float,
     # del dy
     # gc.collect()  # Attempt to clean up dangling tensors. Only important in general topologies where `c` takes a lot of VRAM.
     if print_statistics:
-        print(f"{indent}c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge (1 GB) in general case, small (~20 MB) in the uniform meshgrid case.
+        print(f"{indent}    c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge (1 GB) in general case, small (~20 MB) in the uniform meshgrid case.
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
@@ -702,7 +721,7 @@ def prepare(N: float,
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
     if print_statistics:
-        print(f"{indent}scale: {sizeof_tensor(scale)}, {scale.dtype}")
+        print(f"{indent}    scale: {sizeof_tensor(scale)}, {scale.dtype}")
 
     # The `A` matrices can be preassembled. They must be stored per-pixel (for easy use with linear system solver), but the size is only 6×6,
     # so at float32, we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
@@ -713,12 +732,14 @@ def prepare(N: float,
         if format == "A":
             A = assembled
             if print_statistics:
-                print(f"A: {sizeof_tensor(A)}, {A.dtype}")
+                print(f"{indent}Memory usage:")
+                print(f"{indent}    A: {sizeof_tensor(A)}, {A.dtype}")
         else:  # format == "LUp":
             LU, perm = assembled
             if print_statistics:
-                print(f"LU: {sizeof_tensor(LU)}, {LU.dtype}")
-                print(f"perm: {sizeof_tensor(perm)}, {perm.dtype}")
+                print(f"{indent}Memory usage:")
+                print(f"{indent}    LU: {sizeof_tensor(LU)}, {LU.dtype}")
+                print(f"{indent}    perm: {sizeof_tensor(perm)}, {perm.dtype}")
     print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
     if format == "A":
