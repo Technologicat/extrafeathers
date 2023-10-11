@@ -832,7 +832,7 @@ def _assemble_b(c: tf.Tensor,
         batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
         batches = tf.constant(batches)  # important: convert batch metadata to `tf.Tensor`...
         rows_by_batch = tf.TensorArray(z.dtype, size=n_batches)
-        for batch_metadata in batches:  # ...so that TF can compile this `for thing in tensor` into a loop node in the graph, avoiding unrolling.
+        for batch_metadata in batches:  # ...so that TF can compile this `for element in tensor` into a loop node in the graph, avoiding unrolling.
             # Must unpack metadata manually, since iterating over a symbolic `tf.Tensor` is not allowed.
             batch_index = batch_metadata[0]
             start = batch_metadata[1]
