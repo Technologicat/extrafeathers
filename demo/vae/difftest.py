@@ -194,19 +194,7 @@ def main():
     #
     # This demo seems to yield best results (least l1 error) at 256.
     #
-    # This is still horribly slow despite GPU acceleration. Performance is currently CPU-bound.
-    # Denoising is the performance bottleneck. With numerically exact data, differentiation is acceptably fast.
-    #
-    # Even at 512 resolution, GPU utilization is under 20% (according to `nvtop`), and there is barely any
-    # noticeable difference in the surrogate fitting speed. 512 is the largest that works, at least on
-    # Quadro RTX 3000 mobile (RTX 2xxx based chip, 6 GB VRAM).
-    #
-    # At 768 or 1024, cuBLAS errors out (cuBlas call failed status = 14 [Op:MatrixSolve]).
-    # Currently I don't know why - there should be no difference other than the batch size (the whole image
-    # is sent in one batch). Solving a 6×6 linear system for 1024 RHSs should hardly take gigabytes of VRAM
-    # even at float32.
-    #
-    # The hifiest algorithm (`prepare`/`solve`) *does* take gigabytes of VRAM, even at 256.
+    # The hifiest algorithm (`prepare`/`solve`) works at least up to 1024 on a 6 GB card.
     resolution = 256
 
     # `N`: Neighborhood size parameter for surrogate fitting. The data used for fitting the local
@@ -215,16 +203,17 @@ def main():
     #      clipped to the data region. Furthermore, if the p-norm setting is other than "inf",
     #      the box is filtered to keep only points that are within a p-norm distance of `N`
     #      from the center.
+    #
+    #      Note the surrogate modeling assumption: a quadratic polynomial should be able to
+    #      reasonably describe the function locally in each neighborhood.
+    #
     # `σ`: Optional, set to 0 to disable: stdev for per-pixel synthetic noise (i.i.d. gaussian).
 
-    # When using Friedrichs smoothing, 8 is the largest numerically stable neighborhood size
-    # (due to extrapolation at the edges).
-    #
-    # When smoothing only with least-squares, only VRAM is the limit.
-    #
-    # In any case, note the surrogate modeling assumption: a quadratic polynomial should be
-    # able to reasonably describe the function locally in each neighborhood.
-    #
+    # `p` for the p-norm, for determining neighborhood shape (see `prepare`).
+    # Either float >= 1.0, or the string "inf" (to use the whole box).
+    # Especially useful is `p=2.0`, i.e. the Euclidean norm, creating a round neighborhood.
+    p = 2.0
+
     # Pixel count (i.e. stencil size) as a function of neighborhood size parameter `N`:
     #
     #    N   box (p="inf")  Euclidean (p=2.0)
@@ -243,26 +232,18 @@ def main():
     #   12   25² = 625      441
     #   13   27² = 729      529
     #
-    # At 256 resolution and 6 GB VRAM, about 530 points seems to be near the memory limit.
-    # Euclidean neighborhoods with N = 13 seem the best choice.
-    # When a 4k external display is connected, the limit is smaller. At least 421 still works (N=11.5, p=2.0).
+    # The `TF_GPU_ALLOCATOR=cuda_malloc_async` environment variable may allow using
+    # slightly larger stencils than without it.
+    #
+    # At `N = 1`, Euclidean neighborhoods would have 5 points, but the surrogate fitting
+    # algorithm needs at least 7 to make its system matrix invertible.
     #
     # Note the count is always odd, because every other pixel has a symmetric pair,
-    # but the center point doesn't.
+    # but the pixel at the center doesn't.
     #
-    # At N = 1, Euclidean neighborhoods would have 5 points, but the surrogate fitting
-    # algorithm needs at least 7 to make the matrix invertible.
-    #
-    # At 256 resolution, the `TF_GPU_ALLOCATOR=cuda_malloc_async` environment variable may allow a 6 GB card to use
-    # up to `N = 18.5` (with `p = 2.0`, stencil size 1085; using `batch_size = 16384`), using over 1k neighbors per pixel.
-    #
-    # Without the async allocator, on a 6 GB card, `N = 17.5` seems the largest possible (`p = 2.0`, `resolution = 256`).
-    # With `batch_size = 8192`, it seems possible to use `N = 19.5`, or even `N = 20.5`.
-    #
-    # And now with the optimizations for a uniform meshgrid, it seems possible to use up to `N = 24.5`,
-    # and sometimes up to `N = 25.5` (depending on VRAM load from the OS and other applications).
-    #
-    # After the latest optimization, computing `neighbors` on the fly, we can go up to `N = 26.5` (at `batch_size = 8192`)
+    # In practice, with `p=2.0`, it is better to use a half-integer `N`, to avoid
+    # one pixel sticking out from the otherwise smooth circle in each cardinal direction.
+    # Here are some pixel counts as a function of `N`:
     #
     #    N   Euclidean (p=2.0)
     # ------------------------
@@ -278,16 +259,13 @@ def main():
     # ----------- 2k neighbors
     # 25.5   2053
     # 26.5   2217
+    #
     N, σ = 26.5, 0.001
     # N, σ = 2.5, 0.0
     N_int = math.ceil(N)
 
-    # # 2 seems enough for good results when the data is numerically exact.
-    # N, σ = 2, 0.0
-
-    # p for p-norm, for determining neighborhood shape (see `prepare`).
-    # Either float >= 1.0, or the string "inf" (to use the whole box).
-    p = 2.0
+    # # A very small stencil seems enough for good results when the data is numerically exact.
+    # N, σ = 2.5, 0.0
 
     # If σ > 0, how many times to loop the denoiser. Larger neighborhood sizes need less denoising.
     # If σ = 0, denoising is skipped, and this setting has no effect.
@@ -298,6 +276,9 @@ def main():
     # If the actual `f` is smooth enough, and if enough VRAM is available, then to eliminate high-frequency noise,
     # it's usually a better deal to just increase `N` (to average out the noise in a larger area during fitting),
     # rather than to enable denoising.
+    #
+    # (Denoising essentially makes the patches with smaller `N` communicate between denoise steps,
+    #  thus emulating the effects of a larger `N`.)
     denoise_steps = 0
 
     # Batch size (data points) for system matrix and load vector assembly for low VRAM mode of `prepare` and `solve`.
@@ -382,7 +363,7 @@ def main():
             # tmp = hifier_differentiate(N, X, Y, Z, kernel=fit_quadratic)
             tmp = solve(Z)  # lsq
             Z = tmp[coeffs_full["f"]]
-            # Z = smooth_2d(N, Z, padding="SAME")  # Friedrichs (eliminates high-frequency noise, but unstable extrapolation at edges/corners)
+            # Z = smooth_2d(N, Z, padding="SAME")  # Friedrichs (eliminates high-frequency noise, but highly unstable extrapolation at edges/corners)
         return Z
 
     if σ > 0:
