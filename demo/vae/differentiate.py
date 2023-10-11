@@ -779,12 +779,17 @@ def _assemble_b(c: tf.Tensor,
         # this is the straw that breaks the camel's back.
         #
         # When enough VRAM is available, this is the simplest way to do the assembly.
+        #
+        # We need to be slightly careful with loops, to avoid unrolling them in the graph (which slows down tracing, so program startup;
+        # and makes the graph much larger than it needs to be). The computations are rather data-heavy, so unrolling shouldn't give much
+        # of a performance boost anyway.
+        # https://www.tensorflow.org/guide/function#loops
         # https://www.tensorflow.org/guide/function#accumulating_values_in_a_loop
         rows = tf.TensorArray(z.dtype, size=6)
         zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
         c_expanded = tf.gather(c, point_to_stencil, axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#n, #k, #rows]; this can take GBs of VRAM!
-        for i in range(6):
-            bi = _assemble_bi(tf.constant(i, dtype=tf.int64), c_expanded, zgnk)  # -> [#n]
+        for i in tf.range(6):
+            bi = _assemble_bi(i, c_expanded, zgnk)  # -> [#n]
             rows = rows.write(i, tf.cast(bi, z.dtype, name="cast_to_dtype"))
         rows = rows.stack()  # -> [#rows, #n]
         b = tf.transpose(rows, [1, 0])  # -> [#n, #rows]
@@ -800,8 +805,8 @@ def _assemble_b(c: tf.Tensor,
             zgnk_split = _get_zgnk(start, stop)
             c_split_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
             rows = tf.TensorArray(z.dtype, size=6)
-            for i in range(6):
-                bi_split = _assemble_bi(tf.constant(i, dtype=tf.int64), c_split_expanded, zgnk_split)  # -> [#split]
+            for i in tf.range(6):
+                bi_split = _assemble_bi(i, c_split_expanded, zgnk_split)  # -> [#split]
                 rows = rows.write(i, tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
             rows = rows.stack()  # [#rows, #split]
             rows_by_batch = rows_by_batch.write(batch_index, rows)
