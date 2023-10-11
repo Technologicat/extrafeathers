@@ -85,6 +85,18 @@ def sizeof_tensor(x: tf.Tensor, *, to_human: bool = True) -> int:
     return f"{size} bytes"
 
 
+def measure_graph_size(f, *args):
+    """[debug utility] Print how many nodes a given `@tf.function`, with given arguments, has in its graph.
+
+    Automatically trace the graph first, if not done yet.
+
+    Taken from:
+        https://www.tensorflow.org/guide/function#looping_over_python_data
+    """
+    g = f.get_concrete_function(*args).graph
+    print(f"{f.__name__}({', '.join(map(str, args))}) contains {len(g.as_graph_def().node)} nodes in its graph")
+
+
 # --------------------------------------------------------------------------------
 # Advanced API. Fastest GPU implementation. Best results. Needs most VRAM.
 #
