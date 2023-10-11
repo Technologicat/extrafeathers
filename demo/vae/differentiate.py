@@ -788,13 +788,15 @@ def _assemble_b(c: tf.Tensor,
     npoints = tf.get_static_value(tf.shape(z), partial=True)[0]  # NOTE: Reshaped, linearly indexed `z`.
 
     # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
-    def _get_zgnk(start, stop):
+    @tf.function  # we're already inside a `@tf.function`, so this is just to document intent.
+    def _get_zgnk(start: tf.Tensor, stop: tf.Tensor) -> tf.Tensor:  # `start` and `stop` are wrapped scalars
         # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
         neighbors_split = tf.expand_dims(tf.range(start, stop), axis=-1) + tf.gather(stencils, point_to_stencil[start:stop])  # [#split, #k], ragged in k
         zgnk_split = tf.gather(z, neighbors_split, name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
         return zgnk_split
 
-    def _assemble_bi(i: tf.Tensor,
+    @tf.function
+    def _assemble_bi(i: tf.Tensor,  # wrapped scalar
                      c_expanded: tf.Tensor,
                      zgnk: tf.Tensor) -> tf.Tensor:
         # We upcast after slicing to save VRAM.
