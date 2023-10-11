@@ -169,15 +169,34 @@ def _assemble_a(c: tf.Tensor,
     #
     # Even for large neighborhood sizes `N`, the number of unique stencils is
     # a couple thousand at most; hence we don't need to save VRAM here.
-    rows = []
-    for i in range(6):
-        row = []
-        for j in range(6):
-            Aij = _assemble_aij(c, tf.constant(i, dtype=tf.int64), tf.constant(j, dtype=tf.int64))
-            row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
-        row = tf.stack(row, axis=1)  # -> [#stencils, #cols]
-        rows.append(row)
-    A = tf.stack(rows, axis=1)  # [[#stencils, #cols], [#stencils, #cols], ...] -> [#stencils, #rows, #cols]
+    #
+    # # Python loop version:
+    # rows = []
+    # for i in range(6):
+    #     row = []
+    #     for j in range(6):
+    #         Aij = _assemble_aij(c, tf.constant(i, dtype=tf.int64), tf.constant(j, dtype=tf.int64))
+    #         row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+    #     row = tf.stack(row, axis=1)  # -> [#stencils, #cols]
+    #     rows.append(row)
+    # A = tf.stack(rows, axis=1)  # [[#stencils, #cols], [#stencils, #cols], ...] -> [#stencils, #rows, #cols]
+
+    # We can still go a bit faster (for large stencil sizes) by accelerating the loops.
+    # For small stencil sizes, this costs some compile time, but not much.
+    @tf.function
+    def _compiled_assemble():
+        rows = tf.TensorArray(dtype, size=6)
+        for i in tf.range(6):
+            row = tf.TensorArray(dtype, size=6)
+            for j in tf.range(6):
+                Aij = _assemble_aij(c, i, j)  # -> [#stencils]
+                row = row.write(j, tf.cast(Aij, dtype, name="cast_to_dtype"))
+            row = row.stack()  # -> [#cols, #stencils]
+            rows = rows.write(i, row)
+        rows = rows.stack()  # -> [#rows, #cols, #stencils]
+        A = tf.transpose(rows, [2, 0, 1])  # -> [#stencils, #rows, #cols]
+        return A
+    A = _compiled_assemble()
 
     # # DEBUG: If the x and y scalings work, the range of values in `A` should be approximately [0, (2 * N + 1)²].
     # # The upper bound comes from the maximal number of points in the stencil, and is reached when gathering this many "ones" in the constant term.
