@@ -56,7 +56,7 @@ dtype_to_bytes = {tf.float16: 2,  # TODO: better way?
                   tf.int32: 4,
                   tf.int64: 8}
 def sizeof_tensor(x: tf.Tensor, *, to_human: bool = True) -> int:
-    """Get the size of `tf.Tensor` or `tf.RaggedTensor`, in bytes.
+    """[debug utility] Get the size of `tf.Tensor` or `tf.RaggedTensor`, in bytes.
 
     This is the memory required for storing the actual data values.
     If you need to measure the Python object overhead, use `sys.getsizeof(x)`.
