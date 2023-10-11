@@ -293,8 +293,9 @@ def main():
     # ----------- 5k neighbors (5120)
     # 40.5   5169
     #
-    N, σ = 40.5, 0.001
     # N, σ = 2.5, 0.0
+    # N, σ = 25.5, 0.001
+    N, σ = 40.5, 0.01
     N_int = math.ceil(N)
 
     # # A very small stencil seems enough for good results when the data is numerically exact.
