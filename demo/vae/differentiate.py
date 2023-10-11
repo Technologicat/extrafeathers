@@ -590,10 +590,10 @@ def prepare(N: float,
         print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
     if print_statistics:
-        print(f"{indent}Memory usage:")
-        print(f"{indent}    point_to_stencil: {sizeof_tensor(point_to_stencil)}, {point_to_stencil.dtype}")
-        print(f"{indent}    stencil_to_points: {sizeof_tensor(stencil_to_points)}, {stencil_to_points.dtype}")
-        print(f"{indent}    stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
+        print(f"{indent}    Memory usage:")
+        print(f"{indent}        point_to_stencil: {sizeof_tensor(point_to_stencil)}, {point_to_stencil.dtype}")
+        print(f"{indent}        stencil_to_points: {sizeof_tensor(stencil_to_points)}, {stencil_to_points.dtype}")
+        print(f"{indent}        stencils: {sizeof_tensor(stencils)}, {stencils.dtype}")
 
     # Build the distance matrices.
     #
@@ -669,8 +669,8 @@ def prepare(N: float,
     X = tf.reshape(X, [-1])
     Y = tf.reshape(Y, [-1])
     if print_statistics:
-        print(f"{indent}    X: {sizeof_tensor(X)}, {X.dtype}")
-        print(f"{indent}    Y: {sizeof_tensor(Y)}, {Y.dtype}")
+        print(f"{indent}        X: {sizeof_tensor(X)}, {X.dtype}")
+        print(f"{indent}        Y: {sizeof_tensor(Y)}, {Y.dtype}")
 
     # Linear indices (not offsets!) of neighbors (in stencil) for each data point; resolution² * (2 * N + 1)² * 4 bytes.
     # The first term is the base linear index of each data point; the second is the linear index offset of each of its neighbors.
@@ -686,7 +686,7 @@ def prepare(N: float,
     if not low_vram:
         neighbors = tf.expand_dims(tf.range(npoints), axis=-1) + tf.gather(stencils, point_to_stencil)
         if print_statistics:
-            print(f"{indent}    neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
+            print(f"{indent}        neighbors: {sizeof_tensor(neighbors)}, {neighbors.dtype}")  # Spoiler: this tensor is moderately large (can be a few hundred MB).
     else:
         neighbors = None
 
@@ -703,8 +703,8 @@ def prepare(N: float,
     dy = tf.gather(Y, ps_neighbors) - tf.expand_dims(tf.gather(Y, ps), axis=-1)
 
     if print_statistics:
-        print(f"{indent}    dx: {sizeof_tensor(dx)}, {dx.dtype}")
-        print(f"{indent}    dy: {sizeof_tensor(dy)}, {dy.dtype}")
+        print(f"{indent}        dx: {sizeof_tensor(dx)}, {dx.dtype}")
+        print(f"{indent}        dy: {sizeof_tensor(dy)}, {dy.dtype}")
 
     # Finally, the surrogate fitting coefficient tensor is the following `c`.
     #
@@ -719,7 +719,7 @@ def prepare(N: float,
     # del dy
     # gc.collect()  # Attempt to clean up dangling tensors. Only important in general topologies where `c` takes a lot of VRAM.
     if print_statistics:
-        print(f"{indent}    c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge (1 GB) in general case, small (~20 MB) in the uniform meshgrid case.
+        print(f"{indent}        c: {sizeof_tensor(c)}, {c.dtype}")  # Spoiler: this tensor is huge (1 GB) in general case, small (~20 MB) in the uniform meshgrid case.
 
     # # DEBUG: If the x and y scalings work, the range of values in `c` should be approximately [0, 1].
     # absc = tf.abs(c)
@@ -729,7 +729,7 @@ def prepare(N: float,
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
     # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
     if print_statistics:
-        print(f"{indent}    scale: {sizeof_tensor(scale)}, {scale.dtype}")
+        print(f"{indent}        scale: {sizeof_tensor(scale)}, {scale.dtype}")
 
     # The `A` matrices can be preassembled. They must be stored per-pixel (for easy use with linear system solver), but the size is only 6×6,
     # so at float32, we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
@@ -740,14 +740,14 @@ def prepare(N: float,
         if format == "A":
             A = assembled
             if print_statistics:
-                print(f"{indent}Memory usage:")
-                print(f"{indent}    A: {sizeof_tensor(A)}, {A.dtype}")
+                print(f"{indent}    Memory usage:")
+                print(f"{indent}        A: {sizeof_tensor(A)}, {A.dtype}")
         else:  # format == "LUp":
             LU, perm = assembled
             if print_statistics:
-                print(f"{indent}Memory usage:")
-                print(f"{indent}    LU: {sizeof_tensor(LU)}, {LU.dtype}")
-                print(f"{indent}    perm: {sizeof_tensor(perm)}, {perm.dtype}")
+                print(f"{indent}    Memory usage:")
+                print(f"{indent}        LU: {sizeof_tensor(LU)}, {LU.dtype}")
+                print(f"{indent}        perm: {sizeof_tensor(perm)}, {perm.dtype}")
     print(f"{indent}    Done in {tim.dt:0.6g}s.")
 
     if format == "A":

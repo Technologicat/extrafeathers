@@ -351,7 +351,7 @@ def main():
     def solve(Z):
         nonlocal solve_called
         if not solve_called:
-            print("    NOTE: First call to `solve`; this will trace the solver graph, which may take a while.")
+            print("    NOTE: First call to `solve`; tracing solver graph. This may take a while.")
             solve_called = True
         return solve_lu(*preps, Z, low_vram=True, low_vram_batch_size=batch_size)
 
