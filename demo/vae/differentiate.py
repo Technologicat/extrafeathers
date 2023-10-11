@@ -457,11 +457,29 @@ def prepare(N: float,
             stencil_to_points.append(list(for_points.numpy()))  # stencil id -> list of points
             return stencil_id
 
+        # # Slower than Python.
+        # def belongs(iy, ix):  # p-norm, general case
+        #     x = tf.cast(iy, tf.float32)
+        #     y = tf.cast(ix, tf.float32)
+        #     return tf.less_equal((y**p + x**p)**(1 / p), radius)
+        # @tf.function
+        # def _build_stencil(ystart, ystop, xstart, xstop):
+        #     out = tf.TensorArray(dtype=tf.int32, size=0, dynamic_size=True)
+        #     j = 0
+        #     for iy in tf.range(ystart, ystop):
+        #         for ix in tf.range(xstart, xstop):
+        #             if belongs(iy, ix):
+        #                 out = out.write(j, tf.stack([iy, ix]))  # multi-index offset
+        #                 j += 1
+        #     out = out.stack()
+        #     return out
+
         # Interior - one stencil for all pixels; this case handles almost all of the image.
         if print_statistics:
             print(f"{indent}    Interior (1 stencil)...")
         interior_multi_to_linear = all_multi_to_linear[N:-N, N:-N]  # take the interior part of the meshgrid
         interior_idx = tf.reshape(interior_multi_to_linear, [-1])  # [n_interior_points], linear index of each interior data point (C storage order)
+        # interior_stencil = _build_stencil(ystart=-N, ystop=N + 1, xstart=-N, xstop=N + 1)
         interior_stencil = intarray([[iy, ix] for iy in range(-N, N + 1)
                                               for ix in range(-N, N + 1)
                                               if belongs_to_neighborhood(iy, ix)])  # multi-index offsets
@@ -477,6 +495,7 @@ def prepare(N: float,
         for row in range(N):
             top_multi_to_linear = all_multi_to_linear[row, N:-N]
             top_idx = tf.reshape(top_multi_to_linear, [-1])
+            # top_stencil = _build_stencil(ystart=-row, ystop=N + 1, xstart=-N, xstop=N + 1)
             top_stencil = intarray([[iy, ix] for iy in range(-row, N + 1)
                                              for ix in range(-N, N + 1)
                                              if belongs_to_neighborhood(iy, ix)])
