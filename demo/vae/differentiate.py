@@ -785,7 +785,7 @@ def _assemble_b(c: tf.Tensor,
     Returns a `tf.Tensor` of shape [npoints, 6].
     """
     # Ensure numeric value even for symbolic tensor input - we may be called from inside a `@tf.function`.
-    npoints = int(tf.get_static_value(tf.shape(z), partial=True)[0])  # NOTE: Reshaped, linearly indexed `z`.
+    npoints = tf.get_static_value(tf.shape(z), partial=True)[0]  # NOTE: Reshaped, linearly indexed `z`.
 
     # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
     def _get_zgnk(start, stop):
@@ -827,12 +827,16 @@ def _assemble_b(c: tf.Tensor,
     else:  # `neighbors is None`, to be computed on-the-fly. Batched assembly.
         assert neighbors is None
         # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
-        # TODO: Batch this properly, no Python loop, so we can get a smaller execution graph - maybe use `tf.Dataset`?
         n_batches = math.ceil(npoints / low_vram_batch_size)
-        batches = [[j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]
+        batches = [[j, j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]  # [[batch_index, start, stop], ...]
         batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
+        batches = tf.constant(batches)  # important: convert batch metadata to `tf.Tensor`...
         rows_by_batch = tf.TensorArray(z.dtype, size=n_batches)
-        for batch_index, (start, stop) in enumerate(batches):
+        for batch_metadata in batches:  # ...so that TF can compile this `for thing in tensor` into a loop node in the graph, avoiding unrolling.
+            # Must unpack metadata manually, since iterating over a symbolic `tf.Tensor` is not allowed.
+            batch_index = batch_metadata[0]
+            start = batch_metadata[1]
+            stop = batch_metadata[2]
             zgnk_split = _get_zgnk(start, stop)
             c_split_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
             rows = tf.TensorArray(z.dtype, size=6)
