@@ -579,7 +579,7 @@ def prepare(N: float,
         if print_statistics:
             print(f"{indent}Convert stencils to tf format...")
         point_to_stencil = tf.constant(point_to_stencil, dtype=tf.int32)
-        stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)
+        stencil_to_points = tf.ragged.constant(stencil_to_points, dtype=tf.int32)  # `row_splits_dtype=tf.int32` makes this 20% slower, better to use `int64`
         stencils = tf.ragged.constant(stencils, dtype=tf.int32)
     if print_statistics:
         print(f"{indent}    Done in {tim.dt:0.6g}s.")
