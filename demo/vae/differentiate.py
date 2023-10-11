@@ -797,7 +797,7 @@ def prepare(N: float,
     # so at float32, we need 36 * 4 bytes * resolution² = 144 * resolution², which is only 38 MB at 512×512, and at 1024×1024, only 151 MB.
     with timer() as tim:
         if print_statistics:
-            print(f"{indent}Assemble system matrix...")
+            print(f"{indent}Assemble system matrix ({tf.shape(c)[0]} instances)...")  # (there are #stencils instances)
         assembled = _assemble_a(c, point_to_stencil, dtype, format, low_vram, low_vram_batch_size)
         if format == "A":
             A = assembled
