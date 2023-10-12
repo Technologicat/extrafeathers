@@ -894,6 +894,9 @@ def _assemble_b(c: tf.Tensor,
     npoints = tf.get_static_value(tf.shape(z), partial=True)[0]  # NOTE: Reshaped, linearly indexed `z`.
     low_vram_batch_size = min(npoints, low_vram_batch_size)  # can't have a batch larger than there is data
 
+    # Name: `z[g(n, k)]` is the data value `z` at neighbor `k` (local numbering) of pixel `n` (global numbering),
+    # where the `g` denotes local-to-global pixel index conversion.
+    #
     # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
     @tf.function  # we're already inside a `@tf.function`, so this is just to document intent.
     def _get_zgnk(start: tf.Tensor, stop: tf.Tensor) -> tf.Tensor:  # `start` and `stop` are wrapped scalars
