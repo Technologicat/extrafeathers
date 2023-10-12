@@ -366,8 +366,6 @@ def main():
     print(f"    Done in {tim.dt:0.6g}s.")
 
     print(f"    Function: {expr}")
-    print(f"    Data tensor size: {np.shape(Z)}")
-    print(f"    Batch size: {batch_size} pixels per batch (⇒ {math.ceil(np.prod(np.shape(Z)) / batch_size)} batches)")
     print(f"    Neighborhood radius: {N} grid units (p-norm p = {p}; stencil size {len(stencil)} grid points)")
     if σ > 0:
         print(f"    Synthetic noise stdev: {σ:0.6g}")

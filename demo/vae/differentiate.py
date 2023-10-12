@@ -418,11 +418,19 @@ def prepare(N: float,
     # --------------------------------------------------------------------------------
     # Topology-specific stencil assembly
 
+    shape = tf.shape(Z)
+    npoints = tf.reduce_prod(shape)  # not inside a @tf.function, so this is ok.
+
+    if print_statistics:
+        print(f"{indent}Data tensor size: {shape.numpy()} ({npoints} pixels)")
+        print(f"{indent}Batch size: {low_vram_batch_size} pixels per batch (⇒ {math.ceil(npoints / low_vram_batch_size)} batches)")
+        if low_vram_batch_size > npoints:
+            print(f"{indent}    Limiting batch size to data size {npoints}.")
+    low_vram_batch_size = min(npoints, low_vram_batch_size)  # can't have a batch larger than there is data
+
     with timer() as tim:
         if print_statistics:
             print(f"{indent}Assemble stencils for N = {radius:0.3g}, p = {p:0.3g}...")
-        shape = tf.shape(Z)
-        npoints = tf.reduce_prod(shape)  # not inside a @tf.function, so this is ok.
         all_multi_to_linear = tf.reshape(tf.range(npoints), shape)  # e.g. [[0, 1, 2], [3, 4, 5], ...]; C storage order assumed
 
         # Adapt the uniform [2 * N + 1, 2 * N + 1] stencil for each pixel, by clipping it into the data region.
@@ -879,6 +887,7 @@ def _assemble_b(c: tf.Tensor,
     """
     # Ensure numeric value even for symbolic tensor input - we may be called from inside a `@tf.function`.
     npoints = tf.get_static_value(tf.shape(z), partial=True)[0]  # NOTE: Reshaped, linearly indexed `z`.
+    low_vram_batch_size = min(npoints, low_vram_batch_size)  # can't have a batch larger than there is data
 
     # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
     @tf.function  # we're already inside a `@tf.function`, so this is just to document intent.
