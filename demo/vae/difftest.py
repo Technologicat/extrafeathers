@@ -15,6 +15,10 @@ A potential issue is that the VAE output might contain some noise, so to be safe
 
 We need only the very basics here. A complete Cython implementation of WLSQM, and documentation:
     https://github.com/Technologicat/python-wlsqm
+
+To run, issue the following command at the top-level directory of the project::
+
+    TF_GPU_ALLOCATOR=cuda_malloc_async python -m demo.vae.difftest
 """
 
 import math
