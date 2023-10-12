@@ -141,8 +141,8 @@ def _assemble_a(c: tf.Tensor,
                 point_to_stencil: tf.Tensor,
                 dtype: tf.DType,
                 format: str,
-                low_vram: bool,
-                low_vram_batch_size: int) -> tf.Tensor:
+                low_vram: bool,  # unused
+                low_vram_batch_size: int) -> tf.Tensor:  # unused
     """[internal helper] Assemble the system matrix.
 
     The formula is::
