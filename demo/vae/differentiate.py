@@ -881,9 +881,14 @@ def _assemble_b(c: tf.Tensor,
 
       b[n,i] = ∑k( z[neighbors[n,k]] * c[n,k,i] )
 
-    For the parameters, see `solve`.
+    For the parameters, see `solve`, except:
 
-    Returns a `tf.Tensor` of shape [npoints, 6].
+    `z`: *Linearized* (rank-1, linear numbering of DOFs) representation of the original `z` data.
+
+         `solve` does this reshaping automatically, so this is mainly important for
+         debugging and unit-testing of `_assemble_b` itself.
+
+    Returns a `tf.Tensor` of shape [npoints, 6], containing the pixelwise loads.
     """
     # Ensure numeric value even for symbolic tensor input - we may be called from inside a `@tf.function`.
     npoints = tf.get_static_value(tf.shape(z), partial=True)[0]  # NOTE: Reshaped, linearly indexed `z`.
