@@ -114,7 +114,7 @@ def smooth_2d(N: int,
     # Undo the temporary scaling:
     f = origmin + (origmax - origmin) * f  # [0, 1] -> [min, max]
 
-    return f.numpy()
+    return f
 
 
 def smooth_1d(N: int,
@@ -152,4 +152,4 @@ def smooth_1d(N: int,
     # Undo the temporary scaling:
     f = origmin + (origmax - origmin) * f  # [0, 1] -> [min, max]
 
-    return f.numpy()
+    return f
