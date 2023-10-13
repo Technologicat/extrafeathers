@@ -65,13 +65,16 @@ def main():
     # The input image is square, of size `resolution × resolution` pixels.
     resolution = 128
 
+    # Used for both storage and compute of the solution.
+    # Note most GPUs will run at 1:32 speed at float64, but the accuracy is much better.
+    solution_dtype = tf.float64
+
     xx = np.linspace(0, 1, resolution)
     yy = xx
     X, Y = np.meshgrid(xx, yy)
 
     print("Setup...")
-    # For improved accuracy, we can `prepare` using `float64` coordinate data regardless of the solution `dtype` chosen here.
-    solution_dtype = tf.float64
+    # For improved accuracy, we can `prepare` using `float64` coordinate data regardless of the solution `dtype`.
     preps, stencil = differentiate.prepare(N, X, Y, p=p,
                                            dtype=solution_dtype,  # compute and storage of the solution
                                            format="LUp",
