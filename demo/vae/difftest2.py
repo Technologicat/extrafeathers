@@ -195,6 +195,9 @@ def main():
     # fig.colorbar(theplot, ax=axs[2, 2])
     # axs[2, 2].set_title("dy2 (refit)")
 
+    # TODO: The average dout/da value may be correct for pixelwise `a`, but that's only because the huge numerical oscillations near the edges cancel.
+    # TODO: This kind of thing typically happens in numerics when mixing and matching differentiation approaches (e.g. FEM and FDM, or here WLSQM and autodiff).
+    # TODO: See if we can do anything to improve the accuracy here - we'll need a good autodiffed field to actually use WLSQM in a loss function.
     plt.figure(2)
     # plt.imshow(doutda[r:-r, r:-r], origin="lower")
     plt.imshow(np.log10(np.abs(doutda)), origin="lower")
