@@ -31,6 +31,7 @@ __all__ = ["prepare", "solve",  # The hifiest algorithm, accurate, fast, uses a 
            "coeffs_diffonly",  # for interpreting output of `differentiate`
            "coeffs_full"]  # for interpreting output of all other algorithms
 
+import gc
 import math
 import typing
 
@@ -799,9 +800,9 @@ def prepare(N: float,
         if print_statistics:
             print(f"{indent}Assemble coefficient tensor...")
         c = cnki(dx, dy)
-        # del dx
-        # del dy
-        # gc.collect()  # Attempt to clean up dangling tensors. Only important in general topologies where `c` takes a lot of VRAM.
+        del dx
+        del dy
+        gc.collect()  # Attempt to clean up dangling tensors. Important now that we store `dx` and `dy` in full precision.
 
         # Scaling factors to undo the derivative scaling,  d/dx' → d/dx.  `solve` needs this to postprocess its results.
         scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
