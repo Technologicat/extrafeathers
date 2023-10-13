@@ -104,7 +104,7 @@ def main():
         # `dZ` = *spatial* jacobian and hessian of pixel image, via WLSQM: [f, dx, dy, dx2, dxdy, dy2]
         dZ = solve(*preps, Z, low_vram=True, low_vram_batch_size=batch_size)
         if Z.dtype is tf.float64:
-            return dZ  # fitted f, original 1st and 2nd derivatives
+            return dZ  # fitted f, original 1st and 2nd derivatives. For noise-free data at float64, this is ok.
         # Refitting helps output accuracy at float32.
         ddx = solve(*preps, dZ[1], low_vram=True, low_vram_batch_size=batch_size)
         ddy = solve(*preps, dZ[2], low_vram=True, low_vram_batch_size=batch_size)
