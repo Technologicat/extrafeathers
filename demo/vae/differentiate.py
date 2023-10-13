@@ -158,10 +158,11 @@ def _assemble_a(c: tf.Tensor,
                       i: tf.Tensor,
                       j: tf.Tensor) -> tf.Tensor:
         # We upcast after slicing to save VRAM.
-        # We always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
-        ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-        cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#n, #k]
-        Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#n, #k] -> [#n]
+        # We always use float64 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
+        # There aren't that many instances even for large stencils, so even at 1:32 speed, this is fine.
+        ci = tf.cast(c[:, :, i], tf.float64, name="cast_ci_to_compute")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+        cj = tf.cast(c[:, :, j], tf.float64, name="cast_cj_to_compute")  # -> [#n, #k]
+        Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_Aij")  # [#n, #k] -> [#n]
         return Aij
 
     # On a *uniform* meshgrid, it is enough to do the assembly for each stencil once.
@@ -176,7 +177,7 @@ def _assemble_a(c: tf.Tensor,
     #     row = []
     #     for j in range(6):
     #         Aij = _assemble_aij(c, tf.constant(i, dtype=tf.int64), tf.constant(j, dtype=tf.int64))
-    #         row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+    #         row.append(tf.cast(Aij, dtype, name="cast_Aij_to_storage"))
     #     row = tf.stack(row, axis=1)  # -> [#stencils, #cols]
     #     rows.append(row)
     # A = tf.stack(rows, axis=1)  # [[#stencils, #cols], [#stencils, #cols], ...] -> [#stencils, #rows, #cols]
@@ -191,7 +192,7 @@ def _assemble_a(c: tf.Tensor,
             row = tf.TensorArray(dtype, size=6)
             for j in tf.range(6):
                 Aij = _assemble_aij(c, i, j)  # -> [#stencils]
-                row = row.write(j, tf.cast(Aij, dtype, name="cast_to_dtype"))
+                row = row.write(j, tf.cast(Aij, dtype, name="cast_Aij_to_storage"))
             row = row.stack()  # -> [#cols, #stencils]
             rows = rows.write(i, row)
         rows = rows.stack()  # -> [#rows, #cols, #stencils]
@@ -213,7 +214,10 @@ def _assemble_a(c: tf.Tensor,
         return A
     # format == "LUp":
     # Compute the LU decompositions before replicating.
-    LU, perm = tf.linalg.lu(tf.cast(A, tf.float32))
+    # `A` is rather small, so we can always do this at float64 precision for best accuracy.
+    if dtype is not tf.float64:
+        A = tf.cast(A, tf.float64)
+    LU, perm = tf.linalg.lu(A)
     LU = tf.cast(LU, dtype)
     # Replicate.
     LU = tf.gather(LU, point_to_stencil, axis=0)
@@ -731,10 +735,7 @@ def prepare(N: float,
     #
     with timer() as tim:
         if print_statistics:
-            print(f"{indent}Typecast and linearize coordinate arrays...")
-        X = tf.cast(X, dtype)
-        Y = tf.cast(Y, dtype)
-        # We'll be using linear indexing.
+            print(f"{indent}Index coordinate arrays linearly...")
         X = tf.reshape(X, [-1])
         Y = tf.reshape(Y, [-1])
         if print_statistics:
@@ -923,7 +924,7 @@ def _assemble_b(c: tf.Tensor,
                      c_expanded: tf.Tensor,
                      zgnk: tf.Tensor) -> tf.Tensor:
         # We upcast after slicing to save VRAM.
-        ci = tf.cast(c_expanded[:, :, i], tf.float32, name="cast_to_float32")  # -> [#split, #k] (batched) or [#n, #k] (not batched)
+        ci = tf.cast(c_expanded[:, :, i], zgnk.dtype, name="match_dtypes")  # -> [#split, #k] (batched) or [#n, #k] (not batched)
         bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#split, #k] -> [#split] (batched) or [#n, #k] -> [#n] (not batched)
         return bi
 
@@ -1015,7 +1016,7 @@ def solve(a: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.cast(z, tf.float32)
+    z = tf.cast(z, a.dtype)
     z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
@@ -1076,7 +1077,7 @@ def solve_lu(lu: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.cast(z, tf.float32)
+    z = tf.cast(z, lu.dtype)
     z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
@@ -1161,7 +1162,7 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
     shape = tf.shape(z)
-    z = tf.cast(z, tf.float32)
+    z = tf.cast(z, lu.dtype)
     z = tf.reshape(z, [-1])
 
     zmax = tf.reduce_max(tf.abs(z), name="find_zmax")
