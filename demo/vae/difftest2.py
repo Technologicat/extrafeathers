@@ -49,7 +49,7 @@ from . import differentiate
 
 def main():
     # WLSQM stencil parameters. See `difftest.py`.
-    N, p = 2.5, 2.0
+    N, p = 3.5, 2.0
 
     # Batch size is *pixels* per batch.
     #
@@ -207,7 +207,8 @@ def main():
     plt.colorbar()
     # Almost zero - should be near 8. So all of the non-zero average comes from the numerical oscillations near the edges,
     # which isn't useful for training a neural network model.
-    print(np.mean(doutda[4:-4, 4:-4]))
+    r = int(2 * N - 1)
+    print(np.mean(doutda[r:-r, r:-r]))
 
     plt.show()
 
