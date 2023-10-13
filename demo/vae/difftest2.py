@@ -44,6 +44,7 @@ import numpy as np
 import tensorflow as tf
 
 from . import differentiate
+# from . import smoothing
 
 
 def main():
@@ -59,29 +60,62 @@ def main():
     # The forward pass doesn't use that much memory, and neither does the sum-over-pixels `tape.gradient`
     # (which is what one would use in a loss function anyway).
     #
-    batch_size = 8192
+    batch_size = 2048  # 8192
 
     # The input image is square, of size `resolution × resolution` pixels.
-    resolution = 64
+    resolution = 128
 
     xx = np.linspace(0, 1, resolution)
     yy = xx
     X, Y = np.meshgrid(xx, yy)
-    X = tf.cast(X, dtype=tf.float32)
-    Y = tf.cast(Y, dtype=tf.float32)
-
-    # `prepare` only needs shape and dtype
-    Z = tf.zeros([resolution, resolution], dtype=tf.float32)
 
     print("Setup...")
-    preps, stencil = differentiate.prepare(N, X, Y, Z, p=p,
+    # For improved accuracy, we can `prepare` using `float64` coordinate data regardless of the solution `dtype` chosen here.
+    solution_dtype = tf.float64
+    preps, stencil = differentiate.prepare(N, X, Y, p=p,
+                                           dtype=solution_dtype,  # compute and storage of the solution
                                            format="LUp",
                                            low_vram=True, low_vram_batch_size=batch_size,
                                            print_statistics=True, indent=" " * 4)
+    # solve = differentiate.solve  # format="A"
+    solve = differentiate.solve_lu  # format="LUp"
+
+    # DEBUG
+    def print_stencil(stencil):  # [[y0, x0], ...]
+        miny = np.min(stencil[:, 0])
+        maxy = np.max(stencil[:, 0])
+        minx = np.min(stencil[:, 1])
+        maxx = np.max(stencil[:, 1])
+        stencil += np.array([-miny, -minx])
+        mask = np.zeros([maxy - miny + 1, maxx - minx + 1], dtype=int)
+        for y, x in stencil:
+            mask[y, x] = 1
+        for row in mask:
+            for element in row:
+                print("X" if element else " ", end="")
+            print()
+    print(f"Stencil shape (N = {N:0.3g}, p = {p:0.3g}):")
+    print_stencil(stencil)
 
     print("Spatial jacobian and hessian via WLSQM (with gradient tape enabled)...")
-    a = tf.Variable(1.0, dtype=tf.float32, name="a", trainable=True)  # simple scalar parameter for demonstration
+    # a = tf.Variable(1.0, dtype=solution_dtype, name="a", trainable=True)  # simple scalar parameter for demonstration
+    a = tf.Variable(tf.ones(tf.shape(X), dtype=solution_dtype), name="a", trainable=True)
+    def fit_surrogate(Z):
+        # `dZ` = *spatial* jacobian and hessian of pixel image, via WLSQM: [f, dx, dy, dx2, dxdy, dy2]
+        dZ = solve(*preps, Z, low_vram=True, low_vram_batch_size=batch_size)
+        if Z.dtype is tf.float64:
+            return dZ  # fitted f, original 1st and 2nd derivatives
+        # Refitting helps output accuracy at float32.
+        ddx = solve(*preps, dZ[1], low_vram=True, low_vram_batch_size=batch_size)
+        ddy = solve(*preps, dZ[2], low_vram=True, low_vram_batch_size=batch_size)
+        # return tf.stack([dZ[0], dZ[1], dZ[2], ddx[1], 0.5 * (ddx[2] + ddy[1]), ddy[2]])  # fitted f, original 1st derivatives, refitted 2nd derivatives
+        return tf.stack([dZ[0], ddx[0], ddy[0], ddx[1], 0.5 * (ddx[2] + ddy[1]), ddy[2]])  # fitted f, refitted 1st and 2nd derivatives
+
     with timer() as tim:
+        # Here we must cast the coordinate data to the solution dtype,
+        # because we will use them in the expression for `Z`.
+        X = tf.cast(X, dtype=solution_dtype)
+        Y = tf.cast(Y, dtype=solution_dtype)
         with tf.GradientTape() as tape:
             # NOTE: We must set up the quantity of interest inside the gradient tape extent,
             # so that the tape records all relevant computations. This is done rather naturally
@@ -105,13 +139,11 @@ def main():
             # flattened `z`, too. Then they become agnostic as to which minibatch member each pixel comes from.
             # Concatenating the `point_to_stencil` tensors sets up the correct stencils (since all images in
             # a minibatch are the same size, we can reuse the same stencils for each).
-
-            # `dZ` = *spatial* jacobian and hessian of pixel image, via WLSQM: [f, dx, dy, dx2, dxdy, dy2]
-            Z = tf.cast(Z, dtype=tf.float32)  # convert before call, to compile `solve_lu` for float32
-            dZ = differentiate.solve_lu(*preps, Z, low_vram=True, low_vram_batch_size=batch_size)
+            dZ = fit_surrogate(Z)
 
             # out = dZ[0]  # or whatever you need to keep from `dZ`, for example...
             out = (dZ[3] + dZ[5])**2  # ...the spatial laplacian of the data, squared
+            # out = smoothing.smooth_2d(int(np.ceil(N)), out, padding="VALID")
     print(f"    Done in {tim.dt:0.6g}s.")
 
     watched_variable_names = [var.name for var in tape.watched_variables()]
@@ -125,17 +157,50 @@ def main():
         # https://www.tensorflow.org/guide/autodiff
         # https://www.tensorflow.org/guide/advanced_autodiff#jacobians
         #
-        # NOTE: For the polynomial example, the result should be approximately 8:
+        # NOTE: For the polynomial example, the result should be 8, up to the accuracy of WLSQM:
         #   d/da[@a=1.0] [∇²(a X² + Y)]² = d/da[@a=1.0] [2 a]² = d/da[@a=1.0] [4 a²] = [8 a][@a=1.0] = 8
-        doutda = tape.gradient(out, a) / resolution**2  # ∑_pixels [d(out)/da] / n_pixels
-        print(f"    Average per-pixel value is {doutda:0.6g}")
+        doutda = tape.gradient(out, a)  # ∑_pixels [d(out)/da]
+        # If we have just one scalar parameter `a`, then we should divide by the number of pixels.
+        # But if we have one `a` for each pixel, then they're independent, and each one only affects its own pixel,
+        # so summing over the pixels already gives the final result.
+        # doutda /= resolution**2  # normalize result for scalar `a`
+        doutda = doutda.numpy()
+        print(f"    Average per-pixel value is {np.mean(doutda):0.6g}")
     print(f"    Done in {tim.dt:0.6g}s.")
 
-    print("Convert results to NumPy...")
-    with timer() as tim:
-        doutda = doutda.numpy()
-    print(f"    Done in {tim.dt:0.6g}s.")
+    # print("Convert results to NumPy...")
+    # with timer() as tim:
+    #     doutda = doutda.numpy()
+    # print(f"    Done in {tim.dt:0.6g}s.")
     # print(ddZda * (np.abs(ddZda) > 1e-4))
+
+    import matplotlib.pyplot as plt
+    # r = int(np.ceil(N))  # edge cut safety factor
+    # dZ = dZ[:, r:-r, r:-r]  # not very accurate near the edges, so cut them away.
+    idx_to_name = list(differentiate.coeffs_full.keys())  # list({v: k for k, v in differentiate.coeffs_full.items()}.values())
+    fig, axs = plt.subplots(2, 3, figsize=(12, 8))
+    for j in range(6):
+        row, col = divmod(j, 3)
+        ax = axs[row, col]
+        theplot = ax.imshow(dZ[j].numpy(), origin="lower")
+        fig.colorbar(theplot, ax=ax)
+        ax.set_title(idx_to_name[j])
+    # theplot = axs[2, 0].imshow(ddx[1].numpy(), origin="lower")
+    # fig.colorbar(theplot, ax=axs[2, 0])
+    # axs[2, 0].set_title("dx2 (refit)")
+    # theplot = axs[2, 1].imshow(0.5 * (ddx[2] + ddy[1]).numpy(), origin="lower")
+    # fig.colorbar(theplot, ax=axs[2, 1])
+    # axs[2, 1].set_title("dxdy (refit)")
+    # theplot = axs[2, 2].imshow(ddy[2].numpy(), origin="lower")
+    # fig.colorbar(theplot, ax=axs[2, 2])
+    # axs[2, 2].set_title("dy2 (refit)")
+
+    plt.figure(2)
+    # plt.imshow(doutda[r:-r, r:-r], origin="lower")
+    plt.imshow(np.log10(np.abs(doutda)), origin="lower")
+    plt.colorbar()
+
+    plt.show()
 
 
 if __name__ == '__main__':

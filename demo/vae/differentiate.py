@@ -292,7 +292,6 @@ def _assemble_a(c: tf.Tensor,
 def prepare(N: float,
             X: typing.Union[np.array, tf.Tensor],
             Y: typing.Union[np.array, tf.Tensor],
-            Z: typing.Union[np.array, tf.Tensor],
             *,
             p: typing.Union[float, str] = 2.0,
             dtype: tf.DType = tf.float32,
@@ -322,12 +321,14 @@ def prepare(N: float,
          along the cardinal directions, although otherwise the stencil is a good approximation of a round shape.
          Using e.g. `N=11.5` instead of `N=11` can avoid this.)
 
-    `X`, `Y`, `Z`: data in meshgrid format for x, y, and function value, respectively.
-                   The shapes of `X`, `Y` and `Z` must match.
+    `X`, `Y`: Data in meshgrid format for x and y coordinates, respectively.
 
-                   `Z` is only consulted for its shape and dtype.
+              The shapes of `X` and `Y` must match.
 
-                   The grid spacing must be uniform.
+              The grid spacing must be uniform.
+
+              You can control the accuracy and memory use of the distance computations by feeding
+              in `X` and `Y` as tensors with the desired dtype (see `tf.cast`).
 
     `p`: The p for p-norm that is used for deciding whether a grid point in the local [-N, N]²
          box belongs to the stencil.
@@ -339,7 +340,11 @@ def prepare(N: float,
          used for denoising noisy function data.
 
     `dtype`: The desired TensorFlow data type for the outputs `A`, `c`, and `scale`.
-             The output `neighbors` always has dtype `int32`.
+             Outputs containing indices always have dtype `int32`.
+
+             The `dtype` parameter effectively sets both the storage and compute dtype of the solution
+             that will be used by the `solve` functions (when called with the preparation returned by
+             this function).
 
     `format`: One of "A" or "LUp":
         "A": Format expected by `solve`. Recommended.
@@ -353,11 +358,19 @@ def prepare(N: float,
 
     `low_vram`: If `True`, perform the following:
 
-                  - Store the coefficient tensor `c` in half precision (float16).
-                    This makes `A` slightly less precise, but not much, while it halves the VRAM
-                    requirements for the largest tensor in the preparation process.
+                  - Store the coefficient tensor `c` in half precision relative to `dtype`
+                    (float16 if `dtype` is float32, and float32 if `dtype` is float64).
 
-                  - Assemble `A` in batches (over meshgrid points). See the `low_vram_batch_size` parameter.
+                    This makes `A` slightly less precise, but not much, while it halves the VRAM
+                    requirements for the largest tensor.
+
+                  - Do not store `neighbors` (the returned `neighbors` will be `None`).
+
+                    This is compatible with the `low_vram` mode of the `solve` functions;
+                    the solvers will then compute neighbor indices on-the-fly for each batch
+                    of pixels separately, to save VRAM.
+
+                  - Assemble `A` in batches (over pixels). See the `low_vram_batch_size` parameter.
 
     `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the system matrix.
                            Decrease this to trade off speed for lower VRAM usage.
@@ -375,9 +388,9 @@ def prepare(N: float,
                         of preparation.
 
     `indent`: If `print_statistics=True`, prefix string for messages, usually some number of spaces.
-              If `print_statistics=True`, this parameter is ignored.
+              If `print_statistics=False`, this parameter is ignored.
 
-    As long as `N`, `X` and `Y` remain constant, and the dtype of `Z` remains the same,
+    As long as `N`, `X` and `Y` remain constant, and the desired `dtype` remains the same,
     the same preparation can be reused.
 
     The complete return value is `(tensors, stencil)`, where:
@@ -393,7 +406,7 @@ def prepare(N: float,
     if N < 1:
         raise ValueError(f"Must specify N ≥ 1, got {N}")
     # The image must be at least [2 * N + 1, 2 * N + 1] pixels, to have at least one pixel in the interior, so that our division into regions is applicable.
-    for name, tensor in (("X", X), ("Y", Y), ("Z", Z)):
+    for name, tensor in (("X", X), ("Y", Y)):
         shape = tf.shape(tensor)
         if len(shape) != 2:
             raise ValueError(f"Expected `{name}` to be a rank-2 tensor; got rank {len(shape)}")
@@ -423,7 +436,7 @@ def prepare(N: float,
     # --------------------------------------------------------------------------------
     # Topology-specific stencil assembly
 
-    shape = tf.shape(Z)
+    shape = tf.shape(X)  # assumption: shape(X) == shape(Y) == shape(Z)  (Z not accessible here)
     npoints = tf.reduce_prod(shape)  # not inside a @tf.function, so this is ok.
 
     if print_statistics:
@@ -696,9 +709,15 @@ def prepare(N: float,
 
           `i`: component of surrogate fit `(f, dx, dy, dx2, dxdy, dy2)`
         """
+        # TODO: The storage dtype of `c` has a minor effect on output accuracy; would be nice to control separately for use cases where best accuracy is needed.
         if low_vram:
-            # To save even more VRAM (another 50%, for a total of 75%), cast the scaled `dx` and `dy` to half precision (float16),
-            # which is the dtype we store `c` in when operating in low VRAM mode.
+            # Use half precision relative to the storage dtype of `A` and `b`.
+            if dtype == tf.float64:
+                c_storage_dtype = tf.float32
+            else:
+                c_storage_dtype = tf.float16
+
+            # To save even more VRAM (another 50%, for a total of 75%), downcast the scaled `dx` and `dy`.
             #
             # Although this ordering of the operations takes more VRAM than the other possibility (cast first, then scale),
             # this ordering gives us the best possible accuracy for `dx` and `dy` in the float16 representation.
@@ -706,21 +725,24 @@ def prepare(N: float,
             # Even better (for optimal accuracy of the second-order terms) would be to compute `c` first in float32,
             # then cast the final result to float16, but that takes even more VRAM. The 6× VRAM cost, compared
             # to the current approach, is exactly what we are trying to avoid here.
-            dx = tf.cast(dx / xscale, tf.float16)  # LHS: offset in scaled space
-            dy = tf.cast(dy / yscale, tf.float16)
+            #
+            # dx = tf.cast(dx / xscale, tf.float16)  # LHS: offset in scaled space
+            # dy = tf.cast(dy / yscale, tf.float16)
+            # (then fall through)
 
-            # # The "even better" approach; downcast (to save VRAM) as soon as possible.
-            # # Downcast `dx`, `dy` last, because we need them to compute the second-order terms.
-            # # Doesn't seem to affect the accuracy of the result, though.
-            # dx = dx / xscale   # LHS: offset in scaled space
-            # dy = dy / yscale
-            # dx2 = tf.cast(0.5 * dx**2, tf.float16)
-            # dxdy = tf.cast(dx * dy, tf.float16)
-            # dy2 = tf.cast(0.5 * dy**2, tf.float16)
-            # dx = tf.cast(dx, tf.float16)
-            # dy = tf.cast(dy, tf.float16)
-            # one = tf.ones_like(dx)  # for the constant term of the fit
-            # return tf.stack([one, dx, dy, dx2, dxdy, dy2], axis=-1)
+            # Better for the accuracy of the second-order terms: compute at full precision, then downcast as soon as possible.
+            # Downcast `dx`, `dy` last, because we need them at full precision to compute the second-order terms.
+            # Doesn't seem to affect the accuracy of the result much, though.
+            dx = dx / xscale   # LHS: offset in scaled space
+            dy = dy / yscale
+            dx2 = tf.cast(0.5 * dx**2, c_storage_dtype)
+            dxdy = tf.cast(dx * dy, c_storage_dtype)
+            dx = tf.cast(dx, c_storage_dtype)  # original dx no longer needed, save memory
+            gc.collect()  # Attempt to clean up dangling tensors. Important now that we store `dx` and `dy` in full precision.
+            dy2 = tf.cast(0.5 * dy**2, c_storage_dtype)
+            dy = tf.cast(dy, c_storage_dtype)
+            one = tf.ones_like(dx)  # for the constant term of the fit
+            return tf.stack([one, dx, dy, dx2, dxdy, dy2], axis=-1)
         else:
             dx = dx / xscale  # LHS: offset in scaled space
             dy = dy / yscale
