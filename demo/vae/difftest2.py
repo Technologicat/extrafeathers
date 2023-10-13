@@ -205,6 +205,9 @@ def main():
     # plt.imshow(doutda[r:-r, r:-r], origin="lower")
     plt.imshow(np.log10(np.abs(doutda)), origin="lower")
     plt.colorbar()
+    # Almost zero - should be near 8. So all of the non-zero average comes from the numerical oscillations near the edges,
+    # which isn't useful for training a neural network model.
+    print(np.mean(doutda[4:-4, 4:-4]))
 
     plt.show()
 
