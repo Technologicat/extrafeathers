@@ -243,7 +243,7 @@ def _assemble_a(c: tf.Tensor,
     #         row = tf.stack(row, axis=1)  # -> [#n, #cols]
     #         rows.append(row)
     # else:
-    #     # In low VRAM mode, we assemble `A` in batches, splitting over the meshgrid points.
+    #     # In low VRAM mode, we assemble `A` in batches, splitting over the pixels.
     #     # This is another straw that breaks the camel's back at N = 17.5 (with 6 GB VRAM).
     #
     #     # It significantly increases performance to split just this part off into a `tf.function`.
@@ -952,7 +952,7 @@ def _assemble_b(c: tf.Tensor,
         b = tf.transpose(rows, [1, 0])  # -> [#n, #rows]
     else:  # `neighbors is None`, to be computed on-the-fly. Batched assembly.
         assert neighbors is None
-        # In low VRAM mode, we assemble `b` in batches, splitting over the meshgrid points.
+        # In low VRAM mode, we assemble `b` in batches, splitting over the pixels.
         n_batches = math.ceil(npoints / low_vram_batch_size)
         batches = [[j, j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]  # [[batch_index, start, stop], ...]
         batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
@@ -998,7 +998,7 @@ def solve(a: tf.Tensor,
          For computations, `z` is automatically cast into the proper dtype.
 
     `low_vram`: If `True`, attempt to save VRAM by splitting the load vector assembly process
-                into batches over the meshgrid points.
+                into batches over the pixels.
 
                 This will slow down the computation (especially at first run when TF compiles the graph),
                 but allows using larger neighborhood sizes with the same VRAM.
@@ -1059,7 +1059,7 @@ def solve_lu(lu: tf.Tensor,
          For computations, `z` is automatically cast into the proper dtype.
 
     `low_vram`: If `True`, attempt to save VRAM by splitting the load vector assembly process
-                into batches over the meshgrid points.
+                into batches over the pixels.
 
                 This will slow down the computation (especially at first run when TF compiles the graph),
                 but allows using larger neighborhood sizes with the same VRAM.
@@ -1118,7 +1118,7 @@ def solve_lu_custom(lu: tf.Tensor,
          For computations, `z` is automatically cast into the proper dtype.
 
     `low_vram`: If `True`, attempt to save VRAM by splitting the load vector assembly process
-                into batches over the meshgrid points.
+                into batches over the pixels.
 
                 This will slow down the computation (especially at first run when TF compiles the graph),
                 but allows using larger neighborhood sizes with the same VRAM.
