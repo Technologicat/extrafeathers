@@ -703,6 +703,19 @@ def prepare(N: float,
             # to the current approach, is exactly what we are trying to avoid here.
             dx = tf.cast(dx / xscale, tf.float16)  # LHS: offset in scaled space
             dy = tf.cast(dy / yscale, tf.float16)
+
+            # # The "even better" approach; downcast (to save VRAM) as soon as possible.
+            # # Downcast `dx`, `dy` last, because we need them to compute the second-order terms.
+            # # Doesn't seem to affect the accuracy of the result, though.
+            # dx = dx / xscale   # LHS: offset in scaled space
+            # dy = dy / yscale
+            # dx2 = tf.cast(0.5 * dx**2, tf.float16)
+            # dxdy = tf.cast(dx * dy, tf.float16)
+            # dy2 = tf.cast(0.5 * dy**2, tf.float16)
+            # dx = tf.cast(dx, tf.float16)
+            # dy = tf.cast(dy, tf.float16)
+            # one = tf.ones_like(dx)  # for the constant term of the fit
+            # return tf.stack([one, dx, dy, dx2, dxdy, dy2], axis=-1)
         else:
             dx = dx / xscale  # LHS: offset in scaled space
             dy = dy / yscale
