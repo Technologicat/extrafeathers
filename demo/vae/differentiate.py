@@ -247,7 +247,7 @@ def _assemble_a(c: tf.Tensor,
     #         row = tf.stack(row, axis=1)  # -> [#n, #cols]
     #         rows.append(row)
     # else:
-    #     # In low VRAM mode, we assemble `A` in batches, splitting over the pixels.
+    #     # In low VRAM mode, we assemble `A` in batches (over the pixels).
     #     # This is another straw that breaks the camel's back at N = 17.5 (with 6 GB VRAM).
     #
     #     # It significantly increases performance to split just this part off into a `tf.function`.
@@ -256,13 +256,13 @@ def _assemble_a(c: tf.Tensor,
     #     # To avoid triggering retracing, we wrap the Python `int` scalars `i` and `j` into TF tensors.
     #     # This runs slightly faster, even though we must then construct `tf.constant` tensors to send in scalars.
     #     @tf.function
-    #     def _assemble_aij_batched(c_split: tf.Tensor,
+    #     def _assemble_aij_batched(c_batch: tf.Tensor,
     #                               i: tf.Tensor,
     #                               j: tf.Tensor) -> tf.Tensor:
     #         # We upcast after slicing to save VRAM.
-    #         ci = tf.cast(c_split[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#split, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-    #         cj = tf.cast(c_split[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#split, #k]
-    #         Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#split, #k] -> [#split]
+    #         ci = tf.cast(c_batch[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#batch, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+    #         cj = tf.cast(c_batch[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#batch, #k]
+    #         Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#batch, #k] -> [#batch]
     #         return Aij
     #
     #     npoints = int(tf.shape(c)[0])  # not inside a @tf.function, so this is ok.
@@ -271,16 +271,16 @@ def _assemble_a(c: tf.Tensor,
     #     batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
     #     rows_by_batch = []
     #     for start, stop in batches:
-    #         c_split = c[start:stop, :, :]  # [#n, #k, #cols] -> [#split, #k, #cols], where #k is ragged
+    #         c_batch = c[start:stop, :, :]  # [#n, #k, #cols] -> [#batch, #k, #cols], where #k is ragged
     #         rows = []
     #         for i in range(nrows):
     #             row = []
     #             for j in range(nrows):
-    #                 Aij = _assemble_aij_batched(c_split,
+    #                 Aij = _assemble_aij_batched(c_batch,
     #                                             tf.constant(i, dtype=tf.int64),
-    #                                             tf.constant(j, dtype=tf.int64))  # [#split]
+    #                                             tf.constant(j, dtype=tf.int64))  # [#batch]
     #                 row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
-    #             row = tf.stack(row, axis=1)  # -> [#split, #cols]
+    #             row = tf.stack(row, axis=1)  # -> [#batch, #cols]
     #             rows.append(row)
     #         rows_by_batch.append(rows)
     #     # Unsplit:
@@ -288,7 +288,7 @@ def _assemble_a(c: tf.Tensor,
     #     # `A` itself doesn't take much VRAM (less than 10 MB typically), so we don't have to worry about VRAM usage here.
     #     rows = []
     #     for rs in zip(*rows_by_batch):
-    #         rows.append(tf.concat(rs, axis=0))  # [#split, #cols] -> [#n, #cols]
+    #         rows.append(tf.concat(rs, axis=0))  # [#batch, #cols] -> [#n, #cols]
     # A = tf.stack(rows, axis=1)  # [[#n, #cols], [#n, #cols], ...] -> [#n, #rows, #cols]
     # return A
 
@@ -939,21 +939,21 @@ def _assemble_b(c: tf.Tensor,
     # Name: `z[g(n, k)]` is the data value `z` at neighbor `k` (local numbering) of pixel `n` (global numbering),
     # where the `g` denotes local-to-global pixel index conversion.
     #
-    # Save some VRAM (< 100 MB) by letting `neighbors_split` fall out of scope as soon as it's no longer needed.
+    # Save some VRAM (< 100 MB) by letting `neighbors_batch` fall out of scope as soon as it's no longer needed.
     @tf.function  # we're already inside a `@tf.function`, so this is just to document intent.
     def _get_zgnk(start: tf.Tensor, stop: tf.Tensor) -> tf.Tensor:  # `start` and `stop` are wrapped scalars
         # The first term is the base linear index of each pixel; the second is the linear index offset of each of its neighbors.
-        neighbors_split = tf.expand_dims(tf.range(start, stop), axis=-1) + tf.gather(stencils, point_to_stencil[start:stop])  # [#split, #k], ragged in k
-        zgnk_split = tf.gather(z, neighbors_split, name="gather_neighbors")  # [#n] -> [#split, #k], ragged in k
-        return zgnk_split
+        neighbors_batch = tf.expand_dims(tf.range(start, stop), axis=-1) + tf.gather(stencils, point_to_stencil[start:stop])  # [#batch, #k], ragged in k
+        zgnk_batch = tf.gather(z, neighbors_batch, name="gather_neighbors")  # [#n] -> [#batch, #k], ragged in k
+        return zgnk_batch
 
     @tf.function
     def _assemble_bi(i: tf.Tensor,  # wrapped scalar
                      c_expanded: tf.Tensor,
                      zgnk: tf.Tensor) -> tf.Tensor:
         # We upcast after slicing to save VRAM.
-        ci = tf.cast(c_expanded[:, :, i], zgnk.dtype, name="match_dtypes")  # -> [#split, #k] (batched) or [#n, #k] (not batched)
-        bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#split, #k] -> [#split] (batched) or [#n, #k] -> [#n] (not batched)
+        ci = tf.cast(c_expanded[:, :, i], zgnk.dtype, name="match_dtypes")  # -> [#batch, #k] (batched) or [#n, #k] (not batched)
+        bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#batch, #k] -> [#batch] (batched) or [#n, #k] -> [#n] (not batched)
         return bi
 
     if not low_vram:  # `neighbors` is precomputed. No batching.
@@ -980,7 +980,7 @@ def _assemble_b(c: tf.Tensor,
         b = tf.transpose(rows, [1, 0])  # -> [#n, #rows]
     else:  # `neighbors is None`, to be computed on-the-fly. Batched assembly.
         assert neighbors is None
-        # In low VRAM mode, we assemble `b` in batches, splitting over the pixels.
+        # In low VRAM mode, we assemble `b` in batches (over the pixels).
         n_batches = math.ceil(npoints / low_vram_batch_size)
         batches = [[j, j * low_vram_batch_size, (j + 1) * low_vram_batch_size] for j in range(n_batches)]  # [[batch_index, start, stop], ...]
         batches[-1][-1] = npoints  # Set the final `stop` value to include all remaining tensor elements in the final batch.
@@ -991,16 +991,16 @@ def _assemble_b(c: tf.Tensor,
             batch_index = batch_metadata[0]
             start = batch_metadata[1]
             stop = batch_metadata[2]
-            zgnk_split = _get_zgnk(start, stop)
-            c_split_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
+            zgnk_batch = _get_zgnk(start, stop)
+            c_batch_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#batch, #k, #rows]
             rows = tf.TensorArray(z.dtype, size=nrows)
             for i in tf.range(nrows):
-                bi_split = _assemble_bi(i, c_split_expanded, zgnk_split)  # -> [#split]
-                rows = rows.write(i, tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
-            rows = rows.stack()  # [#rows, #split]
+                bi_batch = _assemble_bi(i, c_batch_expanded, zgnk_batch)  # -> [#batch]
+                rows = rows.write(i, tf.cast(bi_batch, z.dtype, name="cast_to_dtype"))
+            rows = rows.stack()  # [#rows, #batch]
             rows_by_batch = rows_by_batch.write(batch_index, rows)
-        rows_by_batch = rows_by_batch.stack()  # [#batches, #rows, #split]
-        rows_by_batch = tf.transpose(rows_by_batch, [0, 2, 1])  # -> [#batches, #split, #rows]
+        rows_by_batch = rows_by_batch.stack()  # [#batches, #rows, #batch]
+        rows_by_batch = tf.transpose(rows_by_batch, [0, 2, 1])  # -> [#batches, #batch, #rows]
         b = tf.reshape(rows_by_batch, shape=[n_batches * low_vram_batch_size, nrows])  # unsplit -> [#n, #rows]
     return b
 
@@ -1025,11 +1025,8 @@ def solve(a: tf.Tensor,
 
          For computations, `z` is automatically cast into the proper dtype.
 
-    `low_vram`: If `True`, attempt to save VRAM by splitting the load vector assembly process
-                into batches over the pixels.
-
-                This will slow down the computation (especially at first run when TF compiles the graph),
-                but allows using larger neighborhood sizes with the same VRAM.
+    `low_vram`: If `True`, attempt to save VRAM by batching the load vector assembly process
+                over the pixels.
 
     `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the load vector.
                            Decrease this to trade off speed for lower VRAM usage.
@@ -1087,11 +1084,8 @@ def solve_lu(lu: tf.Tensor,
 
          For computations, `z` is automatically cast into the proper dtype.
 
-    `low_vram`: If `True`, attempt to save VRAM by splitting the load vector assembly process
-                into batches over the pixels.
-
-                This will slow down the computation (especially at first run when TF compiles the graph),
-                but allows using larger neighborhood sizes with the same VRAM.
+    `low_vram`: If `True`, attempt to save VRAM by batching the load vector assembly process
+                over the pixels.
 
     `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the load vector.
                            Decrease this to trade off speed for lower VRAM usage.
@@ -1147,11 +1141,8 @@ def solve_lu_custom(lu: tf.Tensor,
 
          For computations, `z` is automatically cast into the proper dtype.
 
-    `low_vram`: If `True`, attempt to save VRAM by splitting the load vector assembly process
-                into batches over the pixels.
-
-                This will slow down the computation (especially at first run when TF compiles the graph),
-                but allows using larger neighborhood sizes with the same VRAM.
+    `low_vram`: If `True`, attempt to save VRAM by batching the load vector assembly process
+                over the pixels.
 
     `low_vram_batch_size`: If `low_vram=True`, this is the batch size for assembling the load vector.
                            Decrease this to trade off speed for lower VRAM usage.
