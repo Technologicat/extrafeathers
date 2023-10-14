@@ -166,17 +166,20 @@ def _assemble_a(c: tf.Tensor,
         Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_Aij")  # [#n, #k] -> [#n]
         return Aij
 
+    # `A` is square, so this is also `ncols`.
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (6 for quadratic in 2D)
+
     # On a *uniform* meshgrid, it is enough to do the assembly for each stencil once.
-    # Here the `c` that comes in has shape [#stencils, #k, 6], where #k is ragged.
+    # Here the `c` that comes in has shape [#stencils, #k, #rows], where #k is ragged.
     #
     # Even for large neighborhood sizes `N`, the number of unique stencils is
     # a couple thousand at most; hence we don't need to save VRAM here.
     #
     # # Python loop version:
     # rows = []
-    # for i in range(6):
+    # for i in range(nrows):
     #     row = []
-    #     for j in range(6):
+    #     for j in range(nrows):
     #         Aij = _assemble_aij(c, tf.constant(i, dtype=tf.int64), tf.constant(j, dtype=tf.int64))
     #         row.append(tf.cast(Aij, dtype, name="cast_Aij_to_storage"))
     #     row = tf.stack(row, axis=1)  # -> [#stencils, #cols]
@@ -188,10 +191,10 @@ def _assemble_a(c: tf.Tensor,
     # TODO: On a 6 GB card, runs out of VRAM in `reduce_sum` at `N=30.5, p=2.0` (256×256); without compiling this part, runs fine at `N=40.5`, still moderately fast.
     # @tf.function
     def _assemble():
-        rows = tf.TensorArray(dtype, size=6)
-        for i in tf.range(6):
-            row = tf.TensorArray(dtype, size=6)
-            for j in tf.range(6):
+        rows = tf.TensorArray(dtype, size=nrows)
+        for i in tf.range(nrows):
+            row = tf.TensorArray(dtype, size=nrows)
+            for j in tf.range(nrows):
                 Aij = _assemble_aij(c, i, j)  # -> [#stencils]
                 row = row.write(j, tf.cast(Aij, dtype, name="cast_Aij_to_storage"))
             row = row.stack()  # -> [#cols, #stencils]
@@ -226,17 +229,17 @@ def _assemble_a(c: tf.Tensor,
     return LU, perm
 
     # # For documentation: assembly algorithm for general topologies.
-    # # Here the `c` that comes in has shape [#n, #k, 6], where #k is ragged.
+    # # Here the `c` that comes in has shape [#n, #k, #rows], where #k is ragged.
     # if not low_vram:
     #     # `einsum` doesn't support `RaggedTensor`. What we want to do:
     #     # # A = tf.einsum("nki,nkj->nij", c, c)
     #     # So we do it manually.
     #     # When enough VRAM is available, this is the simplest way to do the assembly:
     #     rows = []
-    #     for i in range(6):
+    #     for i in range(nrows):
     #         ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
     #         row = []
-    #         for j in range(6):
+    #         for j in range(nrows):
     #             # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
     #             cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#n, #k]
     #             Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#n, #k] -> [#n]
@@ -270,9 +273,9 @@ def _assemble_a(c: tf.Tensor,
     #     for start, stop in batches:
     #         c_split = c[start:stop, :, :]  # [#n, #k, #cols] -> [#split, #k, #cols], where #k is ragged
     #         rows = []
-    #         for i in range(6):
+    #         for i in range(nrows):
     #             row = []
-    #             for j in range(6):
+    #             for j in range(nrows):
     #                 Aij = _assemble_aij_batched(c_split,
     #                                             tf.constant(i, dtype=tf.int64),
     #                                             tf.constant(j, dtype=tf.int64))  # [#split]
@@ -828,7 +831,7 @@ def prepare(N: float,
 
         # Scaling factors to undo the derivative scaling,  d/dx' → d/dx.  `solve` needs this to postprocess its results.
         scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=dtype)
-        # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [6, npoints]
+        # scale = tf.expand_dims(scale, axis=-1)  # for broadcasting; solution shape from `tf.linalg.solve` is [nrows, npoints]
 
         if print_statistics:
             print(f"{indent}    Memory usage:")
@@ -931,6 +934,8 @@ def _assemble_b(c: tf.Tensor,
     npoints = tf.get_static_value(tf.shape(z), partial=True)[0]  # NOTE: Reshaped, linearly indexed `z`.
     low_vram_batch_size = min(npoints, low_vram_batch_size)  # can't have a batch larger than there is data
 
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (6 for quadratic in 2D)
+
     # Name: `z[g(n, k)]` is the data value `z` at neighbor `k` (local numbering) of pixel `n` (global numbering),
     # where the `g` denotes local-to-global pixel index conversion.
     #
@@ -965,10 +970,10 @@ def _assemble_b(c: tf.Tensor,
         # of a performance boost anyway.
         # https://www.tensorflow.org/guide/function#loops
         # https://www.tensorflow.org/guide/function#accumulating_values_in_a_loop
-        rows = tf.TensorArray(z.dtype, size=6)
+        rows = tf.TensorArray(z.dtype, size=nrows)
         zgnk = tf.gather(z, neighbors, name="gather_neighbors")  # -> [#n, #k], ragged in k
         c_expanded = tf.gather(c, point_to_stencil, axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#n, #k, #rows]; this can take GBs of VRAM!
-        for i in tf.range(6):
+        for i in tf.range(nrows):
             bi = _assemble_bi(i, c_expanded, zgnk)  # -> [#n]
             rows = rows.write(i, tf.cast(bi, z.dtype, name="cast_to_dtype"))
         rows = rows.stack()  # -> [#rows, #n]
@@ -988,15 +993,15 @@ def _assemble_b(c: tf.Tensor,
             stop = batch_metadata[2]
             zgnk_split = _get_zgnk(start, stop)
             c_split_expanded = tf.gather(c, point_to_stencil[start:stop], axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#split, #k, #rows]
-            rows = tf.TensorArray(z.dtype, size=6)
-            for i in tf.range(6):
+            rows = tf.TensorArray(z.dtype, size=nrows)
+            for i in tf.range(nrows):
                 bi_split = _assemble_bi(i, c_split_expanded, zgnk_split)  # -> [#split]
                 rows = rows.write(i, tf.cast(bi_split, z.dtype, name="cast_to_dtype"))
             rows = rows.stack()  # [#rows, #split]
             rows_by_batch = rows_by_batch.write(batch_index, rows)
         rows_by_batch = rows_by_batch.stack()  # [#batches, #rows, #split]
         rows_by_batch = tf.transpose(rows_by_batch, [0, 2, 1])  # -> [#batches, #split, #rows]
-        b = tf.reshape(rows_by_batch, shape=[n_batches * low_vram_batch_size, 6])  # unsplit -> [#n, #rows]
+        b = tf.reshape(rows_by_batch, shape=[n_batches * low_vram_batch_size, nrows])  # unsplit -> [#n, #rows]
     return b
 
 @tf.function
@@ -1038,6 +1043,7 @@ def solve(a: tf.Tensor,
     Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (6 for quadratic in 2D)
     shape = tf.shape(z)
     z = tf.cast(z, a.dtype)
     z = tf.reshape(z, [-1])
@@ -1057,7 +1063,7 @@ def solve(a: tf.Tensor,
     sol = zmax * sol  # return from scaled z to raw z
 
     sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
-    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
+    return tf.reshape(sol, (nrows, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
 
 @tf.function
 def solve_lu(lu: tf.Tensor,
@@ -1099,6 +1105,7 @@ def solve_lu(lu: tf.Tensor,
     Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (6 for quadratic in 2D)
     shape = tf.shape(z)
     z = tf.cast(z, lu.dtype)
     z = tf.reshape(z, [-1])
@@ -1116,7 +1123,7 @@ def solve_lu(lu: tf.Tensor,
     sol = zmax * sol  # return from scaled z to raw z
 
     sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
-    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
+    return tf.reshape(sol, (nrows, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
 
 def solve_lu_custom(lu: tf.Tensor,
                     p: tf.Tensor,
@@ -1184,6 +1191,7 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
     Return value is a rank-3 tensor of shape `[channels, ny, nx]`, where `channels` are
     f, dx, dy, dx2, dxdy, dy2, in that order.
     """
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (6 for quadratic in 2D)
     shape = tf.shape(z)
     z = tf.cast(z, lu.dtype)
     z = tf.reshape(z, [-1])
@@ -1202,7 +1210,7 @@ def _solve_lu_custom_kernel(lu: tf.Tensor,
     sol = zmax * sol  # return from scaled z to raw z
 
     sol = tf.transpose(sol, [1, 0])  # -> [#rows, #n]
-    return tf.reshape(sol, (6, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
+    return tf.reshape(sol, (nrows, int(shape[0]), int(shape[1])))  # -> [#rows, ny, nx]
 
 
 # ----------------------------------------------------------------------------------------
@@ -1573,7 +1581,7 @@ def fit_quadratic(N: typing.Optional[int],
     #  just like the actual neighbors. Only the constant term is nonzero at the center.)
 
     # Assemble `A`:
-    c = cki(dx, dy)  # [#k, 6]
+    c = cki(dx, dy)  # [#k, #rows]
     A = tf.einsum("ki,kj->ij", c, c)  # A[i,j] = ∑k( c[k,i] * c[k,j] )
 
     # Form the right-hand side for each pixel. This is the only part that depends on the data values f.
@@ -1610,14 +1618,15 @@ def fit_quadratic(N: typing.Optional[int],
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
     bs = tf.einsum("nk,ki->in", fgnk, c)
 
-    df = tf.linalg.solve(A, bs)  # [6, n_interior_points]
+    df = tf.linalg.solve(A, bs)  # [nrows, n_interior_points]
 
     # Undo the derivative scaling,  d/dx' → d/dx
     scale = tf.constant([1.0, xscale, yscale, xscale**2, xscale * yscale, yscale**2], dtype=df.dtype)
     scale = tf.expand_dims(scale, axis=-1)  # for broadcasting
     df = df / scale
 
-    df = tf.reshape(df, (6, *tf.shape(interior_multi_to_linear)))
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (6 for quadratic in 2D)
+    df = tf.reshape(df, (nrows, *tf.shape(interior_multi_to_linear)))
     return df * zscale
 
 
@@ -1712,14 +1721,15 @@ def fit_linear(N: typing.Optional[int],
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
     bs = tf.einsum("nk,ki->in", fgnk, c)
 
-    df = tf.linalg.solve(A, bs)  # [3, n_interior_points]
+    df = tf.linalg.solve(A, bs)  # [nrows, n_interior_points]
 
     # Undo the derivative scaling,  d/dx' → d/dx
     scale = tf.constant([1.0, xscale, yscale], dtype=df.dtype)
     scale = tf.expand_dims(scale, axis=-1)  # for broadcasting
     df = df / scale
 
-    df = tf.reshape(df, (3, *tf.shape(interior_multi_to_linear)))
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (3 for linear in 2D)
+    df = tf.reshape(df, (nrows, *tf.shape(interior_multi_to_linear)))
     return df * zscale
 
 
@@ -1808,9 +1818,10 @@ def fit_constant(N: typing.Optional[int],
     fgnk = tf.gather(f, gnk)  # [n_interior_points, #k]
     bs = tf.einsum("nk,ki->in", fgnk, c)
 
-    df = tf.linalg.solve(A, bs)  # [1, n_interior_points]
+    df = tf.linalg.solve(A, bs)  # [nrows, n_interior_points]
 
-    df = tf.reshape(df, (1, *tf.shape(interior_multi_to_linear)))
+    nrows = tf.get_static_value(tf.shape(c), partial=True)[2]  # components of fit (1 for piecewise constant)
+    df = tf.reshape(df, (nrows, *tf.shape(interior_multi_to_linear)))
     return df * zscale
 
 
