@@ -208,7 +208,7 @@ def main():
     # TODO: See if we can do anything to improve the accuracy here - we'll need a good autodiffed field to actually use WLSQM in a loss function.
     plt.figure(2)
     # plt.imshow(doutda[r:-r, r:-r], origin="lower")
-    plt.imshow(np.log10(np.abs(doutda)), origin="lower")
+    plt.imshow(np.copysign(np.log10(1.0 + np.abs(doutda)), doutda), origin="lower", cmap="RdBu_r")
     plt.colorbar()
     # Almost zero - should be near 8. So all of the non-zero average comes from the numerical oscillations near the edges,
     # which isn't useful for training a neural network model.
