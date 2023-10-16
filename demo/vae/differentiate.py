@@ -953,7 +953,7 @@ def _assemble_b(c: tf.Tensor,
                      zgnk: tf.Tensor) -> tf.Tensor:
         # We upcast after slicing to save VRAM.
         # TODO: We use float64 for assembling `A`, but `b` is assembled in the storage/compute dtype of the data `z`. Should we change this? (needs more VRAM)
-        ci = tf.cast(c_expanded[:, :, i], zgnk.dtype, name="cast_to_compute")  # -> [#batch, #k] (batched) or [#n, #k] (not batched)
+        ci = tf.cast(c_expanded[:, :, i], zgnk.dtype, name="cast_ci_to_compute")  # -> [#batch, #k] (batched) or [#n, #k] (not batched)
         bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#batch, #k] -> [#batch] (batched) or [#n, #k] -> [#n] (not batched)
         return bi
 
