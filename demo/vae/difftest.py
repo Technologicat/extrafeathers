@@ -325,6 +325,12 @@ def main():
     # Batch size (pixels) for system matrix and load vector assembly of `prepare` and `solve`.
     batch_size = 8192
 
+    # Used for both storage and compute of the solution.
+    # Note most GPUs will run at 1:32 speed at float64, but the accuracy is much better.
+    # At float64, resolution=256, and p=2.0, it seems N=37.5 is the maximum possible on a 6 GB card.
+    # solution_dtype = tf.float64
+    solution_dtype = tf.float32
+
     # --------------------------------------------------------------------------------
     # Set up an expression to generate test data
 
@@ -358,11 +364,10 @@ def main():
 
         X, Y = np.meshgrid(xx, yy)
         Z = f(X, Y)
-        # We will use `float32` for GPU computation anyway, so typecasting here saves
-        # an expensive extra `@tf.function` tracing for the initial `float64` data.
-        Z = tf.cast(Z, dtype=tf.float32)
+        # Typecasting here saves an expensive extra `@tf.function` tracing for the initial `float64` data when `solution_dtype is tf.float32`.
+        Z = tf.cast(Z, dtype=solution_dtype)
         preps, stencil = prepare(N, X, Y, p=p,
-                                 dtype=tf.float32,  # compute and storage of the solution
+                                 dtype=solution_dtype,  # compute and storage of the solution
                                  format="LUp",
                                  low_vram=True, low_vram_batch_size=batch_size,
                                  print_statistics=True, indent=" " * 4)
