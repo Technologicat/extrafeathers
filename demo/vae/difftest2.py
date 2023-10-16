@@ -48,6 +48,12 @@ from . import differentiate
 
 
 def main():
+    # --------------------------------------------------------------------------------
+    # Parameters
+
+    # Input image resolution (in pixels per axis; the image is square).
+    resolution = 128
+
     # WLSQM stencil parameters. See `difftest.py`.
     N, p = 3.5, 2.0
 
@@ -62,12 +68,11 @@ def main():
     #
     batch_size = 2048  # 8192
 
-    # The input image is square, of size `resolution × resolution` pixels.
-    resolution = 128
-
     # Used for both storage and compute of the solution.
     # Note most GPUs will run at 1:32 speed at float64, but the accuracy is much better.
     solution_dtype = tf.float64
+
+    # --------------------------------------------------------------------------------
 
     xx = np.linspace(0, 1, resolution)
     yy = xx
