@@ -237,13 +237,13 @@ def _assemble_a(c: tf.Tensor,
     #     # When enough VRAM is available, this is the simplest way to do the assembly:
     #     rows = []
     #     for i in range(nrows):
-    #         ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+    #         ci = tf.cast(c[:, :, i], tf.float32, name="cast_ci_to_compute")  # -> [#n, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
     #         row = []
     #         for j in range(nrows):
     #             # Always use float32 to compute the elements of `A` for optimal accuracy, even if our storage `dtype` happens to be float16.
-    #             cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#n, #k]
-    #             Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#n, #k] -> [#n]
-    #             row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+    #             cj = tf.cast(c[:, :, j], tf.float32, name="cast_cj_to_compute")  # -> [#n, #k]
+    #             Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_Aij")  # [#n, #k] -> [#n]
+    #             row.append(tf.cast(Aij, dtype, name="cast_Aij_to_storage"))
     #         row = tf.stack(row, axis=1)  # -> [#n, #cols]
     #         rows.append(row)
     # else:
@@ -260,9 +260,9 @@ def _assemble_a(c: tf.Tensor,
     #                               i: tf.Tensor,
     #                               j: tf.Tensor) -> tf.Tensor:
     #         # We upcast after slicing to save VRAM.
-    #         ci = tf.cast(c_batch[:, :, i], tf.float32, name="cast_ci_to_float32")  # -> [#batch, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
-    #         cj = tf.cast(c_batch[:, :, j], tf.float32, name="cast_cj_to_float32")  # -> [#batch, #k]
-    #         Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_aij")  # [#batch, #k] -> [#batch]
+    #         ci = tf.cast(c_batch[:, :, i], tf.float32, name="cast_ci_to_compute")  # -> [#batch, #k], where #k is ragged (number of neighbors in stencil for pixel `n`)
+    #         cj = tf.cast(c_batch[:, :, j], tf.float32, name="cast_cj_to_compute")  # -> [#batch, #k]
+    #         Aij = tf.reduce_sum(ci * cj, axis=1, name="assemble_Aij")  # [#batch, #k] -> [#batch]
     #         return Aij
     #
     #     npoints = int(tf.shape(c)[0])  # not inside a @tf.function, so this is ok.
@@ -279,7 +279,7 @@ def _assemble_a(c: tf.Tensor,
     #                 Aij = _assemble_aij_batched(c_batch,
     #                                             tf.constant(i, dtype=tf.int64),
     #                                             tf.constant(j, dtype=tf.int64))  # [#batch]
-    #                 row.append(tf.cast(Aij, dtype, name="cast_to_dtype"))
+    #                 row.append(tf.cast(Aij, dtype, name="cast_Aij_to_storage"))
     #             row = tf.stack(row, axis=1)  # -> [#batch, #cols]
     #             rows.append(row)
     #         rows_by_batch.append(rows)
@@ -952,7 +952,8 @@ def _assemble_b(c: tf.Tensor,
                      c_expanded: tf.Tensor,
                      zgnk: tf.Tensor) -> tf.Tensor:
         # We upcast after slicing to save VRAM.
-        ci = tf.cast(c_expanded[:, :, i], zgnk.dtype, name="match_dtypes")  # -> [#batch, #k] (batched) or [#n, #k] (not batched)
+        # TODO: We use float64 for assembling `A`, but `b` is assembled in the storage/compute dtype of the data `z`. Should we change this? (needs more VRAM)
+        ci = tf.cast(c_expanded[:, :, i], zgnk.dtype, name="cast_to_compute")  # -> [#batch, #k] (batched) or [#n, #k] (not batched)
         bi = tf.reduce_sum(zgnk * ci, axis=1, name="assemble_bi")  # [#batch, #k] -> [#batch] (batched) or [#n, #k] -> [#n] (not batched)
         return bi
 
@@ -975,7 +976,7 @@ def _assemble_b(c: tf.Tensor,
         c_expanded = tf.gather(c, point_to_stencil, axis=0, name="expand_c")  # [#nstencils, #k, #rows] -> [#n, #k, #rows]; this can take GBs of VRAM!
         for i in tf.range(nrows):
             bi = _assemble_bi(i, c_expanded, zgnk)  # -> [#n]
-            rows = rows.write(i, tf.cast(bi, z.dtype, name="cast_to_dtype"))
+            rows = rows.write(i, tf.cast(bi, z.dtype, name="cast_to_storage"))
         rows = rows.stack()  # -> [#rows, #n]
         b = tf.transpose(rows, [1, 0])  # -> [#n, #rows]
     else:  # `neighbors is None`, to be computed on-the-fly. Batched assembly.
@@ -996,7 +997,7 @@ def _assemble_b(c: tf.Tensor,
             rows = tf.TensorArray(z.dtype, size=nrows)
             for i in tf.range(nrows):
                 bi_batch = _assemble_bi(i, c_batch_expanded, zgnk_batch)  # -> [#batch]
-                rows = rows.write(i, tf.cast(bi_batch, z.dtype, name="cast_to_dtype"))
+                rows = rows.write(i, tf.cast(bi_batch, z.dtype, name="cast_to_storage"))
             rows = rows.stack()  # [#rows, #batch]
             rows_by_batch = rows_by_batch.write(batch_index, rows)
         rows_by_batch = rows_by_batch.stack()  # [#batches, #rows, #batch]
