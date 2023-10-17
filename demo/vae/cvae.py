@@ -327,6 +327,7 @@ def make_codec(variant):
             # x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # for some reason, normalizing here breaks the whole NN (will not train usefully)
 
             # Then proceed as usual in a ResNet - remix the detected features, at the same number of channels.
+            # (AFAIK, the point of remixing at the same spatial resolution is to increase the amount of available nonlinearity.)
             x = IdentityBlock2D(filters=32, kernel_size=3, activation=tf.keras.layers.PReLU,
                                 bottleneck_factor=2)(x)
             x = GNDropoutRegularization(groups=32, rate=dropout_fraction)(x)  # output of level 1
