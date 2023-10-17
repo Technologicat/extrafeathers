@@ -135,6 +135,11 @@ def main():
             # Z = tf.math.sin(a * X) * tf.math.cos(Y)
             Z = a * X**2 + Y
 
+            # TODO: Real NN application considerations:
+            #  - Masking - there may be obstacles in the pixel image that are outside PDE domain (so in those parts the residual doesn't matter).
+            #  - Regularize the CVAE by using the "consistently regularized VAE" training approach, using snapshots from nearby time instants as the augmented data.
+            #    This should regularize the latent space layout so that a small Δt corresponds to a small hop in the latent space.
+
             # TODO: In a real NN application, we would here concatenate the pixels from several images
             # (from the same minibatch) and their `preps` appropriately. Basically, concatenate all of
             # the tensors on axis 0 (the batch axis), except leave `stencils` and `neighbors` alone.
